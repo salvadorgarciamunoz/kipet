@@ -16,7 +16,7 @@ class PyomoSimulator(Simulator):
             mixture_components = trajectories.columns
 
             for component in mixture_components:
-                if component not in self.model.mixture_component_names:
+                if component not in self.model.mixture_components:
                     raise RuntimeError('Mixture component {} is not in model mixture components'.format(component))
 
             trajectory_times = np.array(trajectories.index)
@@ -45,6 +45,39 @@ class PyomoSimulator(Simulator):
         opt = SolverFactory(solver)
         solver_results = opt.solve(self.model,tee=tee)
         results = ResultsObject()
-        results.extract_results_from_pyomo_model(self.model)
+        
+        times = sorted(self.model.time)
+        mixture_components = [name for name in self.model.mixture_components]
+        measured_times = [t for t in self.model.measurement_times]
+        measured_lambdas = [l for l in self.model.measurement_lambdas] 
+        n_times = len(times)
+        n_measured_times = len(measured_times)
+        n_measured_lambdas = len(measured_lambdas)
+        n_components = len(mixture_components)
+        
+        c_results = []
+        for t in times:
+            for k in mixture_components:
+                c_results.append(self.model.C[t,k].value)
+
+        c_noise_results = []
+        for t in measured_times:
+            for k in mixture_components:
+                c_noise_results.append(self.model.C_noise[t,k].value)
+
+        s_results = []
+        for l in measured_lambdas:
+            for k in mixture_components:
+                s_results.append(self.model.S[t,k].value)
+
+        c_array = np.array(c_results).reshape((n_times,n_components))
+        results.C = pd.DataFrame(data=c_array,columns=mixture_components,index=times)
+        
+        c_noise_array = np.array(c_noise_results).reshape((n_measured_times,n_components))
+        results.C_noise = pd.DataFrame(data=c_noise_array,columns=mixture_components,index=measured_times)
+
+        s_array = np.array(s_results).reshape((n_measured_lambdas,n_components))
+        results.S = pd.DataFrame(data=s_array,columns=mixture_components,index=measured_lambdas)
+
         return results
         

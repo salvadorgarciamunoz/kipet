@@ -26,12 +26,12 @@ class CasadiSimulator(Simulator):
         ode_l = []
         init_conditions_l = []
         map_back = dict()
-        mixture_component_names = []
-        for i,k in enumerate(self.model.mixture_component_names):
+        mixture_components = []
+        for i,k in enumerate(self.model.mixture_components):
             states_l.append(self.model.C[k])
             ode_l.append(self.model.diff_exprs[k])
             init_conditions_l.append(self.model.init_conditions[k])
-            mixture_component_names.append(k)
+            mixture_components.append(k)
 
         states = ca.vertcat(*states_l)
         ode = ca.vertcat(*ode_l)
@@ -39,33 +39,26 @@ class CasadiSimulator(Simulator):
     
         system = {'x':states, 'ode':ode}
         step = (self.model.end_time - self.model.start_time)/self.nfe
-        print 'step',step
         opts = {'tf':step}
 
         I = integrator("I", "cvodes", system, opts)
 
         results = ResultsObject()
-        results.time = [self.model.start_time]
-        tmp_containers = {}
-        tmp_containers['component_concentration'] = [j for j in init_conditions_l]
-        
-        print tmp_containers
+        times = [self.model.start_time]
+
+        c_results =  [j for j in init_conditions_l]
         xk = x_0
         for i in xrange(1,self.nfe+1):
             xk = I(x0=xk)['xf']
             for j in xrange(xk.numel()):
-                tmp_containers['component_concentration'].append(xk[j])
-            results.time.append(i*step)
-        tmp_dict = dict()
-        tmp_dict['concentration'] = tmp_containers['component_concentration']
+                c_results.append(xk[j])
+            times.append(i*step)
         
-        n_times = len(results.time)
-        n_components = len(mixture_component_names)
-        for key,val in tmp_dict.iteritems():
-            tmp_dict[key] = np.array(val).reshape((n_times,n_components))
-        
-        results.panel =  pd.Panel(tmp_dict, major_axis=results.time, minor_axis=mixture_component_names)
-            
+        n_times = len(times)
+        n_components = len(mixture_components)
+        c_array = np.array(c_results).reshape((n_times,n_components))
+        results.C = pd.DataFrame(data=c_array,columns=mixture_components,index=times)
+                    
         return results
         
         
