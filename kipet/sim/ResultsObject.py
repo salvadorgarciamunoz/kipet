@@ -14,4 +14,6 @@ class ResultsObject(object):
         self.C = None
         self.C_noise = None
         self.S = None
-       
+        self.sigma = None
+        self.device_std_dev = None
+        self.P = None

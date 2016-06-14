@@ -1,4 +1,4 @@
-"""
+
 from setuptools import setup, find_packages
 from distutils.core import Extension
 
@@ -9,4 +9,4 @@ setup(name='kipet',
     license='TODO',
     packages=find_packages(),
     zip_safe=False)
-"""
+
