@@ -17,3 +17,4 @@ class ResultsObject(object):
         self.sigma = None
         self.device_std_dev = None
         self.P = None
+        self.dCdt = None

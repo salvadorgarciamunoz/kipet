@@ -21,7 +21,7 @@ class TemplateBuilder(object):
         self._spectral_data = None
         self._absorption_data = None
         self._odes = None
-        self._meas_times = []
+        self._meas_times = set()
         
     def add_parameter(self,*args):
         if len(args) == 1:
@@ -81,7 +81,7 @@ class TemplateBuilder(object):
 
     def add_measurement_times(self,times):
         for t in times:
-            self._meas_times.append(t)
+            self._meas_times.add(t)
 
     def set_rule_ode_expressions_dict(self,rule):
         self._odes = rule
@@ -93,7 +93,9 @@ class TemplateBuilder(object):
         # Sets
         pyomo_model.mixture_components = Set(initialize = self._component_names)
         pyomo_model.parameter_names = Set(initialize = self._parameters.keys())
-        
+
+        list_times = list(self._meas_times)
+        self._meas_times = sorted(list_times)
         m_times = list()
         m_lambdas = list()
         if self._spectral_data is not None and self._absorption_data is not None:
@@ -105,11 +107,12 @@ class TemplateBuilder(object):
         if self._absorption_data is not None:
             if not self._meas_times:
                 raise RuntimeError('Need to add measumerement times')
-            m_times = list(self._meas_times)
+            list_times = list(self._meas_times)
+            m_times = sorted(list_times)
             m_lambdas = list(self._absorption_data.index)
 
-        pyomo_model.measurement_times = Set(initialize = m_times)
-        pyomo_model.measurement_lambdas = Set(initialize = m_lambdas)
+        pyomo_model.measurement_times = Set(initialize = m_times,ordered=True)
+        pyomo_model.measurement_lambdas = Set(initialize = m_lambdas,ordered=True)
         
             
         
@@ -201,7 +204,8 @@ class TemplateBuilder(object):
         # Sets
         casadi_model.mixture_components = copy.deepcopy(self._component_names)
         casadi_model.parameter_names = self._parameters.keys()
-        
+
+
         m_times = list()
         m_lambdas = list()
         if self._spectral_data is not None and self._absorption_data is not None:
@@ -213,7 +217,8 @@ class TemplateBuilder(object):
         if self._absorption_data is not None:
             if not self._meas_times:
                 raise RuntimeError('Need to add measumerement times')
-            m_times = list(self._meas_times)
+            list_times = list(self._meas_times)
+            m_times = sorted(list_times)
             m_lambdas = list(self._absorption_data.index)
 
         casadi_model.measurement_times = m_times

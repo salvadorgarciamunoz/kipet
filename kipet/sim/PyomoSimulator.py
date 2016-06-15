@@ -26,6 +26,9 @@ class PyomoSimulator(Simulator):
         if variable_name == 'C':
             var = self.model.C
             inner_set = self.model.time
+        elif variable_name == 'dCdt':
+            var = self.model.dCdt
+            inner_set = self.model.time
         elif variable_name == 'C_noise':
             var = self.model.C_noise
             inner_set = self._meas_times
@@ -62,6 +65,7 @@ class PyomoSimulator(Simulator):
                             y_tuple = (trajectories[component][t0],trajectories[component][t1])
                             y = interpolate_linearly(t,x_tuple,y_tuple)
                             var[t,component].value = y
+                            
             
     def run_sim(self,solver,tee=False,solver_opts={}):
 
@@ -88,7 +92,18 @@ class PyomoSimulator(Simulator):
                                  columns=self._mixture_components,
                                  index=self._times)
 
-        if self._spectra_given: 
+        dc_results = []
+        for t in self._times:
+            for k in self._mixture_components:
+                dc_results.append(self.model.dCdt[t,k].value)
+
+        dc_array = np.array(dc_results).reshape((self._n_times,self._n_components))
+        
+        results.dCdt = pd.DataFrame(data=dc_array,
+                                 columns=self._mixture_components,
+                                 index=self._times)
+
+        if self._spectra_given and self.model.nobjectives()==0: 
             if self._n_meas_times and self._n_meas_times<self._n_components:
                 raise RuntimeError('Not enough measurements num_meas>= num_components')
 

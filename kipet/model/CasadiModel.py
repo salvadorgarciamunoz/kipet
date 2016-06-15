@@ -13,7 +13,8 @@ class KinetCasadiStruct(object):
         self._true_indices = [i for i in list_index]
         self._symbolics = dict()
         for i in self._true_indices:
-            self._symbolics[i] = ca.SX.sym("{0}[{1}]]".format(name,i))
+            self._symbolics[i] = ca.SX.sym("{0}[{1}]".format(name,i))
+        
     
     def __getitem__(self,index):
         if isinstance(index,tuple):

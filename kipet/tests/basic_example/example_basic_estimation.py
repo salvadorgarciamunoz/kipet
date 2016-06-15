@@ -87,7 +87,7 @@ if __name__ == "__main__":
 
     # dont push bounds i am giving you a good guess
     solver_options = {'mu_init': 1e-10, 'bound_push':  1e-8}
-
+    #solver_options = {'bound_relax_factor':0, 'bound_push':  1e-8}
     # fixes the standard deaviations for now
     sigmas = {'device':1,'A':1,'B':1}
     results_pyomo = optimizer.run_opt('ipopt',

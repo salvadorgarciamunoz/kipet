@@ -19,6 +19,7 @@ class Optimizer(PyomoSimulator):
                 for l in m.measurement_lambdas:
                     current = m.spectral_data[t,l] - sum(m.C_noise[t,k]*m.S[l,k] for k in m.mixture_components)
                     expr+= current**2/m.device_std_dev**2
+            for t in m.measurement_times:
                 expr += sum((m.C_noise[t,k]-m.C[t,k])**2/m.sigma[k]**2 for k in m.mixture_components)
             return expr
         self.model.direct_estimation = Objective(rule=rule_objective)
@@ -28,6 +29,9 @@ class Optimizer(PyomoSimulator):
 
     def run_opt(self,solver,tee=False,solver_opts={},std_deviations={}):
 
+        if self._discretized is False:
+            raise RuntimeError('apply discretization first before runing simulation')
+        
         # fixes the sigmas
         for k,v in std_deviations.iteritems():
             if k=='device':
@@ -47,17 +51,74 @@ class Optimizer(PyomoSimulator):
                 break
             
         if all_sigmas_fixed:
-            results = super(Optimizer,self).run_sim(solver,tee,solver_opts)
+
+            # Look at the output in results
+            opt = SolverFactory(solver)
+
+            print solver_opts
+            for key, val in solver_opts.iteritems():
+                opt.options[key]=val
+                print "option:",key, val
+                
+            solver_results = opt.solve(self.model,tee=tee)
+            results = ResultsObject()
+                
+            c_results = []
+            for t in self._times:
+                for k in self._mixture_components:
+                    c_results.append(self.model.C[t,k].value)
+
+            c_array = np.array(c_results).reshape((self._n_times,self._n_components))
+        
+            results.C = pd.DataFrame(data=c_array,
+                                     columns=self._mixture_components,
+                                     index=self._times)
+
+            dc_results = []
+            for t in self._times:
+                for k in self._mixture_components:
+                    dc_results.append(self.model.dCdt[t,k].value)
+
+            dc_array = np.array(dc_results).reshape((self._n_times,self._n_components))
+        
+            results.dCdt = pd.DataFrame(data=dc_array,
+                                        columns=self._mixture_components,
+                                        index=self._times)
+                
+            c_noise_results = []
+            for t in self._meas_times:
+                for k in self._mixture_components:
+                    c_noise_results.append(self.model.C_noise[t,k].value)
+
+            s_results = []
+            for l in self._meas_lambdas:
+                for k in self._mixture_components:
+                    s_results.append(self.model.S[l,k].value)
+
+            c_noise_array = np.array(c_noise_results).reshape((self._n_meas_times,self._n_components))
+            s_array = np.array(s_results).reshape((self._n_meas_lambdas,self._n_components))
+
+            results.C_noise = pd.DataFrame(data=c_noise_array,
+                                           columns=self._mixture_components,
+                                           index=self._meas_times)
+                
+            results.S = pd.DataFrame(data=s_array,
+                                     columns=self._mixture_components,
+                                     index=self._meas_lambdas)
+            param_vals = dict()
+            for name in self.model.parameter_names:
+                param_vals[name] = self.model.P[name].value
+
+            results.P = param_vals
+
+            results.sigma = dict()
+            for name in self._mixture_components:
+                results.sigma[name] = self.model.sigma[name].value
+                results.device_std_dev = self.model.device_std_dev.value
+        
+            return results
         else:
             print "TODO"
             results = ResultsObject()
-
-        
-        results.sigma = dict()
-        for name in self._mixture_components:
-            results.sigma[name] = self.model.sigma[name].value
-        results.device_std_dev = self.model.device_std_dev.value
-        
-        return results
             
             

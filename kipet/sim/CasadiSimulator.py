@@ -55,25 +55,34 @@ class CasadiSimulator(Simulator):
 
         results = ResultsObject()
 
+        fun_ode = ca.Function("odeFunc",[states],[ode])
         c_results =  []
+        dc_results = []
         xk = x_0
         times = sorted(self._times)
         for i,t in enumerate(times):
             if t == self.model.start_time:
-                for j in init_conditions_l:
-                    c_results.append(j)
+                odek = fun_ode(xk)
+                
+                for j,w in enumerate(init_conditions_l):
+                    c_results.append(w)
+                    dc_results.append(odek[j])
             else:
                 step = t - times[i-1]
                 opts = {'tf':step}
                 I = integrator("I",solver, system, opts)
                 xk = I(x0=xk)['xf']
+                odek = fun_ode(xk)
                 for j in xrange(xk.numel()):
                     c_results.append(xk[j])
-        
+                    dc_results.append(odek[j])
+                    
         c_array = np.array(c_results).reshape((self._n_times,self._n_components))
         results.C = pd.DataFrame(data=c_array,columns=self._mixture_components,index=times)
-        
 
+        dc_array = np.array(dc_results).reshape((self._n_times,self._n_components))
+        results.dCdt = pd.DataFrame(data=dc_array,columns=self._mixture_components,index=times)
+            
         if self._spectra_given:
             # solves over determined system
             c_noise_array, s_array = self._solve_CS_from_D(results.C)
