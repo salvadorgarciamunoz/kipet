@@ -24,17 +24,16 @@ if __name__ == "__main__":
 
     # read 300x100 spectra matrix D_{i,j}
     # this defines the measurement points t_i and l_j as well
-    #filename = 'data_sets{}Dij.txt'.format(os.sep)
-    filename = 'data_sets{}Dij_case51.txt'.format(os.sep)
-    D_frame = read_spectral_data_from_txt(filename)
+    filename = 'data_sets{}Dij_case51b.csv'.format(os.sep)
+    D_frame = read_spectral_data_from_csv(filename)
     
     # create template model 
     builder = TemplateBuilder()    
-    builder.add_mixture_component('A',1e-3)
+    builder.add_mixture_component('A',1)
     builder.add_mixture_component('B',0)
     builder.add_mixture_component('C',0)
-    builder.add_parameter('k1',2.0)
-    builder.add_parameter('k2',0.2)
+    builder.add_parameter('k1',0.3)
+    builder.add_parameter('k2',0.05)
     # includes spectra data in the template and defines measurement sets
     builder.add_spectral_data(D_frame)
 
