@@ -20,7 +20,6 @@ import matplotlib.pyplot as plt
 
 from kipet.utils.data_tools import *
 import os
-from pyomo_utils import *
 
 if __name__ == "__main__":
 
@@ -60,7 +59,7 @@ if __name__ == "__main__":
     # create instance of simulator
     simulator = PyomoSimulator(pyomo_model)
     # defines the discrete points wanted in the profiles (does not include measurement points)
-    simulator.apply_discretization('dae.collocation',nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
+    simulator.apply_discretization('dae.collocation',nfe=30,ncp=1,scheme='LAGRANGE-RADAU')
     # simulate
     results_sim = simulator.run_sim('ipopt',tee=True)
 
@@ -92,7 +91,7 @@ if __name__ == "__main__":
     
     optimizer = Optimizer(pyomo_model2)
 
-    optimizer.apply_discretization('dae.collocation',nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
+    optimizer.apply_discretization('dae.collocation',nfe=30,ncp=1,scheme='LAGRANGE-RADAU')
 
     # Provide good initial guess
     optimizer.initialize_from_trajectory('C',results_sim.C)
@@ -100,15 +99,18 @@ if __name__ == "__main__":
     optimizer.initialize_from_trajectory('S',results_sim.S)
     optimizer.initialize_from_trajectory('C_noise',results_sim.C_noise)
 
-    CheckInstanceFeasibility(pyomo_model2, 1e-3)
+    #CheckInstanceFeasibility(pyomo_model2, 1e-3)
     # dont push bounds i am giving you a good guess
     solver_options = dict()
     #solver_options['bound_relax_factor'] = 0.0
     #solver_options['mu_init'] =  1e-4
     #solver_options['bound_push'] = 1e-3
 
-    # fixes the standard deaviations for now
-    sigmas = {'device':7.25435e-6**0.5,'A':4.29616e-6**0.5,'B':1.11297e-5**0.5,'C':1.07905e-5**0.5}
+    # fixes the variances for now
+    sigmas = {'device':7.25435e-6,
+              'A':4.29616e-6,
+              'B':1.11297e-5,
+              'C':1.07905e-5}
     
     results_pyomo = optimizer.run_opt('ipopt',
                                       tee=True,
@@ -119,18 +121,6 @@ if __name__ == "__main__":
     for k,v in results_pyomo.P.iteritems():
         print k,v
 
-    expr = 0.0
-    for t in pyomo_model2.measurement_times:
-        expr += sum((pyomo_model2.C_noise[t,k].value-pyomo_model2.C[t,k].value)**2/pyomo_model2.sigma[k].value**2 for k in pyomo_model2.mixture_components)
-    print "Concentration term",expr
-
-    expr = 0.0
-    for t in pyomo_model2.measurement_times:
-        for l in pyomo_model2.measurement_lambdas:
-            current = value(pyomo_model2.spectral_data[t,l] - sum(pyomo_model2.C_noise[t,k]*pyomo_model2.S[l,k] for k in pyomo_model2.mixture_components))
-            expr+= value(current**2/pyomo_model2.device_std_dev**2)
-    print "Spectra term",expr
-            
     # display results
     plt.plot(results_pyomo.C)
     plt.plot(results_sim.C_noise.index,results_sim.C_noise['A'],'*',

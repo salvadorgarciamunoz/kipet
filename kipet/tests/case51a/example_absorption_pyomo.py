@@ -27,8 +27,6 @@ if __name__ == "__main__":
     # this defines the measurement lambdas l_j but the t_i still need to be passed
     filename = 'data_sets{}Slk_case51.txt'.format(os.sep)
     S_frame = read_absorption_data_from_txt(filename)
-
-    print type(S_frame)
     
     
     # create template model 

@@ -94,8 +94,8 @@ if __name__ == "__main__":
 
     pyomo_model2 = builder2.create_pyomo_model(0.0,10.0)
     
-    #pyomo_model2.P['k1'].value = 2.0
-    #pyomo_model2.P['k2'].value = 1.0
+    pyomo_model2.P['k1'].value = 2.0
+    pyomo_model2.P['k2'].value = 1.0
     #pyomo_model2.P['k1'].fixed = True
     #pyomo_model2.P['k2'].fixed = True
     
@@ -117,11 +117,11 @@ if __name__ == "__main__":
     #solver_options['bound_push'] = 1e-3
 
     # fixes the standard deaviations for now
-    sigmas = {'device':1.66507e-7**0.5,
-              'A':4.34682e-6**0.5,
-              'B':2.62689e-6**0.5,
-              'C':5.31808e-6**0.5,
-              'D':2.72712e-6**0.5}
+    sigmas = {'device':1.66507e-6,
+              'A':4.34682e-6,
+              'B':2.62689e-6,
+              'C':5.31808e-6,
+              'D':2.72712e-6}
     
     results_pyomo = optimizer.run_opt('ipopt',
                                       tee=True,
@@ -132,18 +132,19 @@ if __name__ == "__main__":
     for k,v in results_pyomo.P.iteritems():
         print k,v
 
+    """
     expr = 0.0
     for t in pyomo_model2.measurement_times:
-        expr += sum((pyomo_model2.C_noise[t,k].value-pyomo_model2.C[t,k].value)**2/pyomo_model2.sigma[k].value**2 for k in pyomo_model2.mixture_components)
+        expr += sum((pyomo_model2.C_noise[t,k].value-pyomo_model2.C[t,k].value)**2/pyomo_model2.sigma_sq[k].value for k in pyomo_model2.mixture_components)
     print "Concentration term",expr
 
     expr = 0.0
     for t in pyomo_model2.measurement_times:
         for l in pyomo_model2.measurement_lambdas:
             current = value(pyomo_model2.spectral_data[t,l] - sum(pyomo_model2.C_noise[t,k]*pyomo_model2.S[l,k] for k in pyomo_model2.mixture_components))
-            expr+= value(current**2/pyomo_model2.device_std_dev**2)
+            expr+= value(current**2/pyomo_model2.device_variance)
     print "Spectra term",expr
-            
+    """     
     # display results
     results_pyomo.C_noise.plot.line(legend=True)
     plt.plot(results_sim.C_noise.index,results_sim.C_noise['A'],'*',
