@@ -50,17 +50,17 @@ if __name__ == "__main__":
     # define explicit system of ODEs
     def rule_odes(m,t):
         exprs = dict()
-        exprs['A'] = -m.P['k1']*m.C[t,'A']
-        exprs['B'] = m.P['k1']*m.C[t,'A']-m.P['k2']*m.C[t,'B']
-        exprs['C'] = m.P['k2']*m.C[t,'B']
+        exprs['A'] = -m.P['k1']*m.Z[t,'A']
+        exprs['B'] = m.P['k1']*m.Z[t,'A']-m.P['k2']*m.Z[t,'B']
+        exprs['C'] = m.P['k2']*m.Z[t,'B']
         return exprs
 
     builder.set_rule_ode_expressions_dict(rule_odes)
     
     # create an instance of a pyomo model template
     # the template includes
-    #   - C variables indexed over time and components names e.g. m.C[t,'A']
-    #   - C_noise variables indexed over measurement t_i and components names e.g. m.C_noise[t_i,'A']
+    #   - Z variables indexed over time and components names e.g. m.Z[t,'A']
+    #   - C variables indexed over measurement t_i and components names e.g. m.C[t_i,'A']
     #   - P parameters indexed over the parameter names m.P['k']
     #   - S fixed variables over measurement l_j and component names m.S[l_j,'A']
     pyomo_model = builder.create_pyomo_model(0.0,10.0)
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     
     # display concentration and absorbance results
     if with_plots:
-        results_pyomo.C_noise.plot.line(legend=True)
+        results_pyomo.C.plot.line(legend=True)
         plt.xlabel("time (s)")
         plt.ylabel("Concentration (mol/L)")
         plt.title("Concentration Profile")

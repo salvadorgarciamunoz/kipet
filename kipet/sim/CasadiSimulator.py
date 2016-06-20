@@ -11,7 +11,7 @@ class CasadiSimulator(Simulator):
         self.nfe = None
         self._times = set([t for t in model.measurement_times])
         self._n_times = len(self._times)
-        self._spectra_given = hasattr(self.model, 'spectral_data')
+        self._spectra_given = hasattr(self.model, 'D')
         
     def apply_discretization(self,transformation,**kwargs):
         
@@ -32,6 +32,8 @@ class CasadiSimulator(Simulator):
         pass
 
     def run_sim(self,solver,tee=False,solver_opts={}):
+
+        Z_var = self.model.Z
         
         if self._discretized is False:
             raise RuntimeError('apply discretization first before runing simulation')
@@ -40,7 +42,7 @@ class CasadiSimulator(Simulator):
         init_conditions_l = []
         map_back = dict()
         for i,k in enumerate(self._mixture_components):
-            states_l.append(self.model.C[k])
+            states_l.append(Z_var[k])
             ode_l.append(self.model.diff_exprs[k])
             init_conditions_l.append(self.model.init_conditions[k])
             
@@ -78,19 +80,20 @@ class CasadiSimulator(Simulator):
                     dc_results.append(odek[j])
                     
         c_array = np.array(c_results).reshape((self._n_times,self._n_components))
-        results.C = pd.DataFrame(data=c_array,columns=self._mixture_components,index=times)
+        results.Z = pd.DataFrame(data=c_array,columns=self._mixture_components,index=times)
 
         dc_array = np.array(dc_results).reshape((self._n_times,self._n_components))
-        results.dCdt = pd.DataFrame(data=dc_array,columns=self._mixture_components,index=times)
+        results.dZdt = pd.DataFrame(data=dc_array,columns=self._mixture_components,index=times)
             
         if self._spectra_given:
             # solves over determined system
-            c_noise_array, s_array = self._solve_CS_from_D(results.C)
+            D_data = self.model.D
+            c_noise_array, s_array = self._solve_CS_from_D(results.Z)
 
             d_results = []
             for t in self._meas_times:
                 for l in self._meas_lambdas:
-                    d_results.append(self.model.spectral_data[t,l])
+                    d_results.append(D_data[t,l])
                     
             d_array = np.array(d_results).reshape((self._n_meas_times,self._n_meas_lambdas))
         else:
@@ -98,7 +101,7 @@ class CasadiSimulator(Simulator):
             c_noise_results = []
             for t in self._meas_times:
                 for k in self._mixture_components:
-                    c_noise_results.append(results.C[k][t])
+                    c_noise_results.append(results.Z[k][t])
 
             s_results = []
             for l in self._meas_lambdas:
@@ -121,7 +124,7 @@ class CasadiSimulator(Simulator):
             d_array = np.array(d_results).reshape((self._n_meas_times,self._n_meas_lambdas))
             
         # stores everything in restuls object
-        results.C_noise = pd.DataFrame(data=c_noise_array,
+        results.C = pd.DataFrame(data=c_noise_array,
                                        columns=self._mixture_components,
                                        index=self._meas_times)
         results.S = pd.DataFrame(data=s_array,

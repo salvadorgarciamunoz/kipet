@@ -7,9 +7,9 @@
 # Sample Problem 1 (From Sawall et.al.)
 # First example from WF paper simulation of ODE system using multistep-integrator
 #
-#		\frac{dC_a}{dt} = -k_1*C_a	                C_a(0) = 1
-#		\frac{dC_b}{dt} = k_1*C_a - k_2*C_b		C_b(0) = 0
-#               \frac{dC_c}{dt} = k_2*C_b	                C_c(0) = 0
+#		\frac{dZ_a}{dt} = -k_1*Z_a	                Z_a(0) = 1
+#		\frac{dZ_b}{dt} = k_1*Z_a - k_2*Z_b		Z_b(0) = 0
+#               \frac{dZ_c}{dt} = k_2*Z_b	                Z_c(0) = 0
 
 
 from kipet.model.TemplateBuilder import *
@@ -36,9 +36,9 @@ if __name__ == "__main__":
 
     def rule_odes(m,t):
         exprs = dict()
-        exprs['A'] = -m.P['k1']*m.C[t,'A']
-        exprs['B'] = m.P['k1']*m.C[t,'A']-m.P['k2']*m.C[t,'B']
-        exprs['C'] = m.P['k2']*m.C[t,'B']
+        exprs['A'] = -m.P['k1']*m.Z[t,'A']
+        exprs['B'] = m.P['k1']*m.Z[t,'A']-m.P['k2']*m.Z[t,'B']
+        exprs['C'] = m.P['k2']*m.Z[t,'B']
         return exprs
 
     builder.set_rule_ode_expressions_dict(rule_odes)
@@ -55,7 +55,7 @@ if __name__ == "__main__":
 
     # display concentration results
     if with_plots:
-        results_casadi.C.plot.line(legend=True)
+        results_casadi.Z.plot.line(legend=True)
         plt.xlabel("time (s)")
         plt.ylabel("Concentration (mol/L)")
         plt.title("Concentration Profile")

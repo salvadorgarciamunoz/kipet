@@ -7,10 +7,10 @@
 # Sample Problem 2 (From Sawall et.al.)
 # First example from WF paper simulation of ODE system using pyomo discretization and IPOPT
 #
-#		\frac{dC_a}{dt} = -k_1*C_a*C_b	                                C_a(0) = 1
-#		\frac{dC_b}{dt} = -k_1*C_a*C_b                   		C_b(0) = 0.8
-#               \frac{dC_c}{dt} = k_1*C_a*C_b-2*k_2*C_c^2	                C_c(0) = 0
-#               \frac{dC_d}{dt} = k_2*C_c^2             	                C_c(0) = 0
+#		\frac{dZ_a}{dt} = -k_1*Z_a*Z_b	                                Z_a(0) = 1
+#		\frac{dZ_b}{dt} = -k_1*Z_a*Z_b                   		Z_b(0) = 0.8
+#               \frac{dZ_c}{dt} = k_1*Z_a*Z_b-2*k_2*Z_c^2	                Z_c(0) = 0
+#               \frac{dZ_d}{dt} = k_2*Z_c^2             	                Z_c(0) = 0
 
 from kipet.model.TemplateBuilder import *
 from kipet.sim.CasadiSimulator import *
@@ -35,10 +35,10 @@ if __name__ == "__main__":
     # define explicit system of ODEs
     def rule_odes(m,t):
         exprs = dict()
-        exprs['A'] = -m.P['k1']*m.C[t,'A']*m.C[t,'B']
-        exprs['B'] = -m.P['k1']*m.C[t,'A']*m.C[t,'B']
-        exprs['C'] = m.P['k1']*m.C[t,'A']*m.C[t,'B']-2*m.P['k2']*m.C[t,'C']**2
-        exprs['D'] = m.P['k2']*m.C[t,'C']**2
+        exprs['A'] = -m.P['k1']*m.Z[t,'A']*m.Z[t,'B']
+        exprs['B'] = -m.P['k1']*m.Z[t,'A']*m.Z[t,'B']
+        exprs['C'] = m.P['k1']*m.Z[t,'A']*m.Z[t,'B']-2*m.P['k2']*m.Z[t,'C']**2
+        exprs['D'] = m.P['k2']*m.Z[t,'C']**2
         return exprs
 
     builder.set_rule_ode_expressions_dict(rule_odes)
@@ -55,7 +55,7 @@ if __name__ == "__main__":
 
     # display concentration results
     if with_plots:
-        results_casadi.C.plot.line(legend=True)
+        results_casadi.Z.plot.line(legend=True)
         plt.xlabel("time (s)")
         plt.ylabel("Concentration (mol/L)")
         plt.title("Concentration Profile")

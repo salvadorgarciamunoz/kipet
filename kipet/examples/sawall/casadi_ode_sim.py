@@ -32,8 +32,8 @@ if __name__ == "__main__":
     # define explicit system of ODEs
     def rule_odes(m,t):
         exprs = dict()
-        exprs['A'] = -m.P['k']*m.C[t,'A']
-        exprs['B'] = m.P['k']*m.C[t,'A']
+        exprs['A'] = -m.P['k']*m.Z[t,'A']
+        exprs['B'] = m.P['k']*m.Z[t,'A']
         return exprs
 
     builder.set_rule_ode_expressions_dict(rule_odes)
@@ -50,7 +50,7 @@ if __name__ == "__main__":
 
     # display concentration results
     if with_plots:
-        results_casadi.C.plot.line(legend=True)
+        results_casadi.Z.plot.line(legend=True)
         plt.xlabel("time (s)")
         plt.ylabel("Concentration (mol/L)")
         plt.title("Concentration Profile")

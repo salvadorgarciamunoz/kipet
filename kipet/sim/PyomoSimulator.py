@@ -9,7 +9,7 @@ class PyomoSimulator(Simulator):
         super(PyomoSimulator, self).__init__(model)
         self._times = sorted(self.model.time)
         self._n_times = len(self._times)
-        self._spectra_given = hasattr(self.model, 'spectral_data')
+        self._spectra_given = hasattr(self.model, 'D')
         
         
     def apply_discretization(self,transformation,**kwargs):
@@ -23,14 +23,14 @@ class PyomoSimulator(Simulator):
         if self._discretized is False:
             raise RuntimeError('apply discretization first before runing simulation')
         
-        if variable_name == 'C':
+        if variable_name == 'Z':
+            var = self.model.Z
+            inner_set = self.model.time
+        elif variable_name == 'dZdt':
+            var = self.model.dZdt
+            inner_set = self.model.time
+        elif variable_name == 'C':
             var = self.model.C
-            inner_set = self.model.time
-        elif variable_name == 'dCdt':
-            var = self.model.dCdt
-            inner_set = self.model.time
-        elif variable_name == 'C_noise':
-            var = self.model.C_noise
             inner_set = self._meas_times
         elif variable_name == 'S':
             var = self.model.S
@@ -80,43 +80,50 @@ class PyomoSimulator(Simulator):
 
         solver_results = opt.solve(self.model,tee=tee)
         results = ResultsObject()
+
+        Z_var = self.model.Z
+        dZ_var = self.model.dZdt
+
         
         c_results = []
         for t in self._times:
             for k in self._mixture_components:
-                c_results.append(self.model.C[t,k].value)
+                c_results.append(Z_var[t,k].value)
 
         c_array = np.array(c_results).reshape((self._n_times,self._n_components))
         
-        results.C = pd.DataFrame(data=c_array,
+        results.Z = pd.DataFrame(data=c_array,
                                  columns=self._mixture_components,
                                  index=self._times)
 
         dc_results = []
         for t in self._times:
             for k in self._mixture_components:
-                dc_results.append(self.model.dCdt[t,k].value)
+                dc_results.append(dZ_var[t,k].value)
 
         dc_array = np.array(dc_results).reshape((self._n_times,self._n_components))
         
-        results.dCdt = pd.DataFrame(data=dc_array,
+        results.dZdt = pd.DataFrame(data=dc_array,
                                  columns=self._mixture_components,
                                  index=self._times)
 
         if self._spectra_given and self.model.nobjectives()==0: 
+
+            D_data = self.model.D
+            
             if self._n_meas_times and self._n_meas_times<self._n_components:
                 raise RuntimeError('Not enough measurements num_meas>= num_components')
 
             # solves over determined system
-            c_noise_array, s_array = self._solve_CS_from_D(results.C)
+            c_noise_array, s_array = self._solve_CS_from_D(results.Z)
 
             d_results = []
             for t in self._meas_times:
                 for l in self._meas_lambdas:
-                    d_results.append(self.model.spectral_data[t,l])
+                    d_results.append(D_data[t,l])
             d_array = np.array(d_results).reshape((self._n_meas_times,self._n_meas_lambdas))
             
-            results.C_noise = pd.DataFrame(data=c_noise_array,
+            results.C = pd.DataFrame(data=c_noise_array,
                                            columns=self._mixture_components,
                                            index=self._meas_times)
             
@@ -130,7 +137,7 @@ class PyomoSimulator(Simulator):
 
             for t in self.model.measurement_times:
                 for k in self._mixture_components:
-                    self.model.C_noise[t,k].value = results.C_noise[k][t]
+                    self.model.C[t,k].value = results.C[k][t]
 
             for l in self.model.measurement_lambdas:
                 for k in self._mixture_components:
@@ -140,7 +147,7 @@ class PyomoSimulator(Simulator):
             c_noise_results = []
             for t in self._meas_times:
                 for k in self._mixture_components:
-                    c_noise_results.append(self.model.C[t,k].value)
+                    c_noise_results.append(Z_var[t,k].value)
                     
             s_results = []
             for l in self._meas_lambdas:
@@ -162,7 +169,7 @@ class PyomoSimulator(Simulator):
             s_array = np.array(s_results).reshape((self._n_meas_lambdas,self._n_components))
             d_array = np.array(d_results).reshape((self._n_meas_times,self._n_meas_lambdas))
             
-            results.C_noise = pd.DataFrame(data=c_noise_array,
+            results.C = pd.DataFrame(data=c_noise_array,
                                            columns=self._mixture_components,
                                            index=self._meas_times)
             results.S = pd.DataFrame(data=s_array,

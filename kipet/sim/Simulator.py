@@ -42,6 +42,7 @@ class Simulator(object):
             for j,k in enumerate(self._mixture_components):
                 c_noise_array[i,j] = C_dataFrame[k][t]
 
+        D_data = self.model.D
         if self._n_meas_lambdas:
             # build Dij vector
             D_vector = np.zeros(self._n_meas_times*self._n_meas_lambdas)
@@ -55,7 +56,7 @@ class Simulator(object):
                         row.append(i*self._n_meas_lambdas+j)
                         col.append(j*self._n_components+k)
                         data.append(c_noise_array[i,k])
-                    D_vector[i*self._n_meas_lambdas+j] = self.model.spectral_data[t,l]    
+                    D_vector[i*self._n_meas_lambdas+j] = D_data[t,l]    
                 
                         
             Bd = scipy.sparse.coo_matrix((data, (row, col)),

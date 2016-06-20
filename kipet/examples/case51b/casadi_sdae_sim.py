@@ -7,9 +7,9 @@
 # Sample Problem 2 (From Sawall et.al.)
 # Basic simulation of ODE with spectral data using multistep-integrator 
 #
-#		\frac{dC_a}{dt} = -k_1*C_a	                C_a(0) = 1
-#		\frac{dC_b}{dt} = k_1*C_a - k_2*C_b		C_b(0) = 0
-#               \frac{dC_c}{dt} = k_2*C_b	                C_c(0) = 0
+#		\frac{dZ_a}{dt} = -k_1*Z_a	                Z_a(0) = 1
+#		\frac{dZ_b}{dt} = k_1*Z_a - k_2*Z_b		Z_b(0) = 0
+#               \frac{dZ_c}{dt} = k_2*Z_b	                Z_c(0) = 0
 #               C_k(t_i) = Z_k(t_i) + w(t_i)    for all t_i in measurement points
 #               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
 
@@ -50,17 +50,17 @@ if __name__ == "__main__":
     # define explicit system of ODEs
     def rule_odes(m,t):
         exprs = dict()
-        exprs['A'] = -m.P['k1']*m.C[t,'A']
-        exprs['B'] = m.P['k1']*m.C[t,'A']-m.P['k2']*m.C[t,'B']
-        exprs['C'] = m.P['k2']*m.C[t,'B']
+        exprs['A'] = -m.P['k1']*m.Z[t,'A']
+        exprs['B'] = m.P['k1']*m.Z[t,'A']-m.P['k2']*m.Z[t,'B']
+        exprs['C'] = m.P['k2']*m.Z[t,'B']
         return exprs
     
     builder.set_rule_ode_expressions_dict(rule_odes)
 
     # create an instance of a casadi model template
     # the template includes
-    #   - C variables indexed over time and components names e.g. m.C[t,'A']
-    #   - C_noise variables indexed over measurement t_i and components names e.g. m.C_noise[t_i,'A']
+    #   - Z variables indexed over time and components names e.g. m.Z[t,'A']
+    #   - C variables indexed over measurement t_i and components names e.g. m.C[t_i,'A']
     #   - P parameters indexed over the parameter names m.P['k']
     #   - D spectra data indexed over the t_i, l_j measurement points m.D[t_i,l_j]
     casadi_model = builder.create_casadi_model(0.0,12.0)
@@ -74,7 +74,7 @@ if __name__ == "__main__":
 
     # displary concentrations and absorbances results
     if with_plots:
-        results_casadi.C_noise.plot.line(legend=True)
+        results_casadi.C.plot.line(legend=True)
         plt.xlabel("time (s)")
         plt.ylabel("Concentration (mol/L)")
         plt.title("Concentration Profile")

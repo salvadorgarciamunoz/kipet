@@ -49,16 +49,16 @@ if __name__ == "__main__":
     # define explicit system of ODEs
     def rule_odes(m,t):
         exprs = dict()
-        exprs['A'] = -m.P['k']*m.C[t,'A']
-        exprs['B'] = m.P['k']*m.C[t,'A']
+        exprs['A'] = -m.P['k']*m.Z[t,'A']
+        exprs['B'] = m.P['k']*m.Z[t,'A']
         return exprs
 
     builder.set_rule_ode_expressions_dict(rule_odes)
     
     casadi_model = builder.create_casadi_model(0.0,200.0)
     
-    casadi_model.diff_exprs['A'] = -casadi_model.P['k']*casadi_model.C['A']
-    casadi_model.diff_exprs['B'] = casadi_model.P['k']*casadi_model.C['A']
+    casadi_model.diff_exprs['A'] = -casadi_model.P['k']*casadi_model.Z['A']
+    casadi_model.diff_exprs['B'] = casadi_model.P['k']*casadi_model.Z['A']
 
     sim = CasadiSimulator(casadi_model)    
     sim.apply_discretization('integrator',nfe=100)
@@ -76,8 +76,8 @@ if __name__ == "__main__":
     # define explicit system of ODEs
     def rule_odes(m,t):
         exprs = dict()
-        exprs['A'] = -m.P['k']*m.C[t,'A']
-        exprs['B'] = m.P['k']*m.C[t,'A']
+        exprs['A'] = -m.P['k']*m.Z[t,'A']
+        exprs['B'] = m.P['k']*m.Z[t,'A']
         return exprs
 
     builder2.set_rule_ode_expressions_dict(rule_odes)
@@ -89,9 +89,9 @@ if __name__ == "__main__":
     optimizer.apply_discretization('dae.collocation',nfe=30,ncp=3,scheme='LAGRANGE-RADAU')
 
     # Provide good initial guess
-    optimizer.initialize_from_trajectory('C',results_casadi.C)
+    optimizer.initialize_from_trajectory('Z',results_casadi.Z)
     optimizer.initialize_from_trajectory('S',results_casadi.S)
-    optimizer.initialize_from_trajectory('C_noise',results_casadi.C_noise)
+    optimizer.initialize_from_trajectory('C',results_casadi.C)
 
     # dont push bounds i am giving you a good guess
     solver_options = {'mu_init': 1e-10, 'bound_push':  1e-8}
@@ -111,9 +111,9 @@ if __name__ == "__main__":
     assert(abs(results_pyomo.P['k']-0.01)<tol)
     # display results
     if with_plots:
-        results_pyomo.C_noise.plot.line(legend=True)
-        plt.plot(results_casadi.C_noise.index,results_casadi.C_noise['A'],'*',
-                 results_casadi.C_noise.index,results_casadi.C_noise['B'],'*')
+        results_pyomo.C.plot.line(legend=True)
+        plt.plot(results_casadi.C.index,results_casadi.C['A'],'*',
+                 results_casadi.C.index,results_casadi.C['B'],'*')
         plt.xlabel("time (s)")
         plt.ylabel("Concentration (mol/L)")
         plt.title("Concentration Profile")

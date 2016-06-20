@@ -119,18 +119,18 @@ class TemplateBuilder(object):
         pyomo_model.time = ContinuousSet(initialize = pyomo_model.measurement_times,bounds = (start_time,end_time))
 
         # Variables
-        pyomo_model.C = Var(pyomo_model.time,
+        pyomo_model.Z = Var(pyomo_model.time,
                             pyomo_model.mixture_components,
                             bounds=(0.0,None),
                             initialize=1)
         
-        pyomo_model.dCdt = DerivativeVar(pyomo_model.C,
+        pyomo_model.dZdt = DerivativeVar(pyomo_model.Z,
                                          wrt=pyomo_model.time)
 
         pyomo_model.P = Var(pyomo_model.parameter_names,
                             initialize=1)
         
-        pyomo_model.C_noise = Var(pyomo_model.measurement_times,
+        pyomo_model.C = Var(pyomo_model.measurement_times,
                                   pyomo_model.mixture_components,
                                   bounds=(0.0,None),
                                   initialize=1)
@@ -173,13 +173,13 @@ class TemplateBuilder(object):
                 for l in pyomo_model.measurement_lambdas:
                     s_data_dict[t,l] = float(self._spectral_data[l][t])
 
-            pyomo_model.spectral_data = Param(pyomo_model.measurement_times,
-                                              pyomo_model.measurement_lambdas,
-                                              initialize = s_data_dict)
+            pyomo_model.D = Param(pyomo_model.measurement_times,
+                                  pyomo_model.measurement_lambdas,
+                                  initialize = s_data_dict)
 
         def rule_init_conditions(model,k):
             st = start_time
-            return model.C[st,k] == self._init_conditions[k]
+            return model.Z[st,k] == self._init_conditions[k]
         pyomo_model.init_conditions_c = \
             Constraint(self._component_names,rule=rule_init_conditions)
 
@@ -189,7 +189,7 @@ class TemplateBuilder(object):
             if t == m.start_time.value:
                 return Constraint.Skip
             else:
-                return m.dCdt[t,k] == exprs[k] 
+                return m.dZdt[t,k] == exprs[k] 
         pyomo_model.mass_balances = Constraint(pyomo_model.time,
                                      pyomo_model.mixture_components,
                                      rule=rule_mass_balances)
@@ -225,9 +225,9 @@ class TemplateBuilder(object):
         casadi_model.measurement_lambdas = m_lambdas
 
         # Variables                
-        casadi_model.C = KinetCasadiStruct('C',list(casadi_model.mixture_components),dummy_index=True)
+        casadi_model.Z = KinetCasadiStruct('Z',list(casadi_model.mixture_components),dummy_index=True)
         casadi_model.P = KinetCasadiStruct('P',list(casadi_model.parameter_names))
-        casadi_model.C_noise = KinetCasadiStruct('C_noise',list(casadi_model.measurement_times))
+        casadi_model.C = KinetCasadiStruct('C',list(casadi_model.measurement_times))
         casadi_model.S = KinetCasadiStruct('S',list(casadi_model.measurement_lambdas))
         
         # Parameters
@@ -241,10 +241,10 @@ class TemplateBuilder(object):
                     casadi_model.S[l,k] = float(self._absorption_data[k][l])
 
         if self._spectral_data is not None:
-            casadi_model.spectral_data = dict()
+            casadi_model.D = dict()
             for t in casadi_model.measurement_times:
                 for l in casadi_model.measurement_lambdas:
-                    casadi_model.spectral_data[t,l] = float(self._spectral_data[l][t])
+                    casadi_model.D[t,l] = float(self._spectral_data[l][t])
         
         # Fixes parameters that were given numeric values
         for p,v in self._parameters.iteritems():

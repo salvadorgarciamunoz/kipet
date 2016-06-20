@@ -16,20 +16,16 @@ class Optimizer(PyomoSimulator):
                                within=NonNegativeReals,
                                initialize=1)
 
-        # help_summation
-        def inner_sum_components(m,i,l):
-            return 
-
         # estimation
         def rule_objective(m):
             expr = 0
             for t in m.measurement_times:
                 for l in m.measurement_lambdas:
-                    current = m.spectral_data[t,l] - sum(m.C_noise[t,k]*m.S[l,k] for k in m.mixture_components)
+                    current = m.D[t,l] - sum(m.C[t,k]*m.S[l,k] for k in m.mixture_components)
                     expr+= current**2/(m.device_variance)
 
             for t in m.measurement_times:
-                expr += sum((m.C_noise[t,k]-m.C[t,k])**2/(m.sigma_sq[k]) for k in m.mixture_components)
+                expr += sum((m.C[t,k]-m.Z[t,k])**2/(m.sigma_sq[k]) for k in m.mixture_components)
             return expr
         self.model.direct_estimation = Objective(rule=rule_objective)
         
@@ -37,7 +33,9 @@ class Optimizer(PyomoSimulator):
         raise NotImplementedError("Simulator abstract method. Call child class")
 
     def run_opt(self,solver,tee=False,solver_opts={},std_deviations={}):
-
+        
+        Z_var = self.model.Z 
+        dZ_var = self.model.dZdt
         if self._discretized is False:
             raise RuntimeError('apply discretization first before runing simulation')
         
@@ -76,29 +74,29 @@ class Optimizer(PyomoSimulator):
             c_results = []
             for t in self._times:
                 for k in self._mixture_components:
-                    c_results.append(self.model.C[t,k].value)
+                    c_results.append(Z_var[t,k].value)
 
             c_array = np.array(c_results).reshape((self._n_times,self._n_components))
         
-            results.C = pd.DataFrame(data=c_array,
+            results.Z = pd.DataFrame(data=c_array,
                                      columns=self._mixture_components,
                                      index=self._times)
 
             dc_results = []
             for t in self._times:
                 for k in self._mixture_components:
-                    dc_results.append(self.model.dCdt[t,k].value)
+                    dc_results.append(dZ_var[t,k].value)
 
             dc_array = np.array(dc_results).reshape((self._n_times,self._n_components))
         
-            results.dCdt = pd.DataFrame(data=dc_array,
+            results.dZdt = pd.DataFrame(data=dc_array,
                                         columns=self._mixture_components,
                                         index=self._times)
                 
             c_noise_results = []
             for t in self._meas_times:
                 for k in self._mixture_components:
-                    c_noise_results.append(self.model.C_noise[t,k].value)
+                    c_noise_results.append(self.model.C[t,k].value)
 
             s_results = []
             for l in self._meas_lambdas:
@@ -108,7 +106,7 @@ class Optimizer(PyomoSimulator):
             c_noise_array = np.array(c_noise_results).reshape((self._n_meas_times,self._n_components))
             s_array = np.array(s_results).reshape((self._n_meas_lambdas,self._n_components))
 
-            results.C_noise = pd.DataFrame(data=c_noise_array,
+            results.C = pd.DataFrame(data=c_noise_array,
                                            columns=self._mixture_components,
                                            index=self._meas_times)
                 

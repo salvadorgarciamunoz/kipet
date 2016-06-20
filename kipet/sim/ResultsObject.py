@@ -11,10 +11,10 @@ class ResultsObject(object):
         self.generated_datetime = datetime.datetime
         self.results_name = None
         self.solver_statistics = {}
+        self.Z = None
         self.C = None
-        self.C_noise = None
         self.S = None
-        self.sigma = None
-        self.device_std_dev = None
+        self.sigma_sq = None
+        self.device_variance = None
         self.P = None
-        self.dCdt = None
+        self.dZdt = None

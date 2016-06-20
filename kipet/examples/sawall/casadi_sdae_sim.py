@@ -47,16 +47,16 @@ if __name__ == "__main__":
     # define explicit system of ODEs
     def rule_odes(m,t):
         exprs = dict()
-        exprs['A'] = -m.P['k']*m.C[t,'A']
-        exprs['B'] = m.P['k']*m.C[t,'A']
+        exprs['A'] = -m.P['k']*m.Z[t,'A']
+        exprs['B'] = m.P['k']*m.Z[t,'A']
         return exprs
 
     builder.set_rule_ode_expressions_dict(rule_odes)
 
     # create an instance of a casadi model template
     # the template includes
-    #   - C variables indexed over time and components names e.g. m.C[t,'A']
-    #   - C_noise variables indexed over measurement t_i and components names e.g. m.C_noise[t_i,'A']
+    #   - Z variables indexed over time and components names e.g. m.Z[t,'A']
+    #   - C variables indexed over measurement t_i and components names e.g. m.C[t_i,'A']
     #   - P parameters indexed over the parameter names m.P['k']
     #   - D spectra data indexed over the t_i, l_j measurement points m.D[t_i,l_j]
     casadi_model = builder.create_casadi_model(0.0,200.0)
@@ -70,7 +70,7 @@ if __name__ == "__main__":
 
     if with_plots:
         # displary concentrations and absorbances results
-        results_casadi.C_noise.plot.line(legend=True)
+        results_casadi.C.plot.line(legend=True)
         plt.xlabel("time (s)")
         plt.ylabel("Concentration (mol/L)")
         plt.title("Concentration Profile")
