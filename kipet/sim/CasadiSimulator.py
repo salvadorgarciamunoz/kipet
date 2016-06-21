@@ -9,7 +9,7 @@ class CasadiSimulator(Simulator):
     def __init__(self,model):
         super(CasadiSimulator, self).__init__(model)
         self.nfe = None
-        self._times = set([t for t in model.measurement_times])
+        self._times = set([t for t in model.meas_times])
         self._n_times = len(self._times)
         self._spectra_given = hasattr(self.model, 'D')
         
@@ -43,7 +43,7 @@ class CasadiSimulator(Simulator):
         map_back = dict()
         for i,k in enumerate(self._mixture_components):
             states_l.append(Z_var[k])
-            ode_l.append(self.model.diff_exprs[k])
+            ode_l.append(self.model.mass_balance_exprs[k])
             init_conditions_l.append(self.model.init_conditions[k])
             
 

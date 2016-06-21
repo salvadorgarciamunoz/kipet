@@ -108,12 +108,17 @@ if __name__ == "__main__":
     optimizer.initialize_from_trajectory('S',results_sim.S)
     optimizer.initialize_from_trajectory('C',results_sim.C)
 
+    optimizer.scale_variables_from_trajectory('Z',results_sim.Z)
+    optimizer.scale_variables_from_trajectory('S',results_sim.S)
+    optimizer.scale_variables_from_trajectory('C',results_sim.C)
     
     # dont push bounds i am giving you a good guess
     solver_options = dict()
-    solver_options['bound_relax_factor'] = 0.0
-    solver_options['mu_init'] =  1e-4
-    solver_options['bound_push'] = 1e-3
+    solver_options['nlp_scaling_method'] = 'user-scaling'
+    #solver_options['mu_strategy'] = 'adaptive'
+    #solver_options['bound_relax_factor'] = 0.0
+    #solver_options['mu_init'] =  1e-4
+    #solver_options['bound_push'] = 1e-3
 
     # fixes the variances for now
     sigmas = {'device':1.87309e-6,

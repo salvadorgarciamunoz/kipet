@@ -10,7 +10,9 @@ class PyomoSimulator(Simulator):
         self._times = sorted(self.model.time)
         self._n_times = len(self._times)
         self._spectra_given = hasattr(self.model, 'D')
-        
+        self._ipopt_scaled = False
+        # creates scaling factor suffix
+        self.model.scaling_factor = Suffix(direction=Suffix.EXPORT)
         
     def apply_discretization(self,transformation,**kwargs):
         discretizer = TransformationFactory(transformation)
@@ -65,7 +67,44 @@ class PyomoSimulator(Simulator):
                             y_tuple = (trajectories[component][t0],trajectories[component][t1])
                             y = interpolate_linearly(t,x_tuple,y_tuple)
                             var[t,component].value = y
-                            
+
+    def scale_variables_from_trajectory(self,variable_name,trajectories):
+        # time-invariant nominal scaling
+        # this method works only with ipopt
+        if self._discretized is False:
+            raise RuntimeError('apply discretization first before runing simulation')
+        
+        if variable_name == 'Z':
+            var = self.model.Z
+            inner_set = self.model.time
+        elif variable_name == 'dZdt':
+            var = self.model.dZdt
+            inner_set = self.model.time
+        elif variable_name == 'C':
+            var = self.model.C
+            inner_set = self._meas_times
+        elif variable_name == 'S':
+            var = self.model.S
+            inner_set = self._meas_lambdas
+        else:
+            raise RuntimeError('Initialization of variable {} is not supported'.format(variable_name))
+
+        mixture_components = trajectories.columns
+
+        nominal_vals = dict()
+        for component in mixture_components:
+            nominal_vals[component] = abs(trajectories[component].max())
+            if component not in self._mixture_components:
+                raise RuntimeError('Mixture component {} is not in model mixture components'.format(component))
+
+        tol = 1e-5
+        for component in mixture_components:
+            if nominal_vals[component]>= tol:
+                scale = 1.0/nominal_vals[component]
+                for t in inner_set:
+                    self.model.scaling_factor.set_value(var[t,component],scale)
+
+        self._ipopt_scaled = True
             
     def run_sim(self,solver,tee=False,solver_opts={}):
 
@@ -73,6 +112,7 @@ class PyomoSimulator(Simulator):
             raise RuntimeError('apply discretization first before runing simulation')
 
         # Look at the output in results
+        #self.model.write('f.nl')
         opt = SolverFactory(solver)
 
         for key, val in solver_opts.iteritems():
@@ -135,11 +175,11 @@ class PyomoSimulator(Simulator):
                                      columns=self._meas_lambdas,
                                      index=self._meas_times)
 
-            for t in self.model.measurement_times:
+            for t in self.model.meas_times:
                 for k in self._mixture_components:
                     self.model.C[t,k].value = results.C[k][t]
 
-            for l in self.model.measurement_lambdas:
+            for l in self.model.meas_lambdas:
                 for k in self._mixture_components:
                     self.model.S[l,k].value =  results.S[k][l]
             

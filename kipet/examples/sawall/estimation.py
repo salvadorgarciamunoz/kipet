@@ -47,19 +47,16 @@ if __name__ == "__main__":
     builder.add_spectral_data(D_frame)
 
     # define explicit system of ODEs
-    def rule_odes(m,t):
+    def rule_mass_balances(m,t):
         exprs = dict()
         exprs['A'] = -m.P['k']*m.Z[t,'A']
         exprs['B'] = m.P['k']*m.Z[t,'A']
         return exprs
 
-    builder.set_rule_ode_expressions_dict(rule_odes)
+    builder.set_mass_balances_rule(rule_mass_balances)
     
     casadi_model = builder.create_casadi_model(0.0,200.0)
     
-    casadi_model.diff_exprs['A'] = -casadi_model.P['k']*casadi_model.Z['A']
-    casadi_model.diff_exprs['B'] = casadi_model.P['k']*casadi_model.Z['A']
-
     sim = CasadiSimulator(casadi_model)    
     sim.apply_discretization('integrator',nfe=100)
     results_casadi = sim.run_sim("cvodes")
@@ -74,13 +71,13 @@ if __name__ == "__main__":
     builder2.add_spectral_data(D_frame)
 
     # define explicit system of ODEs
-    def rule_odes(m,t):
+    def rule_mass_balances(m,t):
         exprs = dict()
         exprs['A'] = -m.P['k']*m.Z[t,'A']
         exprs['B'] = m.P['k']*m.Z[t,'A']
         return exprs
 
-    builder2.set_rule_ode_expressions_dict(rule_odes)
+    builder2.set_mass_balances_rule(rule_mass_balances)
     
     pyomo_model = builder2.create_pyomo_model(0.0,200.0)
         

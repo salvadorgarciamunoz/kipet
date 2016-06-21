@@ -19,12 +19,12 @@ class Optimizer(PyomoSimulator):
         # estimation
         def rule_objective(m):
             expr = 0
-            for t in m.measurement_times:
-                for l in m.measurement_lambdas:
+            for t in m.meas_times:
+                for l in m.meas_lambdas:
                     current = m.D[t,l] - sum(m.C[t,k]*m.S[l,k] for k in m.mixture_components)
                     expr+= current**2/(m.device_variance)
 
-            for t in m.measurement_times:
+            for t in m.meas_times:
                 expr += sum((m.C[t,k]-m.Z[t,k])**2/(m.sigma_sq[k]) for k in m.mixture_components)
             return expr
         self.model.direct_estimation = Objective(rule=rule_objective)
@@ -59,14 +59,14 @@ class Optimizer(PyomoSimulator):
             
         #self.model.direct_estimation.pprint()
         if all_sigmas_fixed:
-
+            
             # Look at the output in results
             opt = SolverFactory(solver)
 
-            print solver_opts
+            
             for key, val in solver_opts.iteritems():
                 opt.options[key]=val
-                print "option:",key, val
+                
                 
             solver_results = opt.solve(self.model,tee=tee)
             results = ResultsObject()
@@ -126,7 +126,7 @@ class Optimizer(PyomoSimulator):
         
             return results
         else:
-            print "TODO"
+            print("TODO")
             results = ResultsObject()
             
             

@@ -20,8 +20,8 @@ class Simulator(object):
     def __init__(self,model):
         self.model = model
         self._mixture_components = [name for name in self.model.mixture_components]
-        self._meas_times = sorted([t for t in self.model.measurement_times])
-        self._meas_lambdas = sorted([l for l in self.model.measurement_lambdas]) 
+        self._meas_times = sorted([t for t in self.model.meas_times])
+        self._meas_lambdas = sorted([l for l in self.model.meas_lambdas]) 
         self._n_meas_times = len(self._meas_times)
         self._n_meas_lambdas = len(self._meas_lambdas)
         self._n_components = len(self._mixture_components)

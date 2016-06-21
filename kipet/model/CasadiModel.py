@@ -4,7 +4,8 @@ import casadi as ca
 
 class CasadiModel(object):
     def __init__(self):
-        self.diff_exprs = dict()
+        self.mass_balance_exprs = dict()
+        self.complementary_odes = dict()
         self.alg_exprs = dict()
 
 class KinetCasadiStruct(object):

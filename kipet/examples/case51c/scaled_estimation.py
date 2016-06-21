@@ -7,11 +7,14 @@
 # Sample Problem 2 (From Sawall et.al.)
 # Basic simulation of ODE with spectral data using pyomo discretization 
 #
-#		\frac{dZ_a}{dt} = -k_1*Z_a	                Z_a(0) = 1
-#		\frac{dZ_b}{dt} = k_1*Z_a - k_2*Z_b		Z_b(0) = 0
-#               \frac{dZ_c}{dt} = k_2*Z_b	                Z_c(0) = 0
+#		\frac{dZ_a}{dt} = -k_1*Z_a*Z_b	                                Z_a(0) = 1
+#		\frac{dZ_b}{dt} = -k_1*Z_a*Z_b                   		Z_b(0) = 0.8
+#               \frac{dZ_c}{dt} = k_1*Z_a*Z_b-2*k_2*Z_c^2	                Z_c(0) = 0
+#               \frac{dZ_d}{dt} = k_2*Z_c^2             	                Z_c(0) = 0
 #               C_k(t_i) = Z_k(t_i) + w(t_i)    for all t_i in measurement points
 #               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
+
+
 
 from kipet.model.TemplateBuilder import *
 from kipet.sim.PyomoSimulator import *
@@ -23,38 +26,44 @@ import inspect
 import sys
 import os
 
+
 if __name__ == "__main__":
-    
+
     with_plots = True
     if len(sys.argv)==2:
         if int(sys.argv[1]):
             with_plots = False
-    
-    # read 300x100 spectra matrix D_{i,j}
+            
+    # read 400x101 spectra matrix D_{i,j}
     # this defines the measurement points t_i and l_j as well
     dataDirectory = os.path.abspath(
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
             inspect.currentframe() ) ) ), '..','data_sets'))
-    filename =  os.path.join(dataDirectory,'Dij.txt')
+    filename =  os.path.join(dataDirectory,'Dij_case51c.txt')
     D_frame = read_spectral_data_from_txt(filename)
+
+    #plot_spectral_data(D_frame,dimension='3D')
+    #plt.show()
     
     # create template model 
-    builder = TemplateBuilder()    
-    components = {'A':1e-3,'B':0,'C':0}
+    builder = TemplateBuilder()
+    components = {'A':1,'B':0.8,'C':0,'D':0}
     builder.add_mixture_component(components)
     builder.add_parameter('k1',2.0)
-    builder.add_parameter('k2',0.2)
+    builder.add_parameter('k2',1.0)
+
     # includes spectra data in the template and defines measurement sets
     builder.add_spectral_data(D_frame)
 
     # define explicit system of ODEs
     def rule_mass_balances(m,t):
         exprs = dict()
-        exprs['A'] = -m.P['k1']*m.Z[t,'A']
-        exprs['B'] = m.P['k1']*m.Z[t,'A']-m.P['k2']*m.Z[t,'B']
-        exprs['C'] = m.P['k2']*m.Z[t,'B']
+        exprs['A'] = -m.P['k1']*m.Z[t,'A']*m.Z[t,'B']
+        exprs['B'] = -m.P['k1']*m.Z[t,'A']*m.Z[t,'B']
+        exprs['C'] = m.P['k1']*m.Z[t,'A']*m.Z[t,'B']-2*m.P['k2']*m.Z[t,'C']**2
+        exprs['D'] = m.P['k2']*m.Z[t,'C']**2
         return exprs
-
+    
     builder.set_mass_balances_rule(rule_mass_balances)
     
     # create an instance of a pyomo model template
@@ -68,10 +77,11 @@ if __name__ == "__main__":
     # create instance of simulator
     simulator = PyomoSimulator(pyomo_model)
     # defines the discrete points wanted in the profiles (does not include measurement points)
-    simulator.apply_discretization('dae.collocation',nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
+    simulator.apply_discretization('dae.collocation',nfe=30,ncp=3,scheme='LAGRANGE-RADAU')
     # simulate
     results_sim = simulator.run_sim('ipopt',tee=True)
 
+    
     ######################################
     builder2 = TemplateBuilder()    
     builder2.add_mixture_component(components)
@@ -84,9 +94,10 @@ if __name__ == "__main__":
     # define explicit system of ODEs
     def rule_mass_balances2(m,t):
         exprs = dict()
-        exprs['A'] = -m.P['k1']*m.Z[t,'A']
-        exprs['B'] = m.P['k1']*m.Z[t,'A']-m.P['k2']*m.Z[t,'B']
-        exprs['C'] = m.P['k2']*m.Z[t,'B']
+        exprs['A'] = -m.P['k1']*m.Z[t,'A']*m.Z[t,'B']
+        exprs['B'] = -m.P['k1']*m.Z[t,'A']*m.Z[t,'B']
+        exprs['C'] = m.P['k1']*m.Z[t,'A']*m.Z[t,'B']-2*m.P['k2']*m.Z[t,'C']**2
+        exprs['D'] = m.P['k2']*m.Z[t,'C']**2
         return exprs
 
     builder2.set_mass_balances_rule(rule_mass_balances2)
@@ -94,32 +105,39 @@ if __name__ == "__main__":
     pyomo_model2 = builder2.create_pyomo_model(0.0,10.0)
     
     #pyomo_model2.P['k1'].value = 2.0
-    #pyomo_model2.P['k2'].value = 0.2
+    #pyomo_model2.P['k2'].value = 1.0
     #pyomo_model2.P['k1'].fixed = True
     #pyomo_model2.P['k2'].fixed = True
     
     optimizer = Optimizer(pyomo_model2)
 
-    optimizer.apply_discretization('dae.collocation',nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
+    optimizer.apply_discretization('dae.collocation',nfe=30,ncp=3,scheme='LAGRANGE-RADAU')
 
     # Provide good initial guess
     optimizer.initialize_from_trajectory('Z',results_sim.Z)
-    #optimizer.initialize_from_trajectory('dZdt',results_sim.dZdt)
     optimizer.initialize_from_trajectory('S',results_sim.S)
     optimizer.initialize_from_trajectory('C',results_sim.C)
-
+    optimizer.initialize_from_trajectory('dZdt',results_sim.dZdt)
+    
+    optimizer.scale_variables_from_trajectory('Z',results_sim.Z)
+    optimizer.scale_variables_from_trajectory('S',results_sim.S)
+    optimizer.scale_variables_from_trajectory('C',results_sim.C)
+    optimizer.scale_variables_from_trajectory('dZdt',results_sim.dZdt)
     
     # dont push bounds i am giving you a good guess
     solver_options = dict()
+    solver_options['nlp_scaling_method'] = 'user-scaling'
     solver_options['bound_relax_factor'] = 0.0
-    solver_options['mu_init'] =  1e-4
-    solver_options['bound_push'] = 1e-3
+    #solver_options['mu_strategy'] = 'adaptive'
+    #solver_options['mu_init'] =  1e-4
+    #solver_options['bound_push'] = 1e-3
 
-    # fixes the variances for now
-    sigmas = {'device':1.87309e-6,
-              'A':1.55189e-11,
-              'B':8.54601e-11,
-              'C':6.11854e-11}
+    # fixes the standard deaviations for now
+    sigmas = {'device':1.66507e-2,
+              'A':4.34682e-2,
+              'B':2.62689e-2,
+              'C':5.31808e-2,
+              'D':2.72712e-2}
     
     results_pyomo = optimizer.run_opt('ipopt',
                                       tee=True,
@@ -130,24 +148,27 @@ if __name__ == "__main__":
     for k,v in results_pyomo.P.iteritems():
         print k,v
 
-    tol = 1e-1
+    tol = 2e-1
     assert(abs(results_pyomo.P['k1']-2.0)<tol)
-    assert(abs(results_pyomo.P['k2']-0.2)<tol)
+    assert(abs(results_pyomo.P['k2']-1.0)<tol)
         
     # display results
     if with_plots:
         results_pyomo.C.plot.line(legend=True)
         plt.plot(results_sim.C.index,results_sim.C['A'],'*',
                  results_sim.C.index,results_sim.C['B'],'*',
-                 results_sim.C.index,results_sim.C['C'],'*')
+                 results_sim.C.index,results_sim.C['C'],'*',
+                 results_sim.C.index,results_sim.C['D'],'*')
         plt.xlabel("time (s)")
         plt.ylabel("Concentration (mol/L)")
         plt.title("Concentration Profile")
 
+
         results_pyomo.S.plot.line(legend=True)
         plt.plot(results_sim.S.index,results_sim.S['A'],'*',
                  results_sim.S.index,results_sim.S['B'],'*',
-                 results_sim.S.index,results_sim.S['C'],'*')
+                 results_sim.S.index,results_sim.S['C'],'*',
+                 results_sim.S.index,results_sim.S['D'],'*')
         plt.xlabel("Wavelength (cm)")
         plt.ylabel("Absorbance (L/(mol cm))")
         plt.title("Absorbance  Profile")
