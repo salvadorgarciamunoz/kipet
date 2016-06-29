@@ -18,8 +18,10 @@ from kipet.sim.PyomoSimulator import *
 import matplotlib.pyplot as plt
 
 from kipet.utils.data_tools import *
+import inspect
 import sys
 import os
+
 
 if __name__ == "__main__":
 
