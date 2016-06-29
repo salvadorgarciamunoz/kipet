@@ -30,13 +30,13 @@ if __name__ == "__main__":
     builder.add_parameter('k',0.01)
 
     # define explicit system of ODEs
-    def rule_mass_balances(m,t):
+    def rule_odes(m,t):
         exprs = dict()
         exprs['A'] = -m.P['k']*m.Z[t,'A']
         exprs['B'] = m.P['k']*m.Z[t,'A']
         return exprs
 
-    builder.set_mass_balances_rule(rule_mass_balances)
+    builder.set_odes_rule(rule_odes)
     
     # create an instance of a casadi model template
     casadi_model = builder.create_casadi_model(0.0,200.0)    

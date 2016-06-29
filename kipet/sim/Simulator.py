@@ -20,12 +20,18 @@ class Simulator(object):
     def __init__(self,model):
         self.model = model
         self._mixture_components = [name for name in self.model.mixture_components]
+        self._complementary_states = [name for name in self.model.complementary_states]
         self._meas_times = sorted([t for t in self.model.meas_times])
         self._meas_lambdas = sorted([l for l in self.model.meas_lambdas]) 
         self._n_meas_times = len(self._meas_times)
         self._n_meas_lambdas = len(self._meas_lambdas)
         self._n_components = len(self._mixture_components)
+        self._n_complementary_states = len(self._complementary_states)
         self._discretized = False
+
+        if not self._mixture_components:
+            raise RuntimeError('The model does not have any mixture components.\
+            For simulation add mixture components')
         
     def apply_discretization(self,transformation,**kwargs):
         raise NotImplementedError("Simulator abstract method. Call child class")
@@ -36,7 +42,7 @@ class Simulator(object):
     def run_sim(self,solver,tee=False,solver_opts={}):
         raise NotImplementedError("Simulator abstract method. Call child class")
         
-    def _solve_CS_from_D(self,C_dataFrame):
+    def _solve_CS_from_D(self,C_dataFrame,tee=False):
         c_noise_array = np.zeros((self._n_meas_times,self._n_components))
         for i,t in enumerate(self._meas_times):
             for j,k in enumerate(self._mixture_components):
@@ -62,10 +68,11 @@ class Simulator(object):
             Bd = scipy.sparse.coo_matrix((data, (row, col)),
                                          shape=(self._n_meas_times*self._n_meas_lambdas,
                                                 self._n_components*self._n_meas_lambdas))
+            print('\nSolving for S with given D and C')
             if self._n_meas_times == self._n_components:
                 s_array = scipy.sparse.linalg.spsolve(Bd, D_vector)
             elif self._n_meas_times>self._n_components:
-                result_ls = scipy.sparse.linalg.lsqr(Bd, D_vector)
+                result_ls = scipy.sparse.linalg.lsqr(Bd, D_vector,show=tee)
                 s_array = result_ls[0]
             else:
                 raise RuntimeError('Need n_t_meas >= self._n_components')

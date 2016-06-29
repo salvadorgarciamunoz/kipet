@@ -16,13 +16,24 @@ class Optimizer(PyomoSimulator):
                                within=NonNegativeReals,
                                initialize=1)
 
+        # try
+        self.model.D_bar = Var(self.model.meas_times,
+                               self.model.meas_lambdas)
+
+        def rule_D_bar(m,t,l):
+            return m.D_bar[t,l] == sum(m.C[t,k]*m.S[l,k] for k in m.mixture_components)
+        self.model.D_bar_constraint = Constraint(self.model.meas_times,
+                                                 self.model.meas_lambdas,
+                                                 rule=rule_D_bar)
+
         # estimation
         def rule_objective(m):
             expr = 0
             for t in m.meas_times:
                 for l in m.meas_lambdas:
-                    current = m.D[t,l] - sum(m.C[t,k]*m.S[l,k] for k in m.mixture_components)
-                    expr+= current**2/(m.device_variance)
+                    D_bar = sum(m.C[t,k]*m.S[l,k] for k in m.mixture_components)
+                    #expr+= (m.D[t,l] - D_bar)**2/(m.device_variance)
+                    expr+= (m.D[t,l] - m.D_bar[t,l])**2/(m.device_variance)
 
             for t in m.meas_times:
                 expr += sum((m.C[t,k]-m.Z[t,k])**2/(m.sigma_sq[k]) for k in m.mixture_components)
@@ -63,10 +74,8 @@ class Optimizer(PyomoSimulator):
             # Look at the output in results
             opt = SolverFactory(solver)
 
-            
             for key, val in solver_opts.iteritems():
-                opt.options[key]=val
-                
+                opt.options[key]=val                
                 
             solver_results = opt.solve(self.model,tee=tee)
             results = ResultsObject()

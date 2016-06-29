@@ -18,13 +18,14 @@ class TemplateBuilder(object):
     def __init__(self):
         self._component_names = set()
         self._parameters = dict()
+        self._parameters_bounds = dict()
         self._init_conditions = dict()
         self._spectral_data = None
         self._absorption_data = None
-        self._mass_balances = None
-        self._meas_times = set()
-        self._complementary_states = dict()
         self._odes = None
+        self._meas_times = set()
+        self._complementary_states = set()
+
         
     def add_parameter(self,*args):
         if len(args) == 1:
@@ -70,6 +71,15 @@ class TemplateBuilder(object):
             print(len(args))
             raise RuntimeError('Mixture component data not supported. Try str, float')
             
+    def add_P_bounds(self,name,bounds):
+        if self._parameters.has_key(name):
+            if isinstance(bounds,tuple):
+                self._parameters_bounds[name] = bounds
+            else:
+                raise RuntimeError('Bounds need to be a tuple. In not lb (None,ub))')
+        else:
+            warnings.warn('The Model does not have parameter {}. Bounds not added'.format(name))
+        
     def add_spectral_data(self,data):
         if isinstance(data,pd.DataFrame):
             self._spectral_data = data
@@ -91,39 +101,33 @@ class TemplateBuilder(object):
             input = args[0]
             if isinstance(input,dict):
                 for key,val in input.iteritems():
-                    self._complementary_states[key] = val
+                    self._complementary_states.add(key)
+                    self._init_conditions[key] = val
             else:
                 raise RuntimeError('Complementary state data not supported. Try dict[str]=float')
         elif len(args)==2:
             name = args[0]
             init_condition = args[1]
             if isinstance(name,six.string_types):
-                self._complementary_states[name] = init_condition
+                self._complementary_states.add(name)
+                self._init_conditions[name] = init_condition
             else:
                 raise RuntimeError('Complementary state data not supported. Try str, float')
         else:
             print(len(args))
             raise RuntimeError('Complementary state data not supported. Try str, float')
         
-    def set_mass_balances_rule(self,rule):
-        self._mass_balances = rule
-
-    def set_complementary_ode_rule(self,rule):
+    def set_odes_rule(self,rule):
         self._odes = rule
 
     def _validate_data(self,model,start_time,end_time):
         if not self._component_names:
-            raise warnings.warn('The Model does not have any mixture components')
+            warnings.warn('The Model does not have any mixture components')
         else:
-            dummy_balances = self._mass_balances(model,start_time)
-            if len(self._component_names)!=len(dummy_balances):
-                raise RuntimeError('The number of mixture components needs to be the same \
-                as the number of mass balances.\n Use set_mass_balances_rule')
-        if len(self._complementary_states):
-            dummy_balances = self._odes(start_time)
-            if len(self._complementary_states)!=len(model,dummy_balances):
-                raise RuntimeError('The number of state variables (excluding Z) needs to be the same \
-                as the number complementary odes.\n Use set_complementary_ode_rule')
+            dummy_balances = self._odes(model,start_time)
+            if len(self._component_names)+len(self._complementary_states)!=len(dummy_balances):
+                raise RuntimeError('The number of mixture components needs to be the same'+
+                'as the number of ode equations.\n Use set_odes_rule')
 
         if self._absorption_data is not None:
             if not self._meas_times:
@@ -136,7 +140,8 @@ class TemplateBuilder(object):
         # Sets
         pyomo_model.mixture_components = Set(initialize = self._component_names)
         pyomo_model.parameter_names = Set(initialize = self._parameters.keys())
-        pyomo_model.complementary_states = Set(initialize = self._complementary_states.keys())
+        pyomo_model.complementary_states = Set(initialize = self._complementary_states)
+        pyomo_model.states = pyomo_model.mixture_components | pyomo_model.complementary_states
         
         list_times = list(self._meas_times)
         self._meas_times = sorted(list_times)
@@ -176,21 +181,36 @@ class TemplateBuilder(object):
                             bounds=(0.0,None),
                             initialize=1)
         
+        
         pyomo_model.dZdt = DerivativeVar(pyomo_model.Z,
                                          wrt=pyomo_model.time)
 
         pyomo_model.P = Var(pyomo_model.parameter_names,
+                            #bounds = (0.0,None),
                             initialize=1)
+        # set bounds P
+        for k,v in self._parameters_bounds.iteritems():
+            lb = v[0]
+            ub = v[1]
+            pyomo_model.P[k].setlb(lb)
+            pyomo_model.P[k].setub(ub)
         
         pyomo_model.C = Var(pyomo_model.meas_times,
                                   pyomo_model.mixture_components,
                                   bounds=(0.0,None),
                                   initialize=1)
-
+        """
+        init_dict = dict()
+        for t in pyomo_model.time:
+            for j in pyomo_model.complementary_states:
+                init_dict[t,j]=300
+        """
+        
+                
         pyomo_model.X = Var(pyomo_model.time,
                             pyomo_model.complementary_states,
-                            initialize = 1)
-
+                            initialize = 1.0)
+        
         pyomo_model.dXdt = DerivativeVar(pyomo_model.X,
                                          wrt=pyomo_model.time)
 
@@ -213,7 +233,7 @@ class TemplateBuilder(object):
                     pyomo_model.S[l,k].fixed = True
         
         # Parameters
-        pyomo_model.init_conditions = Param(pyomo_model.mixture_components,
+        pyomo_model.init_conditions = Param(pyomo_model.states,
                                             initialize=self._init_conditions)
         pyomo_model.start_time = Param(initialize = start_time)
         pyomo_model.end_time = Param(initialize = end_time)
@@ -238,52 +258,41 @@ class TemplateBuilder(object):
 
         # validate the model before writing constraints
         self._validate_data(pyomo_model,start_time,end_time)
-            
         # add ode contraints to pyomo model
-        def rule_init_conditions(model,k):
+        def rule_init_conditions(m,k):
             st = start_time
-            return model.Z[st,k] == self._init_conditions[k]
-        pyomo_model.init_conditions_c = \
-            Constraint(self._component_names,rule=rule_init_conditions)
-
-        def rule_mass_balances(m,t,k):
-            exprs = self._mass_balances(m,t)
-            if t == m.start_time.value:
-                return Constraint.Skip
+            if k in m.mixture_components:
+                return m.Z[st,k] == self._init_conditions[k]
             else:
-                return m.dZdt[t,k] == exprs[k] 
-        pyomo_model.mass_balances = Constraint(pyomo_model.time,
-                                     pyomo_model.mixture_components,
-                                     rule=rule_mass_balances)
+                return m.X[st,k] == self._init_conditions[k]
+        pyomo_model.init_conditions_c = \
+            Constraint(pyomo_model.states,rule=rule_init_conditions)
 
-        def rule_init_conditions_x(model,k):
-            st = start_time
-            return model.X[st,k] == self._complementary_states[k]
-        pyomo_model.init_conditions_x = \
-            Constraint(pyomo_model.complementary_states,
-                       rule=rule_init_conditions_x)
-        
-        def rule_complementary_odes(m,t,n):
+        def rule_odes(m,t,k):
             exprs = self._odes(m,t)
             if t == m.start_time.value:
                 return Constraint.Skip
             else:
-                return m.dXdt[t,n] == exprs[n]
-        pyomo_model.complementary_odes = Constraint(pyomo_model.time,
-                                                    pyomo_model.complementary_states,
-                                                    rule=rule_complementary_odes)
-            
+                if k in m.mixture_components:
+                    return m.dZdt[t,k] == exprs[k]
+                else:
+                    return m.dXdt[t,k] == exprs[k]
+                    
+        pyomo_model.odes = Constraint(pyomo_model.time,
+                                     pyomo_model.states,
+                                               rule=rule_odes)
         return pyomo_model
 
     def create_casadi_model(self,start_time,end_time):
 
         # Model
         casadi_model = CasadiModel()
-        
+
         # Sets
         casadi_model.mixture_components = copy.deepcopy(self._component_names)
         casadi_model.parameter_names = self._parameters.keys()
-        casadi_model.complementary_states = self._complementary_states.keys()
+        casadi_model.complementary_states = copy.deepcopy(self._complementary_states)
+        casadi_model.states = casadi_model.mixture_components.union(casadi_model.complementary_states)
         
         m_times = list()
         m_lambdas = list()
@@ -319,13 +328,14 @@ class TemplateBuilder(object):
         casadi_model.C = KinetCasadiStruct('C',list(casadi_model.meas_times))
         casadi_model.S = KinetCasadiStruct('S',list(casadi_model.meas_lambdas))
 
+        if self._parameters_bounds:
+            warnings.warn('Casadi_model do not take bounds on parameters. This is ignored in the integration')
         
         # Parameters
         casadi_model.init_conditions = self._init_conditions
-        casadi_model.init_conditions_x = copy.deepcopy(self._complementary_states)
         casadi_model.start_time = start_time
         casadi_model.end_time = end_time
-        
+
         if self._absorption_data is not None:
             for l in casadi_model.meas_lambdas:
                 for k in casadi_model.mixture_components:
@@ -341,14 +351,10 @@ class TemplateBuilder(object):
         for p,v in self._parameters.iteritems():
             if v is not None:
                 casadi_model.P[p] = v
-
         # validate the model before writing constraints
         self._validate_data(casadi_model,start_time,end_time)
-                
         # ignores the time indes t=0
-        casadi_model.mass_balance_exprs = self._mass_balances(casadi_model,0)
-        if self._complementary_states:
-            casadi_model.complementary_odes = self._odes(casadi_model,0) 
+        casadi_model.odes = self._odes(casadi_model,0)
         return casadi_model
 
     def write_dat_file(self,filename,start_time,end_time,fixed_dict=None):

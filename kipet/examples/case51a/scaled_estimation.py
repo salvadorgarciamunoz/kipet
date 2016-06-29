@@ -48,14 +48,14 @@ if __name__ == "__main__":
     builder.add_spectral_data(D_frame)
 
     # define explicit system of ODEs
-    def rule_mass_balances(m,t):
+    def rule_odes(m,t):
         exprs = dict()
         exprs['A'] = -m.P['k1']*m.Z[t,'A']
         exprs['B'] = m.P['k1']*m.Z[t,'A']-m.P['k2']*m.Z[t,'B']
         exprs['C'] = m.P['k2']*m.Z[t,'B']
         return exprs
 
-    builder.set_mass_balances_rule(rule_mass_balances)
+    builder.set_odes_rule(rule_odes)
     
     # create an instance of a pyomo model template
     # the template includes
@@ -82,14 +82,14 @@ if __name__ == "__main__":
     builder2.add_spectral_data(D_frame)
 
     # define explicit system of ODEs
-    def rule_mass_balances2(m,t):
+    def rule_odes2(m,t):
         exprs = dict()
         exprs['A'] = -m.P['k1']*m.Z[t,'A']
         exprs['B'] = m.P['k1']*m.Z[t,'A']-m.P['k2']*m.Z[t,'B']
         exprs['C'] = m.P['k2']*m.Z[t,'B']
         return exprs
 
-    builder2.set_mass_balances_rule(rule_mass_balances2)
+    builder2.set_odes_rule(rule_odes2)
 
     pyomo_model2 = builder2.create_pyomo_model(0.0,10.0)
     

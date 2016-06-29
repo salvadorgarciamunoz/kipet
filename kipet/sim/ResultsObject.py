@@ -12,9 +12,11 @@ class ResultsObject(object):
         self.results_name = None
         self.solver_statistics = {}
         self.Z = None
+        self.X = None
         self.C = None
         self.S = None
         self.sigma_sq = None
         self.device_variance = None
         self.P = None
         self.dZdt = None
+        self.dXdt = None

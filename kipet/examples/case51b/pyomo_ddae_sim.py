@@ -5,7 +5,7 @@
 #  _________________________________________________________________________
 
 # Sample Problem 2 (From Sawall et.al.)
-# Basic simulation of ODE with spectral data using multistep-integrator 
+# Basic simulation of ODE with spectral data using pyomo discretization 
 #
 #		\frac{dZ_a}{dt} = -k_1*Z_a	                Z_a(0) = 1
 #		\frac{dZ_b}{dt} = k_1*Z_a - k_2*Z_b		Z_b(0) = 0
@@ -14,9 +14,10 @@
 #               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
 
 from kipet.model.TemplateBuilder import *
-from kipet.sim.CasadiSimulator import *
-from kipet.utils.data_tools import *
+from kipet.sim.PyomoSimulator import *
 import matplotlib.pyplot as plt
+
+from kipet.utils.data_tools import *
 import inspect
 import sys
 import os
@@ -42,49 +43,49 @@ if __name__ == "__main__":
     builder.add_mixture_component('A',1)
     builder.add_mixture_component('B',0)
     builder.add_mixture_component('C',0)
-    builder.add_parameter('k1',0.30)
+    builder.add_parameter('k1',0.3)
     builder.add_parameter('k2',0.05)
     # includes spectra data in the template and defines measurement sets
     builder.add_spectral_data(D_frame)
 
     # define explicit system of ODEs
-    def rule_mass_balances(m,t):
+    def rule_odes(m,t):
         exprs = dict()
         exprs['A'] = -m.P['k1']*m.Z[t,'A']
         exprs['B'] = m.P['k1']*m.Z[t,'A']-m.P['k2']*m.Z[t,'B']
         exprs['C'] = m.P['k2']*m.Z[t,'B']
         return exprs
-    
-    builder.set_mass_balances_rule(rule_mass_balances)
 
-    # create an instance of a casadi model template
+    builder.set_odes_rule(rule_odes)
+    
+    # create an instance of a pyomo model template
     # the template includes
     #   - Z variables indexed over time and components names e.g. m.Z[t,'A']
     #   - C variables indexed over measurement t_i and components names e.g. m.C[t_i,'A']
     #   - P parameters indexed over the parameter names m.P['k']
     #   - D spectra data indexed over the t_i, l_j measurement points m.D[t_i,l_j]
-    casadi_model = builder.create_casadi_model(0.0,12.0)
+    pyomo_model = builder.create_pyomo_model(0.0,12.0)
 
     # create instance of simulator
-    sim = CasadiSimulator(casadi_model)
+    simulator = PyomoSimulator(pyomo_model)
     # defines the discrete points wanted in the profiles (does not include measurement points)
-    sim.apply_discretization('integrator',nfe=500)
+    simulator.apply_discretization('dae.collocation',nfe=10,ncp=1,scheme='LAGRANGE-RADAU')
     # simulate
-    results_casadi = sim.run_sim("cvodes")
+    results_pyomo = simulator.run_sim('ipopt',tee=True)
 
-    # displary concentrations and absorbances results
+    # display concentration and absorbance results
     if with_plots:
-        results_casadi.C.plot.line(legend=True)
+        results_pyomo.C.plot.line(legend=True)
         plt.xlabel("time (s)")
         plt.ylabel("Concentration (mol/L)")
         plt.title("Concentration Profile")
 
-        results_casadi.S.plot.line(legend=True)
-        plt.xlabel("Wavelength (cm)")
+        results_pyomo.S.plot.line(legend=True)
+        plt.xlabel("Wavelength")
         plt.ylabel("Absorbance (L/(mol cm))")
         plt.title("Absorbance  Profile")
 
-        plt.show()    
+        plt.show()
 
-    #write_absorption_data_to_csv("Slk_case51b.csv",results_casadi.S)
-    #write_absorption_data_to_txt("Slk_case51b.txt",results_casadi.S)
+
+

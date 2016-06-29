@@ -48,13 +48,13 @@ if __name__ == "__main__":
     builder.add_measurement_times([i for i in range(200)])
     
     # define explicit system of ODEs
-    def rule_mass_balances(m,t):
+    def rule_odes(m,t):
         exprs = dict()
         exprs['A'] = -m.P['k']*m.Z[t,'A']
         exprs['B'] = m.P['k']*m.Z[t,'A']
         return exprs
 
-    builder.set_mass_balances_rule(rule_mass_balances)
+    builder.set_odes_rule(rule_odes)
     
     # create an instance of a pyomo model template
     # the template includes
@@ -63,13 +63,17 @@ if __name__ == "__main__":
     #   - P parameters indexed over the parameter names m.P['k']
     #   - S fixed variables over measurement l_j and component names m.S[l_j,'A']
     pyomo_model = builder.create_pyomo_model(0.0,200.0)
-
+    
     # create instance of simulator
     simulator = PyomoSimulator(pyomo_model)
     # defines the discrete points wanted in the profiles (does not include measurement points)
     simulator.apply_discretization('dae.collocation',nfe=10,ncp=1,scheme='LAGRANGE-RADAU')
+
     # simulate
-    results_pyomo = simulator.run_sim('ipopt',tee=True)
+    sigmas = {'device':0,
+              'A':1e-4,
+              'B':1e-5}
+    results_pyomo = simulator.run_sim('ipopt',tee=True,sigmas=sigmas, seed=123453256)
 
     if with_plots:
     # display concentration and absorbance results

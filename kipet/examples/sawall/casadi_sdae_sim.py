@@ -45,13 +45,13 @@ if __name__ == "__main__":
     builder.add_absorption_data(S_frame)
     builder.add_measurement_times([i for i in range(200)])
     # define explicit system of ODEs
-    def rule_mass_balances(m,t):
+    def rule_odes(m,t):
         exprs = dict()
         exprs['A'] = -m.P['k']*m.Z[t,'A']
         exprs['B'] = m.P['k']*m.Z[t,'A']
         return exprs
 
-    builder.set_mass_balances_rule(rule_mass_balances)
+    builder.set_odes_rule(rule_odes)
 
     # create an instance of a casadi model template
     # the template includes
@@ -66,7 +66,10 @@ if __name__ == "__main__":
     # defines the discrete points wanted in the profiles (does not include measurement points)
     sim.apply_discretization('integrator',nfe=500)
     # simulate
-    results_casadi = sim.run_sim("cvodes")
+    sigmas = {'device':0,
+              'A':1e-4,
+              'B':1e-5}
+    results_casadi = sim.run_sim("cvodes",sigmas=sigmas, seed=123453256)
 
     if with_plots:
         # displary concentrations and absorbances results
@@ -77,7 +80,6 @@ if __name__ == "__main__":
 
         # take a look at the data
         plot_spectral_data(results_casadi.D,dimension='3D')
-        plt.figure()
         # basic principal component analysis of the data
         #basic_pca(results_casadi.D,n=4)
         plt.show()

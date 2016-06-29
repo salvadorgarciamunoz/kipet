@@ -27,18 +27,17 @@ if __name__ == "__main__":
             
     # create template model 
     builder = TemplateBuilder()
-    components = {'A':1,'B':0.8,'C':0,'D':0}
+    components = {'A':0.21,'B':0.21,'C':0,'D':0}
     builder.add_mixture_component(components)
-    builder.add_parameter('k1',2.0)
-    builder.add_parameter('k2',1.0)
+    builder.add_parameter('k1',0.006655)
     
     # define explicit system of ODEs
     def rule_odes(m,t):
         exprs = dict()
         exprs['A'] = -m.P['k1']*m.Z[t,'A']*m.Z[t,'B']
         exprs['B'] = -m.P['k1']*m.Z[t,'A']*m.Z[t,'B']
-        exprs['C'] = m.P['k1']*m.Z[t,'A']*m.Z[t,'B']-2*m.P['k2']*m.Z[t,'C']**2
-        exprs['D'] = m.P['k2']*m.Z[t,'C']**2
+        exprs['C'] = m.P['k1']*m.Z[t,'A']*m.Z[t,'B']
+        exprs['D'] = m.P['k1']*m.Z[t,'A']*m.Z[t,'B']
         return exprs
 
     builder.set_odes_rule(rule_odes)
@@ -47,7 +46,7 @@ if __name__ == "__main__":
     # the template includes
     #      - Z variables indexed over time and components names e.g. m.Z[t,'A']
     #      - P parameters indexed over the parameter names e.g. m.P['k']
-    pyomo_model = builder.create_pyomo_model(0.0,10.0)
+    pyomo_model = builder.create_pyomo_model(0.0,200.0)
 
     # create instance of simulator
     simulator = PyomoSimulator(pyomo_model)
