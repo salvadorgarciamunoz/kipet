@@ -12,50 +12,49 @@ class TestExamples(unittest.TestCase):
     @classmethod
     def setUpClass(self):
         sys.path.append(examplesMainDir)
-        sys.path.append(os.path.join(examplesMainDir,'sawall'))
-
+        self.std_out = open("test_examples.log","w")
     @classmethod
     def tearDownClass(self):
         sys.path.remove(examplesMainDir)
+        self.std_out.close()
 
+    def _schedule(self,examples_dir):
+        examples_pyomo_dir = os.path.join(examples_dir,'pyomo')
+        examples_pyomo = [f for f in os.listdir(examples_pyomo_dir) if os.path.isfile(os.path.join(examples_pyomo_dir,f)) and f.endswith('.py')]
+        
+        flag = 0
+        for f in examples_pyomo:
+            print "running pyomo:",f
+            flag = subprocess.call([sys.executable,os.path.join(examples_pyomo_dir,f),'1'],
+                                   stdout=self.std_out,
+                                   stderr=subprocess.STDOUT)
+            self.assertEqual(flag,0)
+
+        examples_casadi_dir = os.path.join(examples_dir,'casadi')
+        examples_casadi = [f for f in os.listdir(examples_casadi_dir) if os.path.isfile(os.path.join(examples_casadi_dir,f)) and f.endswith('.py')]
+        flag = 0
+        for f in examples_casadi:
+            print "running casadi:",f
+            flag = subprocess.call([sys.executable,os.path.join(examples_casadi_dir,f),'1'],
+                                   stdout=self.std_out,
+                                   stderr=subprocess.STDOUT)
+            self.assertEqual(flag,0)
+            
     def test_sawall_examples(self):
-        example_files = [f for f in os.listdir(os.path.join(examplesMainDir,'sawall')) if os.path.isfile(os.path.join(examplesMainDir,'sawall',f)) and f.endswith('.py')]
-        
-        #print all_files
-        flag = 0
-        for f in example_files:
-            print "running:",f
-            flag = subprocess.call([sys.executable,os.path.join(examplesMainDir,'sawall',f),'1'])
-            self.assertEqual(flag,0)
-
+        examples_dir = os.path.join(examplesMainDir,'sawall')
+        self._schedule(examples_dir)
+            
     def test_case51a_examples(self):
-        example_files = [f for f in os.listdir(os.path.join(examplesMainDir,'case51a')) if os.path.isfile(os.path.join(examplesMainDir,'case51b',f)) and f.endswith('.py')]
-        
-        #print all_files
-        flag = 0
-        for f in example_files:
-            print "running:",f
-            flag = subprocess.call([sys.executable,os.path.join(examplesMainDir,'case51a',f),'1'])
-            self.assertEqual(flag,0)
+        examples_dir = os.path.join(examplesMainDir,'case51a')
+        self._schedule(examples_dir)
 
     def test_case51b_examples(self):
-        example_files = [f for f in os.listdir(os.path.join(examplesMainDir,'case51b')) if os.path.isfile(os.path.join(examplesMainDir,'case51b',f)) and f.endswith('.py')]
-        
-        #print all_files
-        print example_files
-        flag = 0
-        for f in example_files:
-            print "running:",f
-            flag = subprocess.call([sys.executable,os.path.join(examplesMainDir,'case51b',f),'1'])
-            self.assertEqual(flag,0)
+        examples_dir = os.path.join(examplesMainDir,'case51b')
+        self._schedule(examples_dir)
 
     def test_case51c_examples(self):
-        example_files = [f for f in os.listdir(os.path.join(examplesMainDir,'case51c')) if os.path.isfile(os.path.join(examplesMainDir,'case51c',f)) and f.endswith('.py')]
-        flag = 0
-        for f in example_files:
-            print "running:",f
-            flag = subprocess.call([sys.executable,os.path.join(examplesMainDir,'case51c',f),'1'])
-            self.assertEqual(flag,0)
+        examples_dir = os.path.join(examplesMainDir,'case51c')
+        self._schedule(examples_dir)
 
     def run_all_examples(self):
         self.test_sawall_examples()
