@@ -14,6 +14,7 @@
 from kipet.model.TemplateBuilder import *
 from kipet.sim.CasadiSimulator import *
 import matplotlib.pyplot as plt
+import sys
 
 if __name__ == "__main__":
 

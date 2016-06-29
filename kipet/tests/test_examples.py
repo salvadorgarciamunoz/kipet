@@ -3,6 +3,14 @@ import sys
 import os
 import inspect
 import subprocess
+
+import imp
+try:
+    imp.find_module('casadi')
+    found_casadi=True
+except ImportError:
+    found_casadi=False
+
 examplesMainDir = os.path.abspath(
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
                     inspect.currentframe() ) ) ), '..','examples'))
@@ -29,16 +37,16 @@ class TestExamples(unittest.TestCase):
                                    stdout=self.std_out,
                                    stderr=subprocess.STDOUT)
             self.assertEqual(flag,0)
-
-        examples_casadi_dir = os.path.join(examples_dir,'casadi')
-        examples_casadi = [f for f in os.listdir(examples_casadi_dir) if os.path.isfile(os.path.join(examples_casadi_dir,f)) and f.endswith('.py')]
-        flag = 0
-        for f in examples_casadi:
-            print "running casadi:",f
-            flag = subprocess.call([sys.executable,os.path.join(examples_casadi_dir,f),'1'],
-                                   stdout=self.std_out,
-                                   stderr=subprocess.STDOUT)
-            self.assertEqual(flag,0)
+        if found_casadi:
+            examples_casadi_dir = os.path.join(examples_dir,'casadi')
+            examples_casadi = [f for f in os.listdir(examples_casadi_dir) if os.path.isfile(os.path.join(examples_casadi_dir,f)) and f.endswith('.py')]
+            flag = 0
+            for f in examples_casadi:
+                print "running casadi:",f
+                flag = subprocess.call([sys.executable,os.path.join(examples_casadi_dir,f),'1'],
+                                       stdout=self.std_out,
+                                       stderr=subprocess.STDOUT)
+                self.assertEqual(flag,0)
             
     def test_sawall_examples(self):
         examples_dir = os.path.join(examplesMainDir,'sawall')
