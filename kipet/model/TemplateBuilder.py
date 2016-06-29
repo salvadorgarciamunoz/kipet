@@ -8,7 +8,14 @@ import warnings
 from pyomo.environ import *
 from pyomo.dae import *
 import numpy as np
-from CasadiModel import *
+
+import imp
+try:
+    imp.find_module('casadi')
+    from CasadiModel import *
+    found_casadi=True
+except ImportError:
+    found_casadi=False
 
 
 logger = logging.getLogger('ModelBuilderLogger')
@@ -199,13 +206,6 @@ class TemplateBuilder(object):
                                   pyomo_model.mixture_components,
                                   bounds=(0.0,None),
                                   initialize=1)
-        """
-        init_dict = dict()
-        for t in pyomo_model.time:
-            for j in pyomo_model.complementary_states:
-                init_dict[t,j]=300
-        """
-        
                 
         pyomo_model.X = Var(pyomo_model.time,
                             pyomo_model.complementary_states,
@@ -284,78 +284,80 @@ class TemplateBuilder(object):
         return pyomo_model
 
     def create_casadi_model(self,start_time,end_time):
-
+        if found_casadi:
         # Model
-        casadi_model = CasadiModel()
+            casadi_model = CasadiModel()
 
-        # Sets
-        casadi_model.mixture_components = copy.deepcopy(self._component_names)
-        casadi_model.parameter_names = self._parameters.keys()
-        casadi_model.complementary_states = copy.deepcopy(self._complementary_states)
-        casadi_model.states = casadi_model.mixture_components.union(casadi_model.complementary_states)
-        
-        m_times = list()
-        m_lambdas = list()
-        if self._spectral_data is not None and self._absorption_data is not None:
-            raise RuntimeError('Either add absorption data or spectral data but not both')
+            # Sets
+            casadi_model.mixture_components = copy.deepcopy(self._component_names)
+            casadi_model.parameter_names = self._parameters.keys()
+            casadi_model.complementary_states = copy.deepcopy(self._complementary_states)
+            casadi_model.states = casadi_model.mixture_components.union(casadi_model.complementary_states)
 
-        if self._spectral_data is not None:
-            list_times = list(self._spectral_data.index)
-            list_lambdas = list(self._spectral_data.columns) 
-            m_times = sorted(list_times)
-            m_lambdas = sorted(list_lambdas)
-        if self._absorption_data is not None:
-            if not self._meas_times:
-                raise RuntimeError('Need to add measumerement times')
-            list_times = list(self._meas_times)
-            list_lambdas = list(self._absorption_data.index)
-            m_times = sorted(list_times)
-            m_lambdas = sorted(list_lambdas)
+            m_times = list()
+            m_lambdas = list()
+            if self._spectral_data is not None and self._absorption_data is not None:
+                raise RuntimeError('Either add absorption data or spectral data but not both')
 
-        if m_times:
-            if m_times[0]<start_time:
-                raise RuntimeError('Measurement time {0} not within ({1},{2})'.format(m_times[0],start_time,end_time))
-            if m_times[-1]>end_time:
-                raise RuntimeError('Measurement time {0} not within ({1},{2})'.format(m_times[-1],start_time,end_time))
+            if self._spectral_data is not None:
+                list_times = list(self._spectral_data.index)
+                list_lambdas = list(self._spectral_data.columns) 
+                m_times = sorted(list_times)
+                m_lambdas = sorted(list_lambdas)
+            if self._absorption_data is not None:
+                if not self._meas_times:
+                    raise RuntimeError('Need to add measumerement times')
+                list_times = list(self._meas_times)
+                list_lambdas = list(self._absorption_data.index)
+                m_times = sorted(list_times)
+                m_lambdas = sorted(list_lambdas)
 
-        casadi_model.meas_times = m_times
-        casadi_model.meas_lambdas = m_lambdas
+            if m_times:
+                if m_times[0]<start_time:
+                    raise RuntimeError('Measurement time {0} not within ({1},{2})'.format(m_times[0],start_time,end_time))
+                if m_times[-1]>end_time:
+                    raise RuntimeError('Measurement time {0} not within ({1},{2})'.format(m_times[-1],start_time,end_time))
 
-        # Variables                
-        casadi_model.Z = KinetCasadiStruct('Z',list(casadi_model.mixture_components),dummy_index=True)
-        casadi_model.X = KinetCasadiStruct('X',list(casadi_model.complementary_states),dummy_index=True)
-        casadi_model.P = KinetCasadiStruct('P',list(casadi_model.parameter_names))
-        casadi_model.C = KinetCasadiStruct('C',list(casadi_model.meas_times))
-        casadi_model.S = KinetCasadiStruct('S',list(casadi_model.meas_lambdas))
+            casadi_model.meas_times = m_times
+            casadi_model.meas_lambdas = m_lambdas
 
-        if self._parameters_bounds:
-            warnings.warn('Casadi_model do not take bounds on parameters. This is ignored in the integration')
-        
-        # Parameters
-        casadi_model.init_conditions = self._init_conditions
-        casadi_model.start_time = start_time
-        casadi_model.end_time = end_time
+            # Variables                
+            casadi_model.Z = KinetCasadiStruct('Z',list(casadi_model.mixture_components),dummy_index=True)
+            casadi_model.X = KinetCasadiStruct('X',list(casadi_model.complementary_states),dummy_index=True)
+            casadi_model.P = KinetCasadiStruct('P',list(casadi_model.parameter_names))
+            casadi_model.C = KinetCasadiStruct('C',list(casadi_model.meas_times))
+            casadi_model.S = KinetCasadiStruct('S',list(casadi_model.meas_lambdas))
 
-        if self._absorption_data is not None:
-            for l in casadi_model.meas_lambdas:
-                for k in casadi_model.mixture_components:
-                    casadi_model.S[l,k] = float(self._absorption_data[k][l])
+            if self._parameters_bounds:
+                warnings.warn('Casadi_model do not take bounds on parameters. This is ignored in the integration')
 
-        if self._spectral_data is not None:
-            casadi_model.D = dict()
-            for t in casadi_model.meas_times:
+            # Parameters
+            casadi_model.init_conditions = self._init_conditions
+            casadi_model.start_time = start_time
+            casadi_model.end_time = end_time
+
+            if self._absorption_data is not None:
                 for l in casadi_model.meas_lambdas:
-                    casadi_model.D[t,l] = float(self._spectral_data[l][t])
-        
-        # Fixes parameters that were given numeric values
-        for p,v in self._parameters.iteritems():
-            if v is not None:
-                casadi_model.P[p] = v
-        # validate the model before writing constraints
-        self._validate_data(casadi_model,start_time,end_time)
-        # ignores the time indes t=0
-        casadi_model.odes = self._odes(casadi_model,0)
-        return casadi_model
+                    for k in casadi_model.mixture_components:
+                        casadi_model.S[l,k] = float(self._absorption_data[k][l])
+
+            if self._spectral_data is not None:
+                casadi_model.D = dict()
+                for t in casadi_model.meas_times:
+                    for l in casadi_model.meas_lambdas:
+                        casadi_model.D[t,l] = float(self._spectral_data[l][t])
+
+            # Fixes parameters that were given numeric values
+            for p,v in self._parameters.iteritems():
+                if v is not None:
+                    casadi_model.P[p] = v
+            # validate the model before writing constraints
+            self._validate_data(casadi_model,start_time,end_time)
+            # ignores the time indes t=0
+            casadi_model.odes = self._odes(casadi_model,0)
+            return casadi_model
+        else:
+            raise RuntimeError('Install casadi to create casadi models')
 
     def write_dat_file(self,filename,start_time,end_time,fixed_dict=None):
         f = open(filename,'w')

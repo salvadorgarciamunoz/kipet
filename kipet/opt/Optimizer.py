@@ -43,7 +43,7 @@ class Optimizer(PyomoSimulator):
     def run_sim(self,solver,tee=False,solver_opts={}):
         raise NotImplementedError("Simulator abstract method. Call child class")
 
-    def run_opt(self,solver,tee=False,solver_opts={},std_deviations={}):
+    def run_opt(self,solver,tee=False,solver_opts={},variances={}):
         
         Z_var = self.model.Z 
         dZ_var = self.model.dZdt
@@ -51,7 +51,7 @@ class Optimizer(PyomoSimulator):
             raise RuntimeError('apply discretization first before runing simulation')
         
         # fixes the sigmas
-        for k,v in std_deviations.iteritems():
+        for k,v in variances.iteritems():
             if k=='device':
                 self.model.device_variance.value = v
                 self.model.device_variance.fixed = True
@@ -122,6 +122,24 @@ class Optimizer(PyomoSimulator):
             results.S = pd.DataFrame(data=s_array,
                                      columns=self._mixture_components,
                                      index=self._meas_lambdas)
+
+            
+            # computes D from the estimated values
+            d_results = []
+            for i,t in enumerate(self._meas_times):
+                for j,l in enumerate(self._meas_lambdas):
+                    suma = 0.0
+                    for w,k in enumerate(self._mixture_components):
+                        C = c_noise_results[i*self._n_components]
+                        S = s_results[j*self._n_components]
+                        suma+= C*S
+                    d_results.append(suma)
+                    
+            d_array = np.array(d_results).reshape((self._n_meas_times,self._n_meas_lambdas))
+            results.D = pd.DataFrame(data=d_array,
+                                     columns=self._meas_lambdas,
+                                     index=self._meas_times)
+            
             param_vals = dict()
             for name in self.model.parameter_names:
                 param_vals[name] = self.model.P[name].value

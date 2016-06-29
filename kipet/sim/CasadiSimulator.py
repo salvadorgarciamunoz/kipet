@@ -141,12 +141,31 @@ class CasadiSimulator(Simulator):
 
         dx_array = np.array(dx_results).reshape((self._n_times,self._n_complementary_states))
         results.dXdt = pd.DataFrame(data=dx_array,columns=self._complementary_states,index=times)
+
+        w = np.zeros((self._n_components,self._n_meas_times))
+        # for the noise term
+        if sigmas:
+            for i,k in enumerate(self._mixture_components):
+                if sigmas.has_key(k):
+                    sigma = sigmas[k]**0.5
+                    dw_k = np.random.normal(0.0,sigma,self._n_meas_times)
+                    w[i,:] = np.cumsum(dw_k)
+            
+        c_noise_results = []
+        for i,t in enumerate(self._meas_times):
+            for j,k in enumerate(self._mixture_components):
+                c_noise_results.append(results.Z[k][t]+w[j,i])
         
+        c_noise_array = np.array(c_noise_results).reshape((self._n_meas_times,self._n_components))
+        results.C = pd.DataFrame(data=c_noise_array,
+                                 columns=self._mixture_components,
+                                 index=self._meas_times)
+
         
         if self._spectra_given:
             # solves over determined system
             D_data = self.model.D
-            c_noise_array, s_array = self._solve_CS_from_D(results.Z,tee=tee)
+            s_array = self._solve_S_from_DC(results.C,tee=tee)
 
             d_results = []
             for t in self._meas_times:
@@ -155,20 +174,6 @@ class CasadiSimulator(Simulator):
                     
             d_array = np.array(d_results).reshape((self._n_meas_times,self._n_meas_lambdas))
         else:
-
-            w = np.zeros((self._n_components,self._n_meas_times))
-            # for the noise term
-            if sigmas:
-                for i,k in enumerate(self._mixture_components):
-                    if sigmas.has_key(k):
-                        sigma = sigmas[k]**0.5
-                        dw_k = np.random.normal(0.0,sigma,self._n_meas_times)
-                        w[i,:] = np.cumsum(dw_k)
-            
-            c_noise_results = []
-            for i,t in enumerate(self._meas_times):
-                for j,k in enumerate(self._mixture_components):
-                    c_noise_results.append(results.Z[k][t]+w[j,i])
 
             s_results = []
             for l in self._meas_lambdas:
@@ -192,14 +197,11 @@ class CasadiSimulator(Simulator):
                             suma+= np.random.normal(0.0,sigma_d)
                         d_results.append(suma)
 
-            c_noise_array = np.array(c_noise_results).reshape((self._n_meas_times,self._n_components))
+
             s_array = np.array(s_results).reshape((self._n_meas_lambdas,self._n_components))
             d_array = np.array(d_results).reshape((self._n_meas_times,self._n_meas_lambdas))
             
         # stores everything in restuls object
-        results.C = pd.DataFrame(data=c_noise_array,
-                                       columns=self._mixture_components,
-                                       index=self._meas_times)
         results.S = pd.DataFrame(data=s_array,
                                  columns=self._mixture_components,
                                  index=self._meas_lambdas)

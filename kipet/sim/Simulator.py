@@ -42,12 +42,8 @@ class Simulator(object):
     def run_sim(self,solver,tee=False,solver_opts={}):
         raise NotImplementedError("Simulator abstract method. Call child class")
         
-    def _solve_CS_from_D(self,C_dataFrame,tee=False):
-        c_noise_array = np.zeros((self._n_meas_times,self._n_components))
-        for i,t in enumerate(self._meas_times):
-            for j,k in enumerate(self._mixture_components):
-                c_noise_array[i,j] = C_dataFrame[k][t]
-
+    def _solve_S_from_DC(self,C_dataFrame,tee=False):
+        
         D_data = self.model.D
         if self._n_meas_lambdas:
             # build Dij vector
@@ -61,7 +57,7 @@ class Simulator(object):
                     for k,c in enumerate(self._mixture_components):
                         row.append(i*self._n_meas_lambdas+j)
                         col.append(j*self._n_components+k)
-                        data.append(c_noise_array[i,k])
+                        data.append(C_dataFrame[c][t])
                     D_vector[i*self._n_meas_lambdas+j] = D_data[t,l]    
                 
                         
@@ -81,4 +77,4 @@ class Simulator(object):
         else:
             s_shaped = np.empty((self._n_meas_lambdas,self._n_components))
 
-        return (c_noise_array,s_shaped)
+        return s_shaped

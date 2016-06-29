@@ -36,7 +36,7 @@ if __name__ == "__main__":
     dataDirectory = os.path.abspath(
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
             inspect.currentframe() ) ) ), '..','data_sets'))
-    filename =  os.path.join(dataDirectory,'Dij_case52a.txt')
+    filename =  os.path.join(dataDirectory,'Dij_case52b.txt')
     D_frame = read_spectral_data_from_txt(filename)
     
     # create template model 
@@ -44,7 +44,7 @@ if __name__ == "__main__":
 
     components = {'A':0.21,'B':0.21,'C':0}
     builder.add_mixture_component(components)
-    builder.add_parameter('k1',0.006655)
+    builder.add_parameter('k1',0.00539048)
 
     # includes spectra data in the template and defines measurement sets
     builder.add_spectral_data(D_frame)
@@ -65,12 +65,12 @@ if __name__ == "__main__":
     #   - C variables indexed over measurement t_i and components names e.g. m.C[t_i,'A']
     #   - P parameters indexed over the parameter names m.P['k']
     #   - D spectra data indexed over the t_i, l_j measurement points m.D[t_i,l_j]
-    pyomo_model = builder.create_pyomo_model(0.0,200.0)
+    pyomo_model = builder.create_pyomo_model(0.0,1000.0)
 
     # create instance of simulator
     simulator = PyomoSimulator(pyomo_model)
     # defines the discrete points wanted in the profiles (does not include measurement points)
-    simulator.apply_discretization('dae.collocation',nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
+    simulator.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
     # simulate
     results_sim = simulator.run_sim('ipopt',tee=True)
     
@@ -92,14 +92,14 @@ if __name__ == "__main__":
     
     builder2.set_odes_rule(rule_odes2)
 
-    pyomo_model2 = builder2.create_pyomo_model(0.0,200.0)
+    pyomo_model2 = builder2.create_pyomo_model(0.0,1000.0)
     
     #pyomo_model2.P['k1'].value = 2.0
     #pyomo_model2.P['k1'].fixed = True
 
     optimizer = Optimizer(pyomo_model2)
 
-    optimizer.apply_discretization('dae.collocation',nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
+    optimizer.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
 
     # Provide good initial guess
     optimizer.initialize_from_trajectory('Z',results_sim.Z)

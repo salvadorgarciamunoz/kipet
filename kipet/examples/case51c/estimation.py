@@ -136,7 +136,7 @@ if __name__ == "__main__":
     results_pyomo = optimizer.run_opt('ipopt',
                                       tee=True,
                                       solver_opts = solver_options,
-                                      std_deviations=sigmas)
+                                      variances=sigmas)
 
     print "The estimated parameters are:"
     for k,v in results_pyomo.P.iteritems():

@@ -282,6 +282,26 @@ class PyomoSimulator(Simulator):
                                  columns=self._complementary_states,
                                  index=self._times)
 
+        c_noise_results = []
+
+        w = np.zeros((self._n_components,self._n_meas_times))
+        # for the noise term
+        if sigmas:
+            for i,k in enumerate(self._mixture_components):
+                if sigmas.has_key(k):
+                    sigma = sigmas[k]**0.5
+                    dw_k = np.random.normal(0.0,sigma,self._n_meas_times)
+                    w[i,:] = np.cumsum(dw_k)
+
+        # this addition is not efficient but it can be changed later
+        for i,t in enumerate(self._meas_times):
+            for j,k in enumerate(self._mixture_components):
+                c_noise_results.append(Z_var[t,k].value+ w[j,i])
+
+        c_noise_array = np.array(c_noise_results).reshape((self._n_meas_times,self._n_components))
+        results.C = pd.DataFrame(data=c_noise_array,
+                                 columns=self._mixture_components,
+                                 index=self._meas_times)
         
         if self._spectra_given: 
 
@@ -291,18 +311,14 @@ class PyomoSimulator(Simulator):
                 raise RuntimeError('Not enough measurements num_meas>= num_components')
 
             # solves over determined system
-            c_noise_array, s_array = self._solve_CS_from_D(results.Z,tee=tee)
+            s_array = self._solve_S_from_DC(results.C,tee=tee)
 
             d_results = []
             for t in self._meas_times:
                 for l in self._meas_lambdas:
                     d_results.append(D_data[t,l])
             d_array = np.array(d_results).reshape((self._n_meas_times,self._n_meas_lambdas))
-            
-            results.C = pd.DataFrame(data=c_noise_array,
-                                           columns=self._mixture_components,
-                                           index=self._meas_times)
-            
+                        
             results.S = pd.DataFrame(data=s_array,
                                      columns=self._mixture_components,
                                      index=self._meas_lambdas)
@@ -320,21 +336,6 @@ class PyomoSimulator(Simulator):
                     self.model.S[l,k].value =  results.S[k][l]
             
         else:
-            c_noise_results = []
-
-            w = np.zeros((self._n_components,self._n_meas_times))
-            # for the noise term
-            if sigmas:
-                for i,k in enumerate(self._mixture_components):
-                    if sigmas.has_key(k):
-                        sigma = sigmas[k]**0.5
-                        dw_k = np.random.normal(0.0,sigma,self._n_meas_times)
-                        w[i,:] = np.cumsum(dw_k)
-
-            # this addition is not efficient but it can be changed later
-            for i,t in enumerate(self._meas_times):
-                for j,k in enumerate(self._mixture_components):
-                    c_noise_results.append(Z_var[t,k].value+ w[j,i])
                     
             s_results = []
             for l in self._meas_lambdas:
@@ -358,17 +359,11 @@ class PyomoSimulator(Simulator):
                             suma+= np.random.normal(0.0,sigma_d)
                         d_results.append(suma)
                     
-            c_noise_array = np.array(c_noise_results).reshape((self._n_meas_times,self._n_components))
-            s_array = np.array(s_results).reshape((self._n_meas_lambdas,self._n_components))
-            d_array = np.array(d_results).reshape((self._n_meas_times,self._n_meas_lambdas))
             
-            results.C = pd.DataFrame(data=c_noise_array,
-                                           columns=self._mixture_components,
-                                           index=self._meas_times)
+            s_array = np.array(s_results).reshape((self._n_meas_lambdas,self._n_components))
             results.S = pd.DataFrame(data=s_array,
                                      columns=self._mixture_components,
                                      index=self._meas_lambdas)
-            
                         
             d_array = np.array(d_results).reshape((self._n_meas_times,self._n_meas_lambdas))
             results.D = pd.DataFrame(data=d_array,
