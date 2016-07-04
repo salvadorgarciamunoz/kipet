@@ -236,52 +236,10 @@ class PyomoSimulator(Simulator):
                 objectives_map[name].activate()
 
 
-        # retriving solutions to results object
-            
-        c_results = []
-        for t in self._times:
-            for k in self._mixture_components:
-                c_results.append(Z_var[t,k].value)
-
-        c_array = np.array(c_results).reshape((self._n_times,self._n_components))
+        # retriving solutions to results object  
+        results.load_from_pyomo_model(self.model,
+                                      to_load=['Z','dZdt','X','dXdt'])
         
-        results.Z = pd.DataFrame(data=c_array,
-                                 columns=self._mixture_components,
-                                 index=self._times)
-
-        dc_results = []
-        for t in self._times:
-            for k in self._mixture_components:
-                dc_results.append(dZ_var[t,k].value)
-
-        dc_array = np.array(dc_results).reshape((self._n_times,self._n_components))
-        
-        results.dZdt = pd.DataFrame(data=dc_array,
-                                 columns=self._mixture_components,
-                                 index=self._times)
-
-        x_results = []
-        for t in self._times:
-            for k in self._complementary_states:
-                x_results.append(X_var[t,k].value)
-
-        x_array = np.array(x_results).reshape((self._n_times,self._n_complementary_states))
-        
-        results.X = pd.DataFrame(data=x_array,
-                                 columns=self._complementary_states,
-                                 index=self._times)
-
-        dx_results = []
-        for t in self._times:
-            for k in self._complementary_states:
-                dx_results.append(dX_var[t,k].value)
-
-        dx_array = np.array(dx_results).reshape((self._n_times,self._n_complementary_states))
-        
-        results.dXdt = pd.DataFrame(data=dx_array,
-                                 columns=self._complementary_states,
-                                 index=self._times)
-
         c_noise_results = []
 
         w = np.zeros((self._n_components,self._n_meas_times))

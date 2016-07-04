@@ -18,7 +18,7 @@
 
 
 from kipet.model.TemplateBuilder import *
-from kipet.opt.Optimizer import *
+from kipet.opt.ParameterEstimator import *
 import matplotlib.pyplot as plt
 
 from kipet.utils.data_tools import *
@@ -71,6 +71,7 @@ if __name__ == "__main__":
 
     # note the parameter is not fixed
     builder2.add_parameter('k')
+    builder2.add_P_bounds('k',(0.0,10.0))
     builder2.add_spectral_data(D_frame)
 
     # define explicit system of ODEs
@@ -84,7 +85,7 @@ if __name__ == "__main__":
     
     pyomo_model = builder2.create_pyomo_model(0.0,200.0)
         
-    optimizer = Optimizer(pyomo_model)
+    optimizer = ParameterEstimator(pyomo_model)
     
     optimizer.apply_discretization('dae.collocation',nfe=30,ncp=3,scheme='LAGRANGE-RADAU')
 

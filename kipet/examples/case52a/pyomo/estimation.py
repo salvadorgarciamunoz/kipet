@@ -15,7 +15,7 @@
 
 from kipet.model.TemplateBuilder import *
 from kipet.sim.PyomoSimulator import *
-from kipet.opt.Optimizer import *
+from kipet.opt.ParameterEstimator import *
 import matplotlib.pyplot as plt
 
 from kipet.utils.data_tools import *
@@ -80,6 +80,7 @@ if __name__ == "__main__":
 
     # note the parameter is not fixed
     builder2.add_parameter('k1')
+    builder2.add_P_bounds('k1',(0.0,0.01))
     builder2.add_spectral_data(D_frame)
 
     # define explicit system of ODEs
@@ -94,10 +95,10 @@ if __name__ == "__main__":
 
     pyomo_model2 = builder2.create_pyomo_model(0.0,200.0)
     
-    #pyomo_model2.P['k1'].value = 2.0
+    #pyomo_model2.P['k1'].value = 0.00665548
     #pyomo_model2.P['k1'].fixed = True
 
-    optimizer = Optimizer(pyomo_model2)
+    optimizer = ParameterEstimator(pyomo_model2)
 
     optimizer.apply_discretization('dae.collocation',nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
 
@@ -137,8 +138,7 @@ if __name__ == "__main__":
         results_pyomo.C.plot.line(legend=True)
         plt.plot(results_sim.C.index,results_sim.C['A'],'*',
                  results_sim.C.index,results_sim.C['B'],'*',
-                 results_sim.C.index,results_sim.C['C'],'*',
-                 results_sim.C.index,results_sim.C['D'],'*')
+                 results_sim.C.index,results_sim.C['C'],'*')
         plt.xlabel("time (s)")
         plt.ylabel("Concentration (mol/L)")
         plt.title("Concentration Profile")
@@ -147,8 +147,7 @@ if __name__ == "__main__":
         results_pyomo.S.plot.line(legend=True)
         plt.plot(results_sim.S.index,results_sim.S['A'],'*',
                  results_sim.S.index,results_sim.S['B'],'*',
-                 results_sim.S.index,results_sim.S['C'],'*',
-                 results_sim.S.index,results_sim.S['D'],'*')
+                 results_sim.S.index,results_sim.S['C'],'*')
         plt.xlabel("Wavelength (cm)")
         plt.ylabel("Absorbance (L/(mol cm))")
         plt.title("Absorbance  Profile")

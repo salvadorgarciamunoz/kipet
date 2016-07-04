@@ -83,7 +83,10 @@ if __name__ == "__main__":
         plt.title("Concentration Profile")
 
         # take a look at the data
-        plot_spectral_data(results_pyomo.D.T,dimension='2D')
+        plot_spectral_data(results_pyomo.D,dimension='3D')
+        #plt.xlabel("Wave length")
+        #plt.ylabel("D(t,l)")
+        #plt.title("Spectral Data")
         #plt.figure()
         # basic principal component analysis of the data
         #basic_pca(results_pyomo.D,n=4)

@@ -28,25 +28,23 @@ if __name__ == "__main__":
             with_plots = False
     
     # create template model 
-    builder = TemplateBuilder()    
-    builder.add_mixture_component('A',6.7)
-    builder.add_mixture_component('B',20.2)
-    builder.add_mixture_component('C',0.0)
+    species = {'A':6.7,'B':20.2,'C':0.0}
+    params = {'k_p':3.734e7}
+    builder = TemplateBuilder(concentrations=species,
+                              parameters=params)    
     
     builder.add_complementary_state_variable('T',290.0)
-    
-    builder.add_parameter('k_p',3.734e7)
 
     # define explicit system of ODEs
     def rule_odes(m,t):
-        r = -m.P['k_p']*exp(-15400.0/(1.987*m.X[t,'T']))*m.Z[t,'A']*m.Z[t,'B']
-        T1 = 45650.0*(-r*0.01)/28.0
+        r = m.P['k_p']*exp(-15400.0/(1.987*m.X[t,'T']))*m.Z[t,'A']*m.Z[t,'B']
+        T1 = 45650.0*(r*0.01)/28.0
         #T2 = Expr_if(IF=m.X[t,'T']>328.0, THEN=0.0, ELSE=2.0)
         T2 = 1+(328.0-m.X[t,'T'])/((328.0-m.X[t,'T'])**2+1e-5**2)**0.5
         exprs = dict()
-        exprs['A'] = r
-        exprs['B'] = 0.0
-        exprs['C'] = -r
+        exprs['A'] = -r
+        exprs['B'] = -r
+        exprs['C'] = r
         exprs['T'] = T1+T2
         return exprs
 
@@ -58,7 +56,6 @@ if __name__ == "__main__":
     #      - P parameters indexed over the parameter names e.g. m.P['k']
     pyomo_model = builder.create_pyomo_model(0.0,20.0)
 
-    pyomo_model.pprint()
     # create instance of simulator
     simulator = PyomoSimulator(pyomo_model)
     # defines the discrete points wanted in the concentration profile

@@ -15,7 +15,7 @@
 
 from kipet.model.TemplateBuilder import *
 from kipet.sim.PyomoSimulator import *
-from kipet.opt.Optimizer import *
+from kipet.opt.ParameterEstimator import *
 import matplotlib.pyplot as plt
 
 from kipet.utils.data_tools import *
@@ -97,7 +97,7 @@ if __name__ == "__main__":
     #pyomo_model2.P['k1'].value = 2.0
     #pyomo_model2.P['k1'].fixed = True
 
-    optimizer = Optimizer(pyomo_model2)
+    optimizer = ParameterEstimator(pyomo_model2)
 
     optimizer.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
 

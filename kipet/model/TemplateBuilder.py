@@ -22,7 +22,7 @@ logger = logging.getLogger('ModelBuilderLogger')
 
 class TemplateBuilder(object):
     
-    def __init__(self):
+    def __init__(self,**kwargs):
         self._component_names = set()
         self._parameters = dict()
         self._parameters_bounds = dict()
@@ -33,6 +33,35 @@ class TemplateBuilder(object):
         self._meas_times = set()
         self._complementary_states = set()
 
+        if kwargs.has_key('concentrations'):
+            components = kwargs['concentrations']
+            if isinstance(components,dict):
+                for k,v in components.iteritems():
+                    self._component_names.add(k)
+                    self._init_conditions[k] = v
+            else:
+                raise RuntimeError('Extra states must be an dictionary state_name:init_condition')
+                
+        if kwargs.has_key('parameters'):
+            
+            parameters = kwargs['parameters']
+            if isinstance(parameters,dict):
+                for k,v in parameters.iteritems():
+                    self._parameters[k] = v
+            elif isinstance(parameters,list):
+                for k in parameters:
+                    self._parameters[k] = None
+            else:
+                raise RuntimeError('parameters must be a dictionary parameter_name:value or a list with parameter_names')
+                    
+        if kwargs.has_key('extra_states'):
+            components = kwargs['extra_states']
+            if isinstance(components,dict):
+                for k,v in components.iteritems():
+                    self._component_names.add(k)
+                    self._init_conditions[k] = v
+            else:
+                raise RuntimeError('Extra states must be an dictionary state_name:init_condition')
         
     def add_parameter(self,*args):
         if len(args) == 1:
@@ -185,7 +214,7 @@ class TemplateBuilder(object):
         # Variables
         pyomo_model.Z = Var(pyomo_model.time,
                             pyomo_model.mixture_components,
-                            bounds=(0.0,None),
+                            #bounds=(0.0,None),
                             initialize=1)
         
         
