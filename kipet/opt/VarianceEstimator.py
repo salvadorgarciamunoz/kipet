@@ -1,10 +1,8 @@
 from pyomo.environ import *
 from pyomo.dae import *
-#from kipet.ResultsObject import *
 from kipet.sim.PyomoSimulator import *
-from pyomo.core.base.expr import Expr_if
-
 import copy
+import os
 
 class VarianceEstimator(PyomoSimulator):
     def __init__(self,model):
@@ -17,41 +15,52 @@ class VarianceEstimator(PyomoSimulator):
                              initialize=1.0)
 
         self.C_model = ConcreteModel()
-        self.C_model = Var(self._meas_times,
+        self.C_model.C = Var(self._meas_times,
                            self._mixture_components,
                            bounds=(0.0,None),
                            initialize=1.0)
+
+        # To pass scaling to the submodels
+        self.C_model.scaling_factor = Suffix(direction=Suffix.EXPORT)
+        self.S_model.scaling_factor = Suffix(direction=Suffix.EXPORT)
+
+        self._tmp1 = "tmp_init"
+        self._tmp2 = "tmp_solve_Z"
+        self._tmp3 = "tmp_solve_S"
+        self._tmp4 = "tmp_solve_C"
+
+    def __del__(self):
+        os.remove(self._tmp1)
+        os.remove(self._tmp2)
+        os.remove(self._tmp3)
+        os.remove(self._tmp4)
         
     def run_sim(self,solver,tee=False,solver_opts={}):
         raise NotImplementedError("VarianceEstimator object does not have run_sim method. Call run_opt")
-    
-    def _build_initalization_model(self,subset_lambdas=None):
 
-        if subset_lambdas:
-            set_A = set(subset_lambdas)
-        else:
-            set_A = copy.deepcopy(self._meas_lambdas)
+    def initialize_from_trajectory(self,variable_name,trajectories):
+        super(VarianceEstimator, self).initialize_from_trajectory(variable_name,trajectories)
+        if variable_name=='S':
+            for k,v in self.model.S.iteritems():
+                self.S_model.S[k].value = v.value
+        if variable_name=='C':
+            for k,v in self.model.C.iteritems():
+                self.C_model.C[k].value = v.value        
 
-        # build model
-        dae = self.model
-        m = ConcreteModel()
-        m.A = Set(initialize=set_A)
-        m.add_component('dae', dae)
+    def scale_variables_from_trajectory(self,variable_name,trajectories):
+        super(VarianceEstimator, self).scale_variables_from_trajectory(variable_name,trajectories)
+        if variable_name=='S':
+            for k,v in self.model.S.iteritems():
+                value = self.model.scaling_factor.get(self.model.S[k])
+                self.S_model.scaling_factor.set_value(v,value) 
+        if variable_name=='C':
+            for k,v in self.model.C.iteritems():
+                value = self.model.scaling_factor.get(self.model.C[k])
+                self.C_model.scaling_factor.set_value(v,value) 
         
-        # build objective
-        obj = 0.0
-        for t in self._meas_times:
-            for l in m.A:
-                D_bar = sum(m.dae.Z[t,k]*m.dae.S[l,k] for k in m.dae.mixture_components)
-                obj+= (m.dae.D[t,l] - D_bar)**2
-        m.objective = Objective(expr=obj)
-        
-        return m
 
     def _solve_initalization(self,
-                             solver,
-                             tee=False,
-                             solver_options={},
+                             optimizer,
                              subset_lambdas=None):
 
         if subset_lambdas:
@@ -73,45 +82,17 @@ class VarianceEstimator(PyomoSimulator):
                 obj+= (m.dae.D[t,l] - D_bar)**2
         m.objective = Objective(expr=obj)
 
-        opt = SolverFactory(solver)
-        for key, val in solver_opts.iteritems():
-            opt.options[key]=val                
-
-        solver_results = opt.solve(self.model,tee=tee)
+        solver_results = optimizer.solve(m,logfile=self._tmp1)
 
         for t in self._meas_times:
             for k in self._mixture_components:
-                m.dae.C[t,k].value = m.dae.Z[t,k]
-        
+                m.dae.C[t,k].value = m.dae.Z[t,k].value
+                self.C_model.C[t,k].value =  m.dae.C[t,k].value
         m.del_component('dae')
 
-    
-    def _build_Z_model(self,C_trajectory):
-        dae = self.model
-        m = ConcreteModel()
-        m.add_component('dae', dae)
-        
-        obj = 0.0
-        reciprocal_ntp = 1.0/len(m.dae.time)
-        tao = 1e-6
-        gamma = 1e-6
-        eta =1e-4
-        for k in m.dae.mixture_components:
-            x = sum((C_trajectory[k][t]-m.dae.Z[t,k])**2 for t in self._meas_times)
-            x*= reciprocal_ntp
-            #f_x = 0.5*gamma*(x/(x**2+eta**2)**0.5+(tao-x)/((tao-x)**2+eta**2)**0.5) + x*0.5*((x-tao)/((x-tao)**2+eta**2)**0.5+1)
-            #obj+= log(f_x)            
-            obj+= x
-
-        m.objective = Objective(expr=obj)
-        
-        return m
-
     def _solve_Z(self,
-                 solver,
-                 C_trajectory=None,
-                 tee=False,
-                 solver_options={}):
+                 optimizer,
+                 C_trajectory=None):
         
         dae = self.model
         m = ConcreteModel()
@@ -119,115 +100,86 @@ class VarianceEstimator(PyomoSimulator):
         
         obj = 0.0
         reciprocal_ntp = 1.0/len(m.dae.time)
-        if C_trajectory:
+        if C_trajectory is not None:
             for k in m.dae.mixture_components:
                 x = sum((C_trajectory[k][t]-m.dae.Z[t,k])**2 for t in self._meas_times)
-                x*= reciprocal_ntp
+                #x*= reciprocal_ntp
                 obj+= x
         else:
             # asume this value was computed beforehand
             for t in self._meas_times:
                 for k in self._mixture_components:
-                    m.dae.C[t,k] = True
+                    m.dae.C[t,k].fixed = True
             
             for k in m.dae.mixture_components:
                 x = sum((m.dae.C[t,k]-m.dae.Z[t,k])**2 for t in self._meas_times)
-                x*= reciprocal_ntp
+                #x*= reciprocal_ntp
                 obj+= x
 
         m.objective = Objective(expr=obj)
 
-        opt = SolverFactory(solver)
-        for key, val in solver_opts.iteritems():
-            opt.options[key]=val                
-
-        solver_results = opt.solve(self.model,tee=tee)
+        solver_results = optimizer.solve(m,logfile=self._tmp2)
 
         if C_trajectory is not None:
             # unfixes all concentrations
             for t in self._meas_times:
                 for k in self._mixture_components:
-                    m.dae.C[t,k] = False
+                    m.dae.C[t,k].fixed = False
         
         m.del_component('dae')
 
-
-    def _build_S_model(self,Z_trajectory):
-        dae = self.model
-        m = ConcreteModel()
-        m.S = Var(self._meas_lambdas,
-                  self._mixture_components,
-                  bounds=(0.0,None),
-                  initialize=1.0)
-
-        obj = 0.0
-        for t in self._meas_times:
-            for l in self._meas_lambdas:
-                D_bar = sum(m.S[l,k]*Z_trajectory[k][t] for k in self._mixture_components)
-                obj+=(self.model.D[t,l]-D_bar)**2
-            
-        m.objective = Objective(expr=obj)
-        return m
-
     def _solve_S(self,
-                 Z_trajectory,
-                 solver,
-                 tee=False,
-                 solver_options={}):
+                 optimizer,
+                 Z_trajectory=None):
         
         obj = 0.0
-        for t in self._meas_times:
-            for l in self._meas_lambdas:
-                D_bar = sum(self.S_model.S[l,k]*Z_trajectory[k][t] for k in self._mixture_components)
-                obj+=(self.model.D[t,l]-D_bar)**2
-            
+        if Z_trajectory is not None:
+            for t in self._meas_times:
+                for l in self._meas_lambdas:
+                    D_bar = sum(self.S_model.S[l,k]*Z_trajectory[k][t] for k in self._mixture_components)
+                    obj+=(self.model.D[t,l]-D_bar)**2
+        else:
+            # asumes base model has been solved already for Z
+            for t in self._meas_times:
+                for l in self._meas_lambdas:
+                    D_bar = sum(self.S_model.S[l,k]*self.model.Z[t,k].value for k in self._mixture_components)
+                    obj+=(self.model.D[t,l]-D_bar)**2
+                    
         self.S_model.objective = Objective(expr=obj)
 
-        opt = SolverFactory(solver)
-        for key, val in solver_opts.iteritems():
-            opt.options[key]=val                
-
-        solver_results = opt.solve(self.S_model,tee=tee)
-        self.S_model.del_component(objective)
+        solver_results = optimizer.solve(self.S_model,logfile=self._tmp3)
+        self.S_model.del_component('objective')
         
-    def _build_C_model(self,S_trajectory):
-        m = ConcreteModel()
-        m.C = Var(self._meas_times,
-                  self._mixture_components,
-                  bounds=(0.0,None),
-                  initialize=1.0)
+        #updates values in main model
+        for k,v in self.S_model.S.iteritems():
+            self.model.S[k].value = v.value
         
-        obj = 0.0
-        for t in self._meas_times:
-            for l in self._meas_lambdas:
-                D_bar = sum(S_trajectory[k][l]*m.C[t,k] for k in self._mixture_components)
-                obj+=(self.model.D[t,l]-D_bar)**2
-        m.objective = Objective(expr=obj)
-
-        return m
-
     def _solve_C(self,
-                 S_trajectory,
-                 solver,
-                 tee=False,
-                 solver_options={}):
+                 optimizer,
+                 S_trajectory=None):
 
-        obj = 0.0
-        for t in self._meas_times:
-            for l in self._meas_lambdas:
-                D_bar = sum(S_trajectory[k][l]*self.C_model.C[t,k] for k in self._mixture_components)
-                obj+=(self.model.D[t,l]-D_bar)**2
         
+        obj = 0.0
+        if S_trajectory is not None:
+            for t in self._meas_times:
+                for l in self._meas_lambdas:
+                    D_bar = sum(S_trajectory[k][l]*self.C_model.C[t,k] for k in self._mixture_components)
+                    obj+=(self.model.D[t,l]-D_bar)**2
+        else:
+            # asumes that s model has been solved first
+            for t in self._meas_times:
+                for l in self._meas_lambdas:
+                    D_bar = sum(self.S_model.S[l,k].value*self.C_model.C[t,k] for k in self._mixture_components)
+                    obj+=(self.model.D[t,l]-D_bar)**2
+                    
         self.C_model.objective = Objective(expr=obj)
 
-        opt = SolverFactory(solver)
-        for key, val in solver_opts.iteritems():
-            opt.options[key]=val                
+        solver_results = optimizer.solve(self.C_model,logfile=self._tmp4)
+        self.C_model.del_component('objective')
 
-        solver_results = opt.solve(self.C_model,tee=tee)
-        self.C_model.del_component(objective)
-        
-
+        for t in self._meas_times:
+            for k in self._mixture_components:
+                self.model.C[t,k].value = self.C_model.C[t,k].value
 
     def _solve_variances(self,S_trajectory,Z_trajectory):
         nl = self._n_meas_lambdas
@@ -246,11 +198,32 @@ class VarianceEstimator(PyomoSimulator):
                 b[i] += (self.model.D[t,l]-D_bar)**2
             b[i]*=reciprocal_nt
 
-        print A.shape
         results = np.linalg.lstsq(A, b)
-        return results
-            
+        return results            
+
+    def _log_iterations(self,filename,iteration):
+        f = open(filename, "a")
+
+        f.write("\n#######################Iteration {}#######################\n".format(iteration))
+        if iteration==0:
+            tf = open(self._tmp1,'r')
+            f.write("\n#######################Initialization#######################\n")
+            f.write(tf.read())
+            tf.close()
+        tf = open(self._tmp2,'r')
+        f.write("\n#######################Solve Z#######################\n")
+        f.write(tf.read())
+        tf.close()
+        tf = open(self._tmp3,'r')
+        f.write("\n#######################Solve S#######################\n")
+        f.write(tf.read())
+        tf.close()
+
+        tf = open(self._tmp4,'r')
+        f.write("\n#######################Solve C#######################\n")
+        f.write(tf.read())
         
+        f.close()
     
     def run_opt(self,solver,tee=False,solver_opts={},variances={}):
         
@@ -265,89 +238,59 @@ class VarianceEstimator(PyomoSimulator):
         for obj in objectives_map.itervalues():
             obj.deactivate()
 
+         
         opt = SolverFactory(solver)
         for key, val in solver_opts.iteritems():
             opt.options[key]=val
-                
-        init_model = self._build_initalization_model()
 
-        solver_results = opt.solve(init_model,tee=True)
-        init_model.del_component('dae')
+        print("Solving Variance estimation")
+        # solves formulation 18
+        self._solve_initalization(opt)
+        Z_i = np.array([v.value for v in self.model.Z.itervalues()])
 
-        c_results = []
-        for t in self._meas_times:
-            for k in self._mixture_components:
-                c_results.append(Z_var[t,k].value)
+        # perfoms the fisrt iteration 
+        self._solve_Z(opt)
+        self._solve_S(opt)
+        self._solve_C(opt)
 
-        c_array = np.array(c_results).reshape((self._n_meas_times,self._n_components))
+        if tee:
+            self._log_iterations("iterations.log",0)
         
-        C_trajectories = pd.DataFrame(data=c_array,
-                                 columns=self._mixture_components,
-                                 index=self._meas_times)
+        Z_i1 = np.array([v.value for v in self.model.Z.itervalues()])
 
-        # start solving sequence of problems
-        z_model = self._build_Z_model(C_trajectories)
-        solver_results = opt.solve(z_model,tee=True)
-        z_model.del_component('dae')
+        # starts iterating
+        max_iter = 100
+        tol = 5e-10
+        norm_order = None
+        diff = Z_i1-Z_i
+        norm_diff = np.linalg.norm(diff,norm_order)
 
-        init_c = dict()
-        c_results = []
-        for t in self._meas_times:
-            for k in self._mixture_components:
-                c_results.append(Z_var[t,k].value)
-                init_c[t,k] = Z_var[t,k].value
-        c_array = np.array(c_results).reshape((self._n_meas_times,self._n_components))
-        
-        Z_trajectory = pd.DataFrame(data=c_array,
-                                    columns=self._mixture_components,
-                                    index=self._meas_times)
-        
-        s_model = self._build_S_model(Z_trajectory)
-        solver_results = opt.solve(s_model,tee=True)
+        print("{: >11} {: >16}".format('Iter','|Zi-Zi+1|'))
+        print("{: >10} {: >20}".format(0,norm_diff))
+        count=1
+        while norm_diff>tol and count<max_iter:
+            Z_i = np.array([v.value for v in self.model.Z.itervalues()])
+            self._solve_Z(opt)
+            Z_i1 = np.array([v.value for v in self.model.Z.itervalues()])
+            norm_diff = np.linalg.norm(Z_i1-Z_i,norm_order)
+            self._solve_S(opt)
+            self._solve_C(opt)
+            print("{: >10} {: >20}".format(count,norm_diff))
+            if tee:
+                self._log_iterations("iterations.log",count)
+            count+=1
 
-        
         results =  ResultsObject()
-        s_results = []
-        for l in self._meas_lambdas:
-            for k in self._mixture_components:
-                s_results.append(s_model.S[l,k].value)
+        results.load_from_pyomo_model(self.model,
+                                      to_load=['Z','dZdt','X','dXdt','C','S'])
 
-        s_array = np.array(s_results).reshape((self._n_meas_lambdas,self._n_components))
-                
-        S_trajectory = pd.DataFrame(data=s_array,
-                                    columns=self._mixture_components,
-                                    index=self._meas_lambdas)
+        res_lsq = self._solve_variances(results.S,results.Z)
+        variance_dict = dict()
+        for i,k in enumerate(self._mixture_components):
+            variance_dict[k] = res_lsq[0][i][0]
 
-        c_model = self._build_C_model(S_trajectory)
-        solver_results = opt.solve(c_model,tee=True)
-        
-        c_results = []
-        for t in self._times:
-            for k in self._mixture_components:
-                c_results.append(Z_var[t,k].value)
-
-        c_array = np.array(c_results).reshape((self._n_times,self._n_components))
-        
-        results.Z = pd.DataFrame(data=c_array,
-                                 columns=self._mixture_components,
-                                 index=self._times)
-
-
-        c_noise_results = []
-        for t in self._meas_times:
-            for k in self._mixture_components:
-                c_noise_results.append(c_model.C[t,k].value)
-        
-        c_noise_array = np.array(c_noise_results).reshape((self._n_meas_times,self._n_components))
-
-        results.C = pd.DataFrame(data=c_noise_array,
-                                 columns=self._mixture_components,
-                                 index=self._meas_times)
-
-        results.S = S_trajectory
-
-        print self._solve_variances(S_trajectory,Z_trajectory)
-        
+        variance_dict['device'] = res_lsq[0][-1][0]
+        results.sigma_sq = variance_dict 
         param_vals = dict()
         for name in self.model.parameter_names:
             param_vals[name] = self.model.P[name].value

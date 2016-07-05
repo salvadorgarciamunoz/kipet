@@ -40,8 +40,8 @@ class ResultsObject(object):
 
         diff = user_variables.difference(model_variables)
         if diff:
-            print "WARNING: The following variables are not part of the model:"
-            print diff 
+            print("WARNING: The following variables are not part of the model:")
+            print(diff) 
         
         for block in instance.block_data_objects():
             block_map = block.component_map(Var)
