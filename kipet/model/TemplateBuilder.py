@@ -160,14 +160,16 @@ class TemplateBuilder(object):
         if not self._component_names:
             warnings.warn('The Model does not have any mixture components')
         else:
-            dummy_balances = self._odes(model,start_time)
-            if len(self._component_names)+len(self._complementary_states)!=len(dummy_balances):
-                raise RuntimeError('The number of mixture components needs to be the same'+
-                'as the number of ode equations.\n Use set_odes_rule')
-
+            if self._odes:
+                dummy_balances = self._odes(model,start_time)
+                if len(self._component_names)+len(self._complementary_states)!=len(dummy_balances):
+                    raise RuntimeError('The number of mixture components needs to be the same'+
+                                       'as the number of ode equations.\n Use set_odes_rule')
+            else:
+                raise RuntimeError('Need to set differential expressions set_odes_rule()') 
         if self._absorption_data is not None:
             if not self._meas_times:
-                raise RuntimeError('Need to add measumerement times')
+                raise RuntimeError('Need to add measumerement times') 
         
     def create_pyomo_model(self,start_time,end_time):
         # Model

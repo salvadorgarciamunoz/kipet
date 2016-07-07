@@ -12,23 +12,20 @@ class PyomoSimulator(Simulator):
         self._spectra_given = hasattr(self.model, 'D')
         self._ipopt_scaled = False
         # creates scaling factor suffix
-        self.model.scaling_factor = Suffix(direction=Suffix.EXPORT)
+        if not hasattr(self.model, 'scaling_factor'):
+            self.model.scaling_factor = Suffix(direction=Suffix.EXPORT)
 
-        # this is very rigid probably need to change
-        # checks model has init_conditions_set
-        init_cond = self.model.init_conditions_c
-
-        if init_cond.active == False:
-            raise RuntimeError('initial condition deactivated. Please activate initial conditions')
                 
     def apply_discretization(self,transformation,**kwargs):
-        discretizer = TransformationFactory(transformation)
-        discretizer.apply_to(self.model,wrt=self.model.time,**kwargs)
-        self._times = sorted(self.model.time)
-        self._n_times = len(self._times)
-        self._discretized = True
-        self._default_initialization()
-        
+        if not self.model.time.get_discretization_info():
+            discretizer = TransformationFactory(transformation)
+            discretizer.apply_to(self.model,wrt=self.model.time,**kwargs)
+            self._times = sorted(self.model.time)
+            self._n_times = len(self._times)
+            self._default_initialization()
+        else:
+            print('***WARNING: Model already discretized. Ignoring second discretization')
+            
     # initializes the trajectories to the initial conditions
     def _default_initialization(self):
 
@@ -79,8 +76,8 @@ class PyomoSimulator(Simulator):
         self.initialize_from_trajectory('X',x_init_panel)
         
     def initialize_from_trajectory(self,variable_name,trajectories):
-        if self._discretized is False:
-            raise RuntimeError('apply discretization first before runing simulation')
+        if not self.model.time.get_discretization_info():
+            raise RuntimeError('apply discretization first before initializing')
         
         if variable_name == 'Z':
             var = self.model.Z
@@ -137,7 +134,7 @@ class PyomoSimulator(Simulator):
     def scale_variables_from_trajectory(self,variable_name,trajectories):
         # time-invariant nominal scaling
         # this method works only with ipopt
-        if self._discretized is False:
+        if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before runing simulation')
         
         if variable_name == 'Z':
@@ -187,9 +184,14 @@ class PyomoSimulator(Simulator):
     def validate(self):
         pass
         
-    def run_sim(self,solver,tee=False,solver_opts={},sigmas=None,seed=None):
+    def run_sim(self,solver,**kwds):
 
-        if self._discretized is False:
+        solver_opts = kwds.pop('solver_opts', dict())
+        sigmas = kwds.pop('variances',dict())
+        tee = kwds.pop('tee',False)
+        seed = kwds.pop('seed',None)
+        
+        if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before runing simulation')
 
         # adjusts the seed to reproduce results with noise
@@ -243,18 +245,21 @@ class PyomoSimulator(Simulator):
         c_noise_results = []
 
         w = np.zeros((self._n_components,self._n_meas_times))
+        n_sig = np.zeros((self._n_components,self._n_meas_times))
         # for the noise term
         if sigmas:
             for i,k in enumerate(self._mixture_components):
                 if sigmas.has_key(k):
                     sigma = sigmas[k]**0.5
                     dw_k = np.random.normal(0.0,sigma,self._n_meas_times)
+                    n_sig[i,:] = np.random.normal(0.0,sigma,self._n_meas_times)
                     w[i,:] = np.cumsum(dw_k)
 
         # this addition is not efficient but it can be changed later
         for i,t in enumerate(self._meas_times):
             for j,k in enumerate(self._mixture_components):
-                c_noise_results.append(Z_var[t,k].value+ w[j,i])
+                #c_noise_results.append(Z_var[t,k].value+ w[j,i])
+                c_noise_results.append(Z_var[t,k].value+ n_sig[j,i])
 
         c_noise_array = np.array(c_noise_results).reshape((self._n_meas_times,self._n_components))
         results.C = pd.DataFrame(data=c_noise_array,
@@ -327,6 +332,17 @@ class PyomoSimulator(Simulator):
             results.D = pd.DataFrame(data=d_array,
                                      columns=self._meas_lambdas,
                                      index=self._meas_times)
+            
+            s_data_dict = dict()
+            for t in self._meas_times:
+                for l in self._meas_lambdas:
+                    s_data_dict[t,l] = float(results.D[l][t])
+
+            self.model.D = Param(self._meas_times,
+                                 self._meas_lambdas,
+                                 initialize = s_data_dict)
+
+            
             
         param_vals = dict()
         for name in self.model.parameter_names:

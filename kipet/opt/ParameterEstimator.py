@@ -9,20 +9,23 @@ import copy
 class ParameterEstimator(PyomoSimulator):
     def __init__(self,model):
         super(ParameterEstimator, self).__init__(model)
-
+        
+    def run_sim(self,solver,**kdws):
+        raise NotImplementedError("ParameterEstimator object does not have run_sim method. Call run_opt")       
+        
     def _solve_extended_model(self,
                               sigma_sq,
                               optimizer,
                               tee=False):
-
+        if not self._spectra_given:
+            raise NotImplementedError("Extended model requires spectral data model.D[ti,lj]")
+        
         keys = sigma_sq.keys()
         for k in self._mixture_components:
             if k not in keys:
-                print("WARNING: Variance of component {} not found. Default 1.0".format(k))
                 sigma_sq[k] = 1.0
 
         if not sigma_sq.has_key('device'):
-            print("WARNING: Variance of device not found. Default 1.0")
             sigma_sq['device'] = 1.0
             
         m = ConcreteModel()
@@ -55,22 +58,28 @@ class ParameterEstimator(PyomoSimulator):
         solver_results = optimizer.solve(m,tee=tee)
         m.del_component('dae')
     
-    def run_opt(self,solver,tee=False,solver_opts={},variances={}):
+    def run_opt(self,solver,**kwds):
 
-        if self._discretized is False:
-            raise RuntimeError('apply discretization first before runing simulation')
-
+        solver_opts = kwds.pop('solver_opts', dict())
+        variances = kwds.pop('variances',dict())
+        tee = kwds.pop('tee',False)
+    
+        if not self.model.time.get_discretization_info():
+            raise RuntimeError('apply discretization first before initializing')
+        
         # Look at the output in results
         opt = SolverFactory(solver)
 
         for key, val in solver_opts.iteritems():
             opt.options[key]=val                
 
-        self._solve_extended_model(variances,
-                                   opt,
-                                   tee=True)
+        active_objectives = [o for o in self.model.component_map(Objective,active=True)]
+        if active_objectives:
+            print("WARNING: The model has an active objective. Running optimization with models objective.\n To solve optimization with default objective (Weifengs) deactivate all objectives in the model.")
+            solver_results = opt.solve(self.model,tee=tee)
+        else:
+            self._solve_extended_model(variances,opt,tee=tee)
             
-        #solver_results = opt.solve(self.model,tee=tee)
         results = ResultsObject()
 
         results.load_from_pyomo_model(self.model,

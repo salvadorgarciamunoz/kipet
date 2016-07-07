@@ -20,22 +20,68 @@ class VarianceEstimator(PyomoSimulator):
                            bounds=(0.0,None),
                            initialize=1.0)
 
+        # initializes the s and c models
+        for k,v in self.model.S.iteritems():
+            self.S_model.S[k].value = v.value
+        for k,v in self.model.C.iteritems():
+            self.C_model.C[k].value = v.value
+
         # To pass scaling to the submodels
         self.C_model.scaling_factor = Suffix(direction=Suffix.EXPORT)
         self.S_model.scaling_factor = Suffix(direction=Suffix.EXPORT)
 
+        # add suffixes for warm start
+        
+        # Ipopt bound multipliers (obtained from solution)
+        self.model.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
+        self.model.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+        # Ipopt bound multipliers (sent to solver)
+        self.model.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
+        self.model.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
+        # Obtain dual solutions from first solve and send to warm start
+        self.model.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
+
+
+        self.C_model.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
+        self.C_model.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+        # Ipopt bound multipliers (sent to solver)
+        self.C_model.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
+        self.C_model.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
+        # Obtain dual solutions from first solve and send to warm start
+        self.C_model.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
+
+        self.S_model.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
+        self.S_model.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+        # Ipopt bound multipliers (sent to solver)
+        self.S_model.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
+        self.S_model.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
+        # Obtain dual solutions from first solve and send to warm start
+        self.S_model.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
+        
+        
         self._tmp1 = "tmp_init"
         self._tmp2 = "tmp_solve_Z"
         self._tmp3 = "tmp_solve_S"
         self._tmp4 = "tmp_solve_C"
 
-    def __del__(self):
-        os.remove(self._tmp1)
-        os.remove(self._tmp2)
-        os.remove(self._tmp3)
-        os.remove(self._tmp4)
+        f = open(self._tmp2,"w")
+        f.close()
+        f = open(self._tmp3,"w")
+        f.close()
+        f = open(self._tmp4,"w")
+        f.close()
+
+        self._profile_time = True
         
-    def run_sim(self,solver,tee=False,solver_opts={}):
+    def __del__(self):
+        if os.path.exists(self._tmp2):
+            os.remove(self._tmp2)
+        if os.path.exists(self._tmp3):
+            os.remove(self._tmp3)
+        if os.path.exists(self._tmp4):
+            os.remove(self._tmp4)
+        
+    def run_sim(self,solver,**kwds):
         raise NotImplementedError("VarianceEstimator object does not have run_sim method. Call run_opt")
 
     def initialize_from_trajectory(self,variable_name,trajectories):
@@ -81,8 +127,8 @@ class VarianceEstimator(PyomoSimulator):
                 D_bar = sum(m.dae.Z[t,k]*m.dae.S[l,k] for k in m.dae.mixture_components)
                 obj+= (m.dae.D[t,l] - D_bar)**2
         m.objective = Objective(expr=obj)
-
-        solver_results = optimizer.solve(m,logfile=self._tmp1)
+        print("Initialization Problem")
+        solver_results = optimizer.solve(m, tee=True,report_timing=self._profile_time)
 
         for t in self._meas_times:
             for k in self._mixture_components:
@@ -117,8 +163,10 @@ class VarianceEstimator(PyomoSimulator):
                 obj+= x
 
         m.objective = Objective(expr=obj)
-
-        solver_results = optimizer.solve(m,logfile=self._tmp2)
+        if self._profile_time:
+            print('-----------------Solve_Z--------------------')
+        
+        solver_results = optimizer.solve(m,logfile=self._tmp2,report_timing=self._profile_time)
 
         if C_trajectory is not None:
             # unfixes all concentrations
@@ -147,7 +195,13 @@ class VarianceEstimator(PyomoSimulator):
                     
         self.S_model.objective = Objective(expr=obj)
 
-        solver_results = optimizer.solve(self.S_model,logfile=self._tmp3)
+        if self._profile_time:
+            print('-----------------Solve_S--------------------')
+            
+        solver_results = optimizer.solve(self.S_model,
+                                         logfile=self._tmp3,
+                                         report_timing=self._profile_time)
+        
         self.S_model.del_component('objective')
         
         #updates values in main model
@@ -174,7 +228,13 @@ class VarianceEstimator(PyomoSimulator):
                     
         self.C_model.objective = Objective(expr=obj)
 
-        solver_results = optimizer.solve(self.C_model,logfile=self._tmp4)
+        if self._profile_time:
+            print('-----------------Solve_C--------------------')
+            
+        solver_results = optimizer.solve(self.C_model,
+                                         logfile=self._tmp4,
+                                         report_timing=self._profile_time)
+        
         self.C_model.del_component('objective')
 
         for t in self._meas_times:
@@ -205,11 +265,6 @@ class VarianceEstimator(PyomoSimulator):
         f = open(filename, "a")
 
         f.write("\n#######################Iteration {}#######################\n".format(iteration))
-        if iteration==0:
-            tf = open(self._tmp1,'r')
-            f.write("\n#######################Initialization#######################\n")
-            f.write(tf.read())
-            tf.close()
         tf = open(self._tmp2,'r')
         f.write("\n#######################Solve Z#######################\n")
         f.write(tf.read())
@@ -218,20 +273,25 @@ class VarianceEstimator(PyomoSimulator):
         f.write("\n#######################Solve S#######################\n")
         f.write(tf.read())
         tf.close()
-
         tf = open(self._tmp4,'r')
         f.write("\n#######################Solve C#######################\n")
         f.write(tf.read())
+        tf.close()
         
         f.close()
     
-    def run_opt(self,solver,tee=False,solver_opts={},variances={}):
-        
-        Z_var = self.model.Z 
-        dZ_var = self.model.dZdt
+    def run_opt(self,solver,**kwds):
 
-        if self._discretized is False:
-            raise RuntimeError('apply discretization first before runing simulation')
+        solver_opts = kwds.pop('solver_opts', dict())
+        variances = kwds.pop('variances',dict())
+        tee = kwds.pop('tee',False)
+        norm_order = kwds.pop('norm',np.inf)
+        max_iter = kwds.pop('max_iter',400)
+        tol = kwds.pop('tolerance',1e-5)
+        A = kwds.pop('subset_lambdas',None)
+        
+        if not self.model.time.get_discretization_info():
+            raise RuntimeError('apply discretization first before initializing')
 
         # disable objectives of dae
         objectives_map = self.model.component_map(ctype=Objective,active=True)
@@ -242,12 +302,12 @@ class VarianceEstimator(PyomoSimulator):
         opt = SolverFactory(solver)
         for key, val in solver_opts.iteritems():
             opt.options[key]=val
-
-        print("Solving Variance estimation")
+        
         # solves formulation 18
-        self._solve_initalization(opt)
+        self._solve_initalization(opt,subset_lambdas=A)
         Z_i = np.array([v.value for v in self.model.Z.itervalues()])
 
+        print("Solving Variance estimation")
         # perfoms the fisrt iteration 
         self._solve_Z(opt)
         self._solve_S(opt)
@@ -258,23 +318,33 @@ class VarianceEstimator(PyomoSimulator):
         
         Z_i1 = np.array([v.value for v in self.model.Z.itervalues()])
 
-        # starts iterating
-        max_iter = 100
-        tol = 5e-10
-        norm_order = None
         diff = Z_i1-Z_i
         norm_diff = np.linalg.norm(diff,norm_order)
 
         print("{: >11} {: >16}".format('Iter','|Zi-Zi+1|'))
-        print("{: >10} {: >20}".format(0,norm_diff))
+        #print("{: >10} {: >20}".format(0,norm_diff))
         count=1
+        norm_diff=1
         while norm_diff>tol and count<max_iter:
-            Z_i = np.array([v.value for v in self.model.Z.itervalues()])
+            
+            if count>2:
+                self.model.ipopt_zL_in.update(self.model.ipopt_zL_out)
+                self.model.ipopt_zU_in.update(self.model.ipopt_zU_out)
+                self.C_model.ipopt_zL_in.update(self.C_model.ipopt_zL_out)
+                self.C_model.ipopt_zU_in.update(self.C_model.ipopt_zU_out)
+                self.S_model.ipopt_zL_in.update(self.S_model.ipopt_zL_out)
+                self.S_model.ipopt_zU_in.update(self.S_model.ipopt_zU_out)
+                opt.options['warm_start_init_point'] = 'yes'
+                opt.options['warm_start_bound_push'] = 1e-6
+                opt.options['warm_start_mult_bound_push'] = 1e-6
+                opt.options['mu_init'] = 1e-6
+            Z_i = Z_i1
             self._solve_Z(opt)
-            Z_i1 = np.array([v.value for v in self.model.Z.itervalues()])
-            norm_diff = np.linalg.norm(Z_i1-Z_i,norm_order)
             self._solve_S(opt)
             self._solve_C(opt)
+            Z_i1 = np.array([v.value for v in self.model.Z.itervalues()])
+            norm_diff = np.linalg.norm(Z_i1-Z_i,norm_order)
+
             print("{: >10} {: >20}".format(count,norm_diff))
             if tee:
                 self._log_iterations("iterations.log",count)
@@ -287,9 +357,9 @@ class VarianceEstimator(PyomoSimulator):
         res_lsq = self._solve_variances(results.S,results.Z)
         variance_dict = dict()
         for i,k in enumerate(self._mixture_components):
-            variance_dict[k] = res_lsq[0][i][0]
-
-        variance_dict['device'] = res_lsq[0][-1][0]
+            variance_dict[k] = abs(res_lsq[0][i][0])
+            
+        variance_dict['device'] = abs(res_lsq[0][-1][0])
         results.sigma_sq = variance_dict 
         param_vals = dict()
         for name in self.model.parameter_names:

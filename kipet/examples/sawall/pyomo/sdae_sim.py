@@ -73,7 +73,7 @@ if __name__ == "__main__":
     sigmas = {'device':0,
               'A':1e-4,
               'B':1e-5}
-    results_pyomo = simulator.run_sim('ipopt',tee=True,sigmas=sigmas, seed=123453256)
+    results_pyomo = simulator.run_sim('ipopt',tee=True,variances=sigmas, seed=123453256)
 
     if with_plots:
     # display concentration and absorbance results

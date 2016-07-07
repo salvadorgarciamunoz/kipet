@@ -2,7 +2,9 @@ from kipet.model.TemplateBuilder import *
 import pandas as pd
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d
+import numpy as np
 import matplotlib as cm
+
 
 def write_spectral_data_to_csv(filename,dataframe):
     dataframe.to_csv(filename)
@@ -149,3 +151,50 @@ def basic_pca(dataFrame,n=4):
         
 
     
+def gausian_single_peak(wl,alpha,beta,gamma):
+    return alpha*exp(-(wl-beta)**2/gamma)
+
+def absorbance(wl,alphas,betas,gammas):
+    return sum(gausian_single_peak(wl,alphas[i],betas[i],gammas[i]) for i in xrange(len(alphas)))
+
+def generate_absorbance_data(wl_span,parameters_dict):
+
+    components = parameters_dict.keys()
+    n_components = len(components)
+    n_lambdas = len(wl_span)
+    array = np.zeros((n_lambdas,n_components))
+    for i,l in enumerate(wl_span):
+        j = 0
+        for k,p in parameters_dict.iteritems():
+            alphas = p['alphas']
+            betas  = p['betas']
+            gammas = p['gammas']
+            array[i,j] = absorbance(l,alphas,betas,gammas)
+            j+=1
+
+    data_frame = pd.DataFrame(data=array,
+                              columns = components,
+                              index=wl_span)
+    return data_frame
+
+
+def generate_random_absorbance_data(wl_span,component_peaks,component_widths=None,seed=None):
+
+    np.random.seed(seed)
+    parameters_dict = dict()
+    min_l = min(wl_span)
+    max_l = max(wl_span)
+    #mean=1000.0
+    #sigma=1.5*mean
+    for k,n_peaks in component_peaks.iteritems():
+        params = dict()
+        if component_widths:
+            width = component_widths[k]
+        else:
+            width = 1000.0
+        params['alphas'] = np.random.uniform(0.1,4.0,n_peaks)
+        params['betas'] = np.random.uniform(min_l,max_l,n_peaks)
+        params['gammas'] = np.random.uniform(1.0,width,n_peaks)
+        parameters_dict[k] = params
+
+    return generate_absorbance_data(wl_span,parameters_dict)

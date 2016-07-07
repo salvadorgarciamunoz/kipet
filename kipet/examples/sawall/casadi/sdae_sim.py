@@ -69,7 +69,7 @@ if __name__ == "__main__":
     sigmas = {'device':0,
               'A':1e-4,
               'B':1e-5}
-    results_casadi = sim.run_sim("cvodes",sigmas=sigmas, seed=123453256)
+    results_casadi = sim.run_sim("cvodes",variances=sigmas, seed=123453256)
 
     if with_plots:
         # displary concentrations and absorbances results

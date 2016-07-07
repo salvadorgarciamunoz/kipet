@@ -27,7 +27,6 @@ class Simulator(object):
         self._n_meas_lambdas = len(self._meas_lambdas)
         self._n_components = len(self._mixture_components)
         self._n_complementary_states = len(self._complementary_states)
-        self._discretized = False
 
         if not self._mixture_components:
             raise RuntimeError('The model does not have any mixture components.\
@@ -39,7 +38,7 @@ class Simulator(object):
     def initialize_from_trajectory(self,trajectory_dictionary):
         raise NotImplementedError("Simulator abstract method. Call child class")
 
-    def run_sim(self,solver,tee=False,solver_opts={}):
+    def run_sim(self,solver,**kwds):
         raise NotImplementedError("Simulator abstract method. Call child class")
         
     def _solve_S_from_DC(self,C_dataFrame,tee=False):

@@ -106,7 +106,7 @@ if __name__ == "__main__":
 
     print "The estimated parameters are:"
     for k,v in results_pyomo.P.iteritems():
-        print k,v
+        print k,v.value
 
     tol =1e-4
     assert(abs(results_pyomo.P['k']-0.01)<tol)

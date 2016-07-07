@@ -31,8 +31,13 @@ class CasadiSimulator(Simulator):
     def initialize_from_trajectory(self,trajectory_dictionary):
         pass
 
-    def run_sim(self,solver,tee=False,solver_opts={},sigmas=None,seed=None):
+    def run_sim(self,solver,**kwds):
 
+        solver_opts = kwds.pop('solver_opts', dict())
+        sigmas = kwds.pop('variances',dict())
+        tee = kwds.pop('tee',False)
+        seed = kwds.pop('seed',None)
+        
         # adjusts the seed to reproduce results with noise
         np.random.seed(seed)
         
