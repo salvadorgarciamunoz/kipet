@@ -119,17 +119,26 @@ class PyomoSimulator(Simulator):
                     idx = find_nearest(trajectory_times,t)
                     t0 = trajectory_times[idx]
                     if t==t0:
-                        var[t,component].value = trajectories[component][t0]
+                        if not np.isnan(trajectories[component][t0]):
+                            var[t,component].value = trajectories[component][t0]
+                        else:
+                            var[t,component].value = None
                     else:
                         if t0==last_time:
-                            var[t,component].value = trajectories[component][t0]
+                            if not np.isnan(trajectories[component][t0]):
+                                var[t,component].value = trajectories[component][t0]
+                            else:
+                                var[t,component].value = None
                         else:
                             idx1 = idx+1
                             t1 = trajectory_times[idx1]
                             x_tuple = (t0,t1)
                             y_tuple = (trajectories[component][t0],trajectories[component][t1])
                             y = interpolate_linearly(t,x_tuple,y_tuple)
-                            var[t,component].value = y
+                            if not np.isnan(y):
+                                var[t,component].value = y
+                            else:
+                                var[t,component].value = None
 
     def scale_variables_from_trajectory(self,variable_name,trajectories):
         # time-invariant nominal scaling
@@ -237,7 +246,7 @@ class PyomoSimulator(Simulator):
             for name in active_objectives_names:
                 objectives_map[name].activate()
 
-
+                
         # retriving solutions to results object  
         results.load_from_pyomo_model(self.model,
                                       to_load=['Z','dZdt','X','dXdt'])
@@ -266,84 +275,48 @@ class PyomoSimulator(Simulator):
                                  columns=self._mixture_components,
                                  index=self._meas_times)
         
-        if self._spectra_given: 
+        s_results = []
+        for l in self._meas_lambdas:
+            for k in self._mixture_components:
+                s_results.append(self.model.S[l,k].value)
 
-            D_data = self.model.D
-            
-            if self._n_meas_times and self._n_meas_times<self._n_components:
-                raise RuntimeError('Not enough measurements num_meas>= num_components')
-
-            # solves over determined system
-            s_array = self._solve_S_from_DC(results.C,tee=tee)
-
-            d_results = []
-            for t in self._meas_times:
-                for l in self._meas_lambdas:
-                    d_results.append(D_data[t,l])
-            d_array = np.array(d_results).reshape((self._n_meas_times,self._n_meas_lambdas))
-                        
-            results.S = pd.DataFrame(data=s_array,
-                                     columns=self._mixture_components,
-                                     index=self._meas_lambdas)
-
-            results.D = pd.DataFrame(data=d_array,
-                                     columns=self._meas_lambdas,
-                                     index=self._meas_times)
-
-            for t in self.model.meas_times:
-                for k in self._mixture_components:
-                    self.model.C[t,k].value = results.C[k][t]
-
-            for l in self.model.meas_lambdas:
-                for k in self._mixture_components:
-                    self.model.S[l,k].value =  results.S[k][l]
-            
+        d_results = []
+        if sigmas:
+            sigma_d = sigmas.get('device')**0.5 if sigmas.has_key('device') else 0
         else:
-                    
-            s_results = []
-            for l in self._meas_lambdas:
-                for k in self._mixture_components:
-                    s_results.append(self.model.S[l,k].value)
-
-            d_results = []
-            if sigmas:
-                sigma_d = sigmas.get('device')**0.5 if sigmas.has_key('device') else 0
-            else:
-                sigma_d = 0
-            if s_results and c_noise_results:
-                for i,t in enumerate(self._meas_times):
-                    for j,l in enumerate(self._meas_lambdas):
-                        suma = 0.0
-                        for w,k in enumerate(self._mixture_components):
-                            C = c_noise_results[i*self._n_components+w]
-                            S = s_results[j*self._n_components+w]
-                            suma+= C*S
-                        if sigma_d:
-                            suma+= np.random.normal(0.0,sigma_d)
-                        d_results.append(suma)
+            sigma_d = 0
+        if s_results and c_noise_results:
+            for i,t in enumerate(self._meas_times):
+                for j,l in enumerate(self._meas_lambdas):
+                    suma = 0.0
+                    for w,k in enumerate(self._mixture_components):
+                        C = c_noise_results[i*self._n_components+w]
+                        S = s_results[j*self._n_components+w]
+                        suma+= C*S
+                    if sigma_d:
+                        suma+= np.random.normal(0.0,sigma_d)
+                    d_results.append(suma)
                     
             
-            s_array = np.array(s_results).reshape((self._n_meas_lambdas,self._n_components))
-            results.S = pd.DataFrame(data=s_array,
-                                     columns=self._mixture_components,
-                                     index=self._meas_lambdas)
+        s_array = np.array(s_results).reshape((self._n_meas_lambdas,self._n_components))
+        results.S = pd.DataFrame(data=s_array,
+                                 columns=self._mixture_components,
+                                 index=self._meas_lambdas)
                         
-            d_array = np.array(d_results).reshape((self._n_meas_times,self._n_meas_lambdas))
-            results.D = pd.DataFrame(data=d_array,
-                                     columns=self._meas_lambdas,
-                                     index=self._meas_times)
+        d_array = np.array(d_results).reshape((self._n_meas_times,self._n_meas_lambdas))
+        results.D = pd.DataFrame(data=d_array,
+                                 columns=self._meas_lambdas,
+                                 index=self._meas_times)
             
-            s_data_dict = dict()
-            for t in self._meas_times:
-                for l in self._meas_lambdas:
-                    s_data_dict[t,l] = float(results.D[l][t])
+        s_data_dict = dict()
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                s_data_dict[t,l] = float(results.D[l][t])
 
-            self.model.D = Param(self._meas_times,
-                                 self._meas_lambdas,
-                                 initialize = s_data_dict)
+        self.model.D = Param(self._meas_times,
+                             self._meas_lambdas,
+                             initialize = s_data_dict)
 
-            
-            
         param_vals = dict()
         for name in self.model.parameter_names:
             param_vals[name] = self.model.P[name].value

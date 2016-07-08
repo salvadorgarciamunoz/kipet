@@ -1,10 +1,10 @@
 from pyomo.environ import *
 from pyomo.dae import *
-from kipet.sim.PyomoSimulator import *
+from kipet.opt.Optimizer import *
 import copy
 import os
 
-class VarianceEstimator(PyomoSimulator):
+class VarianceEstimator(Optimizer):
     def __init__(self,model):
         super(VarianceEstimator, self).__init__(model)
 

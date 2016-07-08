@@ -1,12 +1,11 @@
 from pyomo.environ import *
 from pyomo.dae import *
-#from kipet.ResultsObject import *
-from kipet.sim.PyomoSimulator import *
+from kipet.opt.Optimizer import *
 from pyomo.core.base.expr import Expr_if
 
 import copy
 
-class ParameterEstimator(PyomoSimulator):
+class ParameterEstimator(Optimizer):
     def __init__(self,model):
         super(ParameterEstimator, self).__init__(model)
         
@@ -16,7 +15,8 @@ class ParameterEstimator(PyomoSimulator):
     def _solve_extended_model(self,
                               sigma_sq,
                               optimizer,
-                              tee=False):
+                              tee=False,
+                              with_d_vars=False):
         if not self._spectra_given:
             raise NotImplementedError("Extended model requires spectral data model.D[ti,lj]")
         
@@ -31,24 +31,26 @@ class ParameterEstimator(PyomoSimulator):
         m = ConcreteModel()
         m.add_component('dae',self.model)
 
-        # try
-        m.D_bar = Var(m.dae.meas_times,
-                      m.dae.meas_lambdas)
+        if with_d_vars:
+            m.D_bar = Var(m.dae.meas_times,
+                          m.dae.meas_lambdas)
 
-        def rule_D_bar(m,t,l):
-            return m.D_bar[t,l] == sum(m.dae.C[t,k]*m.dae.S[l,k] for k in m.dae.mixture_components)
-        m.D_bar_constraint = Constraint(m.dae.meas_times,
-                                        m.dae.meas_lambdas,
-                                        rule=rule_D_bar)
+            def rule_D_bar(m,t,l):
+                return m.D_bar[t,l] == sum(m.dae.C[t,k]*m.dae.S[l,k] for k in m.dae.mixture_components)
+            m.D_bar_constraint = Constraint(m.dae.meas_times,
+                                            m.dae.meas_lambdas,
+                                            rule=rule_D_bar)
 
         # estimation
         def rule_objective(m):
             expr = 0
             for t in m.dae.meas_times:
                 for l in m.dae.meas_lambdas:
-                    #D_bar = sum(m.dae.C[t,k]*m.dae.S[l,k] for k in m.dae.mixture_components)
-                    #expr+= (m.D[t,l] - D_bar)**2/(sigma_sq['device'])
-                    expr+= (m.dae.D[t,l] - m.D_bar[t,l])**2/(sigma_sq['device'])
+                    if with_d_vars:
+                        expr+= (m.dae.D[t,l] - m.D_bar[t,l])**2/(sigma_sq['device'])
+                    else:
+                        D_bar = sum(m.dae.C[t,k]*m.dae.S[l,k] for k in m.dae.mixture_components)
+                        expr+= (m.dae.D[t,l] - D_bar)**2/(sigma_sq['device'])
 
             for t in m.dae.meas_times:
                 expr += sum((m.dae.C[t,k]-m.dae.Z[t,k])**2/(sigma_sq[k]) for k in m.dae.mixture_components)
@@ -63,7 +65,8 @@ class ParameterEstimator(PyomoSimulator):
         solver_opts = kwds.pop('solver_opts', dict())
         variances = kwds.pop('variances',dict())
         tee = kwds.pop('tee',False)
-    
+        with_d_vars = kwds.pop('with_d_vars',False)
+        
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
         
@@ -78,7 +81,7 @@ class ParameterEstimator(PyomoSimulator):
             print("WARNING: The model has an active objective. Running optimization with models objective.\n To solve optimization with default objective (Weifengs) deactivate all objectives in the model.")
             solver_results = opt.solve(self.model,tee=tee)
         else:
-            self._solve_extended_model(variances,opt,tee=tee)
+            self._solve_extended_model(variances,opt,tee=tee,with_d_vars=with_d_vars)
             
         results = ResultsObject()
 

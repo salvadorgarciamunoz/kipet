@@ -41,29 +41,6 @@ if __name__ == "__main__":
     filename = os.path.join(dataDirectory,'Dij_sawall.txt')
     D_frame = read_spectral_data_from_txt(filename)
 
-    # create template model 
-    builder = TemplateBuilder()    
-    builder.add_mixture_component({'A':1,'B':0})
-    builder.add_parameter('k',0.01)
-    builder.add_spectral_data(D_frame)
-
-    # define explicit system of ODEs
-    def rule_odes(m,t):
-        exprs = dict()
-        exprs['A'] = -m.P['k']*m.Z[t,'A']
-        exprs['B'] = m.P['k']*m.Z[t,'A']
-        return exprs
-
-    builder.set_odes_rule(rule_odes)
-    
-    pyomo_sim_model = builder.create_pyomo_model(0.0,200.0)
-
-    simulator = PyomoSimulator(pyomo_sim_model)
-    # defines the discrete points wanted in the profiles (does not include measurement points)
-    simulator.apply_discretization('dae.collocation',nfe=100,ncp=1,scheme='LAGRANGE-RADAU')
-    # simulate
-    results_sim = simulator.run_sim('ipopt',tee=True)
-
     ##########################################################
     
     builder2 = TemplateBuilder()    
@@ -90,38 +67,35 @@ if __name__ == "__main__":
     optimizer.apply_discretization('dae.collocation',nfe=30,ncp=3,scheme='LAGRANGE-RADAU')
 
     # Provide good initial guess
-    optimizer.initialize_from_trajectory('Z',results_sim.Z)
-    optimizer.initialize_from_trajectory('S',results_sim.S)
-    optimizer.initialize_from_trajectory('C',results_sim.C)
+    
+    p_guess = {'k':0.1}
+    raw_results = optimizer.run_lsq_given_P('ipopt',p_guess,tee=False)
+    
+    optimizer.initialize_from_trajectory('Z',raw_results.Z)
+    optimizer.initialize_from_trajectory('S',raw_results.S)
+    optimizer.initialize_from_trajectory('C',raw_results.C)
 
     # dont push bounds i am giving you a good guess
-    solver_options = {'mu_init': 1e-10, 'bound_push':  1e-8}
-    #solver_options = {'bound_relax_factor':0, 'bound_push':  1e-8}
-    # fixes the standard deaviations for now
-    sigmas = {'device':1,'A':1,'B':1}
+    solver_options = {}
+    #solver_options = {'mu_init': 1e-10, 'bound_push':  1e-8}
     results_pyomo = optimizer.run_opt('ipopt',
                                       tee=True,
-                                      solver_opts = solver_options,
-                                      variances=sigmas)
+                                      solver_opts = solver_options)
 
     print "The estimated parameters are:"
     for k,v in results_pyomo.P.iteritems():
-        print k,v.value
+        print k,v
 
     tol =1e-4
     assert(abs(results_pyomo.P['k']-0.01)<tol)
     # display results
     if with_plots:
         results_pyomo.C.plot.line(legend=True)
-        plt.plot(results_sim.C.index,results_sim.C['A'],'*',
-                 results_sim.C.index,results_sim.C['B'],'*')
         plt.xlabel("time (s)")
         plt.ylabel("Concentration (mol/L)")
         plt.title("Concentration Profile")
 
         results_pyomo.S.plot.line(legend=True)
-        plt.plot(results_sim.S.index,results_sim.S['A'],'*',
-                 results_sim.S.index,results_sim.S['B'],'*')
         plt.xlabel("Wavelength (cm)")
         plt.ylabel("Absorbance (L/(mol cm))")
         plt.title("Absorbance  Profile")

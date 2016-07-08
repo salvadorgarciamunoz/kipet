@@ -83,7 +83,7 @@ if __name__ == "__main__":
 
         # take a look at the data
         plot_spectral_data(results_casadi.D,dimension='3D')
-        plt.figure()
+        #plt.figure()
         # basic principal component analysis of the data
         #basic_pca(results_casadi.D,n=4)
         plt.show()
