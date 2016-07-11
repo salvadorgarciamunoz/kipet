@@ -67,15 +67,15 @@ if __name__ == "__main__":
     optimizer.apply_discretization('dae.collocation',nfe=30,ncp=3,scheme='LAGRANGE-RADAU')
 
     # Provide good initial guess
-    
-    p_guess = {'k':0.1}
+    """
+    p_guess = {'k':0.01}
     raw_results = optimizer.run_lsq_given_P('ipopt',p_guess,tee=False)
     
     optimizer.initialize_from_trajectory('Z',raw_results.Z)
     optimizer.initialize_from_trajectory('S',raw_results.S)
     optimizer.initialize_from_trajectory('C',raw_results.C)
-
-    # dont push bounds i am giving you a good guess
+    """
+    
     solver_options = {}
     #solver_options = {'mu_init': 1e-10, 'bound_push':  1e-8}
     results_pyomo = optimizer.run_opt('ipopt',
