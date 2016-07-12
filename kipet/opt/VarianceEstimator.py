@@ -625,8 +625,11 @@ class VarianceEstimator(Optimizer):
         sys.exit()
         """
         if tee:
-            self._log_iterations("iterations.log",0)
-        
+            filename = "iterations.log"
+            if os.path.isfile(filename):
+                os.remove(filename)
+            self._log_iterations(filename,0)
+            
         Z_i1 = np.array([v.value for v in self.model.Z.itervalues()])
 
         diff = Z_i1-Z_i

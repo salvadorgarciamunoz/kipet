@@ -59,7 +59,75 @@ class ParameterEstimator(Optimizer):
         
         solver_results = optimizer.solve(m,tee=tee)
         m.del_component('dae')
-    
+
+    def _compute_B_matrix(self,**kwds):
+        variances = kwds.pop('variances',dict())
+        
+        # add check for model already solved
+
+        # fixes variances that are not passed 
+        keys = variances.keys()
+        for k in self._mixture_components:
+            if k not in keys:
+                variances[k] = 1.0
+
+        if not variances.has_key('device'):
+            variances['device'] = 1.0
+
+        nt = self._n_meas_times
+        nw = self._n_meas_lambdas
+        nc = self._n_components
+        # this changes depending on the order of the suffixes passed to sipopt
+        self.B_matrix = np.zeros((nc*(nw*nt),nw*nt))
+        for i,t in enumerate(self.model.meas_times):
+            for j,l in enumerate(self.model.meas_lambdas):
+                for k,c in enumerate(self.model.mixture_components):
+                    r_idx1 = k*nt+i
+                    r_idx2 = k*nw+j+nc*nt
+                    c_idx = i+j*nt
+                    self.B_matrix[r_idx1,c_idx] = -2*self.model.S[l,c]/variances['device']
+                    self.B_matrix[r_idx2,c_idx] = -2*self.model.C[t,c]/variances['device']
+
+    def _compute_Vd_matrix(self,**kwds):
+        variances = kwds.pop('variances',dict())
+        
+        # add check for model already solved
+
+        # fixes variances that are not passed 
+        keys = variances.keys()
+        for k in self._mixture_components:
+            if k not in keys:
+                variances[k] = 0.0
+
+        if not variances.has_key('device'):
+            variances['device'] = 0.0
+
+        row =  []
+        col =  []
+        data = []
+        nt = self._n_meas_times
+        nw = self._n_meas_lambdas
+        nc = self._n_components
+        for i,t in enumerate(self.model.meas_times):
+            for j,l in enumerate(self.model.meas_lambdas):
+                for q,tt in enumerate(self.model.meas_times):
+                    for p,ll in enumerate(self.model.meas_lambdas):
+                        if i==q and j!=p:
+                            val = sum(variances[c]*self.model.S[l,c]*self.model.S[ll,c] for c in self.model.mixture_components)
+                            row.append(i*nw+j)
+                            col.append(q*nw+p)
+                            data.append(val)
+                        if i==q and j==p:
+                            val = sum(variances[c]*self.model.S[l,c]**2 for c in self.model.mixture_components)+variances['device']
+                            row.append(i*nw+j)
+                            col.append(q*nw+p)
+                            data.append(val)
+
+        nd = nt*nw
+        self.Vd_matrix = scipy.sparse.coo_matrix((data, (row, col)),
+                                                 shape=(nd,nd))
+                                
+
     def run_opt(self,solver,**kwds):
 
         solver_opts = kwds.pop('solver_opts', dict())
