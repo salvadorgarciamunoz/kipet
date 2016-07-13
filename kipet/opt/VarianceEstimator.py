@@ -101,7 +101,7 @@ class VarianceEstimator(Optimizer):
         self.flat_smodel.nt = self._n_meas_times
         self.flat_smodel.nl = self._n_meas_lambdas
         #self.flat_smodel.z = Param(self.flat_smodel.z_indices,mutable=True,initialize=1.1)
-        self.flat_smodel.z = Var(self.flat_smodel.z_indices,initialize=1.1)
+        self.flat_smodel.z = Var(self.flat_smodel.z_indices,initialize=1.0)
 
         # D_array
         self.flat_smodel.d_array = d_array = np.zeros((self._n_meas_times,self._n_meas_lambdas))
@@ -277,8 +277,8 @@ class VarianceEstimator(Optimizer):
                 
         for j,t in enumerate(self._meas_times):
             for k,c in enumerate(self._mixture_components):
-                self.flat_smodel.z[j*n+k].value = self.model.Z[t,c].value
-                self.flat_smodel.z[j*n+k].fixed = True
+                self.flat_smodel.z[j*n+k].setub(self.model.Z[t,c].value)
+                self.flat_smodel.z[j*n+k].setlb(self.model.Z[t,c].value)
                 
         if self._profile_time:
             print('-----------------Solve_S--------------------')
@@ -391,8 +391,8 @@ class VarianceEstimator(Optimizer):
 
         for j,l in enumerate(self._meas_lambdas):
             for k,c in enumerate(self._mixture_components):
-                self.flat_cmodel.s[j*n+k] = self.model.S[l,c].value
-                self.flat_cmodel.s[j*n+k].fixed = True
+                self.flat_cmodel.s[j*n+k].setlb(self.model.S[l,c].value)
+                self.flat_cmodel.s[j*n+k].setub(self.model.S[l,c].value)
                 
         if self._profile_time:
             print('-----------------Solve_C--------------------')
@@ -561,33 +561,25 @@ class VarianceEstimator(Optimizer):
         Z_i = np.array([v.value for v in self.model.Z.itervalues()])
 
         print("Solving Variance estimation")
-        # perfoms the fisrt iteration 
+        #perfoms the fisrt iteration 
         self._solve_Z(opt)
-        #self._solve_S(opt)
-        #self._solve_C(opt)        
+        #self._solve_flat_s(opt)
+        #self._solve_flat_c(opt)
         self._solve_s_scipy()
         self._solve_c_scipy()
-        #self._solve_flat_s(opt)        
-        #self._solve_flat_c(opt)
-        """
-        #self._solve_initalization(opt,subset_lambdas=A)
-        self._solve_Z(opt)
-        self._solve_flat_s(opt)
-        #self._solve_flat_c(opt)
-        #self._solve_s_scipy()
-        #self._solve_c_scipy()
         #self._solve_S(opt)
-        #self._solve_C(opt)
-        #print ""
-        #self.model.C.pprint()
-        #self.model.S.pprint()
-        """
+        #self._solve_C(opt))
+        
         
         """
-        count=103189
+        count=103189060359
+        first_count=count
+        dict_z = dict()
         n_z = len(self.flat_smodel.s)
         for v in self.flat_smodel.z.itervalues():
-            v.value=count
+            v.setlb(count)
+            v.setub(count)
+            dict_z["{}".format(count)]=1.0
             count+=1
             
         self.flat_smodel.write("junk.nl")
@@ -602,22 +594,19 @@ class VarianceEstimator(Optimizer):
         f = file('junk.nl', 'r')
         all_string = f.read()
         print n_z
-        end = all_string.find('x{}'.format(n_z))
-        start = all_string.find('common'.format(n_z))
-        subject = all_string[start:end]
+        start = all_string.find('{}'.format(first_count))
+        subject = all_string[start:]
         #print subject
         f.close()
                   
-        dict_z = dict()
         counter=0
-        second_dict = 
-        for v in self.flat_smodel.z.itervalues():
-            dict_z["n{}".format(v.value)]="np{}".format(counter)
+        for k,v in dict_z.iteritems():
+            dict_z[k]="np{}".format(counter)
             counter+=1
         
         subject2 = multiple_replace(subject,dict_z)
         f_out = file('second.nl', 'w')
-        f_out.write(all_string[:start]+subject2+all_string[end:])
+        f_out.write(all_string[:start]+subject2)
         f_out.close()
         
         t1 = time.time()

@@ -3,12 +3,32 @@ import casadi as ca
 
 
 class CasadiModel(object):
+    """Base casadi model class.
+
+    Attributes:
+
+        odes (dict): map from state name to SX expression
+        that represents the ordinary differential equation
+        
+        alg_exprs (dict): currently not used.  
+
+    """
     def __init__(self):
-        self.mass_balance_exprs = dict()
-        self.complementary_odes = dict()
+        self.odes = dict()
         self.alg_exprs = dict()
 
-class KinetCasadiStruct(object):
+class KipetCasadiStruct(object):
+    """Structure used for representing kipet casadi variables.
+
+    Attributes:
+
+        dummy_index (bool): flag to treat time indices similarly to pyomo 
+        
+        _true_indices (list): list of indices to access variables in the structure
+
+        _symbolics (dict): map of index to SX variable
+
+    """
     def __init__(self,name,list_index,dummy_index=False):
         self._dummy_index = dummy_index
         self._true_indices = [i for i in list_index]

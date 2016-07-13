@@ -6,6 +6,12 @@ from pyomo.core.base.expr import Expr_if
 import copy
 
 class ParameterEstimator(Optimizer):
+    """Optimizer for parameter estimation.
+
+    Attributes:
+        model (model): Pyomo model.
+
+    """
     def __init__(self,model):
         super(ParameterEstimator, self).__init__(model)
         
@@ -17,9 +23,28 @@ class ParameterEstimator(Optimizer):
                               optimizer,
                               tee=False,
                               with_d_vars=False):
+
+        """Solves estimation based on spectral data.
+
+           This method is not intended to be used by users directly
+        Args:
+            sigma_sq (dict): variances 
+            
+            optimizer (SolverFactory): Pyomo Solver factory object
+        
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+
+            with_d_vars (bool,optional): flag to the optimizer whether to add 
+            variables and constraints for D_bar(i,j)
+        
+        Returns:
+            None
+        """
+        
         if not self._spectra_given:
             raise NotImplementedError("Extended model requires spectral data model.D[ti,lj]")
-        
+
         keys = sigma_sq.keys()
         for k in self._mixture_components:
             if k not in keys:
@@ -28,39 +53,48 @@ class ParameterEstimator(Optimizer):
         if not sigma_sq.has_key('device'):
             sigma_sq['device'] = 1.0
             
-        m = ConcreteModel()
-        m.add_component('dae',self.model)
+        m = self.model
 
         if with_d_vars:
-            m.D_bar = Var(m.dae.meas_times,
-                          m.dae.meas_lambdas)
+            m.D_bar = Var(m.meas_times,
+                          m.meas_lambdas)
 
             def rule_D_bar(m,t,l):
-                return m.D_bar[t,l] == sum(m.dae.C[t,k]*m.dae.S[l,k] for k in m.dae.mixture_components)
-            m.D_bar_constraint = Constraint(m.dae.meas_times,
-                                            m.dae.meas_lambdas,
+                return m.D_bar[t,l] == sum(m.C[t,k]*m.S[l,k] for k in m.mixture_components)
+            m.D_bar_constraint = Constraint(m.meas_times,
+                                            m.meas_lambdas,
                                             rule=rule_D_bar)
 
         # estimation
         def rule_objective(m):
             expr = 0
-            for t in m.dae.meas_times:
-                for l in m.dae.meas_lambdas:
+            for t in m.meas_times:
+                for l in m.meas_lambdas:
                     if with_d_vars:
-                        expr+= (m.dae.D[t,l] - m.D_bar[t,l])**2/(sigma_sq['device'])
+                        expr+= (m.D[t,l] - m.D_bar[t,l])**2/(sigma_sq['device'])
                     else:
-                        D_bar = sum(m.dae.C[t,k]*m.dae.S[l,k] for k in m.dae.mixture_components)
-                        expr+= (m.dae.D[t,l] - D_bar)**2/(sigma_sq['device'])
+                        D_bar = sum(m.C[t,k]*m.S[l,k] for k in m.mixture_components)
+                        expr+= (m.D[t,l] - D_bar)**2/(sigma_sq['device'])
 
-            for t in m.dae.meas_times:
-                expr += sum((m.dae.C[t,k]-m.dae.Z[t,k])**2/(sigma_sq[k]) for k in m.dae.mixture_components)
+            for t in m.meas_times:
+                expr += sum((m.C[t,k]-m.Z[t,k])**2/(sigma_sq[k]) for k in m.mixture_components)
             return expr
         m.objective = Objective(rule=rule_objective)
         
         solver_results = optimizer.solve(m,tee=tee)
-        m.del_component('dae')
+        m.del_component('objective')
 
     def _compute_B_matrix(self,**kwds):
+        """Builds B matrix for calculation of covariances
+
+           This method is not intended to be used by users directly
+
+        Args:
+            variances (dict,optional): variances 
+            
+        Returns:
+            None
+        """
         variances = kwds.pop('variances',dict())
         
         # add check for model already solved
@@ -89,6 +123,16 @@ class ParameterEstimator(Optimizer):
                     self.B_matrix[r_idx2,c_idx] = -2*self.model.C[t,c]/variances['device']
 
     def _compute_Vd_matrix(self,**kwds):
+        """Builds d covariance matrix
+
+           This method is not intended to be used by users directly
+
+        Args:
+            variances (dict,optional): variances 
+            
+        Returns:
+            None
+        """
         variances = kwds.pop('variances',dict())
         
         # add check for model already solved
@@ -130,6 +174,28 @@ class ParameterEstimator(Optimizer):
 
     def run_opt(self,solver,**kwds):
 
+        """ Solves parameter estimation problem.
+        
+        Args:
+            solver (str): name of the nonlinear solver to used
+          
+            solver_opts (dict, optional): options passed to the nonlinear solver
+        
+            variances (dict, optional): map of component name to noise variance. The
+            map also contains the device noise variance
+            
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+            
+            with_d_vars (bool,optional): flag to the optimizer whether to add 
+            variables and constraints for D_bar(i,j)
+
+        Returns:
+            Results object with loaded results
+
+        """
+
+        
         solver_opts = kwds.pop('solver_opts', dict())
         variances = kwds.pop('variances',dict())
         tee = kwds.pop('tee',False)

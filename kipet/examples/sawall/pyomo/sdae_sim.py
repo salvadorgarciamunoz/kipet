@@ -71,23 +71,29 @@ if __name__ == "__main__":
 
     # simulate
     sigmas = {'device':0,
-              'A':1e-4,
-              'B':1e-5}
+              'A':1e-8,
+              'B':1e-8}
     results_pyomo = simulator.run_sim('ipopt',tee=True,variances=sigmas, seed=123453256)
 
     if with_plots:
     # display concentration and absorbance results
         results_pyomo.C.plot.line(legend=True)
-        plt.xlabel("time (s)")
-        plt.ylabel("Concentration (mol/L)")
+        plt.xlabel("time")
+        plt.ylabel("Concentration")
         plt.title("Concentration Profile")
-
+        plt.savefig("portada2.png")
+        results_pyomo.S.plot.line(legend=True)
+        plt.xlabel("Wave length (s)")
+        plt.ylabel("Absorbance (mol/L)")
+        plt.title("Absorbance Profile")
+        plt.savefig("portada1.png")
         # take a look at the data
         plot_spectral_data(results_pyomo.D,dimension='3D')
+        plt.savefig("portada.png")
         #plt.figure()
         # basic principal component analysis of the data
         #basic_pca(results_pyomo.D,n=4)
-        plt.show()
+        #plt.show()
 
 
 

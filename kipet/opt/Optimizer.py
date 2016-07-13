@@ -6,7 +6,26 @@ import scipy
 import copy
 
 class Optimizer(PyomoSimulator):
+    """Base optimizer class.
+
+    Note:
+        This class is not intended to be used directly by users
+
+    Attributes:
+        model (model): Pyomo model.
+
+    """
     def __init__(self,model):
+        """Optimizer constructor.
+
+        Note: 
+            Makes a shallow copy to the model. Changes applied to 
+            the model within the simulator are applied to the original
+            model passed to the simulator
+
+        Args:
+            model (Pyomo model)
+        """
         super(Optimizer, self).__init__(model)
         
     def run_sim(self,solver,**kdws):
@@ -15,7 +34,16 @@ class Optimizer(PyomoSimulator):
     def run_opt(self,solver,**kwds):
         raise NotImplementedError("Optimizer abstract method. Call child class")
 
-    def _solve_S_from_DC(self,C_dataFrame,tee=False):    
+    def _solve_S_from_DC(self,C_dataFrame,tee=False):
+        """Solves a basic least squares problems with SVD.
+        
+        Args:
+            C_dataFrame (DataFrame) data frame with concentration values
+        
+        Returns:
+            DataFrame with estimated S_values 
+
+        """
         D_data = self.model.D
         if self._n_meas_lambdas:
             # build Dij vector
@@ -52,7 +80,26 @@ class Optimizer(PyomoSimulator):
         return s_shaped
 
     def run_lsq_given_P(self,solver,parameters,**kwds):
+        """Gives a raw estimate of S given kinetic parameters.
+        
+        Args:
+            solver (str): name of the nonlinear solver to used
+          
+            solver_opts (dict, optional): options passed to the nonlinear solver
+        
+            variances (dict, optional): map of component name to noise variance. The
+            map also contains the device noise variance
+            
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
 
+            initialization (bool, optional): flag indicating whether result should be 
+            loaded or not to the pyomo model
+        
+        Returns:
+            Results object with loaded results
+
+        """
         solver_opts = kwds.pop('solver_opts', dict())
         variances = kwds.pop('variances',dict())
         tee = kwds.pop('tee',False)

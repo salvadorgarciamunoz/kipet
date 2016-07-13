@@ -5,18 +5,50 @@ from Simulator import *
 import warnings
 
 class PyomoSimulator(Simulator):
+    """Simulator based on pyomo.dae discretization strategies.
+
+    Attributes:
+        model (Pyomo model)
+        
+        _times (array_like): array of times after discretization
+        
+        _n_times (int): number of discretized time points
+        
+        _ipopt_scaled (bool): flag that indicates if there are 
+        ipopt scaling factors specified 
+    """
+
     def __init__(self,model):
+        """Simulator constructor.
+
+        Note: 
+            Makes a shallow copy to the model. Changes applied to 
+            the model within the simulator are applied to the original
+            model passed to the simulator
+
+        Args:
+            model (Pyomo model)
+        """
         super(PyomoSimulator, self).__init__(model)
         self._times = sorted(self.model.time)
         self._n_times = len(self._times)
-        self._spectra_given = hasattr(self.model, 'D')
         self._ipopt_scaled = False
+        self._spectra_given = hasattr(self.model, 'D')
         # creates scaling factor suffix
         if not hasattr(self.model, 'scaling_factor'):
             self.model.scaling_factor = Suffix(direction=Suffix.EXPORT)
 
                 
     def apply_discretization(self,transformation,**kwargs):
+        """Discretizes the model.
+
+        Args:
+            transformation (str): TODO
+            same keywords as in pyomo.dae method
+        
+        Returns:
+            None
+        """
         if not self.model.time.get_discretization_info():
             discretizer = TransformationFactory(transformation)
             discretizer.apply_to(self.model,wrt=self.model.time,**kwargs)
@@ -28,8 +60,16 @@ class PyomoSimulator(Simulator):
             
     # initializes the trajectories to the initial conditions
     def _default_initialization(self):
+        """Initializes discreted variables model with initial condition values.
 
-        tol =1e-3
+           This method is not intended to be used by users directly
+        Args:
+            None
+        
+        Returns:
+            None
+        """
+        tol =1e-4
         z_init = []
         for t in self._times:
             for k in self._mixture_components:
@@ -76,6 +116,20 @@ class PyomoSimulator(Simulator):
         self.initialize_from_trajectory('X',x_init_panel)
         
     def initialize_from_trajectory(self,variable_name,trajectories):
+        """Initializes discretized points with values from trajectories.
+
+        Args:
+            variable_name (str): Name of the variable in pyomo model
+            
+            trajectories (DataFrame or Series): Indexed in in the same way the pyomo 
+            variable is indexed. If the variable is by two sets then the first set is
+            the indices of the data frame, the second set is the columns
+
+        Returns:
+            None
+
+        """
+
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
         
@@ -141,8 +195,23 @@ class PyomoSimulator(Simulator):
                                 var[t,component].value = None
 
     def scale_variables_from_trajectory(self,variable_name,trajectories):
+        """Scales discretized variables with maximum value of the trajectory.
+
+        Note:
+            This method only works with ipopt
+
+        Args:
+            variable_name (str): Name of the variable in pyomo model
+            
+            trajectories (DataFrame or Series): Indexed in in the same way the pyomo 
+            variable is indexed. If the variable is by two sets then the first set is
+            the indices of the data frame, the second set is the columns
+
+        Returns:
+            None
+
+        """
         # time-invariant nominal scaling
-        # this method works only with ipopt
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before runing simulation')
         
@@ -191,10 +260,31 @@ class PyomoSimulator(Simulator):
         self._ipopt_scaled = True
             
     def validate(self):
+        """Validates model before passing to solver.
+        
+        Note:
+            TODO
+        """
         pass
         
     def run_sim(self,solver,**kwds):
+        """ Runs simulation by solving nonlinear system with ipopt
 
+        Args:
+            solver (str): name of the nonlinear solver to used
+
+            solver_opts (dict, optional): Options passed to the nonlinear solver
+            
+            variances (dict, optional): Map of component name to noise variance. The
+            map also contains the device noise variance
+            
+            tee (bool,optional): flag to tell the simulator whether to stream output
+            to the terminal or not
+                    
+        Returns:
+            None
+
+        """
         solver_opts = kwds.pop('solver_opts', dict())
         sigmas = kwds.pop('variances',dict())
         tee = kwds.pop('tee',False)

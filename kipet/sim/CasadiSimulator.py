@@ -6,7 +6,25 @@ import copy
 
 
 class CasadiSimulator(Simulator):
+    """Simulator based on pyomo.dae discretization strategies.
+
+    Attributes:
+        model (Casadi model)
+        
+        _times (array_like): array of times after discretization
+        
+        _n_times (int): number of discretized time points
+        
+        nfe (int): number of finite element points to split the time
+        horizon. The simulator will return the solution in those points
+    """
+    
     def __init__(self,model):
+        """Simulator constructor.
+
+        Args:
+            model (Casadi model)
+        """
         super(CasadiSimulator, self).__init__(model)
         self.nfe = None
         self._times = set([t for t in model.meas_times])
@@ -14,25 +32,49 @@ class CasadiSimulator(Simulator):
         self._spectra_given = hasattr(self.model, 'D')
         
     def apply_discretization(self,transformation,**kwargs):
+        """Defines discrete points to evaluate integrator.
+
+        Args:
+            transformation (str): TODO
+
+            **kwargs: Arbitrary keyword arguments
+            nfe (int): number of points to split the time domain
         
-        if kwargs.has_key('nfe'):
-            self.nfe = kwargs['nfe']
-            self.model.start_time
-            step = (self.model.end_time - self.model.start_time)/self.nfe
-            for i in xrange(0,self.nfe+1):
-                self._times.add(i*step)
+        Returns:
+            None
+        """
+        self.nfe = kwargs.pop('nfe',1)
+        self.model.start_time
+        step = (self.model.end_time - self.model.start_time)/self.nfe
+        for i in xrange(0,self.nfe+1):
+            self._times.add(i*step)
                 
-            self._n_times = len(self._times)
-            self._discretized = True
-        else:
-            raise RuntimeError('Specify discretization points nfe=int8')
-        
+        self._n_times = len(self._times)
+        self._discretized = True 
         
     def initialize_from_trajectory(self,trajectory_dictionary):
-        pass
+        raise NotImplementedError("CasadiSimulator does not support initialization")
 
     def run_sim(self,solver,**kwds):
+        """ Runs simulation by solving nonlinear system with ipopt
 
+        Args:
+            solver (str): name of the integrator to used (CVODES or IDAS)
+
+            **kwargs: Arbitrary keyword arguments
+            solver_opts (dict): Options passed to the integrator
+            
+            variances (dict): Map of component name to noise variance. The
+            map also contains the device noise variance
+            
+            tee (bool): flag to tell the simulator whether to stream output
+            to the terminal or not
+                    
+        Returns:
+            None
+
+        """
+        
         solver_opts = kwds.pop('solver_opts', dict())
         sigmas = kwds.pop('variances',dict())
         tee = kwds.pop('tee',False)

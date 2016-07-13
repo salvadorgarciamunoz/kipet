@@ -7,9 +7,31 @@ import matplotlib as cm
 
 
 def write_spectral_data_to_csv(filename,dataframe):
+    """ Write spectral data Dij to csv file.
+    
+        Args:
+            filename (str): name of output file
+          
+            dataframe (DataFrame): pandas DataFrame
+        
+        Returns:
+            None
+
+    """
     dataframe.to_csv(filename)
 
 def write_spectral_data_to_txt(filename,dataframe):
+    """ Write spectral data Dij to txt file.
+    
+        Args:
+            filename (str): name of output file
+          
+            dataframe (DataFrame): pandas DataFrame
+        
+        Returns:
+            None
+    
+    """
     f = open(filename,'w')
     for i in dataframe.index:
         for j in dataframe.columns:
@@ -17,9 +39,31 @@ def write_spectral_data_to_txt(filename,dataframe):
     f.close()
 
 def write_absorption_data_to_csv(filename,dataframe):
+    """ Write absorption data Sij to csv file.
+    
+        Args:
+            filename (str): name of output file
+          
+            dataframe (DataFrame): pandas DataFrame
+        
+        Returns:
+            None
+
+    """
     dataframe.to_csv(filename)
 
 def write_absorption_data_to_txt(filename,dataframe):
+    """ Write absorption data Sij to txt file.
+    
+        Args:
+            filename (str): name of output file
+          
+            dataframe (DataFrame): pandas DataFrame
+        
+        Returns:
+            None
+
+    """
     f = open(filename,'w')
     for i in dataframe.index:
         for j in dataframe.columns:
@@ -27,15 +71,43 @@ def write_absorption_data_to_txt(filename,dataframe):
     f.close()
     
 def read_spectral_data_from_csv(filename):
+    """ Reads csv with spectral data
+    
+        Args:
+            filename (str): name of input file
+         
+        Returns:
+            DataFrame
+
+    """
     data = pd.read_csv(filename,index_col=0)
     data.columns = [float(n) for n in data.columns]
     return data
 
 def read_absorption_data_from_csv(filename):
+    """ Reads csv with spectral data
+    
+        Args:
+            filename (str): name of input file
+          
+        Returns:
+            DataFrame
+
+    """
     data = pd.read_csv(filename,index_col=0)
     return data
 
 def read_spectral_data_from_txt(filename):
+    """ Reads txt with spectral data
+    
+        Args:
+            filename (str): name of input file
+          
+        Returns:
+            DataFrame
+
+    """
+
     f = open(filename,'r')
     data_dict = dict()
     set_index = set()
@@ -63,6 +135,16 @@ def read_spectral_data_from_txt(filename):
     return pd.DataFrame(data=data_array,columns=sorted_columns,index=sorted_index)
 
 def read_absorption_data_from_txt(filename):
+    """ Reads txt with absorption data
+    
+        Args:
+            filename (str): name of input file
+          
+        Returns:
+            DataFrame
+
+    """
+
     f = open(filename,'r')
     data_dict = dict()
     set_index = set()
@@ -91,7 +173,15 @@ def read_absorption_data_from_txt(filename):
 
 
 def plot_spectral_data(dataFrame,dimension='2D'):
+    """ Plots spectral data
+    
+        Args:
+            dataFrame (DataFrame): spectral data
+          
+        Returns:
+            None
 
+    """
     if dimension=='3D':
         lambdas = dataFrame.columns
         times = dataFrame.index
@@ -120,6 +210,18 @@ def plot_spectral_data(dataFrame,dimension='2D'):
 
 
 def basic_pca(dataFrame,n=4):
+    """ Runs basic component analysis based on SVD
+    
+        Args:
+            dataFrame (DataFrame): spectral data
+            
+            n (int, optional): number of largest singular-values
+            to plot
+
+        Returns:
+            None
+
+    """
     times = np.array(dataFrame.index)
     lambdas = np.array(dataFrame.columns)
     D = np.array(dataFrame)
@@ -152,13 +254,24 @@ def basic_pca(dataFrame,n=4):
 
     
 def gausian_single_peak(wl,alpha,beta,gamma):
+    """
+    helper function to generate absorption data based on 
+    lorentzian parameters
+    """
     return alpha*exp(-(wl-beta)**2/gamma)
 
 def absorbance(wl,alphas,betas,gammas):
+    """
+    helper function to generate absorption data based on 
+    lorentzian parameters
+    """
     return sum(gausian_single_peak(wl,alphas[i],betas[i],gammas[i]) for i in xrange(len(alphas)))
 
 def generate_absorbance_data(wl_span,parameters_dict):
-
+    """
+    helper function to generate absorption data based on 
+    lorentzian parameters
+    """
     components = parameters_dict.keys()
     n_components = len(components)
     n_lambdas = len(wl_span)

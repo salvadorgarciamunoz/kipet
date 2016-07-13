@@ -5,6 +5,7 @@ import numpy as np
 import math
 import scipy
 
+# need to move this two functions to utils
 def find_nearest(array,value):
     idx = np.searchsorted(array, value, side="left")
     if idx == len(array) or math.fabs(value - array[idx-1]) < math.fabs(value - array[idx]):
@@ -17,8 +18,22 @@ def interpolate_linearly(x,x_tuple,y_tuple):
     return y_tuple[0]+m*(x-x_tuple[0])
 
 class Simulator(object):
+    """Base simulator class.
+
+    Note:
+        This class is not intended to be used directly by users
+
+    Attributes:
+        model (model): Casadi or Pyomo model.
+
+    """
+
     def __init__(self,model):
         self.model = model
+
+        # make model atributes of the model global.
+        # Need to be remove, and just get things from the model directly
+
         self._mixture_components = [name for name in self.model.mixture_components]
         self._complementary_states = [name for name in self.model.complementary_states]
         self._meas_times = sorted([t for t in self.model.meas_times])

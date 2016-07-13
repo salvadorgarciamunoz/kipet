@@ -21,8 +21,40 @@ except ImportError:
 logger = logging.getLogger('ModelBuilderLogger')
 
 class TemplateBuilder(object):
-    
+    """Helper class for creation of models.
+
+    Attributes:
+        _component_names (set): container with names of components.
+        
+        _parameters (dict): map of parameter names to corresponding values
+        
+        _parameters_bounds (dict): map of parameter names to bounds tuple
+        
+        _init_conditions (dict): map of component/state name to its initial condition
+        
+        _spectal_data (DataFrame, optional): DataFrame with time indices and wavelength columns
+        
+        _absorption_data (DataFrame, optional): DataFrame with wavelength indices and component names columns
+        
+        _odes (Function): function specified by user to return dictionary with ODE expressions
+        
+        _meas_times (set, optional): container of measurement times
+        
+        _complementary_states (set,optional): container with additional states
+
+    """    
     def __init__(self,**kwargs):
+        """Template builder constructor
+
+        Args:
+            **kwargs: Arbitrary keyword arguments.
+            concentrations (dictionary): map of component name to initial condition
+            
+            parameters (dictionary): map of parameter name to its corresponding value
+            
+            extra_states (dictionary): map of state name to initial condition
+
+        """
         self._component_names = set()
         self._parameters = dict()
         self._parameters_bounds = dict()
@@ -33,37 +65,53 @@ class TemplateBuilder(object):
         self._meas_times = set()
         self._complementary_states = set()
 
-        if kwargs.has_key('concentrations'):
-            components = kwargs['concentrations']
-            if isinstance(components,dict):
-                for k,v in components.iteritems():
-                    self._component_names.add(k)
-                    self._init_conditions[k] = v
-            else:
-                raise RuntimeError('Extra states must be an dictionary state_name:init_condition')
+        components = kwargs.pop('concentrations',dict())
+        if isinstance(components,dict):
+            for k,v in components.iteritems():
+                self._component_names.add(k)
+                self._init_conditions[k] = v
+        else:
+            raise RuntimeError('concentrations must be an dictionary component_name:init_condition')
                 
-        if kwargs.has_key('parameters'):
-            
-            parameters = kwargs['parameters']
-            if isinstance(parameters,dict):
-                for k,v in parameters.iteritems():
-                    self._parameters[k] = v
-            elif isinstance(parameters,list):
-                for k in parameters:
-                    self._parameters[k] = None
-            else:
-                raise RuntimeError('parameters must be a dictionary parameter_name:value or a list with parameter_names')
+        parameters = kwargs.pop('parameters',dict())
+        if isinstance(parameters,dict):
+            for k,v in parameters.iteritems():
+                self._parameters[k] = v
+        elif isinstance(parameters,list):
+            for k in parameters:
+                self._parameters[k] = None
+        else:
+            raise RuntimeError('parameters must be a dictionary parameter_name:value or a list with parameter_names')
                     
-        if kwargs.has_key('extra_states'):
-            components = kwargs['extra_states']
-            if isinstance(components,dict):
-                for k,v in components.iteritems():
-                    self._component_names.add(k)
-                    self._init_conditions[k] = v
-            else:
-                raise RuntimeError('Extra states must be an dictionary state_name:init_condition')
+
+        components = kwargs.pop('extra_states',dict())
+        if isinstance(components,dict):
+            for k,v in components.iteritems():
+                self._component_names.add(k)
+                self._init_conditions[k] = v
+        else:
+            raise RuntimeError('Extra states must be an dictionary state_name:init_condition')
         
     def add_parameter(self,*args):
+        """Add a kinetic parameter(s) to the model.
+
+        Note:
+            Plan to change this method add parameters as PYOMO variables
+            
+            This method tries to mimic a template implmenetation. Depending 
+            on the argument type it will behave differently
+
+        Args:
+            param1 (str): Parameter name. Creates a variable parameter  
+            
+            param1 (list): Parameter names. Creates a list of variable parameters  
+            
+            param1 (dict): Map parameter name(s) to value(s). Creates a fixed parameter(s)
+
+        Returns:
+            None
+
+        """
         if len(args) == 1:
             name = args[0]
             if isinstance(name,six.string_types):
@@ -87,6 +135,26 @@ class TemplateBuilder(object):
             raise RuntimeError('Parameter argument not supported. Try str,val')
         
     def add_mixture_component(self,*args):
+        """Add a component (reactive or product) to the model.
+
+        This method will keep track of the number of components in the model
+        It will hel creating the Z,C and S variables. 
+
+        Note:
+            This method tries to mimic a template implmenetation. Depending 
+            on the argument type it will behave differently.
+
+        Args:
+            param1 (str): component name.   
+
+            param2 (float): initial concentration condition.   
+
+            param1 (dict): Map component name(s) to initial concentrations value(s).
+
+        Returns:
+            None
+
+        """
         if len(args) == 1:
             input = args[0]
             if isinstance(input,dict):
@@ -108,6 +176,21 @@ class TemplateBuilder(object):
             raise RuntimeError('Mixture component data not supported. Try str, float')
             
     def add_P_bounds(self,name,bounds):
+        """Add bounds to a variable parameter
+
+        Note:
+            These bounds are only taken into consideration with pyomo models. Casadi
+            models are only for simulation, thus parameters must be fixed
+
+        Args:
+            name (str): Parameter name. 
+
+            bounds (tuple): Parameter lower and upper bound (lb,ub).
+
+        Returns:
+            None
+
+        """
         if self._parameters.has_key(name):
             if isinstance(bounds,tuple):
                 self._parameters_bounds[name] = bounds
@@ -117,22 +200,73 @@ class TemplateBuilder(object):
             warnings.warn('The Model does not have parameter {}. Bounds not added'.format(name))
         
     def add_spectral_data(self,data):
+        """Add spectral data 
+
+        Args:
+            data (DataFrame): DataFrame with measurement times as 
+                              indices and wavelengths as columns. 
+
+        Returns:
+            None
+
+        """
         if isinstance(data,pd.DataFrame):
             self._spectral_data = data
         else:
             raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
         
     def add_absorption_data(self,data):
+        """Add absorption data 
+
+        Args:
+            data (DataFrame): DataFrame with wavelengths as 
+                              indices and muxture components as columns. 
+
+        Returns:
+            None
+
+        """
         if isinstance(data,pd.DataFrame):
             self._absorption_data = data
         else:
             raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
 
     def add_measurement_times(self,times):
+        """Add measurement times to the model 
+
+        Args:
+            times (array_like): measurement points 
+
+        Returns:
+            None
+
+        """
         for t in times:
             self._meas_times.add(t)
 
     def add_complementary_state_variable(self,*args):
+        """Add an extra state variable to the model.
+
+        This method add new state variables to the model. Extra or complementary states because 
+        concentrations are also state variables
+
+        Note:
+            This method tries to mimic a template implmenetation. Depending 
+            on the argument type it will behave differently
+
+            Planning on changing this method to add variables in a pyomo fashion
+
+        Args:
+            param1 (str): variable name   
+
+            param2 (float): initial condition   
+
+            param1 (dict): Map component name(s) to initial condition value(s)
+
+        Returns:
+            None
+
+        """
         if len(args) == 1:
             input = args[0]
             if isinstance(input,dict):
@@ -154,9 +288,35 @@ class TemplateBuilder(object):
             raise RuntimeError('Complementary state data not supported. Try str, float')
         
     def set_odes_rule(self,rule):
+        """Set the ode expressions.
+
+        Defines the ordinary differential equations that define the dynamics of the model
+        
+        Args:
+            rule (function): Python function that returns a dictionary   
+
+        Returns:
+            None
+
+        """
         self._odes = rule
 
     def _validate_data(self,model,start_time,end_time):
+        """Verify all inputs to the model make sense.
+
+        This method is not suppose to be use by users. Only for developers use
+
+        Args:
+            model (pyomo or casadi model): Model
+
+            start_time (float): initial time considered in the model
+
+            end_time (float): final time considered in the model
+
+        Returns:
+            None
+
+        """
         if not self._component_names:
             warnings.warn('The Model does not have any mixture components')
         else:
@@ -172,6 +332,19 @@ class TemplateBuilder(object):
                 raise RuntimeError('Need to add measumerement times') 
         
     def create_pyomo_model(self,start_time,end_time):
+        """Create a pyomo model.
+
+        This method is the core method for further simulation or optimization studies
+
+        Args:
+            start_time (float): initial time considered in the model
+
+            end_time (float): final time considered in the model
+
+        Returns:
+            Pyomo ConcreteModel
+
+        """
         # Model
         pyomo_model = ConcreteModel()
         
@@ -315,6 +488,19 @@ class TemplateBuilder(object):
         return pyomo_model
 
     def create_casadi_model(self,start_time,end_time):
+        """Create a casadi model.
+
+        Casadi models are for simulation purpuses mainly
+
+        Args:
+            start_time (float): initial time considered in the model
+
+            end_time (float): final time considered in the model
+
+        Returns:
+            CasadiModel
+
+        """
         if found_casadi:
         # Model
             casadi_model = CasadiModel()
@@ -353,11 +539,11 @@ class TemplateBuilder(object):
             casadi_model.meas_lambdas = m_lambdas
 
             # Variables                
-            casadi_model.Z = KinetCasadiStruct('Z',list(casadi_model.mixture_components),dummy_index=True)
-            casadi_model.X = KinetCasadiStruct('X',list(casadi_model.complementary_states),dummy_index=True)
-            casadi_model.P = KinetCasadiStruct('P',list(casadi_model.parameter_names))
-            casadi_model.C = KinetCasadiStruct('C',list(casadi_model.meas_times))
-            casadi_model.S = KinetCasadiStruct('S',list(casadi_model.meas_lambdas))
+            casadi_model.Z = KipetCasadiStruct('Z',list(casadi_model.mixture_components),dummy_index=True)
+            casadi_model.X = KipetCasadiStruct('X',list(casadi_model.complementary_states),dummy_index=True)
+            casadi_model.P = KipetCasadiStruct('P',list(casadi_model.parameter_names))
+            casadi_model.C = KipetCasadiStruct('C',list(casadi_model.meas_times))
+            casadi_model.S = KipetCasadiStruct('S',list(casadi_model.meas_lambdas))
 
             if self._parameters_bounds:
                 warnings.warn('Casadi_model do not take bounds on parameters. This is ignored in the integration')
@@ -389,8 +575,21 @@ class TemplateBuilder(object):
             return casadi_model
         else:
             raise RuntimeError('Install casadi to create casadi models')
-
+        
     def write_dat_file(self,filename,start_time,end_time,fixed_dict=None):
+        """Create data file for pyomo abstract model.
+
+        This method is being removed. Dont see the need for abstract models
+
+        Args:
+            start_time (float): initial time considered in the model
+
+            end_time (float): final time considered in the model
+
+        Returns:
+            Pyomo ConcreteModel
+
+        """
         f = open(filename,'w')
         f.write('# abstract PyomoConcentrationModel.dat AMPL format\n')
         # Sets
