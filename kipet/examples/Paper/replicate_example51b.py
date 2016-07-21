@@ -61,6 +61,7 @@ if __name__ == "__main__":
     v_estimator.apply_discretization('dae.collocation',nfe=60,ncp=1,scheme='LAGRANGE-RADAU')
 
     # Provide good initial guess
+    
     p_guess = {'k1':0.5,'k2':0.2}
     raw_results = v_estimator.run_lsq_given_P('ipopt',p_guess,tee=False)
     
@@ -74,8 +75,8 @@ if __name__ == "__main__":
     results_variances = v_estimator.run_opt('ipopt',
                                             tee=True,
                                             solver_options=options,
-                                            tolerance=1e-9,
-                                            max_iter=40,
+                                            tolerance=1e-6,
+                                            max_iter=20,
                                             subset_lambdas=A_set)
 
     print "\nThe estimated variances are:\n"

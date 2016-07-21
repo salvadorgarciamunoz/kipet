@@ -247,6 +247,9 @@ htmlhelp_basename = 'kipetdoc'
 # -- Options for LaTeX output ---------------------------------------------
 
 latex_elements = {
+    'classoptions': ',oneside,openany',
+    'babel': '\\usepackage[english]{babel}'
+    
      # The paper size ('letterpaper' or 'a4paper').
      #
      # 'papersize': 'letterpaper',

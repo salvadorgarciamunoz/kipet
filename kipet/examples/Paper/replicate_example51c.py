@@ -68,7 +68,7 @@ if __name__ == "__main__":
     v_estimator.apply_discretization('dae.collocation',nfe=30,ncp=2,scheme='LAGRANGE-RADAU')
 
     # Provide good initial guess
-    """
+    
     p_guess = {'k1':4.0,'k2':2.0}
     raw_results = v_estimator.run_lsq_given_P('ipopt',p_guess,tee=False)
 
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     v_estimator.initialize_from_trajectory('S',raw_results.S)
     v_estimator.initialize_from_trajectory('dZdt',raw_results.dZdt)
     v_estimator.initialize_from_trajectory('C',raw_results.C)
-    """
+    
     # dont push bounds i am giving you a good guess
     options = dict()
 
@@ -84,8 +84,8 @@ if __name__ == "__main__":
     results_variances = v_estimator.run_opt('ipopt',
                                             tee=True,
                                             solver_options=options,
-                                            tolerance=1e-6,
-                                            max_iter=30,
+                                            tolerance=1e-5,
+                                            max_iter=20,
                                             subset_lambdas=A_set)
 
     print "\nThe estimated variances are:\n"

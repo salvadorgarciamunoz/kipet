@@ -1,5 +1,5 @@
-Reference
-==============
+References
+==========
 
 .. [Hart2012] W.E. Hart, C. Laird, J.P. Watson, and D.L. Woodruff. Pyomo: Optimization Modeling in Python, volume 67. Springer Verlag, 2012.
 
