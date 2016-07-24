@@ -23,6 +23,32 @@ class ResultsObject(object):
         self.dZdt = None
         self.dXdt = None
 
+    def __str__(self):
+        string = "\nRESULTS\n"
+        if self.Z is not None:
+            string += "Z:\n {}\n\n".format(self.Z)
+        if self.C is not None:
+            string += "C:\n {}\n\n".format(self.C)
+        if self.S is not None:
+            string += "S:\n {}\n\n".format(self.S)
+        if self.X is not None:
+            string += "X:\n {}\n\n".format(self.X)
+        if self.dZdt is not None:
+            string += "dZdt:\n {}\n\n".format(self.dZdt)
+        if self.dXdt is not None:
+            string += "dXdt:\n {}\n\n".format(self.dXdt)
+        if self.P is not None:
+            string += "P:\n {}\n".format(self.P)
+        if self.sigma_sq is not None:
+            string += "Sigmas2:\n {}\n".format(self.sigma_sq)
+
+        return string
+
+    def compute_var_norm(self,variable_name,norm_type=np.inf):
+        var = getattr(self,variable_name)
+        var_array = np.array(var)
+        return np.linalg.norm(var_array,norm_type)
+        
     def load_from_pyomo_model(self,instance,to_load=[]):
 
         model_variables = set()

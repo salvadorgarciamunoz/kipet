@@ -85,7 +85,7 @@ if __name__ == "__main__":
                                             tee=True,
                                             solver_options=options,
                                             tolerance=1e-5,
-                                            max_iter=20,
+                                            max_iter=40,
                                             subset_lambdas=A_set)
 
     print "\nThe estimated variances are:\n"

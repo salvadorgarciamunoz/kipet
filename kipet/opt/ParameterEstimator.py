@@ -195,7 +195,6 @@ class ParameterEstimator(Optimizer):
 
         """
 
-        
         solver_opts = kwds.pop('solver_opts', dict())
         variances = kwds.pop('variances',dict())
         tee = kwds.pop('tee',False)
@@ -222,22 +221,8 @@ class ParameterEstimator(Optimizer):
         results.load_from_pyomo_model(self.model,
                                       to_load=['Z','dZdt','X','dXdt','C','S'])
             
-        # computes D from the estimated values
-        d_results = []
-        for i,t in enumerate(self._meas_times):
-            for j,l in enumerate(self._meas_lambdas):
-                suma = 0.0
-                for w,k in enumerate(self._mixture_components):
-                    C =  results.C[k][t]  
-                    S = results.S[k][l]
-                    suma+= C*S
-                d_results.append(suma)
-                    
-        d_array = np.array(d_results).reshape((self._n_meas_times,self._n_meas_lambdas))
-        results.D = pd.DataFrame(data=d_array,
-                                 columns=self._meas_lambdas,
-                                 index=self._meas_times)
-            
+        self.compute_D_given_SC(results)
+        
         param_vals = dict()
         for name in self.model.parameter_names:
             param_vals[name] = self.model.P[name].value

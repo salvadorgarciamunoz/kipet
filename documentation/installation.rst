@@ -30,7 +30,7 @@ Matplotlib, and CasADi.
 
 Python(x,y) can be downloaded from http://python-xy.github.io/.  
 
-RECOMENDED: Anaconda can be downloaded from https://store.continuum.io/cshop/anaconda/.
+Anaconda can be downloaded from https://store.continuum.io/cshop/anaconda/. (RECOMENDED)
 
 Python packages
 ^^^^^^^^^^^^^^^^^
@@ -53,7 +53,7 @@ Nonlinear solvers
 
 * IPOPT: used for solving the the NLP problems.
 
-Currently IPOPT is the only NLP solver tested with the package. For the installation instructions please refer to IPOPT_WEBSITE. It is recommended to compile IPOPT with the HSL linear solver. The examples and test problems are not guaranty to work properly with MUMPS.  
+Currently IPOPT is the only NLP solver tested with the package. For the installation instructions please refer to IPOPT_WEBSITE. It is recommended to compile IPOPT with the HSL linear solver. The examples and test problems have not been tested yet with other linear solvers besides HSL.  
 
 Optional dependencies
 -------------------------

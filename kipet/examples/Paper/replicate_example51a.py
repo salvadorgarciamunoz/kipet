@@ -68,7 +68,7 @@ if __name__ == "__main__":
     results_variances = v_estimator.run_opt('ipopt',
                                             tee=True,
                                             solver_options=options,
-                                            tolerance=1e-9,
+                                            tolerance=1e-6,
                                             max_iter=15,
                                             subset_lambdas=A_set)
 
@@ -77,7 +77,7 @@ if __name__ == "__main__":
         print k,v
         
     sigmas = results_variances.sigma_sq
-    
+
     #################################################################################
     opt_model = builder.create_pyomo_model(0.0,10.0)
 

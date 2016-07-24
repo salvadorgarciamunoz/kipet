@@ -59,6 +59,7 @@ if __name__ == "__main__":
     builder.add_absorption_data(S_frame)
     builder.add_measurement_times([i for i in range(0,50,10)])
     
+    write_absorption_data_to_txt('Sij_small.txt',S_frame)
     # define explicit system of ODEs
     def rule_odes(m,t):
         exprs = dict()

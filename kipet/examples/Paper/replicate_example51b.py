@@ -75,7 +75,7 @@ if __name__ == "__main__":
     results_variances = v_estimator.run_opt('ipopt',
                                             tee=True,
                                             solver_options=options,
-                                            tolerance=1e-6,
+                                            tolerance=1.0e-5,
                                             max_iter=20,
                                             subset_lambdas=A_set)
 
