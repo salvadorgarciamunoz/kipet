@@ -316,7 +316,7 @@ class TemplateBuilder(object):
                     raise RuntimeError('The number of mixture components needs to be the same'+
                                        'as the number of ode equations.\n Use set_odes_rule')
             else:
-                print('WARNING: differential expressions not specified. To specified by user after creating the model') 
+                print('WARNING: differential expressions not specified. Must be specified by user after creating the model') 
         if self._absorption_data is not None:
             if not self._meas_times:
                 raise RuntimeError('Need to add measumerement times') 
@@ -476,7 +476,7 @@ class TemplateBuilder(object):
             pyomo_model.odes = Constraint(pyomo_model.time,
                                          pyomo_model.states,
                                                    rule=rule_odes)
-            return pyomo_model
+        return pyomo_model
 
     def create_casadi_model(self,start_time,end_time):
         """Create a casadi model.
