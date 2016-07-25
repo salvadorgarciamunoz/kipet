@@ -44,25 +44,23 @@ if __name__ == "__main__":
     builder.add_mixture_component(components)
 
     # note the parameter is not fixed
-    builder.add_parameter('k1')
-    builder.add_parameter('k2')
-    builder.add_P_bounds('k1',(0.0,1.0))
-    builder.add_P_bounds('k2',(0.0,1.0))
+    builder.add_parameter('k1',bounds=(0.0,1.0))
+    builder.add_parameter('k2',bounds=(0.0,1.0))
     builder.add_spectral_data(D_frame)
 
     # define explicit system of ODEs
-    def rule_odes2(m,t):
+    def rule_odes(m,t):
         exprs = dict()
         exprs['A'] = -m.P['k1']*m.Z[t,'A']
         exprs['B'] = m.P['k1']*m.Z[t,'A']-m.P['k2']*m.Z[t,'B']
         exprs['C'] = m.P['k2']*m.Z[t,'B']
         return exprs
 
-    builder.set_odes_rule(rule_odes2)
+    builder.set_odes_rule(rule_odes)
 
-    pyomo_model2 = builder.create_pyomo_model(0.0,12.0)
+    pyomo_model = builder.create_pyomo_model(0.0,12.0)
         
-    optimizer = ParameterEstimator(pyomo_model2)
+    optimizer = ParameterEstimator(pyomo_model)
 
     optimizer.apply_discretization('dae.collocation',nfe=30,ncp=1,scheme='LAGRANGE-RADAU')
 

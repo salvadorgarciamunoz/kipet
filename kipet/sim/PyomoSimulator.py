@@ -34,7 +34,7 @@ class PyomoSimulator(Simulator):
         self._n_times = len(self._times)
         self._ipopt_scaled = False
         self._spectra_given = hasattr(self.model, 'D')
-        # creates scaling factor suffix
+        #creates scaling factor suffix
         if not hasattr(self.model, 'scaling_factor'):
             self.model.scaling_factor = Suffix(direction=Suffix.EXPORT)
 

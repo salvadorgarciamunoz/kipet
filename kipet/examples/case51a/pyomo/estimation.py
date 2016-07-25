@@ -44,10 +44,8 @@ if __name__ == "__main__":
     components = {'A':1e-3,'B':0,'C':0}
     builder.add_mixture_component(components)
     # note the parameter is not fixed
-    builder.add_parameter('k1')
-    builder.add_parameter('k2')
-    builder.add_P_bounds('k1',(0.0,5.0))
-    builder.add_P_bounds('k2',(0.0,1.0))
+    builder.add_parameter('k1',bounds=(0.0,5.0))
+    builder.add_parameter('k2',bounds=(0.0,1.0))
     builder.add_spectral_data(D_frame)
     
     # define explicit system of ODEs

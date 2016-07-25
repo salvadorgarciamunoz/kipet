@@ -85,13 +85,11 @@ if __name__ == "__main__":
     results_sim.S.plot.line()
     plt.show()
     
-    sys.exit()
     
     #################################################################################
     builder = TemplateBuilder()    
     builder.add_mixture_component(concentrations)
-    builder.add_parameter('k')
-    builder.add_P_bounds('k',(0.0,1.0))
+    builder.add_parameter('k',bounds=(0.0,1.0))
     builder.add_spectral_data(results_sim.D)
     builder.set_odes_rule(rule_odes)
     
@@ -115,14 +113,13 @@ if __name__ == "__main__":
     print "\nThe estimated variances are:\n"
     for k,v in results_variances.sigma_sq.iteritems():
         print k,v
-    sigmas = results_variances.sigma_sq
+    sigmas = {}#results_variances.sigma_sq
 
     #################################################################################
     
     builder = TemplateBuilder()    
     builder.add_mixture_component(concentrations)
-    builder.add_parameter('k')
-    builder.add_P_bounds('k',(0.0,10.0))
+    builder.add_parameter('k',bounds=(0.0,1.0))
     builder.add_spectral_data(results_sim.D)
     builder.set_odes_rule(rule_odes)
     

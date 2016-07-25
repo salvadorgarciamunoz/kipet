@@ -40,10 +40,8 @@ if __name__ == "__main__":
     builder = TemplateBuilder()    
     components = {'A':1.0,'B':0,'C':0}
     builder.add_mixture_component(components)
-    builder.add_parameter('k1')
-    builder.add_parameter('k2')
-    builder.add_P_bounds('k1',(0.0,1.0))
-    builder.add_P_bounds('k2',(0.0,1.0))
+    builder.add_parameter('k1',bounds=(0.0,1.0))
+    builder.add_parameter('k2',bounds=(0.0,1.0))
     builder.add_spectral_data(D_frame)
 
     # define explicit system of ODEs

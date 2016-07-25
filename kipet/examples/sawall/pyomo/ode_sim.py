@@ -18,7 +18,6 @@ import sys
 
 if __name__ == "__main__":
 
-
     
     with_plots = True
     if len(sys.argv)==2:

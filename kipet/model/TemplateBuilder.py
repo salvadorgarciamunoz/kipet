@@ -92,7 +92,7 @@ class TemplateBuilder(object):
         else:
             raise RuntimeError('Extra states must be an dictionary state_name:init_condition')
         
-    def add_parameter(self,*args):
+    def add_parameter(self,*args, **kwds):
         """Add a kinetic parameter(s) to the model.
 
         Note:
@@ -112,16 +112,30 @@ class TemplateBuilder(object):
             None
 
         """
+        bounds = kwds.pop('bounds', None)
+        
         if len(args) == 1:
             name = args[0]
             if isinstance(name,six.string_types):
                 self._parameters[name] = None
+                if bounds is not None:
+                    self._parameters_bounds[name] = bounds
             elif isinstance(name,list) or isinstance(name,set):
-                for n in name:
+                if bounds is not None:
+                    if len(bounds)!=len(name):
+                        raise RuntimeError('the list of bounds must be equal to the list of parameters')
+                for i,n in enumerate(name):
                     self._parameters[n] = None
+                    if bounds is not None:
+                        self._parameters_bounds[n] = bounds[i]
             elif isinstance(name,dict):
+                if bounds is not None:
+                    if len(bounds)!=len(name):
+                        raise RuntimeError('the list of bounds must be equal to the list of parameters')
                 for k,v in name.iteritems():
                     self._parameters[k] = v
+                    if bounds is not None:
+                        self._parameters_bounds[k] = bounds[k]
             else:
                 raise RuntimeError('Kinetic parameter data not supported. Try str')
         elif len(args) == 2:
@@ -175,30 +189,6 @@ class TemplateBuilder(object):
             print(len(args))
             raise RuntimeError('Mixture component data not supported. Try str, float')
             
-    def add_P_bounds(self,name,bounds):
-        """Add bounds to a variable parameter
-
-        Note:
-            These bounds are only taken into consideration with pyomo models. Casadi
-            models are only for simulation, thus parameters must be fixed
-
-        Args:
-            name (str): Parameter name. 
-
-            bounds (tuple): Parameter lower and upper bound (lb,ub).
-
-        Returns:
-            None
-
-        """
-        if self._parameters.has_key(name):
-            if isinstance(bounds,tuple):
-                self._parameters_bounds[name] = bounds
-            else:
-                raise RuntimeError('Bounds need to be a tuple. In not lb (None,ub))')
-        else:
-            warnings.warn('The Model does not have parameter {}. Bounds not added'.format(name))
-        
     def add_spectral_data(self,data):
         """Add spectral data 
 
@@ -326,7 +316,7 @@ class TemplateBuilder(object):
                     raise RuntimeError('The number of mixture components needs to be the same'+
                                        'as the number of ode equations.\n Use set_odes_rule')
             else:
-                raise RuntimeError('Need to set differential expressions set_odes_rule()') 
+                print('WARNING: differential expressions not specified. To specified by user after creating the model') 
         if self._absorption_data is not None:
             if not self._meas_times:
                 raise RuntimeError('Need to add measumerement times') 
@@ -407,9 +397,9 @@ class TemplateBuilder(object):
             pyomo_model.P[k].setub(ub)
         
         pyomo_model.C = Var(pyomo_model.meas_times,
-                                  pyomo_model.mixture_components,
-                                  bounds=(0.0,None),
-                                  initialize=1)
+                            pyomo_model.mixture_components,
+                            bounds=(0.0,None),
+                            initialize=1)
                 
         pyomo_model.X = Var(pyomo_model.time,
                             pyomo_model.complementary_states,
@@ -472,20 +462,21 @@ class TemplateBuilder(object):
         pyomo_model.init_conditions_c = \
             Constraint(pyomo_model.states,rule=rule_init_conditions)
 
-        def rule_odes(m,t,k):
-            exprs = self._odes(m,t)
-            if t == m.start_time.value:
-                return Constraint.Skip
-            else:
-                if k in m.mixture_components:
-                    return m.dZdt[t,k] == exprs[k]
+        if self._odes:
+            def rule_odes(m,t,k):
+                exprs = self._odes(m,t)
+                if t == m.start_time.value:
+                    return Constraint.Skip
                 else:
-                    return m.dXdt[t,k] == exprs[k]
-                    
-        pyomo_model.odes = Constraint(pyomo_model.time,
-                                     pyomo_model.states,
-                                               rule=rule_odes)
-        return pyomo_model
+                    if k in m.mixture_components:
+                        return m.dZdt[t,k] == exprs[k]
+                    else:
+                        return m.dXdt[t,k] == exprs[k]
+
+            pyomo_model.odes = Constraint(pyomo_model.time,
+                                         pyomo_model.states,
+                                                   rule=rule_odes)
+            return pyomo_model
 
     def create_casadi_model(self,start_time,end_time):
         """Create a casadi model.
@@ -571,7 +562,8 @@ class TemplateBuilder(object):
             # validate the model before writing constraints
             self._validate_data(casadi_model,start_time,end_time)
             # ignores the time indes t=0
-            casadi_model.odes = self._odes(casadi_model,0)
+            if self._odes:
+                casadi_model.odes = self._odes(casadi_model,0)
             return casadi_model
         else:
             raise RuntimeError('Install casadi to create casadi models')

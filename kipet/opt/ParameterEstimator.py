@@ -79,9 +79,14 @@ class ParameterEstimator(Optimizer):
             for t in m.meas_times:
                 expr += sum((m.C[t,k]-m.Z[t,k])**2/(sigma_sq[k]) for k in m.mixture_components)
             return expr
+
         m.objective = Objective(rule=rule_objective)
         
         solver_results = optimizer.solve(m,tee=tee)
+
+        if with_d_vars:
+            m.del_component('D_bar')
+            m.del_component('D_bar_constraint')
         m.del_component('objective')
 
     def _compute_B_matrix(self,**kwds):

@@ -47,8 +47,7 @@ if __name__ == "__main__":
     builder2.add_mixture_component({'A':1,'B':0})
 
     # note the parameter is not fixed
-    builder2.add_parameter('k')
-    builder2.add_P_bounds('k',(0.0,10.0))
+    builder2.add_parameter('k',bounds=(0.0,0.1))
     builder2.add_spectral_data(D_frame)
 
     # define explicit system of ODEs
@@ -77,7 +76,7 @@ if __name__ == "__main__":
     
     
     solver_options = {}
-    solver_options = {'mu_init': 1e-10, 'bound_push':  1e-8}
+    solver_options = {'mu_init': 1e-6, 'bound_push':  1e-8}
     results_pyomo = optimizer.run_opt('ipopt',
                                       tee=True,
                                       solver_opts = solver_options)
