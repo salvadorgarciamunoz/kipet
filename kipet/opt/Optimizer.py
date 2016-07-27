@@ -117,9 +117,10 @@ class Optimizer(PyomoSimulator):
         # fixes parameters 
         old_values = {}        
         for k,v in parameters.iteritems():
-            old_values[k] = self.model.P[k].value
-            self.model.P[k].value = v
-            self.model.P[k].fixed = True
+            if self.model.P[k].fixed ==False:
+                old_values[k] = self.model.P[k].value
+                self.model.P[k].value = v
+                self.model.P[k].fixed = True
 
         for k,v in self.model.P.iteritems():
             if v.fixed == False:

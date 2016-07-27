@@ -22,7 +22,8 @@ class ParameterEstimator(Optimizer):
                               sigma_sq,
                               optimizer,
                               tee=False,
-                              with_d_vars=False):
+                              with_d_vars=False,
+                              weights = [1.0,1.0]):
 
         """Solves estimation based on spectral data.
 
@@ -76,10 +77,14 @@ class ParameterEstimator(Optimizer):
                         D_bar = sum(m.C[t,k]*m.S[l,k] for k in m.mixture_components)
                         expr+= (m.D[t,l] - D_bar)**2/(sigma_sq['device'])
 
+            expr*=weights[0]
+            second_term = 0.0
             for t in m.meas_times:
-                expr += sum((m.C[t,k]-m.Z[t,k])**2/(sigma_sq[k]) for k in m.mixture_components)
-            return expr
+                second_term += sum((m.C[t,k]-m.Z[t,k])**2/(sigma_sq[k]) for k in m.mixture_components)
 
+            expr+=weights[1]*second_term
+            return expr
+        
         m.objective = Objective(rule=rule_objective)
         
         solver_results = optimizer.solve(m,tee=tee)

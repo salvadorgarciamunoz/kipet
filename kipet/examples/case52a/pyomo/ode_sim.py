@@ -27,25 +27,18 @@ if __name__ == "__main__":
             
     # create template model 
     builder = TemplateBuilder()
-    #components = {'A':220,'B':0.0,'C':3.161,'D':0}
-    components = {'A':220e-3,'C':3.161e-3,'D':0}
+    components = {'A':211.45e-3,'B':180.285e-3,'C':3.187e-3}
+    #components = {'A':220e-3,'C':3.161e-3,'D':0}
     builder.add_mixture_component(components)
     builder.add_parameter('k1',0.006655)
     
     # define explicit system of ODEs
     def rule_odes(m,t):
         exprs = dict()
-        exprs['A'] = -m.P['k1']*m.Z[t,'A']
-        #exprs['B'] = -m.P['k1']*m.Z[t,'A']
-        exprs['C'] = m.P['k1']*m.Z[t,'A']
-        exprs['D'] = m.P['k1']*m.Z[t,'A']
-        
-        """
         exprs['A'] = -m.P['k1']*m.Z[t,'A']*m.Z[t,'B']
         exprs['B'] = -m.P['k1']*m.Z[t,'A']*m.Z[t,'B']
         exprs['C'] = m.P['k1']*m.Z[t,'A']*m.Z[t,'B']
-        exprs['D'] = m.P['k1']*m.Z[t,'A']*m.Z[t,'B']
-        """
+        
         return exprs
 
     builder.set_odes_rule(rule_odes)

@@ -27,7 +27,7 @@ if __name__ == "__main__":
             
     # create template model 
     builder = TemplateBuilder()
-    components = {'A':0.22,'B':0.15,'C':0}
+    components = {'A':217.324e-3,'B':167.35e-3,'C':2.452e-3}
     builder.add_mixture_component(components)
     builder.add_parameter('k1',0.00539048)
     

@@ -153,21 +153,25 @@ class PyomoSimulator(Simulator):
 
         columns = trajectories.columns
 
+        to_initialize = list()
         if variable_name in ['Z','dZdt','S','C']:
             for component in columns:
                 if component not in self._mixture_components:
-                    raise RuntimeError('Mixture component {} is not in model mixture components'.format(component))
-
+                    print('WARNING: Mixture component {} is not in model complementary_states. initialization ignored'.format(component))
+                else:
+                    to_initialize.append(component)
+                
         if variable_name in ['X','dXdt']:
             for component in columns:
                 if component not in self._complementary_states:
-                    raise RuntimeError('State {} is not in model complementary_states'.format(component))
-
+                    print('WARNING: State {} is not in model complementary_states. initialization ignored'.format(component))
+                else:
+                    to_initialize.append(component)
         trajectory_times = np.array(trajectories.index)
         n_ttimes = len(trajectory_times)
         first_time = trajectory_times[0]
         last_time = trajectory_times[-1]
-        for component in columns:
+        for component in to_initialize:
             for t in inner_set:
                 if t>=first_time and t<=last_time:
                     idx = find_nearest(trajectory_times,t)

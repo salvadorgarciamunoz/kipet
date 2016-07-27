@@ -313,8 +313,8 @@ class TemplateBuilder(object):
             if self._odes:
                 dummy_balances = self._odes(model,start_time)
                 if len(self._component_names)+len(self._complementary_states)!=len(dummy_balances):
-                    raise RuntimeError('The number of mixture components needs to be the same'+
-                                       'as the number of ode equations.\n Use set_odes_rule')
+                    print('WARNING: The number of ODEs is not the same as the number of state variables.\n If this is the desired behavior, some of the variable trajectories must be fixed before simulation. ')
+                    
             else:
                 print('WARNING: differential expressions not specified. Must be specified by user after creating the model') 
         if self._absorption_data is not None:
@@ -469,9 +469,15 @@ class TemplateBuilder(object):
                     return Constraint.Skip
                 else:
                     if k in m.mixture_components:
-                        return m.dZdt[t,k] == exprs[k]
+                        if exprs.has_key(k):
+                            return m.dZdt[t,k] == exprs[k]
+                        else:
+                            return Constraint.Skip
                     else:
-                        return m.dXdt[t,k] == exprs[k]
+                        if exprs.has_key(k):
+                            return m.dXdt[t,k] == exprs[k]
+                        else:
+                            return Constraint.Skip
 
             pyomo_model.odes = Constraint(pyomo_model.time,
                                          pyomo_model.states,
@@ -564,6 +570,9 @@ class TemplateBuilder(object):
             # ignores the time indes t=0
             if self._odes:
                 casadi_model.odes = self._odes(casadi_model,0)
+                for k in casadi_model.states:
+                    if not casadi_model.odes.has_key(k):
+                        casadi_model.odes[k]=0.0
             return casadi_model
         else:
             raise RuntimeError('Install casadi to create casadi models')

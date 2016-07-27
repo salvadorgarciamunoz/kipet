@@ -52,7 +52,7 @@ class Simulator(object):
 
     def initialize_from_trajectory(self,trajectory_dictionary):
         raise NotImplementedError("Simulator abstract method. Call child class")
-
+    
     def run_sim(self,solver,**kwds):
         raise NotImplementedError("Simulator abstract method. Call child class")
 

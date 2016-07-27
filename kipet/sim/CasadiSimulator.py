@@ -30,6 +30,9 @@ class CasadiSimulator(Simulator):
         self._times = set([t for t in model.meas_times])
         self._n_times = len(self._times)
         self._spectra_given = hasattr(self.model, 'D')
+        self._fixed_variables = list()
+        self._fixed_trajectories = list()
+        self._fixed_variable_names = list()
         
     def apply_discretization(self,transformation,**kwargs):
         """Defines discrete points to evaluate integrator.
@@ -52,9 +55,39 @@ class CasadiSimulator(Simulator):
         self._n_times = len(self._times)
         self._discretized = True 
         
-    def initialize_from_trajectory(self,trajectory_dictionary):
+    def initialize_from_trajectory(self,variable_name,trajectories):
         raise NotImplementedError("CasadiSimulator does not support initialization")
 
+    def fix_from_trajectory(self,variable_name,variable_index,trajectories):
+
+        single_traj = trajectories[variable_index]
+        times_traj = np.array(single_traj.index)
+        last_time_idx = len(times_traj)-1
+        sim_times = sorted(self._times)
+        data = np.zeros(self._n_times)
+        for i,t in enumerate(sim_times):
+            idx_near = find_nearest(times_traj,t)
+            if idx_near==0 or idx_near==last_time_idx:
+                t_found = times_traj[idx_near]
+                data[i] = single_traj[t_found]
+            else:
+                idx_near1 = idx_near+1
+                t_found = times_traj[idx_near]
+                t_found1 = times_traj[idx_near1]
+                val = single_traj[t_found]
+                val1 = single_traj[t_found1]
+                x_tuple = (t_found,t_found1)
+                y_tuple = (val,val1)
+                data[i] = interpolate_linearly(t,x_tuple,y_tuple)
+
+        var = getattr(self.model,variable_name)
+        symbolic = var[variable_index]
+        self._fixed_variable_names.append((variable_name,variable_index))
+        self._fixed_variables.append(symbolic)
+        fixed_trajectory = pd.Series(data=data,index=sim_times)
+        self._fixed_trajectories.append(fixed_trajectory)
+        
+    
     def run_sim(self,solver,**kwds):
         """ Runs simulation by solving nonlinear system with ipopt
 
@@ -135,8 +168,6 @@ class CasadiSimulator(Simulator):
 
         results = ResultsObject()
 
-        fun_ode = ca.Function("odeFunc",[states],[ode])
-
         c_results =  []
         dc_results = []
 
@@ -146,6 +177,15 @@ class CasadiSimulator(Simulator):
         xk = x_0
         times = sorted(self._times)
         for i,t in enumerate(times):
+
+            sub_odes = ode
+            #print sub_odes
+            for s,var in enumerate(self._fixed_variables):
+                value = self._fixed_trajectories[s][t]
+                sub_odes = ca.substitute(sub_odes,var,value)
+            #print sub_odes
+            fun_ode = ca.Function("odeFunc",[states],[sub_odes])
+            
             if t == self.model.start_time:
                 odek = fun_ode(xk)
                 for j,w in enumerate(init_conditions_l):
@@ -189,6 +229,16 @@ class CasadiSimulator(Simulator):
         dx_array = np.array(dx_results).reshape((self._n_times,self._n_complementary_states))
         results.dXdt = pd.DataFrame(data=dx_array,columns=self._complementary_states,index=times)
 
+        # get the fixed series map in the results
+        for s,pair in enumerate(self._fixed_variable_names):
+            var_name = pair[0]
+            var_idx = pair[1]
+            var = getattr(results,var_name)
+            serie = var[var_idx]
+            fixed_serie = self._fixed_trajectories[s] 
+            for t in times:
+                serie[t] = fixed_serie[t] 
+        
         w = np.zeros((self._n_components,self._n_meas_times))
         # for the noise term
         if sigmas:

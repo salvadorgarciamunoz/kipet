@@ -44,8 +44,8 @@ if __name__ == "__main__":
     builder.add_mixture_component(components)
 
     # note the parameter is not fixed
-    builder.add_parameter('k1',(0.0,5.0))
-    builder.add_parameter('k2',(0.0,5.0))
+    builder.add_parameter('k1',bounds=(0.0,5.0))
+    builder.add_parameter('k2',bounds=(0.0,5.0))
     builder.add_spectral_data(D_frame)
 
     # define explicit system of ODEs
@@ -83,7 +83,7 @@ if __name__ == "__main__":
                                             tee=True,
                                             solver_options=options,
                                             tolerance=1e-5,
-                                            max_iter=40,
+                                            max_iter=200,
                                             subset_lambdas=A_set)
 
     print "\nThe estimated variances are:\n"

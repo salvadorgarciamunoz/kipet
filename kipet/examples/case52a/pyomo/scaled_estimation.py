@@ -36,16 +36,17 @@ if __name__ == "__main__":
     dataDirectory = os.path.abspath(
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
             inspect.currentframe() ) ) ), '..','..','data_sets'))
-    filename =  os.path.join(dataDirectory,'Dij_case52a.txt')
+    # filename =  os.path.join(dataDirectory,'Dij_case52a.txt')
+    filename =  os.path.join(dataDirectory,'trim_Dij_case52a.txt')
     D_frame = read_spectral_data_from_txt(filename)
     
     ######################################
     builder = TemplateBuilder()    
-    components = {'A':0.21,'B':0.21,'C':0.01}
+    components = {'A':211.45e-3,'B':180.285e-3,'C':3.187e-3}
     builder.add_mixture_component(components)
 
     # note the parameter is not fixed
-    builder.add_parameter('k1',bounds=(0.0,0.01))
+    builder.add_parameter('k1',bounds=(0.0,1.0))
     builder.add_spectral_data(D_frame)
 
     # define explicit system of ODEs
@@ -62,7 +63,7 @@ if __name__ == "__main__":
 
     optimizer = ParameterEstimator(pyomo_model2)
 
-    optimizer.apply_discretization('dae.collocation',nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
+    optimizer.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
 
     # Provide good initial guess
     p_guess = {'k1':0.006655}
@@ -81,17 +82,17 @@ if __name__ == "__main__":
     #CheckInstanceFeasibility(pyomo_model2, 1e-3)
     # dont push bounds i am giving you a good guess
     solver_options = dict()
-    solver_options['nlp_scaling_method'] = 'user-scaling'
+    #solver_options['nlp_scaling_method'] = 'user-scaling'
     #solver_options['bound_relax_factor'] = 0.0
     #solver_options['mu_init'] =  1e-4
-    #solver_options['bound_push'] = 1e-3
+    solver_options['bound_push'] = 1e-6
 
     # fixes the standard deaviations for now
-    sigmas = {'device':1.94554,
-              'A':2.45887e-1,
-              'B':2.45887e-1,
-              'C':3.1296e-10}
-    
+    sigmas = {'device':1.94554e-5,
+              'A':2.45887e-6,
+              'B':2.45887e-6,
+              'C':3.1296e-15}
+
     results_pyomo = optimizer.run_opt('ipopt',
                                       tee=True,
                                       solver_opts = solver_options,

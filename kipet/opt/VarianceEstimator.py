@@ -362,11 +362,13 @@ class VarianceEstimator(Optimizer):
                 for j in xrange(nl):
                     for k in xrange(nc):
                         row.append(i*nl+j)
-                        col.append(j*nc+k)
+                        col.append(i*nc+k)
                         data.append(-s_array[j*nc+k])
+
             return coo_matrix((data, (row, col)),
                               shape=(nt*nl,nc*nt))
 
+        
         # solve
         f = StringIO.StringIO()
         with stdout_redirector(f):
