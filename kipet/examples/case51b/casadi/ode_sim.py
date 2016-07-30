@@ -4,7 +4,7 @@
 #  Copyright (c) 2016 Eli Lilly.
 #  _________________________________________________________________________
 
-# Sample Problem 1 (From Sawall et.al.)
+# Sample Problem 
 # First example from WF paper simulation of ODE system using multistep-integrator
 #
 #		\frac{dZ_a}{dt} = -k_1*Z_a	                Z_a(0) = 1

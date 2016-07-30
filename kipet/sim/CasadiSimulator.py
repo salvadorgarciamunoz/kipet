@@ -85,6 +85,8 @@ class CasadiSimulator(Simulator):
         self._fixed_variable_names.append((variable_name,variable_index))
         self._fixed_variables.append(symbolic)
         fixed_trajectory = pd.Series(data=data,index=sim_times)
+        #for t in fixed_trajectory.index:
+        #    print t,'\t',fixed_trajectory[t]
         self._fixed_trajectories.append(fixed_trajectory)
         
     
@@ -161,8 +163,6 @@ class CasadiSimulator(Simulator):
         states = ca.vertcat(*states_l)
         ode = ca.vertcat(*ode_l)
         x_0 = ca.vertcat(*init_conditions_l)
-
-        system = {'x':states, 'ode':ode}
         
         step = (self.model.end_time - self.model.start_time)/self.nfe
 
@@ -173,19 +173,18 @@ class CasadiSimulator(Simulator):
 
         x_results =  []
         dx_results = []
-
+        
         xk = x_0
         times = sorted(self._times)
+        
         for i,t in enumerate(times):
 
             sub_odes = ode
-            #print sub_odes
             for s,var in enumerate(self._fixed_variables):
                 value = self._fixed_trajectories[s][t]
-                sub_odes = ca.substitute(sub_odes,var,value)
-            #print sub_odes
+                sub_odes = ca.substitute(sub_odes,var,float(value))
             fun_ode = ca.Function("odeFunc",[states],[sub_odes])
-            
+        
             if t == self.model.start_time:
                 odek = fun_ode(xk)
                 for j,w in enumerate(init_conditions_l):
@@ -198,9 +197,10 @@ class CasadiSimulator(Simulator):
             else:
                 step = t - times[i-1]
                 opts = {'tf':step,'print_stats':tee,'verbose':False}
+                system = {'t':self.model.t ,'x':states, 'ode':sub_odes}
                 I = integrator("I",solver, system, opts)
                 xk = I(x0=xk)['xf']
-
+                
                 # check for nan
                 for j in xrange(xk.numel()):
                     if np.isnan(float(xk[j])):

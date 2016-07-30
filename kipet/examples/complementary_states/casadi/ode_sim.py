@@ -4,8 +4,8 @@
 #  Copyright (c) 2016 Eli Lilly.
 #  _________________________________________________________________________
 
-# Sample Problem 2 
-# Simulation of ODE system using idas
+# Sample Problem  
+# Simulation of ODE system using CASADI and IDAS
 #
 #		\frac{dZ_a}{dt} = -k1(T)*Z_	           Z_a(0) = 1.0
 #		\frac{dZ_b}{dt} = 0.5*k1(T)*Z_a-k2(T)*Z_b  Z_b(0) = 0.0

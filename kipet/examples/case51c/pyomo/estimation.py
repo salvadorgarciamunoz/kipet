@@ -4,7 +4,9 @@
 #  Copyright (c) 2016 Eli Lilly.
 #  _________________________________________________________________________
 
-# Basic simulation of ODE with spectral data using pyomo discretization 
+
+# Sample Problem 
+# Estimation with known variances of spectral data using pyomo discretization 
 #
 #		\frac{dZ_a}{dt} = -k_1*Z_a*Z_b	                                Z_a(0) = 1
 #		\frac{dZ_b}{dt} = -k_1*Z_a*Z_b                   		Z_b(0) = 0.8

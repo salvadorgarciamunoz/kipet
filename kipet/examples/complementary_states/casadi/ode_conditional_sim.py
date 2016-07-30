@@ -46,7 +46,7 @@ if __name__ == "__main__":
         T2 = 1+(328.0-m.X[t,'T'])/((328.0-m.X[t,'T'])**2+1e-5**2)**0.5
         exprs = dict()
         exprs['A'] = r
-        exprs['B'] = 0.0
+        exprs['B'] = r
         exprs['C'] = -r
         exprs['T'] = T1+T2
 

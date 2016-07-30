@@ -1,17 +1,16 @@
-
 #  _________________________________________________________________________
 #
 #  Kipet: Kinetic parameter estimation toolkit
 #  Copyright (c) 2016 Eli Lilly.
 #  _________________________________________________________________________
 
-# Sample Problem 2 (From Sawall et.al.)
-# Basic simulation of ODE with spectral data using pyomo discretization 
+# Sample Problem 
+# Estimation with unknown variances of spectral data using pyomo discretization 
 #
-#		\frac{dZ_a}{dt} = -k*Z_a	Z_a(0) = 1
-#		\frac{dZ_b}{dt} = k*Z_a		Z_b(0) = 0
-#
-#               C_a(t_i) = Z_a(t_i) + w(t_i)    for all t_i in measurement points
+#		\frac{dZ_a}{dt} = -k_1*Z_a	                Z_a(0) = 1
+#		\frac{dZ_b}{dt} = k_1*Z_a - k_2*Z_b		Z_b(0) = 0
+#               \frac{dZ_c}{dt} = k_2*Z_b	                Z_c(0) = 0
+#               C_k(t_i) = Z_k(t_i) + w(t_i)    for all t_i in measurement points
 #               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
 
 from kipet.model.TemplateBuilder import *

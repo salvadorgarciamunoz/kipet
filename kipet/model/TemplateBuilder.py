@@ -536,12 +536,13 @@ class TemplateBuilder(object):
             casadi_model.meas_lambdas = m_lambdas
 
             # Variables                
+            casadi_model.t = ca.SX.sym("t")
             casadi_model.Z = KipetCasadiStruct('Z',list(casadi_model.mixture_components),dummy_index=True)
             casadi_model.X = KipetCasadiStruct('X',list(casadi_model.complementary_states),dummy_index=True)
             casadi_model.P = KipetCasadiStruct('P',list(casadi_model.parameter_names))
             casadi_model.C = KipetCasadiStruct('C',list(casadi_model.meas_times))
             casadi_model.S = KipetCasadiStruct('S',list(casadi_model.meas_lambdas))
-
+            
             if self._parameters_bounds:
                 warnings.warn('Casadi_model do not take bounds on parameters. This is ignored in the integration')
 

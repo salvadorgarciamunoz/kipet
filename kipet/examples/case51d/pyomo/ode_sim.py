@@ -13,6 +13,7 @@
 
 from kipet.model.TemplateBuilder import *
 from kipet.sim.PyomoSimulator import *
+from kipet.utils.data_tools import read_absorption_data_from_txt
 import matplotlib.pyplot as plt
 import sys
 
@@ -21,6 +22,9 @@ import sys
 import pickle
 
 if __name__ == "__main__":
+
+
+    fixed_traj = read_absorption_data_from_txt('extra_states.txt')
     
     # create template model 
     builder = TemplateBuilder()    
@@ -33,15 +37,7 @@ if __name__ == "__main__":
     components['HA'] = 0.0177                  # Acetic acid
     components['ASAA'] = 0.0                # Acetylsalicylic anhydride
     components['H2O'] = 0.0                 # water
-    """
-    components = dict()
-    components['SA'] = 0.0                  # Salicitilc acid
-    components['AA'] = 10.493               # Acetic anhydride
-    components['ASA'] = 0.0                 # Acetylsalicylic acid
-    components['HA'] = 0.0                  # Acetic acid
-    components['ASAA'] = 0.0                # Acetylsalicylic anhydride
-    components['H2O'] = 0.0                 # water
-    """
+
     builder.add_mixture_component(components)
 
     # add parameters
@@ -62,7 +58,7 @@ if __name__ == "__main__":
     extra_states['Msa'] = 9.537
     extra_states['V'] = 0.0202
     extra_states['T'] = 313
-    #extra_states['f'] = 0.0
+    extra_states['f'] = 0.0
     
     builder.add_complementary_state_variable(extra_states)
     
@@ -100,7 +96,7 @@ if __name__ == "__main__":
 
     
     def rule_rc(m,t):
-        C_sat = 0.000403961838576*m.X[t,'T']**2 - 0.002335673472454*m.X[t,'T']+0.428791235875747
+        C_sat = 0.000403961838576*(m.X[t,'T']-273.15)**2 - 0.002335673472454*(m.X[t,'T']-273.15)+0.428791235875747
         C_asa = m.Z[t,'ASA']
         rhs = 0.5*m.P['kc']**0.7462686567*(C_asa-C_sat+((C_asa-C_sat)**2+1e-6)**0.5)
         return m.rc[t] == 0.3950206559*m.P['kc']*(C_asa-C_sat+((C_asa-C_sat)**2+1e-6)**0.5)**1.34
@@ -186,16 +182,15 @@ if __name__ == "__main__":
     # defines the discrete points wanted in the concentration profile
     simulator.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
     
-    with open('init.pkl', 'rb') as f:
+    with open('init2.pkl', 'rb') as f:
         results_casadi = pickle.load(f)
     
     simulator.initialize_from_trajectory('Z',results_casadi.Z)
-    #simulator.initialize_from_trajectory('X',results_casadi.X)
+    #simulator.initialize_from_trajectory('X',fixed_traj)
     
     # fixes the flow
     #for t in model.time:
-    #    model.X[t,'f'].value = 0.0
-    #    model.X[t,'f'].fixed = 0.0
+    #    model.X[t,'f'].fixed = True
 
     options = {'halt_on_ampl_error' :'yes'}
     results_pyomo = simulator.run_sim('ipopt',

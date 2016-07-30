@@ -4,8 +4,8 @@
 #  Copyright (c) 2016 Eli Lilly.
 #  _________________________________________________________________________
 
-# Sample Problem 2 (From Sawall et.al.)
-# First example from WF paper simulation of ODE system using pyomo discretization and IPOPT
+# Sample Problem 
+# Example from WF paper simulation of ODE system using pyomo discretization and IPOPT
 #
 #		\frac{dZ_a}{dt} = -k_1*Z_a	                Z_a(0) = 1
 #		\frac{dZ_b}{dt} = k_1*Z_a - k_2*Z_b		Z_b(0) = 0

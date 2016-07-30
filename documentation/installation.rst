@@ -53,7 +53,19 @@ Nonlinear solvers
 
 * IPOPT: used for solving the the NLP problems.
 
-Currently IPOPT is the only NLP solver tested with the package. For the installation instructions please refer to IPOPT_WEBSITE. It is recommended to compile IPOPT with the HSL linear solver. The examples and test problems have not been tested yet with other linear solvers besides HSL.  
+Currently IPOPT is the only NLP solver tested with the package. For the installation instructions please refer to
+
+http://www.coin-or.org/Ipopt/documentation/node10.html
+
+It is recommended to compile IPOPT with the HSL linear solvers. The examples and test problems have not been tested yet with other linear solvers besides HSL. The HSL software can be found at
+
+http://hsl.rl.ac.uk/ipopt
+
+Additional information on how to install sIpopt can be found in
+
+https://projects.coin-or.org/Ipopt/wiki/sIpopt
+
+sIpopt is necessary for sensitivity analysis and for the computation of confidence intervals of the parameters estimated with kipet. 
 
 Optional dependencies
 -------------------------
@@ -62,4 +74,8 @@ The following python packages are optional for KIPET:
 
 * CasADi: used for interfacing with sundials integrators
 
-CasADi can be install by simply downloading the tarballs from CASADI_WEBSITE and copying them in the python path
+CasADi can be install by simply downloading the tarballs from
+
+https://github.com/casadi/casadi/wiki/InstallationInstructions
+
+Please download the binaries and copy them in the python path
