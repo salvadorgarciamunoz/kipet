@@ -1,6 +1,8 @@
 Code Documentation
 ==================
 
+This section describes all functions and classes implemented in kipet. The description gives a quick idea of the main inputs, outputs and options for  each particular function and class.
+
 Model Creation
 --------------
 .. automodule:: TemplateBuilder

@@ -38,7 +38,7 @@ if __name__ == "__main__":
     dataDirectory = os.path.abspath(
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
             inspect.currentframe() ) ) ), '..','..','data_sets'))
-    filename = os.path.join(dataDirectory,'Dij_sawall.txt')
+    filename = os.path.join(dataDirectory,'Dijsawall.txt')
     D_frame = read_spectral_data_from_txt(filename)
 
     ##########################################################
@@ -85,7 +85,7 @@ if __name__ == "__main__":
     for k,v in results_pyomo.P.iteritems():
         print k,v
 
-    tol =1e-4
+    tol =1e-3
     assert(abs(results_pyomo.P['k']-0.01)<tol)
     # display results
     if with_plots:

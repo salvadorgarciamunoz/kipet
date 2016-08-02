@@ -133,14 +133,15 @@ if __name__ == "__main__":
     assert(abs(results_pyomo.P['k2']-1.0)<tol)
 
     # display results
-    results_pyomo.C.plot.line(legend=True)
-    plt.xlabel("time (s)")
-    plt.ylabel("Concentration (mol/L)")
-    plt.title("Concentration Profile")
 
     results_pyomo.S.plot.line(legend=True)
     plt.xlabel("Wavelength (cm)")
     plt.ylabel("Absorbance (L/(mol cm))")
     plt.title("Absorbance  Profile")
+
+    results_pyomo.C.plot.line(legend=True)
+    plt.xlabel("time (s)")
+    plt.ylabel("Concentration (mol/L)")
+    plt.title("Concentration Profile")
     
     plt.show()

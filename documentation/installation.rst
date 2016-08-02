@@ -1,23 +1,23 @@
 Installation
 ======================================
 	
-KIPET can be built from source using an SSH or HTTPS protocol (**NOT COMPLETE** Repository should eventually be hosted at https://lilly/git/kipet.git)::
+Kipet can be built from source using an SSH or HTTPS protocol (**NOT COMPLETE** https://lilly/git/kipet.git)::
 
-	git clone https://lilly/git/kipet.git KIPET 
-	cd KIPET
+	git clone https://lilly/git/kipet.git kipet 
+	cd kipet
 	python setup.py install
 
-This commands will checkout the main source code of the python package and install it in the local python directory (or python environment if any is active). Developers can instead create a symbolic link by running the following commands::
+These commands will checkout the main source code of the python package and install it in the local python directory (or python environment if any is active). Developers can instead create a symbolic link by running the following commands::
 
-	git clone https://lilly/git/kipet.git KIPET 
-	cd KIPET
+	git clone https://lilly/git/kipet.git kipet 
+	cd kipet
 	python setup.py develop
 
 Before running any tests or examples users need to make sure all the required third party packages are install. Those packages are described below.
 	
 Requirements
 -------------
-Requirements for KIPET include Python 2.7 along with several Python packages. 
+Requirements for kipet include Python 2.7 along with several Python packages. 
 
 Python
 ^^^^^^^
@@ -25,7 +25,7 @@ Information on installing and using python can be found at
 https://www.python.org/.  Python distributions can also be used to manage 
 the Python interface.  Python distributions include Python(x,y) (for Windows) 
 and Anaconda (for Windows and Linux). These distributions include most of the 
-Python packages needed for KIPET, including Numpy, Scipy, Pandas, 
+Python packages needed for kipet, including Numpy, Scipy, Pandas, 
 Matplotlib, and CasADi. 
 
 Python(x,y) can be downloaded from http://python-xy.github.io/.  
@@ -34,7 +34,7 @@ Anaconda can be downloaded from https://store.continuum.io/cshop/anaconda/. (REC
 
 Python packages
 ^^^^^^^^^^^^^^^^^
-The following python packages are required for KIPET:
+The following python packages are required for kipet:
 
 * Numpy [vanderWalt2011]_: used to support large, multi-dimensional arrays and matrices, 
   http://www.numpy.org/
