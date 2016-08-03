@@ -7,7 +7,6 @@ from kipet.opt.Optimizer import *
 from scipy.optimize import least_squares
 from scipy.sparse import coo_matrix
 #import pyutilib.subprocess
-from contextlib import contextmanager
 import matplotlib.pylab as plt
 import subprocess
 import time
@@ -628,12 +627,3 @@ def compute_diff_results(results1,results2):
     return diff_results
 
     
-# for redirecting stdout to files
-@contextmanager
-def stdout_redirector(stream):
-    old_stdout = sys.stdout
-    sys.stdout = stream
-    try:
-        yield
-    finally:
-        sys.stdout = old_stdout

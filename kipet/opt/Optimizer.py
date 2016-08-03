@@ -2,8 +2,10 @@ from pyomo.environ import *
 from pyomo.dae import *
 from kipet.sim.ResultsObject import *
 from kipet.sim.PyomoSimulator import *
+from contextlib import contextmanager
 import scipy
 import copy
+import sys
 
 class Optimizer(PyomoSimulator):
     """Base optimizer class.
@@ -215,3 +217,13 @@ class Optimizer(PyomoSimulator):
                 self.initialize_from_trajectory('dXdt',base_values.dXdt)
         
         return results
+
+# for redirecting stdout to files
+@contextmanager
+def stdout_redirector(stream):
+    old_stdout = sys.stdout
+    sys.stdout = stream
+    try:
+        yield
+    finally:
+        sys.stdout = old_stdout
