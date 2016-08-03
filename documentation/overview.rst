@@ -26,6 +26,7 @@ In addition, for a better understanding of chemical reaction systems, we provide
 * Estimate variances of Noise
 * Estimate kinetic parameters
 * Estimate confidence intervals of the estimated parameters
+* Visualize results
 
 
 In the following sections of this document we give some guidelines on how to install and test the package. We also give a brief description of the third party software that is required to run kipet. We later show some basic examples where we show how to use the tools. Finally, we conclude with some references that provide more detail on the theory behind the numerical techniques implemented in kipet.
