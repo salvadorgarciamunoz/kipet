@@ -220,7 +220,10 @@ class ParameterEstimator(Optimizer):
         nd = nw*nt
         ntheta = nc*(nw+nt)
         V_param = V_theta[ntheta:ntheta+nparams,ntheta:ntheta+nparams]
-        print np.diag(V_param)
+        variances_p = np.diag(V_param)
+        print('\nConfindence intervals:')
+        for i,p in enumerate(self.model.P.values()):
+            print '{}{}{}'.format(p.cname(), p.value-variances_p[i]**0.5, p.value+variances_p[i]**0.5)
         return 1
     
     def _compute_B_matrix(self,variances,**kwds):

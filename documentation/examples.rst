@@ -31,3 +31,7 @@ Solving a variance and parameter estimation problem
    :width: 48%
 .. image:: figures/example4_2.png
    :width: 48%
+
+Parameter estimation and confidence interval
+----------------------------------------------------------------
+.. literalinclude:: ../kipet/examples/case51a/pyomo/sipopt/conf_interval_estimation.py
