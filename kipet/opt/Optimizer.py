@@ -167,7 +167,7 @@ class Optimizer(PyomoSimulator):
         # retriving solutions to results object  
         results = ResultsObject()
         results.load_from_pyomo_model(self.model,
-                                      to_load=['Z','dZdt','X','dXdt'])
+                                      to_load=['Z','dZdt','X','dXdt','Y'])
 
         c_array = np.zeros((self._n_meas_times,self._n_components))
         for i,t in enumerate(self._meas_times):

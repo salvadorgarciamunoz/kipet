@@ -14,8 +14,20 @@ class CasadiModel(object):
 
     """
     def __init__(self):
+        # has implicit t defined
+        self.t = ca.SX.sym("t")
         self.odes = dict()
-        self.alg_exprs = dict()
+        self.alg_exprs = list()
+
+    def pprint(self):
+        
+        print('\nDifferential expressions:')
+        for k,v in self.odes.iteritems():
+            print k,':',v
+
+        print('\nAlgebraic expressions:')
+        for v in self.alg_exprs:
+            print(v)
 
 class KipetCasadiStruct(object):
     """Structure used for representing kipet casadi variables.
@@ -55,3 +67,5 @@ class KipetCasadiStruct(object):
                 self._symbolics[index] = val
         else:
             self._symbolics[index] = val
+
+        

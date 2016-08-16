@@ -12,7 +12,8 @@ import numpy as np
 import imp
 try:
     imp.find_module('casadi')
-    from CasadiModel import *
+    from CasadiModel import CasadiModel
+    from CasadiModel import KipetCasadiStruct
     found_casadi=True
 except ImportError:
     found_casadi=False
@@ -64,7 +65,9 @@ class TemplateBuilder(object):
         self._odes = None
         self._meas_times = set()
         self._complementary_states = set()
-
+        self._algebraics = set()
+        self._algebraic_constraints = None
+        
         components = kwargs.pop('concentrations',dict())
         if isinstance(components,dict):
             for k,v in components.iteritems():
@@ -84,13 +87,18 @@ class TemplateBuilder(object):
             raise RuntimeError('parameters must be a dictionary parameter_name:value or a list with parameter_names')
                     
 
-        components = kwargs.pop('extra_states',dict())
-        if isinstance(components,dict):
-            for k,v in components.iteritems():
-                self._component_names.add(k)
+        extra_states = kwargs.pop('extra_states',dict())
+        if isinstance(extra_states,dict):
+            for k,v in extra_states.iteritems():
+                self._complementary_states.add(k)
                 self._init_conditions[k] = v
         else:
             raise RuntimeError('Extra states must be an dictionary state_name:init_condition')
+
+        algebraics = kwargs.pop('algebraics',set())
+        for y in algebraics:
+            self._algebraics.add(y)
+        
         
     def add_parameter(self,*args, **kwds):
         """Add a kinetic parameter(s) to the model.
@@ -276,6 +284,30 @@ class TemplateBuilder(object):
         else:
             print(len(args))
             raise RuntimeError('Complementary state data not supported. Try str, float')
+
+    def add_algebraic_variable(self,*args):
+        """Add an algebraic variable to the model
+            
+            This method tries to mimic a template implmenetation. Depending 
+            on the argument type it will behave differently
+
+        Args:
+            param1 (str): Variable name. Creates a variable parameter  
+            
+            param1 (list): Variable names. Creates a list of variable parameters  
+
+        Returns:
+            None
+
+        """
+        name = args[0]
+        if isinstance(name,six.string_types):
+            self._algebraics.add(name)
+        elif isinstance(name,list) or isinstance(name,set):
+            for y in name:
+                self._algebraics.add(y)
+        else:
+            raise RuntimeError('To add an algebraic please pass name')
         
     def set_odes_rule(self,rule):
         """Set the ode expressions.
@@ -291,6 +323,21 @@ class TemplateBuilder(object):
         """
         self._odes = rule
 
+    def set_algebraics_rule(self,rule):
+        """Set the algebraic expressions.
+
+        Defines the algebraic equations for the system
+        
+        Args:
+            rule (function): Python function that returns a list of tuples   
+
+        Returns:
+            None
+
+        """
+        self._algebraic_constraints = rule
+
+        
     def _validate_data(self,model,start_time,end_time):
         """Verify all inputs to the model make sense.
 
@@ -313,10 +360,19 @@ class TemplateBuilder(object):
             if self._odes:
                 dummy_balances = self._odes(model,start_time)
                 if len(self._component_names)+len(self._complementary_states)!=len(dummy_balances):
-                    print('WARNING: The number of ODEs is not the same as the number of state variables.\n If this is the desired behavior, some of the variable trajectories must be fixed before simulation. ')
+                    print('WARNING: The number of ODEs is not the same as the number of state variables.\n If this is the desired behavior, some odes must be added after the model is created.')
                     
             else:
                 print('WARNING: differential expressions not specified. Must be specified by user after creating the model') 
+
+        if self._algebraics:
+            if self._algebraic_constraints:
+                dummy_balances = self._algebraic_constraints(model,start_time)
+                if len(self._algebraics)!=len(dummy_balances):
+                    print('WARNING: The number of algebraic equations is not the same as the number of algebraic variables.\n If this is the desired behavior, some algebraics must be added after the model is created.')
+            else:
+                print('WARNING: algebraic expressions not specified. Must be specified by user after creating the model')
+                
         if self._absorption_data is not None:
             if not self._meas_times:
                 raise RuntimeError('Need to add measumerement times') 
@@ -343,6 +399,8 @@ class TemplateBuilder(object):
         pyomo_model.parameter_names = Set(initialize = self._parameters.keys())
         pyomo_model.complementary_states = Set(initialize = self._complementary_states)
         pyomo_model.states = pyomo_model.mixture_components | pyomo_model.complementary_states
+
+        pyomo_model.algebraics = Set(initialize = self._algebraics)
         
         list_times = list(self._meas_times)
         self._meas_times = sorted(list_times)
@@ -408,6 +466,10 @@ class TemplateBuilder(object):
         pyomo_model.dXdt = DerivativeVar(pyomo_model.X,
                                          wrt=pyomo_model.time)
 
+        pyomo_model.Y = Var(pyomo_model.time,
+                            pyomo_model.algebraics,
+                            initialize = 1.0)
+        
         if self._absorption_data is not None:
             s_dict = dict()
             for k in self._absorption_data.columns:
@@ -462,6 +524,7 @@ class TemplateBuilder(object):
         pyomo_model.init_conditions_c = \
             Constraint(pyomo_model.states,rule=rule_init_conditions)
 
+        # the generation of the constraints is not efficient but not critical
         if self._odes:
             def rule_odes(m,t,k):
                 exprs = self._odes(m,t)
@@ -482,6 +545,16 @@ class TemplateBuilder(object):
             pyomo_model.odes = Constraint(pyomo_model.time,
                                          pyomo_model.states,
                                                    rule=rule_odes)
+            
+        # the generation of the constraints is not efficient but not critical
+        if self._algebraic_constraints:
+            n_alg_eqns = len(self._algebraic_constraints(pyomo_model,start_time))
+            def rule_algebraics(m,t,k):
+                alg_const = self._algebraic_constraints(m,t)[k]
+                return alg_const == 0.0
+            pyomo_model.algebraic_consts = Constraint(pyomo_model.time,
+                                                      range(n_alg_eqns),
+                                                      rule=rule_algebraics)
         return pyomo_model
 
     def create_casadi_model(self,start_time,end_time):
@@ -507,7 +580,8 @@ class TemplateBuilder(object):
             casadi_model.parameter_names = self._parameters.keys()
             casadi_model.complementary_states = copy.deepcopy(self._complementary_states)
             casadi_model.states = casadi_model.mixture_components.union(casadi_model.complementary_states)
-
+            casadi_model.algebraics = self._algebraics
+            
             m_times = list()
             m_lambdas = list()
             if self._spectral_data is not None and self._absorption_data is not None:
@@ -536,9 +610,9 @@ class TemplateBuilder(object):
             casadi_model.meas_lambdas = m_lambdas
 
             # Variables                
-            casadi_model.t = ca.SX.sym("t")
             casadi_model.Z = KipetCasadiStruct('Z',list(casadi_model.mixture_components),dummy_index=True)
             casadi_model.X = KipetCasadiStruct('X',list(casadi_model.complementary_states),dummy_index=True)
+            casadi_model.Y = KipetCasadiStruct('Y',list(casadi_model.algebraics),dummy_index=True)
             casadi_model.P = KipetCasadiStruct('P',list(casadi_model.parameter_names))
             casadi_model.C = KipetCasadiStruct('C',list(casadi_model.meas_times))
             casadi_model.S = KipetCasadiStruct('S',list(casadi_model.meas_lambdas))
@@ -573,8 +647,13 @@ class TemplateBuilder(object):
                 casadi_model.odes = self._odes(casadi_model,0)
                 for k in casadi_model.states:
                     if not casadi_model.odes.has_key(k):
-                        casadi_model.odes[k]=0.0
-            return casadi_model
+                        raise RuntimeError('Missing ode expresion for component {}'.format(k))
+
+            if self._algebraic_constraints:
+                alg_const = self._algebraic_constraints(casadi_model,0)
+                for c in alg_const:
+                    casadi_model.alg_exprs.append(c) 
+            return casadi_model 
         else:
             raise RuntimeError('Install casadi to create casadi models')
         

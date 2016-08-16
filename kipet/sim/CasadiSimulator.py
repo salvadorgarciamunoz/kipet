@@ -60,36 +60,37 @@ class CasadiSimulator(Simulator):
 
     def fix_from_trajectory(self,variable_name,variable_index,trajectories):
 
+        if variable_name in ['X','dXdt','Z','dZdt']:
+            raise NotImplementedError("Fixing state variables is not allowd. Only algebraics can be fixed")
+        
         single_traj = trajectories[variable_index]
-        times_traj = np.array(single_traj.index)
-        last_time_idx = len(times_traj)-1
         sim_times = sorted(self._times)
         data = np.zeros(self._n_times)
         for i,t in enumerate(sim_times):
-            idx_near = find_nearest(times_traj,t)
-            if idx_near==0 or idx_near==last_time_idx:
-                t_found = times_traj[idx_near]
-                data[i] = single_traj[t_found]
-            else:
-                idx_near1 = idx_near+1
-                t_found = times_traj[idx_near]
-                t_found1 = times_traj[idx_near1]
-                val = single_traj[t_found]
-                val1 = single_traj[t_found1]
-                x_tuple = (t_found,t_found1)
-                y_tuple = (val,val1)
-                data[i] = interpolate_linearly(t,x_tuple,y_tuple)
-
+            data[i] = interpolate_from_trayectory(t,single_traj)
+            
         var = getattr(self.model,variable_name)
         symbolic = var[variable_index]
         self._fixed_variable_names.append((variable_name,variable_index))
         self._fixed_variables.append(symbolic)
         fixed_trajectory = pd.Series(data=data,index=sim_times)
-        #for t in fixed_trajectory.index:
-        #    print t,'\t',fixed_trajectory[t]
         self._fixed_trajectories.append(fixed_trajectory)
-        
-    
+
+    def unfix_time_dependent_variable(self,variable_name,variable_index):
+        var = getattr(self.model,variable_name)
+        symbolic = var[variable_index]
+        index = -1
+        for i,v in enumerate(self._fixed_variable_names):
+            if v == (variable_name,variable_index):
+                index=i
+
+        if index>0:
+            del self._fixed_variable_names[index]
+            del self._fixed_variables[index]
+            del self._fixed_trajectories[index]
+        else:
+            print("WARNING: Variable {}[t,{}] not fixed".format(variable_name,variable_index))
+            
     def run_sim(self,solver,**kwds):
         """ Runs simulation by solving nonlinear system with ipopt
 
@@ -114,20 +115,24 @@ class CasadiSimulator(Simulator):
         sigmas = kwds.pop('variances',dict())
         tee = kwds.pop('tee',False)
         seed = kwds.pop('seed',None)
+        init_guess_y = kwds.pop('y0',dict())
         
         # adjusts the seed to reproduce results with noise
         np.random.seed(seed)
         
         Z_var = self.model.Z
         X_var = self.model.X
+        Y_var = self.model.Y
         
         if self._discretized is False:
             raise RuntimeError('apply discretization first before runing simulation')
         states_l = []
+        algebraics_l = []
+        algebraic_eq_l = []
         ode_l = []
         init_conditions_l = []
-
-
+        y_guess_l = []
+        
         for i,k in enumerate(self._mixture_components):
             states_l.append(Z_var[k])
 
@@ -160,9 +165,33 @@ class CasadiSimulator(Simulator):
                 'e.g casadi.exp(expression)')
             init_conditions_l.append(self.model.init_conditions[k])
 
+        unfixed_names = list()
+        fixed_names = list()
+        for i,k in enumerate(self._algebraics):
+            fixed = False
+            for fv in self._fixed_variables:
+                if ca.is_equal(fv,Y_var[k]):
+                    fixed = True
+                    break
+            if not fixed:
+                unfixed_names.append(k)
+                algebraics_l.append(Y_var[k])
+                if init_guess_y:
+                    y_guess_l.append(init_guess_y[k])
+            else:
+                fixed_names.append(k)
+
+        for eq in self.model.alg_exprs:
+            algebraic_eq_l.append(eq)
+
         states = ca.vertcat(*states_l)
+        algebraics = ca.vertcat(*algebraics_l)
         ode = ca.vertcat(*ode_l)
+        alg_eq = ca.vertcat(*algebraic_eq_l)
         x_0 = ca.vertcat(*init_conditions_l)
+        y_0 = ca.vertcat(*y_guess_l)
+
+        n_unfixed = len(algebraics_l)
         
         step = (self.model.end_time - self.model.start_time)/self.nfe
 
@@ -173,50 +202,67 @@ class CasadiSimulator(Simulator):
 
         x_results =  []
         dx_results = []
+
+        y_results = []
         
         xk = x_0
-        times = sorted(self._times)
-        
-        for i,t in enumerate(times):
 
+        if len(y_guess_l):
+            yk = y_0
+        
+        times = sorted(self._times)
+
+        dummy_y = np.ones(self._n_algebraics)
+        for i,t in enumerate(times):
             sub_odes = ode
+            sub_algs = alg_eq
             for s,var in enumerate(self._fixed_variables):
                 value = self._fixed_trajectories[s][t]
                 sub_odes = ca.substitute(sub_odes,var,float(value))
-            fun_ode = ca.Function("odeFunc",[states],[sub_odes])
-        
-            if t == self.model.start_time:
-                odek = fun_ode(xk)
-                for j,w in enumerate(init_conditions_l):
-                    if j<self._n_components:
-                        c_results.append(w)
-                        dc_results.append(odek[j])
-                    else:
-                        x_results.append(w)
-                        dx_results.append(odek[j])
+                sub_algs = ca.substitute(sub_algs,var,float(value))
+            fun_ode = ca.Function("odeFunc",
+                                  [self.model.t,states,algebraics],
+                                  [sub_odes,sub_algs])
+            if i==0:
+                step = 1.0e-12
+                if len(y_guess_l):
+                    arg = {"x0":xk, "z0":yk}
+                else:
+                    arg = {"x0":xk}
             else:
                 step = t - times[i-1]
-                opts = {'tf':step,'print_stats':tee,'verbose':False}
-                system = {'t':self.model.t ,'x':states, 'ode':sub_odes}
-                I = integrator("I",solver, system, opts)
-                xk = I(x0=xk)['xf']
+                arg = {"x0":xk, "z0":yk}
                 
-                # check for nan
-                for j in xrange(xk.numel()):
-                    if np.isnan(float(xk[j])):
-                        raise RuntimeError('The iterator returned nan. exiting the program')
+            opts = {'tf':step,'print_stats':tee,'verbose':False}
+            system = {'t':self.model.t ,'x':states, 'z':algebraics, 'ode':sub_odes, 'alg':sub_algs}
+            I = integrator("I",solver, system, opts)
+            
+            res = I(**arg)
+            xk = res['xf']
+            yk = res['zf']
+                
+            # check for nan
+            for j in xrange(xk.numel()):
+                if np.isnan(float(xk[j])):
+                    raise RuntimeError('The iterator returned nan. exiting the program')
                     
-                odek = fun_ode(xk)
-                
-                for j,k in enumerate(self._mixture_components):
-                    c_results.append(xk[j])
-                    dc_results.append(odek[j])
+            res_f = fun_ode(t,xk,yk)
+            odek = res_f[0]
+            for j,k in enumerate(self._mixture_components):
+                c_results.append(xk[j])
+                dc_results.append(odek[j])
 
-                for i,k in enumerate(self._complementary_states):
-                    j = i+self._n_components
-                    x_results.append(xk[j])
-                    dx_results.append(odek[j])
-        
+            for w,k in enumerate(self._complementary_states):
+                j = w+self._n_components
+                x_results.append(xk[j])
+                dx_results.append(odek[j])
+
+            for j,k in enumerate(unfixed_names):
+                y_results.append(yk[j])
+
+            for j,k in enumerate(fixed_names):
+                y_results.append(0.0)
+                
         c_array = np.array(c_results).reshape((self._n_times,self._n_components))
         results.Z = pd.DataFrame(data=c_array,columns=self._mixture_components,index=times)
                     
@@ -228,6 +274,10 @@ class CasadiSimulator(Simulator):
 
         dx_array = np.array(dx_results).reshape((self._n_times,self._n_complementary_states))
         results.dXdt = pd.DataFrame(data=dx_array,columns=self._complementary_states,index=times)
+
+        columns = unfixed_names + fixed_names
+        y_array = np.array(y_results).reshape((self._n_times,self._n_algebraics))
+        results.Y = pd.DataFrame(data=y_array,columns=columns,index=times)
 
         # get the fixed series map in the results
         for s,pair in enumerate(self._fixed_variable_names):

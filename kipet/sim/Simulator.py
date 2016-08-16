@@ -17,6 +17,23 @@ def interpolate_linearly(x,x_tuple,y_tuple):
     m = (y_tuple[1]-y_tuple[0])/(x_tuple[1]-x_tuple[0])
     return y_tuple[0]+m*(x-x_tuple[0])
 
+def interpolate_from_trayectory(t,trajectory):
+    times_traj = np.array(trajectory.index)
+    last_time_idx = len(times_traj)-1
+    idx_near = find_nearest(times_traj,t)
+    if idx_near==0 or idx_near==last_time_idx:
+        t_found = times_traj[idx_near]
+        return trajectory[t_found]
+    else:
+        idx_near1 = idx_near+1
+        t_found = times_traj[idx_near]
+        t_found1 = times_traj[idx_near1]
+        val = trajectory[t_found]
+        val1 = trajectory[t_found1]
+        x_tuple = (t_found,t_found1)
+        y_tuple = (val,val1)
+        return interpolate_linearly(t,x_tuple,y_tuple)
+
 class Simulator(object):
     """Base simulator class.
 
@@ -36,13 +53,14 @@ class Simulator(object):
 
         self._mixture_components = [name for name in self.model.mixture_components]
         self._complementary_states = [name for name in self.model.complementary_states]
+        self._algebraics = [name for name in self.model.algebraics]
         self._meas_times = sorted([t for t in self.model.meas_times])
         self._meas_lambdas = sorted([l for l in self.model.meas_lambdas]) 
         self._n_meas_times = len(self._meas_times)
         self._n_meas_lambdas = len(self._meas_lambdas)
         self._n_components = len(self._mixture_components)
+        self._n_algebraics = len(self._algebraics)
         self._n_complementary_states = len(self._complementary_states)
-
         if not self._mixture_components:
             raise RuntimeError('The model does not have any mixture components.\
             For simulation add mixture components')

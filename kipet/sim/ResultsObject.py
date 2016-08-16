@@ -15,6 +15,7 @@ class ResultsObject(object):
         self.solver_statistics = {}
         self.Z = None
         self.X = None
+        self.Y = None
         self.C = None
         self.S = None
         self.sigma_sq = None

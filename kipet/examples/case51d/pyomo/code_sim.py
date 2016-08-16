@@ -12,40 +12,13 @@
 #               \frac{dZ_c}{dt} = k_2*Z_b	                Z_c(0) = 0
 
 from kipet.model.TemplateBuilder import *
-from kipet.sim.CasadiSimulator import *
-#from kipet.sim.Simulator import interpolate_from_trayectory
 from kipet.utils.data_tools import *
+from kipet.sim.PyomoSimulator import *
 import matplotlib.pyplot as plt
 import numpy as np
 import sys
 
 import pickle
-
-def rxn_rates(df,fix_traj,params):
-
-    times = sorted(df.index)
-    names = ['r0','r1','r2','r3']#,'rc','rd']
-    r = list()
-    r.append(lambda t: params['k1']*df['SA'][t]*df['AA'][t])
-    r.append(lambda t: params['k2']*df['ASA'][t]*df['AA'][t])
-    r.append(lambda t: params['k3']*df['ASAA'][t]*df['H2O'][t])
-    r.append(lambda t: params['k4']*df['AA'][t]*df['H2O'][t])
-
-    """
-    C_sat = lambda t: 0.000403961838576*(fix_traj['T'][t]-273.15)**2 - 0.002335673472454*(fix_traj['T'][t]-273.15)+0.428791235875747    
-    C_asa = lambda t: df['ASA'][t]
-    rc = lambda t: 0.3950206559*params['kc']*(C_asa(t)-C_sat(t)+((C_asa(t)-C_sat(t))**2+1e-6)**0.5)**1.34
-    r.append(rc)
-    """
-    r_data = pd.DataFrame(index=times)
-
-    for i,n in enumerate(names):
-        values = list()
-        for t in times:
-            values.append(r[i](t))
-        r_data[n] = values
-    return r_data
-
 
 if __name__ == "__main__":
     
@@ -53,9 +26,6 @@ if __name__ == "__main__":
     fixed_traj = read_absorption_data_from_txt('extra_states.txt')
     C = read_absorption_data_from_txt('concentrations.txt')
 
-    flow = lambda t: interpolate_from_trayectory(t,fixed_traj['f'])
-    T = lambda t: interpolate_from_trayectory(t,fixed_traj['T'])
-    
     # create template model 
     builder = TemplateBuilder()    
 
@@ -92,7 +62,7 @@ if __name__ == "__main__":
 
     algebraics = ['f','T']
     builder.add_algebraic_variable(algebraics)
-
+    
     gammas = dict()
     gammas['SA']=    [-1, 0, 0, 0, 0, 1]
     gammas['AA']=    [-1,-1, 0,-1, 0, 0]
@@ -130,22 +100,17 @@ if __name__ == "__main__":
         C_sat = 0.000403961838576*(T-273.15)**2 - 0.002335673472454*(T-273.15)+0.428791235875747
         
         C_asa = m.Z[t,'ASA']
-        #rc = 0.3950206559*m.P['kc']*(C_asa-C_sat+((C_asa-C_sat)**2+1e-6)**0.5)**1.34
-        rc = ca.if_else((C_asa-C_sat)>0.0,
-                        m.P['kc']*(fabs(C_asa-C_sat))**1.34,
-                        0.0)
-        #print rc
+        rc = 0.3950206559*m.P['kc']*(C_asa-C_sat+((C_asa-C_sat)**2+1e-6)**0.5)**1.34
+        
         r.append(rc)
         # disolution rate
         C_sat = m.P['Csa']
         C_sa = m.Z[t,'SA']
         m_sa = m.X[t,'Msa']
-        #step = 0.5*(1+m_sa/(m_sa**2+1e-2**2)**0.5)
-        #step = 1.0/(1.0+ca.exp(-m_sa/1e-7))
-        #rd = m.P['kd']*(C_sat-C_sa)**1.90*step
-        rd = 0.0 #ca.if_else(m_sa>=0.0,
-                 #   m.P['kd']*(C_sat-C_sa)**1.90,
-                 #   0.0)
+        step = 0.5*(1+m_sa/(m_sa**2+1e-2**2)**0.5)
+        #step = 1.0/(1.0+exp(-m_sa/1e-2))
+        rd = 0.0 #m.P['kd']*(C_sat-C_sa)**1.90*step
+        
         r.append(rd)
         
         return r
@@ -162,6 +127,7 @@ if __name__ == "__main__":
         for c in m.mixture_components:
             vol_sum += partial_vol[c]*(sum(gammas[c][j]*r_val for j,r_val in enumerate(r))+ epsilon[c]*f/V*Cin)
         exprs['V'] = V*vol_sum
+        
 
         # mass balances
         for c in m.mixture_components:
@@ -181,63 +147,41 @@ if __name__ == "__main__":
         return exprs
 
     builder.set_odes_rule(rule_odes)
-
-    def rule_algebraics(m,t):
-        algebraics = list()
-        # this are overwritten with fix_from_trajectory later
-        algebraics.append(m.Y[t,'f'])
-        algebraics.append(m.Y[t,'T'])
-        return algebraics
     
-    builder.set_algebraics_rule(rule_algebraics)
+    model = builder.create_pyomo_model(0.0,210.5257)    
     
-    #casadi_model = builder.create_casadi_model(0.0,210.5257)    
-    casadi_model = builder.create_casadi_model(0.0,210.5257)    
-    #print casadi_model.odes
-    
-    sim = CasadiSimulator(casadi_model)
+    #model.pprint()
+    #sys.exit()
+    sim = PyomoSimulator(model)
     # defines the discrete points wanted in the concentration profile
-    sim.apply_discretization('integrator',nfe=400)
+    sim.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
     # simulate
-
+    
     sim.fix_from_trajectory('Y','T',fixed_traj)
     sim.fix_from_trajectory('Y','f',fixed_traj)
-    results_casadi = sim.run_sim("idas")
+
+    with open('init2.pkl', 'rb') as f:
+        results_casadi = pickle.load(f)
     
+    sim.initialize_from_trajectory('Z',results_casadi.Z)
+
+    options = {'halt_on_ampl_error' :'yes'}
+    results_pyomo = sim.run_sim('ipopt',
+                                      tee=True,
+                                      solver_opts=options)
+
     # display concentration results
 
-    with open('init2.pkl', 'wb') as f:
-        pickle.dump(results_casadi, f)
-
-    """
-    R = rxn_rates(C,fixed_traj,params)
-    R_obtained = rxn_rates(results_casadi.Z,fixed_traj,params)
-    R['r0'].plot()
-    plt.plot(R_obtained['r0'],'*')
-    plt.title('r0')
-    plt.figure()
-    R['r1'].plot()
-    plt.plot(R_obtained['r1'],'*')
-    plt.title('r1')
-    plt.figure()
-    R['r2'].plot()
-    plt.plot(R_obtained['r2'],'*')
-    plt.title('r2')
-    plt.figure()
-    R['r3'].plot()
-    plt.plot(R_obtained['r3'],'*')
-    plt.title('r3')
-    """
-    
-    results_casadi.Z.plot.line(legend=True)
+    results_pyomo.Z.plot.line(legend=True)
     plt.xlabel("time (s)")
     plt.ylabel("Concentration (mol/L)")
     plt.title("Concentration Profile")
 
     C.plot()
 
+
     plt.figure()
-    results_casadi.Y['T'].plot.line()
+    results_pyomo.Y['T'].plot.line()
     plt.plot(fixed_traj['T'],'*')
     plt.xlabel("time (s)")
     plt.ylabel("Temperature (K)")
@@ -246,7 +190,7 @@ if __name__ == "__main__":
 
     plt.figure()
     
-    results_casadi.X['V'].plot.line()
+    results_pyomo.X['V'].plot.line()
     plt.plot(fixed_traj['V'],'*')
     plt.xlabel("time (s)")
     plt.ylabel("volumne (L)")
@@ -255,29 +199,29 @@ if __name__ == "__main__":
 
     plt.figure()
     
-    results_casadi.X['Msa'].plot.line()
+    results_pyomo.X['Msa'].plot.line()
     plt.plot(fixed_traj['Msa'],'*')
     plt.xlabel("time (s)")
     plt.ylabel("m_dot (g)")
     plt.title("Msa Profile")
     
-
+    plt.show()
+    sys.exit()
     plt.figure()
-    results_casadi.Y['f'].plot.line()
+    results_pyomo.X['f'].plot.line()
     plt.xlabel("time (s)")
     plt.ylabel("flow (K)")
     plt.title("Inlet flow Profile")
-
-    plt.show()
-    sys.exit()
     
     plt.figure()
     
-    results_casadi.X['Masa'].plot.line()
+    results_pyomo.X['Masa'].plot.line()
     plt.plot(fixed_traj['Masa'],'*')
     plt.xlabel("time (s)")
     plt.ylabel("m_dot (g)")
     plt.title("Masa Profile")
+    
+    
     
     plt.show()
     

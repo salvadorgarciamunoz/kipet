@@ -52,9 +52,6 @@ if __name__ == "__main__":
 
     fixed_traj = read_absorption_data_from_txt('extra_states.txt')
     C = read_absorption_data_from_txt('concentrations.txt')
-
-    flow = lambda t: interpolate_from_trayectory(t,fixed_traj['f'])
-    T = lambda t: interpolate_from_trayectory(t,fixed_traj['T'])
     
     # create template model 
     builder = TemplateBuilder()    
@@ -90,7 +87,7 @@ if __name__ == "__main__":
     
     builder.add_complementary_state_variable(extra_states)
 
-    algebraics = ['f','T']
+    algebraics = ['f','r0','r1','r2','r3','r4','r5','v_sum','Csat']
     builder.add_algebraic_variable(algebraics)
 
     gammas = dict()
@@ -116,42 +113,49 @@ if __name__ == "__main__":
     partial_vol['ASA']=0.132335206093
     partial_vol['HA']=0.060320218688
     partial_vol['ASAA']=0.186550717015
-    partial_vol['H2O']=0.0243603912169
+    partial_vol['H2O']=0.0883603912169
     
-    def vel_rxns(m,t):
+    def rule_algebraics(m,t):
         r = list()
-        r.append(m.P['k1']*m.Z[t,'SA']*m.Z[t,'AA'])
-        r.append(m.P['k2']*m.Z[t,'ASA']*m.Z[t,'AA'])
-        r.append(m.P['k3']*m.Z[t,'ASAA']*m.Z[t,'H2O'])
-        r.append(m.P['k4']*m.Z[t,'AA']*m.Z[t,'H2O'])
+        r.append(m.Y[t,'r0']-m.P['k1']*m.Z[t,'SA']*m.Z[t,'AA'])
+        r.append(m.Y[t,'r1']-m.P['k2']*m.Z[t,'ASA']*m.Z[t,'AA'])
+        r.append(m.Y[t,'r2']-m.P['k3']*m.Z[t,'ASAA']*m.Z[t,'H2O'])
+        r.append(m.Y[t,'r3']-m.P['k4']*m.Z[t,'AA']*m.Z[t,'H2O'])
 
         # cristalization rate
-        T = m.Y[t,'T']
-        C_sat = 0.000403961838576*(T-273.15)**2 - 0.002335673472454*(T-273.15)+0.428791235875747
-        
+        C_sat = m.Y[t,'Csat']
         C_asa = m.Z[t,'ASA']
         #rc = 0.3950206559*m.P['kc']*(C_asa-C_sat+((C_asa-C_sat)**2+1e-6)**0.5)**1.34
         rc = ca.if_else((C_asa-C_sat)>0.0,
                         m.P['kc']*(fabs(C_asa-C_sat))**1.34,
                         0.0)
         #print rc
-        r.append(rc)
+        r.append(m.Y[t,'r4']-rc)
         # disolution rate
         C_sat = m.P['Csa']
         C_sa = m.Z[t,'SA']
         m_sa = m.X[t,'Msa']
         #step = 0.5*(1+m_sa/(m_sa**2+1e-2**2)**0.5)
-        #step = 1.0/(1.0+ca.exp(-m_sa/1e-7))
-        #rd = m.P['kd']*(C_sat-C_sa)**1.90*step
-        rd = 0.0 #ca.if_else(m_sa>=0.0,
-                 #   m.P['kd']*(C_sat-C_sa)**1.90,
-                 #   0.0)
-        r.append(rd)
+        step = 1.0/(1.0+ca.exp(-m_sa/1e-7))
+        rd = m.P['kd']*(C_sat-C_sa)**1.90*step
+        #rd = 0.0 #ca.if_else(m_sa>=0.0,
+                 #m.P['kd']*(C_sat-C_sa)**1.90,
+                 #0.0)
+        r.append(m.Y[t,'r5']-rd)
+
+        Cin = 39.1
+        v_sum = 0.0
+        V = m.X[t,'V']
+        f = m.Y[t,'f']
+        for c in m.mixture_components:
+            v_sum += partial_vol[c]*(sum(gammas[c][j]*m.Y[t,'r{}'.format(j)] for j in xrange(6))+ epsilon[c]*f/V*Cin)
+        r.append(m.Y[t,'v_sum']-v_sum)
         
         return r
 
+    builder.set_algebraics_rule(rule_algebraics)
+    
     def rule_odes(m,t):
-        r = vel_rxns(m,t)
         exprs = dict()
 
         V = m.X[t,'V']
@@ -160,47 +164,30 @@ if __name__ == "__main__":
         # volume balance
         vol_sum = 0.0
         for c in m.mixture_components:
-            vol_sum += partial_vol[c]*(sum(gammas[c][j]*r_val for j,r_val in enumerate(r))+ epsilon[c]*f/V*Cin)
-        exprs['V'] = V*vol_sum
+            vol_sum += partial_vol[c]*(sum(gammas[c][j]*m.Y[t,'r{}'.format(j)] for j in xrange(6))+ epsilon[c]*f/V*Cin)
+        exprs['V'] = V*m.Y[t,'v_sum']
 
         # mass balances
         for c in m.mixture_components:
-            exprs[c] = sum(gammas[c][j]*r_val for j,r_val in enumerate(r))+ epsilon[c]*f/V*Cin - exprs['V']/V*m.Z[t,c]
+            exprs[c] = sum(gammas[c][j]*m.Y[t,'r{}'.format(j)] for j in xrange(6))+ epsilon[c]*f/V*Cin - m.Y[t,'v_sum']*m.Z[t,c]
 
-        """
-        exprs['SA'] = r[5]-r[0]- exprs['V']/V*m.Z[t,'SA']
-        exprs['AA'] = -r[0]-r[1]-r[3] - exprs['V']/V*m.Z[t,'AA']
-        exprs['ASA'] = r[0]-r[1]+r[2]-r[4] - exprs['V']/V*m.Z[t,'ASA']
-        exprs['HA'] = r[0]+r[1]+r[2]+2*r[3] - exprs['V']/V*m.Z[t,'HA']
-        exprs['ASAA'] = r[1]-r[2] - exprs['V']/V*m.Z[t,'ASAA']
-        exprs['H2O'] = -r[2]-r[3] + f/V*Cin- exprs['V']/V*m.Z[t,'H2O']
-        """
-        
-        exprs['Masa'] = 180.157*V*r[4]
-        exprs['Msa'] = -138.121*V*r[5]
+        exprs['Masa'] = 180.157*V*m.Y[t,'r4']
+        exprs['Msa'] = -138.121*V*m.Y[t,'r5']
         return exprs
 
     builder.set_odes_rule(rule_odes)
-
-    def rule_algebraics(m,t):
-        algebraics = list()
-        # this are overwritten with fix_from_trajectory later
-        algebraics.append(m.Y[t,'f'])
-        algebraics.append(m.Y[t,'T'])
-        return algebraics
-    
-    builder.set_algebraics_rule(rule_algebraics)
     
     #casadi_model = builder.create_casadi_model(0.0,210.5257)    
     casadi_model = builder.create_casadi_model(0.0,210.5257)    
-    #print casadi_model.odes
+
+    casadi_model.pprint()
     
     sim = CasadiSimulator(casadi_model)
     # defines the discrete points wanted in the concentration profile
     sim.apply_discretization('integrator',nfe=400)
     # simulate
 
-    sim.fix_from_trajectory('Y','T',fixed_traj)
+    sim.fix_from_trajectory('Y','Csat',fixed_traj)
     sim.fix_from_trajectory('Y','f',fixed_traj)
     results_casadi = sim.run_sim("idas")
     
@@ -208,26 +195,6 @@ if __name__ == "__main__":
 
     with open('init2.pkl', 'wb') as f:
         pickle.dump(results_casadi, f)
-
-    """
-    R = rxn_rates(C,fixed_traj,params)
-    R_obtained = rxn_rates(results_casadi.Z,fixed_traj,params)
-    R['r0'].plot()
-    plt.plot(R_obtained['r0'],'*')
-    plt.title('r0')
-    plt.figure()
-    R['r1'].plot()
-    plt.plot(R_obtained['r1'],'*')
-    plt.title('r1')
-    plt.figure()
-    R['r2'].plot()
-    plt.plot(R_obtained['r2'],'*')
-    plt.title('r2')
-    plt.figure()
-    R['r3'].plot()
-    plt.plot(R_obtained['r3'],'*')
-    plt.title('r3')
-    """
     
     results_casadi.Z.plot.line(legend=True)
     plt.xlabel("time (s)")
@@ -235,15 +202,15 @@ if __name__ == "__main__":
     plt.title("Concentration Profile")
 
     C.plot()
-
+    
     plt.figure()
-    results_casadi.Y['T'].plot.line()
-    plt.plot(fixed_traj['T'],'*')
+    
+    results_casadi.Y['Csat'].plot.line()
+    plt.plot(fixed_traj['Csat'],'*')
     plt.xlabel("time (s)")
-    plt.ylabel("Temperature (K)")
-    plt.title("Temperature Profile")
-
-
+    plt.ylabel("Csat")
+    plt.title("Saturatuon Concentration")
+    
     plt.figure()
     
     results_casadi.X['V'].plot.line()

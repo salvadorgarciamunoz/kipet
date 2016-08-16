@@ -57,6 +57,24 @@ class PyomoSimulator(Simulator):
             self._default_initialization()
         else:
             print('***WARNING: Model already discretized. Ignoring second discretization')
+
+    def fix_from_trajectory(self,variable_name,variable_index,trajectories):
+
+        if variable_name in ['X','dXdt','Z','dZdt']:
+            raise NotImplementedError("Fixing state variables is not allowd. Only algebraics can be fixed")
+        
+        single_traj = trajectories[variable_index]
+        sim_times = sorted(self._times)
+        var = getattr(self.model,variable_name)
+        for i,t in enumerate(sim_times):
+            value = interpolate_from_trayectory(t,single_traj)
+            var[t,variable_index].fix(value)
+
+    def unfix_time_dependent_variable(self,variable_name,variable_index):
+        var = getattr(self.model,variable_name)
+        sim_times = sorted(self._times)
+        for i,t in enumerate(sim_times):
+            var[t,variable_index].fixed = False
             
     # initializes the trajectories to the initial conditions
     def _default_initialization(self):
@@ -148,6 +166,12 @@ class PyomoSimulator(Simulator):
         elif variable_name == 'X':
             var = self.model.X
             inner_set = self.model.time
+        elif variable_name == 'dXdt':
+            var = self.model.dXdt
+            inner_set = self.model.time
+        elif variable_name == 'Y':
+            var = self.model.Y
+            inner_set = self.model.time
         else:
             raise RuntimeError('Initialization of variable {} is not supported'.format(variable_name))
 
@@ -157,7 +181,7 @@ class PyomoSimulator(Simulator):
         if variable_name in ['Z','dZdt','S','C']:
             for component in columns:
                 if component not in self._mixture_components:
-                    print('WARNING: Mixture component {} is not in model complementary_states. initialization ignored'.format(component))
+                    print('WARNING: Mixture component {} is not in model mixture components. initialization ignored'.format(component))
                 else:
                     to_initialize.append(component)
                 
@@ -167,6 +191,15 @@ class PyomoSimulator(Simulator):
                     print('WARNING: State {} is not in model complementary_states. initialization ignored'.format(component))
                 else:
                     to_initialize.append(component)
+
+
+        if variable_name in ['Y']:
+            for component in columns:
+                if component not in self._algebraics:
+                    print('WARNING: Algebraic {} is not in model algebraics. initialization ignored'.format(component))
+                else:
+                    to_initialize.append(component)
+        """            
         trajectory_times = np.array(trajectories.index)
         n_ttimes = len(trajectory_times)
         first_time = trajectory_times[0]
@@ -197,7 +230,14 @@ class PyomoSimulator(Simulator):
                                 var[t,component].value = y
                             else:
                                 var[t,component].value = None
-
+        """
+        for component in to_initialize:
+            single_trajectory = trajectories[component]
+            for t in inner_set:
+                val = interpolate_from_trayectory(t,single_trajectory)
+                if not np.isnan(val):
+                    var[t,component].value = val
+                
     def scale_variables_from_trajectory(self,variable_name,trajectories):
         """Scales discretized variables with maximum value of the trajectory.
 
@@ -235,7 +275,10 @@ class PyomoSimulator(Simulator):
             var = self.model.X
             inner_set = self.model.time
         elif variable_name == 'dXdt':
-            var = self.model.dZdt
+            var = self.model.dXdt
+            inner_set = self.model.time
+        elif variable_name == 'Y':
+            var = self.model.Y
             inner_set = self.model.time
         else:
             raise RuntimeError('Scaling of variable {} is not supported'.format(variable_name))
@@ -253,6 +296,12 @@ class PyomoSimulator(Simulator):
                 nominal_vals[component] = abs(trajectories[component].max())
                 if component not in self._complementary_states:
                     raise RuntimeError('State {} is not in model complementary_states'.format(component))
+
+        if variable_name in ['Y']:
+            for component in columns:
+                nominal_vals[component] = abs(trajectories[component].max())
+                if component not in self._algebraics:
+                    raise RuntimeError('Algebraics {} is not in model algebraics'.format(component))
         
         tol = 1e-5
         for component in columns:
@@ -343,7 +392,7 @@ class PyomoSimulator(Simulator):
                 
         # retriving solutions to results object  
         results.load_from_pyomo_model(self.model,
-                                      to_load=['Z','dZdt','X','dXdt'])
+                                      to_load=['Z','dZdt','X','dXdt','Y'])
         
         c_noise_results = []
 

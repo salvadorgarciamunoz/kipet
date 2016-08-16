@@ -58,7 +58,7 @@ if __name__ == "__main__":
         return exprs
     
     builder.set_odes_rule(rule_odes)
-
+    
     # create an instance of a casadi model template
     casadi_model = builder.create_casadi_model(0.0,1.5)    
     
