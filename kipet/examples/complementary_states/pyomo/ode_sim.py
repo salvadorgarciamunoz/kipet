@@ -67,7 +67,6 @@ if __name__ == "__main__":
     #      - P parameters indexed over the parameter names e.g. m.P['k']
     pyomo_model = builder.create_pyomo_model(0.0,2.0)
 
-    pyomo_model.pprint()
     # create instance of simulator
     simulator = PyomoSimulator(pyomo_model)
     # defines the discrete points wanted in the concentration profile

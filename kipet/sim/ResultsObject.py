@@ -49,7 +49,7 @@ class ResultsObject(object):
         var = getattr(self,variable_name)
         var_array = np.array(var)
         return np.linalg.norm(var_array,norm_type)
-        
+    
     def load_from_pyomo_model(self,instance,to_load=[]):
 
         model_variables = set()

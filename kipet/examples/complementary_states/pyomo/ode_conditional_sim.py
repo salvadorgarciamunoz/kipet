@@ -19,6 +19,7 @@ from kipet.sim.PyomoSimulator import *
 import matplotlib.pyplot as plt
 from pyomo.core.base.expr import Expr_if
 from pyomo.core import *
+import sys
 
 if __name__ == "__main__":
 

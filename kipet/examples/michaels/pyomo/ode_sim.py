@@ -39,10 +39,6 @@ if __name__ == "__main__":
         
     builder.add_mixture_component(components)
 
-    # add algebraics
-    algebraics = [0,1,2,3,4] # the indices of the rate rxns
-    builder.add_algebraic_variable(algebraics)
-    
     # add parameters
     params = dict()
     params['k0'] = 5.0
@@ -68,26 +64,25 @@ if __name__ == "__main__":
     gammas['AC-']  = [ 0, 1,-1,-1,-1]
     gammas['P']    = [ 0, 0, 0, 1, 1]
         
-    def rule_algebraics(m,t):
+    def vel_rxns(m,t):
         r = list()
-        r.append(m.Y[t,0]-m.P['k0']*m.Z[t,'AH']*m.Z[t,'B'])
-        r.append(m.Y[t,1]-m.P['k1']*m.Z[t,'A-']*m.Z[t,'C'])
-        r.append(m.Y[t,2]-m.P['k2']*m.Z[t,'AC-'])
-        r.append(m.Y[t,3]-m.P['k3']*m.Z[t,'AC-']*m.Z[t,'AH'])
-        r.append(m.Y[t,4]-m.P['k4']*m.Z[t,'AC-']*m.Z[t,'BH+'])
+        r.append(m.P['k0']*m.Z[t,'AH']*m.Z[t,'B'])
+        r.append(m.P['k1']*m.Z[t,'A-']*m.Z[t,'C'])
+        r.append(m.P['k2']*m.Z[t,'AC-'])
+        r.append(m.P['k3']*m.Z[t,'AC-']*m.Z[t,'AH'])
+        r.append(m.P['k4']*m.Z[t,'AC-']*m.Z[t,'BH+'])
         return r
-
-    builder.set_algebraics_rule(rule_algebraics)
 
     def rule_odes(m,t):
         exprs = dict()
+        r = vel_rxns(m,t)
         eta = 1e-4
         step = 0.5*((t+1)/((t+1)**2+eta**2)**0.5+(210.0-t)/((210.0-t)**2+eta**2)**0.5)
         exprs['V'] = 7.27609e-05*step
         V = m.X[t,'V']
         # mass balances
         for c in m.mixture_components:
-            exprs[c] = sum(gammas[c][j]*m.Y[t,j] for j in m.algebraics) - exprs['V']/V*m.Z[t,c]
+            exprs[c] = sum(gammas[c][j]*r_val for j,r_val in enumerate(r)) - exprs['V']/V*m.Z[t,c]
             if c=='C':
                 exprs[c] += 0.02247311828/(m.X[t,'V']*210)*step
         return exprs
@@ -122,9 +117,5 @@ if __name__ == "__main__":
     plt.ylabel("Concentration (mol/L)")
     plt.title("Concentration Profile")
 
-    results.Y.plot.line()
-    plt.xlabel("time (s)")
-    plt.ylabel("rxn rates (mol/L*s)")
-    plt.title("Rates of rxn")
     plt.show()
 

@@ -2,6 +2,7 @@ from pyomo.environ import *
 from pyomo.dae import *
 from kipet.sim.ResultsObject import *
 from kipet.sim.PyomoSimulator import *
+from scipy.optimize import least_squares
 from contextlib import contextmanager
 import scipy
 import copy
@@ -36,7 +37,7 @@ class Optimizer(PyomoSimulator):
     def run_opt(self,solver,**kwds):
         raise NotImplementedError("Optimizer abstract method. Call child class")
 
-    def _solve_S_from_DC(self,C_dataFrame,tee=False):
+    def _solve_S_from_DC(self,C_dataFrame,tee=False,with_bounds=False):
         """Solves a basic least squares problems with SVD.
         
         Args:
@@ -66,15 +67,38 @@ class Optimizer(PyomoSimulator):
             Bd = scipy.sparse.coo_matrix((data, (row, col)),
                                          shape=(self._n_meas_times*self._n_meas_lambdas,
                                                 self._n_components*self._n_meas_lambdas))
-            
-            if self._n_meas_times == self._n_components:
-                s_array = scipy.sparse.linalg.spsolve(Bd, D_vector)
-            elif self._n_meas_times>self._n_components:
-                result_ls = scipy.sparse.linalg.lsqr(Bd, D_vector,show=tee)
-                s_array = result_ls[0]
+
+            if not with_bounds:
+                if self._n_meas_times == self._n_components:
+                    s_array = scipy.sparse.linalg.spsolve(Bd, D_vector)
+                elif self._n_meas_times>self._n_components:
+                    result_ls = scipy.sparse.linalg.lsqr(Bd, D_vector,show=tee)
+                    s_array = result_ls[0]
+                else:
+                    raise RuntimeError('Need n_t_meas >= self._n_components')
             else:
-                raise RuntimeError('Need n_t_meas >= self._n_components')
-            
+                nl = self._n_meas_lambdas
+                nt = self._n_meas_times
+                nc = self._n_components
+                x0 = np.zeros(nl*nc)+1e-2
+                M = Bd.tocsr()
+                
+                def F(x,M,rhs):
+                    return  rhs-M.dot(x)
+
+                def JF(x,M,rhs):
+                    return -M
+
+                if tee == True:
+                    verbose = 2
+                else:
+                    verbose = 0
+                    
+                res_lsq = least_squares(F,x0,JF,
+                                        bounds=(0.0,np.inf),
+                                        verbose=verbose,args=(M,D_vector))
+                s_array = res_lsq.x
+                
             s_shaped = s_array.reshape((self._n_meas_lambdas,self._n_components))
         else:
             s_shaped = np.empty((self._n_meas_lambdas,self._n_components))
@@ -106,7 +130,8 @@ class Optimizer(PyomoSimulator):
         variances = kwds.pop('variances',dict())
         tee = kwds.pop('tee',False)
         initialization = kwds.pop('initialization',False)
-
+        wb = kwds.pop('with_bounds',True)
+        
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before runing simulation')
 
@@ -184,7 +209,7 @@ class Optimizer(PyomoSimulator):
             raise RuntimeError('Not enough measurements num_meas>= num_components')
 
         # solves over determined system
-        s_array = self._solve_S_from_DC(results.C,tee=tee)
+        s_array = self._solve_S_from_DC(results.C,tee=tee,with_bounds=wb)
 
         d_results = []
         for t in self._meas_times:

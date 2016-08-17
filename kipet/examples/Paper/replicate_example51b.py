@@ -66,7 +66,6 @@ if __name__ == "__main__":
     v_estimator.initialize_from_trajectory('S',raw_results.S)
     v_estimator.initialize_from_trajectory('C',raw_results.C)
     
-
     options = {}
     A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if i%7]
     results_variances = v_estimator.run_opt('ipopt',

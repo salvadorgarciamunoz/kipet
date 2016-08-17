@@ -18,8 +18,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sys
 
-import pickle
-
 
 if __name__ == "__main__":
         
@@ -109,24 +107,31 @@ if __name__ == "__main__":
 
     sim.fix_from_trajectory('Y','dummy_t',fixed_traj)
     # simulate
-    results_casadi = sim.run_sim("idas")
-    
+    results = sim.run_sim("idas")
+
     # display concentration results    
-    results_casadi.Z.plot.line(legend=True)
+    results.Z.plot.line(legend=True)
     plt.xlabel("time (s)")
     plt.ylabel("Concentration (mol/L)")
     plt.title("Concentration Profile")
 
-    results_casadi.Y.plot.line()
+    results.dZdt.plot.line(legend=True)
+    plt.xlabel("time (s)")
+    plt.ylabel("Concentration (mol/L)")
+    plt.title("Concentration Profile")
+    
+    results.Y = results.Y.drop('dummy_t', 1)
+    results.Y.plot.line()
     plt.xlabel("time (s)")
     plt.ylabel("rxn rates (mol/L*s)")
     plt.title("Rates of rxn")
 
-    results_casadi.X.plot.line()
+    results.X.plot.line()
     plt.xlabel("time (s)")
     plt.ylabel("Volume (L)")
     plt.title("Volume")
     plt.show()
     
-    with open('init.pkl', 'wb') as f:
-        pickle.dump(results_casadi, f)
+    results.Z.to_csv("init_Z.csv")
+    results.Y.to_csv("init_Y.csv")
+    results.X.to_csv("init_X.csv")

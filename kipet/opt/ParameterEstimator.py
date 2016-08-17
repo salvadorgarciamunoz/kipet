@@ -187,6 +187,8 @@ class ParameterEstimator(Optimizer):
         ntheta = nc*(nw+nt)+ nparams
 
         print "Computing H matrix\n shape ({},{})".format(ntheta,ntheta)
+        #all_H = hessian
+        #H = all_H[-nparams:,:]
         H = hessian
         print "Computing B matrix\n shape ({},{})".format(ntheta,nd)
         self._compute_B_matrix(variances)

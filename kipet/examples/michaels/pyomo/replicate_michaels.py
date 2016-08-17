@@ -20,14 +20,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sys
 
-import pickle
-
 
 if __name__ == "__main__":
 
 
     #filename =  'original_data.csv'
     filename =  'trimmed_data.csv'
+    #filename =  'trimmed.csv'
     D_frame = read_spectral_data_from_csv(filename)
 
     """
@@ -72,13 +71,14 @@ if __name__ == "__main__":
     builder.add_parameter('k4',bounds=(0.0,10.0))
     
     builder.add_spectral_data(D_frame)
+    print "Dimensions of D:",D_frame.shape
     
     # add additional state variables
     extra_states = dict()
     extra_states['V'] = 0.0629418
     
     builder.add_complementary_state_variable(extra_states)
-
+    
     gammas = dict()
     gammas['AH']   = [-1, 0, 0,-1, 0]    
     gammas['B']    = [-1, 0, 0, 0, 1]   
@@ -121,12 +121,12 @@ if __name__ == "__main__":
     v_estimator = VarianceEstimator(opt_model)
     v_estimator.apply_discretization('dae.collocation',nfe=80,ncp=1,scheme='LAGRANGE-RADAU')
 
-    with open('init.pkl', 'rb') as f:
-        initialization = pickle.load(f)
+    # good initialization
+    initialization = pd.read_csv("init_Z.csv",index_col=0)
+    v_estimator.initialize_from_trajectory('Z',initialization)
+    initialization = pd.read_csv("init_X.csv",index_col=0)
+    v_estimator.initialize_from_trajectory('X',initialization)
     
-    v_estimator.initialize_from_trajectory('Z',initialization.Z)
-    v_estimator.initialize_from_trajectory('Y',initialization.Y)
-
     p_guess = dict()
     p_guess['k0'] = 5.0
     p_guess['k1'] = 5.0
@@ -134,15 +134,19 @@ if __name__ == "__main__":
     p_guess['k3'] = 5.0
     p_guess['k4'] = 1.0
     
-    raw_results = v_estimator.run_lsq_given_P('ipopt',p_guess,tee=False)
+    raw_results = v_estimator.run_lsq_given_P('ipopt',p_guess,tee=False,with_bounds=True)
 
     v_estimator.initialize_from_trajectory('Z',raw_results.Z)
     v_estimator.initialize_from_trajectory('S',raw_results.S)
     v_estimator.initialize_from_trajectory('C',raw_results.C)
     v_estimator.initialize_from_trajectory('Y',raw_results.Y)
-    
+
+    raw_results.S.plot()
+    raw_results.C.plot()
+
+    plt.show()
     options = {}
-    A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if i%4]
+    A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if i%1]
     results_variances = v_estimator.run_opt('ipopt',
                                             tee=True,
                                             solver_options=options,
