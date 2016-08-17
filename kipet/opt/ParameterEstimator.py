@@ -186,10 +186,10 @@ class ParameterEstimator(Optimizer):
         nd = nw*nt
         ntheta = nc*(nw+nt)+ nparams
 
-        print "Computing H matrix\n shape ({},{})".format(ntheta,ntheta)
-        #all_H = hessian
-        #H = all_H[-nparams:,:]
-        H = hessian
+        print "Computing H matrix\n shape ({},{})".format(nparams,ntheta)
+        all_H = hessian
+        H = all_H[-nparams:,:]
+        #H = hessian
         print "Computing B matrix\n shape ({},{})".format(ntheta,nd)
         self._compute_B_matrix(variances)
         B = self.B_matrix
@@ -208,7 +208,8 @@ class ParameterEstimator(Optimizer):
         V_theta = M3.dot(H)
         """
 
-        R = B.T.dot(H)
+        #R = B.T.dot(H)
+        R = B.T.dot(H.T)
         A = Vd.dot(R)
         L = H.dot(B)
         Vtheta = A.T.dot(L.T)
@@ -221,7 +222,8 @@ class ParameterEstimator(Optimizer):
         # this changes depending on the order of the suffixes passed to sipopt
         nd = nw*nt
         ntheta = nc*(nw+nt)
-        V_param = V_theta[ntheta:ntheta+nparams,ntheta:ntheta+nparams]
+        #V_param = V_theta[ntheta:ntheta+nparams,ntheta:ntheta+nparams]
+        V_param = V_theta
         variances_p = np.diag(V_param)
         print('\nConfindence intervals:')
         i=0
