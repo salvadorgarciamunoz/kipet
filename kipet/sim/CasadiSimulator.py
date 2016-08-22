@@ -307,7 +307,6 @@ class CasadiSimulator(Simulator):
         results.C = pd.DataFrame(data=c_noise_array,
                                  columns=self._mixture_components,
                                  index=self._meas_times)
-
         
         if self._spectra_given:
             # solves over determined system

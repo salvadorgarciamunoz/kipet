@@ -4,12 +4,23 @@
 #  Copyright (c) 2016 Eli Lilly.
 #  _________________________________________________________________________
 
-# Sample Problem 2 (From Sawall et.al.)
-# First example from WF paper simulation of ODE system using pyomo discretization and IPOPT
+# Aspirin Example
 #
-#		\frac{dZ_a}{dt} = -k_1*Z_a	                Z_a(0) = 1
-#		\frac{dZ_b}{dt} = k_1*Z_a - k_2*Z_b		Z_b(0) = 0
-#               \frac{dZ_c}{dt} = k_2*Z_b	                Z_c(0) = 0
+#		\frac{dZ_aa}{dt} = -r_0-r_1-r_3-\frac{\dot{v}}{V}*Z_aa
+#		\frac{dZ_ha}{dt} = r_0+r_1+r_2+2r_3-\frac{\dot{v}}{V}*Z_ha
+#               \frac{dZ_asaa}{dt} = r_1-r_2-\frac{\dot{v}}{V}*Z_asaa
+#               \frac{dZ_h2o}{dt} = -r_2-r_3+\frac{f}{V}*C_h2o^in-\frac{\dot{v}}{V}*Z_asaa
+
+#               \frac{dm_{sa}}{dt} = -M_{sa}*V*r_d
+#               \frac{dm_{asa}}{dt} = -M_{asa}*V*r_c
+#               \frac{dV}{dt} = V*\sum_i^{ns}\upsilon_i*(\sum_j^{6}\gamma_i*r_j+\epsilon_i*\frac{f}{V}*C_h2o^in)
+
+#               r_0 = k_0*Z_sa*Z_aa
+#               r_1 = k_1*Z_asa*Z_aa
+#               r_2 = k_2*Z_asaa*Z_h2o
+#               r_3 = k_3*Z_aa*Z_h2o
+#               r_d = k_d*(Z_sa^{sat}-Z_sa)^d
+#               r_c = k_c*(max(Z_asa-Z_sa^{sat}))^c
 
 from kipet.model.TemplateBuilder import *
 from kipet.sim.PyomoSimulator import *
@@ -18,7 +29,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sys
 
-import pickle
+
 
 if __name__ == "__main__":
     
@@ -42,12 +53,12 @@ if __name__ == "__main__":
 
     # add parameters
     params = dict()
-    params['k1'] = 0.0360309
-    params['k2'] = 0.1596062
-    params['k3'] = 6.8032345
-    params['k4'] = 1.8028763
-    params['kc'] = 0.7566864
+    params['k0'] = 0.0360309
+    params['k1'] = 0.1596062
+    params['k2'] = 6.8032345
+    params['k3'] = 1.8028763
     params['kd'] = 7.1108682
+    params['kc'] = 0.7566864
     params['Csa'] = 2.06269996
 
     builder.add_parameter(params)
@@ -64,9 +75,9 @@ if __name__ == "__main__":
     builder.add_algebraic_variable(algebraics)
 
     gammas = dict()
-    gammas['SA']=    [-1, 0, 0, 0, 0, 1]
+    gammas['SA']=    [-1, 0, 0, 0, 1, 0]
     gammas['AA']=    [-1,-1, 0,-1, 0, 0]
-    gammas['ASA']=   [ 1,-1, 1, 0,-1, 0]
+    gammas['ASA']=   [ 1,-1, 1, 0, 0,-1]
     gammas['HA']=    [ 1, 1, 1, 2, 0, 0]
     gammas['ASAA']=  [ 0, 1,-1, 0, 0, 0]
     gammas['H2O']=   [ 0, 0,-1,-1, 0, 0]
@@ -90,24 +101,21 @@ if __name__ == "__main__":
     
     def rule_algebraics(m,t):
         r = list()
-        r.append(m.Y[t,'r0']-m.P['k1']*m.Z[t,'SA']*m.Z[t,'AA'])
-        r.append(m.Y[t,'r1']-m.P['k2']*m.Z[t,'ASA']*m.Z[t,'AA'])
-        r.append(m.Y[t,'r2']-m.P['k3']*m.Z[t,'ASAA']*m.Z[t,'H2O'])
-        r.append(m.Y[t,'r3']-m.P['k4']*m.Z[t,'AA']*m.Z[t,'H2O'])
+        r.append(m.Y[t,'r0']-m.P['k0']*m.Z[t,'SA']*m.Z[t,'AA'])
+        r.append(m.Y[t,'r1']-m.P['k1']*m.Z[t,'ASA']*m.Z[t,'AA'])
+        r.append(m.Y[t,'r2']-m.P['k2']*m.Z[t,'ASAA']*m.Z[t,'H2O'])
+        r.append(m.Y[t,'r3']-m.P['k3']*m.Z[t,'AA']*m.Z[t,'H2O'])
 
-        # cristalization rate
-        C_sat = m.Y[t,'Csat']
-        C_asa = m.Z[t,'ASA']
-        rc = 0.3950206559*m.P['kc']*(C_asa-C_sat+((C_asa-C_sat)**2+1e-6)**0.5)**1.34
-        
-        r.append(m.Y[t,'r4']-rc)
         # disolution rate
-        C_sat = m.P['Csa']
-        C_sa = m.Z[t,'SA']
-        m_sa = m.X[t,'Msa']
-        step = 0.5*(1+m_sa/(m_sa**2+1e-2**2)**0.5)
-        rd = m.P['kd']*(C_sat-C_sa)**1.90*step
-        r.append(m.Y[t,'r5']-0.0)
+        step = 1.0/(1.0+exp(-m.X[t,'Msa']/1e-4))
+        rd = m.P['kd']*(m.P['Csa']-m.Z[t,'SA']+1e-6)**1.90*step
+        r.append(m.Y[t,'r4']-rd)
+        #r.append(m.Y[t,'r4'])
+        
+        # cristalization rate
+        diff = m.Z[t,'ASA'] - m.Y[t,'Csat']
+        rc = 0.3950206559*m.P['kc']*(diff+((diff)**2+1e-6)**0.5)**1.34
+        r.append(m.Y[t,'r5']-rc)
 
         Cin = 39.1
         v_sum = 0.0
@@ -116,7 +124,7 @@ if __name__ == "__main__":
         for c in m.mixture_components:
             v_sum += partial_vol[c]*(sum(gammas[c][j]*m.Y[t,'r{}'.format(j)] for j in xrange(6))+ epsilon[c]*f/V*Cin)
         r.append(m.Y[t,'v_sum']-v_sum)
-        
+
         return r
 
     builder.set_algebraics_rule(rule_algebraics)
@@ -137,12 +145,12 @@ if __name__ == "__main__":
         for c in m.mixture_components:
             exprs[c] = sum(gammas[c][j]*m.Y[t,'r{}'.format(j)] for j in xrange(6))+ epsilon[c]*f/V*Cin - m.Y[t,'v_sum']*m.Z[t,c]
 
-        exprs['Masa'] = 180.157*V*m.Y[t,'r4']
-        exprs['Msa'] = -138.121*V*m.Y[t,'r5']
+        exprs['Masa'] = 180.157*V*m.Y[t,'r5']
+        exprs['Msa'] = -138.121*V*m.Y[t,'r4']
         return exprs
 
     builder.set_odes_rule(rule_odes)
-    
+
     model = builder.create_pyomo_model(0.0,210.5257)    
 
     model.pprint()
@@ -150,14 +158,15 @@ if __name__ == "__main__":
     sim = PyomoSimulator(model)
     # defines the discrete points wanted in the concentration profile
     sim.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
-
-    # simulate
-    with open('init.pkl', 'rb') as f:
-        initialization = pickle.load(f)
-
-    sim.initialize_from_trajectory('Z',initialization.Z)
-    sim.initialize_from_trajectory('Y',initialization.Y)
-
+    
+    # good initialization
+    initialization = pd.read_csv("init_Z.csv",index_col=0)
+    sim.initialize_from_trajectory('Z',initialization)
+    initialization = pd.read_csv("init_X.csv",index_col=0)
+    sim.initialize_from_trajectory('X',initialization)
+    initialization = pd.read_csv("init_Y.csv",index_col=0)
+    sim.initialize_from_trajectory('Y',initialization)
+            
     sim.fix_from_trajectory('Y','Csat',fixed_traj)
     sim.fix_from_trajectory('Y','f',fixed_traj)
 
@@ -166,8 +175,7 @@ if __name__ == "__main__":
                           tee=True,
                           solver_opts=options)
     
-    
-    # display concentration results
+    # display concentration results    
     results.Z.plot.line(legend=True)
     plt.xlabel("time (s)")
     plt.ylabel("Concentration (mol/L)")
@@ -190,9 +198,24 @@ if __name__ == "__main__":
     plt.xlabel("time (s)")
     plt.ylabel("volumne (L)")
     plt.title("Volume Profile")
-    
+
+
     plt.figure()
     
+    results.X['Msa'].plot.line()
+    plt.plot(fixed_traj['Msa'],'*')
+    plt.xlabel("time (s)")
+    plt.ylabel("m_dot (g)")
+    plt.title("Msa Profile")
+    
+
+    plt.figure()
+    results.Y['f'].plot.line()
+    plt.xlabel("time (s)")
+    plt.ylabel("flow (K)")
+    plt.title("Inlet flow Profile")
+
+    plt.figure()
     results.X['Masa'].plot.line()
     plt.plot(fixed_traj['Masa'],'*')
     plt.xlabel("time (s)")
@@ -200,5 +223,3 @@ if __name__ == "__main__":
     plt.title("Masa Profile")
     
     plt.show()
-    
-

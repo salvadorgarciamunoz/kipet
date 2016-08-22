@@ -39,7 +39,7 @@ class ParameterEstimator(Optimizer):
                               optimizer,
                               **kwds):
         
-        """Solves estimation based on spectral data.
+        """Solves estimation based on spectral data. (known variances)
 
            This method is not intended to be used by users directly
         Args:

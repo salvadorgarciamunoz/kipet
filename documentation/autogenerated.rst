@@ -30,6 +30,10 @@ Optimizers
     :members:	      
     :private-members:
 
+.. automodule:: VarianceEstimator
+    :members:	      
+    :private-members:
+
 Utils
 -----
 .. automodule:: data_tools

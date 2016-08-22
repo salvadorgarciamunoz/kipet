@@ -402,15 +402,14 @@ class TemplateBuilder(object):
 
         pyomo_model.algebraics = Set(initialize = self._algebraics)
         
-        list_times = list(self._meas_times)
-        self._meas_times = sorted(list_times)
-        m_times = list()
+        list_times = self._meas_times
+        m_times = sorted(list_times)
         m_lambdas = list()
         if self._spectral_data is not None and self._absorption_data is not None:
             raise RuntimeError('Either add absorption data or spectral data but not both')
 
         if self._spectral_data is not None:
-            list_times = list(self._spectral_data.index)
+            list_times = list_times.union(set(self._spectral_data.index))
             list_lambdas = list(self._spectral_data.columns) 
             m_times = sorted(list_times)
             m_lambdas = sorted(list_lambdas)

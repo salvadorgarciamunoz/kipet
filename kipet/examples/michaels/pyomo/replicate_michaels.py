@@ -25,8 +25,8 @@ if __name__ == "__main__":
 
 
     #filename =  'original_data.csv'
-    filename =  'trimmed_data.csv'
-    #filename =  'trimmed.csv'
+    #filename =  'trimmed_time.csv'
+    filename =  'trimmed.csv'
     D_frame = read_spectral_data_from_csv(filename)
 
     """
@@ -101,7 +101,7 @@ if __name__ == "__main__":
 
     def rule_odes(m,t):
         exprs = dict()
-        eta = 1e-4
+        eta = 1e-2
         step = 0.5*((t+1)/((t+1)**2+eta**2)**0.5+(210.0-t)/((210.0-t)**2+eta**2)**0.5)
         exprs['V'] = 7.27609e-05*step
         V = m.X[t,'V']
@@ -114,7 +114,7 @@ if __name__ == "__main__":
 
     builder.set_odes_rule(rule_odes)    
 
-    opt_model = builder.create_pyomo_model(0.0,1400)    
+    opt_model = builder.create_pyomo_model(0.0,700)    
 
     #model.pprint()
 
@@ -134,7 +134,7 @@ if __name__ == "__main__":
     p_guess['k3'] = 5.0
     p_guess['k4'] = 1.0
     
-    raw_results = v_estimator.run_lsq_given_P('ipopt',p_guess,tee=False,with_bounds=True)
+    raw_results = v_estimator.run_lsq_given_P('ipopt',p_guess,tee=True,with_bounds=True)
 
     v_estimator.initialize_from_trajectory('Z',raw_results.Z)
     v_estimator.initialize_from_trajectory('S',raw_results.S)
@@ -151,18 +151,29 @@ if __name__ == "__main__":
                                             tee=True,
                                             solver_options=options,
                                             tolerance=1e-5,
-                                            max_iter=30,
+                                            init_C = raw_results.C,
+                                            max_iter=60,
                                             subset_lambdas=A_set)
 
     print "\nThe estimated variances are:\n"
     for k,v in results_variances.sigma_sq.iteritems():
         print k,v
-        
+
+
+    results_variances.S.plot()
+    results_variances.C.plot()
+    results_variances.Z.plot()
+    plt.show()
+    
     sigmas = results_variances.sigma_sq
 
     #################################################################################
-    model = builder.create_pyomo_model(0.0,1400)    
+    model = builder.create_pyomo_model(0.0,700)    
 
+    
+    for k,v in results_variances.P.iteritems():
+        model.P[k].value = v
+    
     p_estimator = ParameterEstimator(model)
     # defines the discrete points wanted in the concentration profile
     p_estimator.apply_discretization('dae.collocation',nfe=80,ncp=1,scheme='LAGRANGE-RADAU')
@@ -173,6 +184,7 @@ if __name__ == "__main__":
     p_estimator.initialize_from_trajectory('Y',results_variances.Y)
     
     solver_options = dict()
+    solver_options['tol'] = 1e-5
     #solver_options['bound_relax_factor'] = 0.0
     #solver_options['mu_init'] =  1e-4
     #solver_options['bound_push'] = 1e-3

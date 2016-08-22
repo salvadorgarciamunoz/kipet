@@ -20,6 +20,10 @@ After importing the package users can do the following things:
 * Compute confidence intervals of estimated parameters
 * Plot concentration and absorbance profiles
 
+The first thing to do in kipet is to create a model. A model contains the physical equations that represent the chemical reaction system dynamics. Once a model is created users can either make a simulation by solving the DAE equations with a multistep integrator or with discretization in finite elements approach, or run an optimization in which the DAE equations are the constraints of the optimization problem. In general, kipet provides functionality to solve optimization problems for parameter estimation of kinetic systems. However, after a model is created, users can extend the model by adding variables, equations, constraints or customized objective functions in a pyomo fashion. After the simulation or the optimization is solved, users can visualize the concentration and absorbance profiles of the reactive system. These steps are summarized in the following figure:
+  
+.. figure:: figures/sim_opt.png
+  
 For the construction of optimization models kipet relies on the Python-based open-source software PYOMO. Pyomo can be used to formulate general optimization problems in Python. Within kipet pyomo is used to formulate the optimization models required for estimating kinetic parameters of chemical reaction systems. The following examples provide guidance on how to create pyomo optimization models to estimate kinetic parameters from spectral data.
 
 ==============================  =========================================================================================================
@@ -37,6 +41,7 @@ To facilitate the creation of models kipet provides a helper class that makes it
 * Noised concentration variable C
 * Absorption variable S
 * Complementary state variables X
+* Complementary algebraic variables Y
 * Parameters P
 
 Once the model is created it can be simulated or optimized. Kipet simulates and optimizes pyomo models following a simultaneous approach. In the simultaneous approach all time dependent variables are discretize to construct a large nonlinear problem, and therefore good initial guesses need to be provided to simulate or optimize pyomo models. To facilitate the determination of such initial guess kipet provides a second type of models called CasADi models. CasADi models are intended only for simulation. The simulation of CasADi models is based on multistep integrators offered in the ODE/DAE integration software SUNDIALS. While pyomo models may require a good initialization in order to find a feasible solution, CasADi models do not need to be initialized. Therefore, users can simulate a CasADi model and provide the resulting trajectories to pyomo models. The creation of CasADi and Pyomo models with the help of the TemplateBuilder follows the same steps. Examples can be found in the following files:
@@ -66,10 +71,10 @@ The variance estimation procedure is described in detail in [Weifeng2016]_. The 
 
 .. figure:: figures/variance.png
 
-The VarianceEstimator class will construct the three problems and solve them with a nonlinear solver until the convergence criteria is satisfy. By Default kipet checks for the infinite norm of the residulas of Z between two iterations. If the infinity norm is less than the tolerance (default 5e-5) then variances are estimated by solving the following overdetermined system
+The VarianceEstimator class will construct the three problems and solve them with a nonlinear solver until the convergence criteria is satisfy. By Default kipet checks for the infinite norm of the residulas of Z between two iterations. If the infinity norm is less than the tolerance (default 5e-5) then variances are estimated by solving the following overdetermined system. 
 
 .. figure:: figures/overdetermined.png
 
-Examples on how to use the optimization classes and there corresponding options can be found in the examples section of this document. 
+The solution of each subproblem in Weifengs procedure is log in the file iterations.log. Examples on how to use the optimization classes and there corresponding options can be found in the examples section of this document. 
 
 Additional examples are included in the examples folder.  

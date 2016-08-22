@@ -39,7 +39,7 @@ if __name__ == "__main__":
     # add algebraics
     algebraics = [0,1,2,3,4,'dummy_t'] # the indices of the rate rxns
     builder.add_algebraic_variable(algebraics)
-    
+    """
     # add parameters
     params = dict()
     params['k0'] = 5.0
@@ -47,7 +47,14 @@ if __name__ == "__main__":
     params['k2'] = 1.0
     params['k3'] = 5.0
     params['k4'] = 1.0
-
+    """
+    params = dict()
+    params['k0'] = 49.7796
+    params['k1'] = 8.93156
+    params['k2'] = 1.31765
+    params['k3'] = 0.310870
+    params['k4'] = 3.87809
+    
     builder.add_parameter(params)
 
     # add additional state variables
@@ -111,11 +118,6 @@ if __name__ == "__main__":
 
     # display concentration results    
     results.Z.plot.line(legend=True)
-    plt.xlabel("time (s)")
-    plt.ylabel("Concentration (mol/L)")
-    plt.title("Concentration Profile")
-
-    results.dZdt.plot.line(legend=True)
     plt.xlabel("time (s)")
     plt.ylabel("Concentration (mol/L)")
     plt.title("Concentration Profile")

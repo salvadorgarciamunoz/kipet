@@ -65,12 +65,21 @@ if __name__ == "__main__":
     builder.add_parameter(params)
     """
 
+    params = dict()
+    params['k0'] = 49.7796
+    params['k1'] = 8.93156
+    params['k2'] = 1.31765
+    params['k3'] = 0.310870
+    params['k4'] = 3.87809
+    
+    builder.add_parameter(params)
+    """
     builder.add_parameter('k0',bounds=(0.0,100.0))
     builder.add_parameter('k1',bounds=(0.0,20.0))
     builder.add_parameter('k2',bounds=(0.0,10.0))
     builder.add_parameter('k3',bounds=(0.0,20.0))
     builder.add_parameter('k4',bounds=(0.0,10.0))
-    
+    """
     builder.add_spectral_data(D_frame)
     
     # add additional state variables
@@ -98,7 +107,7 @@ if __name__ == "__main__":
         return r
 
     builder.set_algebraics_rule(rule_algebraics)
-
+    
     def rule_odes(m,t):
         exprs = dict()
         eta = 1e-4
@@ -115,7 +124,7 @@ if __name__ == "__main__":
     builder.set_odes_rule(rule_odes)
     
 
-    model = builder.create_pyomo_model(0.0,700)    
+    model = builder.create_pyomo_model(0.0,1400)    
 
     #model.pprint()
     

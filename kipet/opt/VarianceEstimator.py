@@ -19,6 +19,13 @@ import StringIO
 import pdb
 
 class VarianceEstimator(Optimizer):
+    """Optimizer for variance estimation.
+
+    Attributes:
+
+        model (model): Pyomo model.
+
+    """
     def __init__(self,model):
         super(VarianceEstimator, self).__init__(model)
         add_warm_start_suffixes(self.model)
@@ -42,6 +49,38 @@ class VarianceEstimator(Optimizer):
 
     def run_opt(self,solver,**kwds):
 
+        """Solves estimation following Weifengs procedure.
+           This method solved a sequence of optimization problems
+           to determine variances and initial guesses for parameter estimation.
+
+        Args:
+
+            solver_opts (dict, optional): options passed to the nonlinear solver
+        
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            norm (optional): norm for checking convergence. The default value is the infinity norm,
+            it uses same options as scipy.linalg.norm
+
+            max_iter (int,optional): maximum number of iterations for Weifengs procedure. Default 400.
+
+            tolerance (float,optional): Tolerance for termination by the change Z. Default 5.0e-5
+
+            subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
+            (Weifeng paper). Default all wavelengths.
+
+            lsq_ipopt (bool,optional): Determines whether to use ipopt for solving the least squares 
+            problems in Weifengs procedure. Default False. The default used scipy.least_squares.
+            
+            init_C (DataFrame,optional): Dataframe with concentration data used to start Weifengs procedure.
+
+        Returns:
+
+            None
+
+        """
+        
         solver_opts = kwds.pop('solver_opts', dict())
         variances = kwds.pop('variances',dict())
         tee = kwds.pop('tee',False)
@@ -50,7 +89,7 @@ class VarianceEstimator(Optimizer):
         tol = kwds.pop('tolerance',5.0e-5)
         A = kwds.pop('subset_lambdas',None)
         lsq_ipopt = kwds.pop('lsq_ipopt',False)
-
+        init_C = kwds.pop('init_C',None)
         
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
@@ -64,8 +103,22 @@ class VarianceEstimator(Optimizer):
             obj.deactivate()
 
         # solves formulation 18
-        self._solve_initalization(solver,subset_lambdas=A,tee=tee)
+        if init_C is None:
+            self._solve_initalization(solver,subset_lambdas=A,tee=tee)
+        else:
+            for t in self._meas_times:
+                for k in self._mixture_components:
+                    self.model.C[t,k].value = init_C[k][t]
+                    self.model.Z[t,k].value = init_C[k][t]
 
+            s_array = self._solve_S_from_DC(init_C)
+            S_frame = pd.DataFrame(data=s_array,
+                                 columns=self._mixture_components,
+                                 index=self._meas_lambdas)
+            
+            for l in self._meas_lambdas:
+                for k in self._mixture_components:
+                    self.model.S[l,k].value = S_frame[k][l] #1e-2
         #start looping
         #print("{: >11} {: >20} {: >16} {: >16}".format('Iter','|Zi-Zi+1|','|Ci-Ci+1|','|Si-Si+1|'))
         print("{: >11} {: >20}".format('Iter','|Zi-Zi+1|'))
@@ -97,34 +150,6 @@ class VarianceEstimator(Optimizer):
             ra=ResultsObject()    
             ra.load_from_pyomo_model(self.model,to_load=['Z','C','S'])
             
-            """
-            rc=ResultsObject()    
-            rc.load_from_pyomo_model(self.C_model,to_load=['C'])
-            
-            rs=ResultsObject()    
-            rs.load_from_pyomo_model(self.S_model,to_load=['S'])
-
-            rdif = ResultsObject()
-            rdif.S = rs.S-ra.S
-            rdif.C = rc.C-ra.C
-
-            #rdif.C.plot()
-            #rdif.S.plot()
-            plt.draw(ra.S)
-            
-            ra.C.plot()
-            rs.S.plot()
-            rc.C.plot()
-            plt.show()
-            #print ra.S
-            r_diff.Z.plot()
-            plt.title('Z')
-            r_diff.S.plot()
-            plt.title('S')
-            r_diff.C.plot()
-            plt.title('C')
-            plt.show()
-            """
             r_diff = compute_diff_results(rb,ra)
 
             
@@ -142,7 +167,7 @@ class VarianceEstimator(Optimizer):
         
         # retriving solutions to results object  
         results.load_from_pyomo_model(self.model,
-                                      to_load=['Z','dZdt','X','dXdt','C','S'])
+                                      to_load=['Z','dZdt','X','dXdt','C','S','Y'])
 
         print('Iterative optimization converged. Estimating variances now')
         # compute variances
@@ -160,7 +185,27 @@ class VarianceEstimator(Optimizer):
 
     
     def _solve_initalization(self,solver,**kwds):
+        """Solves formulation 19 in weifengs paper
 
+           This method is not intended to be used by users directly
+
+        Args:
+            sigma_sq (dict): variances 
+        
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
+            Default False
+        
+            subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
+            (Weifeng paper). Default all wavelengths.
+
+        Returns:
+
+            None
+
+        """
         solver_opts = kwds.pop('solver_opts', dict())
         tee = kwds.pop('tee',True)
         set_A = kwds.pop('subset_lambdas',list())
@@ -177,6 +222,8 @@ class VarianceEstimator(Optimizer):
 
         print("Solving Initialization Problem\n")
 
+        # the ones that are not in set_A are going to be stale and wont go to the optimizer
+        
         # build objective
         obj = 0.0
         for t in self._meas_times:
@@ -204,7 +251,28 @@ class VarianceEstimator(Optimizer):
         self.model.del_component('init_objective')
         
     def _solve_Z(self,solver,**kwds):
+        """Solves formulation 20 in weifengs paper
 
+           This method is not intended to be used by users directly
+
+        Args:
+        
+            solver_opts (dict, optional): options passed to the nonlinear solver
+
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
+            Default False
+        
+            subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
+            (Weifeng paper). Default all wavelengths.
+
+        Returns:
+
+            None
+
+        """
         solver_opts = kwds.pop('solver_opts', dict())
         tee = kwds.pop('tee',False)
         profile_time = kwds.pop('profile_time',False)
@@ -229,7 +297,7 @@ class VarianceEstimator(Optimizer):
             opt.options[key]=val
 
         solver_results = opt.solve(self.model,
-                                   #logfile=self._tmp2,
+                                   logfile=self._tmp2,
                                    tee=tee,
                                    #show_section_timing=True,
                                    report_timing=profile_time)
@@ -237,9 +305,44 @@ class VarianceEstimator(Optimizer):
         self.model.del_component('z_objective')
 
     def _solve_s_scipy(self,**kwds):
+        """Solves formulation 22 in weifengs paper (using scipy least_squares)
 
+           This method is not intended to be used by users directly
+
+        Args:
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
+            Default False
+
+            ftol (float, optional): Tolerance for termination by the change of the cost function. Default is 1e-8
+
+            xtol (float, optional): Tolerance for termination by the change of the independent variables. Default is 1e-8
+
+            gtol (float, optional): Tolerance for termination by the norm of the gradient. Default is 1e-8.
+
+            loss (str, optional): Determines the loss function. The following keyword values are allowed:
+                'linear' (default) : rho(z) = z. Gives a standard least-squares problem.
+
+                'soft_l1' : rho(z) = 2 * ((1 + z)**0.5 - 1). The smooth approximation of l1 (absolute value) loss. Usually a good choice for robust least squares.
+
+                'huber' : rho(z) = z if z <= 1 else 2*z**0.5 - 1. Works similarly to 'soft_l1'.
+
+                'cauchy' : rho(z) = ln(1 + z). Severely weakens outliers influence, but may cause difficulties in optimization process.
+
+                'arctan' : rho(z) = arctan(z). Limits a maximum loss on a single residual, has properties similar to 'cauchy'.
+            f_scale (float, optional): Value of soft margin between inlier and outlier residuals, default is 1.0
+
+            max_nfev (int, optional): Maximum number of function evaluations before the termination
+
+        Returns:
+            None
+
+        """
+        
         method = kwds.pop('method','trf')
-        def_tol = 1.4901161193847656e-08
+        def_tol = 1.4901161193847656e-07
         ftol = kwds.pop('ftol',def_tol)
         xtol = kwds.pop('xtol',def_tol)
         gtol = kwds.pop('gtol',def_tol)
@@ -249,6 +352,7 @@ class VarianceEstimator(Optimizer):
         max_nfev = kwds.pop('max_nfev',None)
         verbose = kwds.pop('verbose',2)
         profile_time = kwds.pop('profile_time',False)
+        tee =  kwds.pop('tee',False)
         
         if profile_time:
             print('-----------------Solve_S--------------------')
@@ -259,7 +363,7 @@ class VarianceEstimator(Optimizer):
         for j,l in enumerate(self._meas_lambdas):
             for k,c in enumerate(self._mixture_components):
                 if self.model.S[l,c].value<=0.0:
-                    self._s_array[j*n+k] = 1e-15
+                    self._s_array[j*n+k] = 1e-2
                 else:
                     self._s_array[j*n+k] = self.model.S[l,c].value
 
@@ -288,8 +392,7 @@ class VarianceEstimator(Optimizer):
                               shape=(nt*nl,nc*nl))
 
         # solve
-        f = StringIO.StringIO()
-        with stdout_redirector(f):
+        if tee:
             res = least_squares(F,self._s_array,JF,
                                 (0.0,np.inf),method,
                                 ftol,xtol,gtol,
@@ -301,9 +404,23 @@ class VarianceEstimator(Optimizer):
                                       self._n_meas_lambdas,
                                       self._n_meas_times,
                                       self._n_components))
+        else:
+            f = StringIO.StringIO()
+            with stdout_redirector(f):
+                res = least_squares(F,self._s_array,JF,
+                                    (0.0,np.inf),method,
+                                    ftol,xtol,gtol,
+                                    x_scale,loss,f_scale,
+                                    max_nfev=max_nfev,
+                                    verbose=verbose,
+                                    args=(self._z_array,
+                                          self._d_array,
+                                          self._n_meas_lambdas,
+                                          self._n_meas_times,
+                                          self._n_components))
 
-        with open(self._tmp3,'w') as tf:
-            tf.write(f.getvalue())
+            with open(self._tmp3,'w') as tf:
+                tf.write(f.getvalue())
         
         if profile_time:
             t1 = time.time()
@@ -317,9 +434,44 @@ class VarianceEstimator(Optimizer):
         return res.success
 
     def _solve_c_scipy(self,**kwds):
+        """Solves formulation 25 in weifengs paper (using scipy least_squares)
 
+           This method is not intended to be used by users directly
+
+        Args:
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
+            Default False
+
+            ftol (float, optional): Tolerance for termination by the change of the cost function. Default is 1e-8
+
+            xtol (float, optional): Tolerance for termination by the change of the independent variables. Default is 1e-8
+
+            gtol (float, optional): Tolerance for termination by the norm of the gradient. Default is 1e-8.
+
+            loss (str, optional): Determines the loss function. The following keyword values are allowed:
+                'linear' (default) : rho(z) = z. Gives a standard least-squares problem.
+
+                'soft_l1' : rho(z) = 2 * ((1 + z)**0.5 - 1). The smooth approximation of l1 (absolute value) loss. Usually a good choice for robust least squares.
+
+                'huber' : rho(z) = z if z <= 1 else 2*z**0.5 - 1. Works similarly to 'soft_l1'.
+
+                'cauchy' : rho(z) = ln(1 + z). Severely weakens outliers influence, but may cause difficulties in optimization process.
+
+                'arctan' : rho(z) = arctan(z). Limits a maximum loss on a single residual, has properties similar to 'cauchy'.
+            f_scale (float, optional): Value of soft margin between inlier and outlier residuals, default is 1.0
+
+            max_nfev (int, optional): Maximum number of function evaluations before the termination
+
+        Returns:
+            None
+
+        """
+        
         method = kwds.pop('method','trf')
-        def_tol = 1.4901161193847656e-08
+        def_tol = 1.4901161193847656e-07
         ftol = kwds.pop('ftol',def_tol)
         xtol = kwds.pop('xtol',def_tol)
         gtol = kwds.pop('gtol',def_tol)
@@ -329,6 +481,7 @@ class VarianceEstimator(Optimizer):
         max_nfev = kwds.pop('max_nfev',None)
         verbose = kwds.pop('verbose',2)
         profile_time = kwds.pop('profile_time',False)
+        tee =  kwds.pop('tee',False)
         
         if profile_time:
             print('-----------------Solve_C--------------------')
@@ -369,8 +522,7 @@ class VarianceEstimator(Optimizer):
 
         
         # solve
-        f = StringIO.StringIO()
-        with stdout_redirector(f):
+        if tee:
             res = least_squares(F,self._c_array,JF,
                                 (0.0,np.inf),method,
                                 ftol,xtol,gtol,
@@ -382,9 +534,23 @@ class VarianceEstimator(Optimizer):
                                       self._n_meas_lambdas,
                                       self._n_meas_times,
                                       self._n_components))
+        else:
+            f = StringIO.StringIO()
+            with stdout_redirector(f):
+                res = least_squares(F,self._c_array,JF,
+                                    (0.0,np.inf),method,
+                                    ftol,xtol,gtol,
+                                    x_scale,loss,f_scale,
+                                    max_nfev=max_nfev,
+                                    verbose=verbose,
+                                    args=(self._s_array,
+                                          self._d_array,
+                                          self._n_meas_lambdas,
+                                          self._n_meas_times,
+                                          self._n_components))
 
-        with open(self._tmp4,'w') as tf:
-            tf.write(f.getvalue())
+            with open(self._tmp4,'w') as tf:
+                tf.write(f.getvalue())
 
         if profile_time:
             t1 = time.time()
@@ -398,6 +564,17 @@ class VarianceEstimator(Optimizer):
         return res.success
 
     def _solve_variances(self,results):
+        """Solves formulation 23 in weifengs paper (using scipy least_squares)
+
+           This method is not intended to be used by users directly
+
+        Args:
+            results (ResultsObject): Data obtained from Weifengs procedure 
+
+        Returns:
+            bool indicated if variances were estimated succesfully.
+
+        """
         nl = self._n_meas_lambdas
         nt = self._n_meas_times
         nc = self._n_components
@@ -458,6 +635,16 @@ class VarianceEstimator(Optimizer):
 
         
     def _build_scipy_lsq_arrays(self):
+        """Creates arrays for scipy solvers
+
+           This method is not intended to be used by users directly
+
+        Args:
+
+        Returns:
+            None
+
+        """
         self._d_array = np.zeros((self._n_meas_times,self._n_meas_lambdas))
         for i,t in enumerate(self._meas_times):
             for j,l in enumerate(self._meas_lambdas):
@@ -468,6 +655,16 @@ class VarianceEstimator(Optimizer):
         self._c_array = np.ones(self._n_meas_times*self._n_components)
 
     def _create_tmp_outputs(self):
+        """Creates temporary files for loging solutions of each optimization problem
+
+           This method is not intended to be used by users directly
+
+        Args:
+
+        Returns:
+            None
+
+        """
         self._tmp2 = "tmp_Z"
         self._tmp3 = "tmp_S"
         self._tmp4 = "tmp_C"
@@ -482,6 +679,16 @@ class VarianceEstimator(Optimizer):
             f.write("temporary file for ipopt output")
 
     def _log_iterations(self,filename,iteration):
+        """log solution of each subproblem in Weifengs procedure
+
+           This method is not intended to be used by users directly
+
+        Args:
+
+        Returns:
+            None
+
+        """
         with open(filename, "a") as f:
             f.write("\n#######################Iteration {}#######################\n".format(iteration))
             with open(self._tmp2,'r') as tf:
@@ -495,6 +702,16 @@ class VarianceEstimator(Optimizer):
                 f.write(tf.read())
 
     def _build_s_model(self):
+        """Builds s_model to solve formulation 22 with ipopt
+
+           This method is not intended to be used by users directly
+
+        Args:
+
+        Returns:
+            None
+
+        """
         self.S_model = ConcreteModel()
         self.S_model.S = Var(self._meas_lambdas,
                              self._mixture_components,
@@ -508,7 +725,16 @@ class VarianceEstimator(Optimizer):
             self.S_model.S[k].value = v.value
 
     def _solve_S(self,solver,**kwds):
+        """Solves formulation 23 from Weifengs procedure with ipopt
 
+           This method is not intended to be used by users directly
+
+        Args:
+
+        Returns:
+            None
+
+        """
         solver_opts = kwds.pop('solver_opts', dict())
         tee = kwds.pop('tee',False)
         update_nl = kwds.pop('update_nl',False)
@@ -553,7 +779,16 @@ class VarianceEstimator(Optimizer):
         
         
     def _build_c_model(self):
-        
+        """Builds s_model to solve formulation 25 with ipopt
+
+           This method is not intended to be used by users directly
+
+        Args:
+
+        Returns:
+            None
+
+        """
         self.C_model = ConcreteModel()
         self.C_model.C = Var(self._meas_times,
                            self._mixture_components,
@@ -567,7 +802,16 @@ class VarianceEstimator(Optimizer):
             self.C_model.C[k].value = v.value
 
     def _solve_C(self,solver,**kwds):
-        
+        """Solves formulation 23 from Weifengs procedure with ipopt
+
+           This method is not intended to be used by users directly
+
+        Args:
+
+        Returns:
+            None
+
+        """
         solver_opts = kwds.pop('solver_opts', dict())
         tee = kwds.pop('tee',False)
         update_nl = kwds.pop('update_nl',False)

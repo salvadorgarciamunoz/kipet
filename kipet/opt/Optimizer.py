@@ -37,7 +37,7 @@ class Optimizer(PyomoSimulator):
     def run_opt(self,solver,**kwds):
         raise NotImplementedError("Optimizer abstract method. Call child class")
 
-    def _solve_S_from_DC(self,C_dataFrame,tee=False,with_bounds=False):
+    def _solve_S_from_DC(self,C_dataFrame,tee=False,with_bounds=False,max_iter=200):
         """Solves a basic least squares problems with SVD.
         
         Args:
@@ -96,6 +96,7 @@ class Optimizer(PyomoSimulator):
                     
                 res_lsq = least_squares(F,x0,JF,
                                         bounds=(0.0,np.inf),
+                                        max_nfev=max_iter,
                                         verbose=verbose,args=(M,D_vector))
                 s_array = res_lsq.x
                 
@@ -131,6 +132,7 @@ class Optimizer(PyomoSimulator):
         tee = kwds.pop('tee',False)
         initialization = kwds.pop('initialization',False)
         wb = kwds.pop('with_bounds',True)
+        max_iter = kwds.pop('max_lsq_iter',200)
         
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before runing simulation')
@@ -139,7 +141,7 @@ class Optimizer(PyomoSimulator):
 
         base_values = ResultsObject()
         base_values.load_from_pyomo_model(self.model,
-                                          to_load=['Z','dZdt','X','dXdt'])
+                                          to_load=['Z','dZdt','X','dXdt','Y'])
 
         # fixes parameters 
         old_values = {}        
@@ -209,7 +211,10 @@ class Optimizer(PyomoSimulator):
             raise RuntimeError('Not enough measurements num_meas>= num_components')
 
         # solves over determined system
-        s_array = self._solve_S_from_DC(results.C,tee=tee,with_bounds=wb)
+        s_array = self._solve_S_from_DC(results.C,
+                                        tee=tee,
+                                        with_bounds=wb,
+                                        max_iter=max_iter)
 
         d_results = []
         for t in self._meas_times:

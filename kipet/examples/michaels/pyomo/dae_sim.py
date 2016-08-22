@@ -43,6 +43,7 @@ if __name__ == "__main__":
     algebraics = [0,1,2,3,4] # the indices of the rate rxns
     builder.add_algebraic_variable(algebraics)
     
+    """
     # add parameters
     params = dict()
     params['k0'] = 5.0
@@ -50,6 +51,13 @@ if __name__ == "__main__":
     params['k2'] = 1.0
     params['k3'] = 5.0
     params['k4'] = 1.0
+    """
+    params = dict()
+    params['k0'] = 49.7796
+    params['k1'] = 8.93156
+    params['k2'] = 1.31765
+    params['k3'] = 0.310870
+    params['k4'] = 3.87809
 
     builder.add_parameter(params)
 
@@ -81,7 +89,7 @@ if __name__ == "__main__":
 
     def rule_odes(m,t):
         exprs = dict()
-        eta = 1e-4
+        eta = 1e-2
         step = 0.5*((t+1)/((t+1)**2+eta**2)**0.5+(210.0-t)/((210.0-t)**2+eta**2)**0.5)
         exprs['V'] = 7.27609e-05*step
         V = m.X[t,'V']
@@ -94,14 +102,19 @@ if __name__ == "__main__":
 
     builder.set_odes_rule(rule_odes)
     
+    filename =  'trimmed.csv'
+    D_frame = read_spectral_data_from_csv(filename)
+    meas_times = sorted(D_frame.index)
 
+    builder.add_measurement_times(meas_times)
+    
     model = builder.create_pyomo_model(0.0,1400)    
 
     #model.pprint()
     
     sim = PyomoSimulator(model)
     # defines the discrete points wanted in the concentration profile
-    sim.apply_discretization('dae.collocation',nfe=80,ncp=3,scheme='LAGRANGE-RADAU')
+    sim.apply_discretization('dae.collocation',nfe=80,ncp=1,scheme='LAGRANGE-RADAU')
 
     # good initialization
     initialization = pd.read_csv("init_Z.csv",index_col=0)

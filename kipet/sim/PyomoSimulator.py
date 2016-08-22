@@ -132,7 +132,11 @@ class PyomoSimulator(Simulator):
 
         self.initialize_from_trajectory('Z',z_init_panel)
         self.initialize_from_trajectory('X',x_init_panel)
-        
+
+    def initialize_parameters(self,params):
+        for k,v in params.iteritems():
+            self.model.P[k].value = v
+            
     def initialize_from_trajectory(self,variable_name,trajectories):
         """Initializes discretized points with values from trajectories.
 

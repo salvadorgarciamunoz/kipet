@@ -4,12 +4,23 @@
 #  Copyright (c) 2016 Eli Lilly.
 #  _________________________________________________________________________
 
-# Sample Problem 2 (From Sawall et.al.)
-# First example from WF paper simulation of ODE system using pyomo discretization and IPOPT
+# Aspirin Example
 #
-#		\frac{dZ_a}{dt} = -k_1*Z_a	                Z_a(0) = 1
-#		\frac{dZ_b}{dt} = k_1*Z_a - k_2*Z_b		Z_b(0) = 0
-#               \frac{dZ_c}{dt} = k_2*Z_b	                Z_c(0) = 0
+#		\frac{dZ_aa}{dt} = -r_0-r_1-r_3-\frac{\dot{v}}{V}*Z_aa
+#		\frac{dZ_ha}{dt} = r_0+r_1+r_2+2r_3-\frac{\dot{v}}{V}*Z_ha
+#               \frac{dZ_asaa}{dt} = r_1-r_2-\frac{\dot{v}}{V}*Z_asaa
+#               \frac{dZ_h2o}{dt} = -r_2-r_3+\frac{f}{V}*C_h2o^in-\frac{\dot{v}}{V}*Z_asaa
+
+#               \frac{dm_{sa}}{dt} = -M_{sa}*V*r_d
+#               \frac{dm_{asa}}{dt} = -M_{asa}*V*r_c
+#               \frac{dV}{dt} = V*\sum_i^{ns}\upsilon_i*(\sum_j^{6}\gamma_i*r_j+\epsilon_i*\frac{f}{V}*C_h2o^in)
+
+#               r_0 = k_0*Z_sa*Z_aa
+#               r_1 = k_1*Z_asa*Z_aa
+#               r_2 = k_2*Z_asaa*Z_h2o
+#               r_3 = k_3*Z_aa*Z_h2o
+#               r_d = k_d*(Z_sa^{sat}-Z_sa)^d
+#               r_c = k_c*(max(Z_asa-Z_sa^{sat}))^c
 
 from kipet.model.TemplateBuilder import *
 from kipet.sim.CasadiSimulator import *
