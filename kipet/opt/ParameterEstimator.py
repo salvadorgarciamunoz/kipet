@@ -13,8 +13,10 @@ import os
 class ParameterEstimator(Optimizer):
     """Optimizer for parameter estimation.
 
-    Attributes:
-        model (model): Pyomo model.
+    Parameters
+    ----------
+    model : Pyomo model
+        Pyomo model to be used in the parameter estimation
 
     """
     def __init__(self,model):
@@ -33,12 +35,8 @@ class ParameterEstimator(Optimizer):
         
     def run_sim(self,solver,**kdws):
         raise NotImplementedError("ParameterEstimator object does not have run_sim method. Call run_opt")       
-        
-    def _solve_extended_model(self,
-                              sigma_sq,
-                              optimizer,
-                              **kwds):
-        
+
+    def _solve_extended_model(self, sigma_sq, optimizer, **kwds):
         """Solves estimation based on spectral data. (known variances)
 
            This method is not intended to be used by users directly
