@@ -134,7 +134,7 @@ class VarianceEstimator(Optimizer):
         for it in xrange(max_iter):
             
             rb=ResultsObject()    
-            rb.load_from_pyomo_model(self.model,to_load=['Z','C','S'])
+            rb.load_from_pyomo_model(self.model,to_load=['Z','C','S','Y'])
             
             self._solve_Z(solver)
 

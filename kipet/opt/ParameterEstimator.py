@@ -392,7 +392,7 @@ class ParameterEstimator(Optimizer):
         results = ResultsObject()
 
         results.load_from_pyomo_model(self.model,
-                                      to_load=['Z','dZdt','X','dXdt','C','S'])
+                                      to_load=['Z','dZdt','X','dXdt','C','S','Y'])
             
         self.compute_D_given_SC(results)
         
