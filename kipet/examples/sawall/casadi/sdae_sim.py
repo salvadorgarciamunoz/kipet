@@ -66,8 +66,9 @@ if __name__ == "__main__":
     # defines the discrete points wanted in the profiles (does not include measurement points)
     sim.apply_discretization('integrator',nfe=500)
     # simulate
-    sigmas = {'device':0,
-              'A':1e-4,
+    
+    sigmas = {'device':1e-6,
+              'A':1e-5,
               'B':1e-5}
     results_casadi = sim.run_sim("cvodes",variances=sigmas, seed=123453256)
 
@@ -79,7 +80,8 @@ if __name__ == "__main__":
         plt.title("Concentration Profile")
 
         # take a look at the data
-        plot_spectral_data(results_casadi.D,dimension='3D')
+        results_casadi.D.T.plot()
+        #plot_spectral_data(results_casadi.D,dimension='3D')
         # basic principal component analysis of the data
         #basic_pca(results_casadi.D,n=4)
         plt.show()

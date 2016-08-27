@@ -176,6 +176,11 @@ if __name__ == "__main__":
     plt.ylabel("Concentration (mol/L)")
     plt.title("Concentration Profile")
 
+    results.S.plot.line(legend=True)
+    plt.xlabel("wave length (s)")
+    plt.ylabel("Absorbance")
+    plt.title("Absorbance Profile")
+
     C.plot()
     
     plt.figure()
@@ -218,8 +223,9 @@ if __name__ == "__main__":
     plt.title("Masa Profile")
 
     results.D.T.plot(legend=False)
-
+    plot_spectral_data(results.D,dimension='3D')
     results.D.to_csv("Dtl.csv")
+
     
     plt.show()
     

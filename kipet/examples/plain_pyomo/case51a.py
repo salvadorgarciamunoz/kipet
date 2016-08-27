@@ -125,7 +125,7 @@ model.objective = Objective(rule=rule_objective)
 
 
 discretizer = TransformationFactory('dae.collocation')
-discretizer.apply_to(model,wrt=model.time,nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
+discretizer.apply_to(model,wrt=model.time,nfe=60,ncp=1,scheme='LAGRANGE-RADAU')
 
 opt = SolverFactory('ipopt')
 

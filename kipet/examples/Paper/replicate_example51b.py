@@ -85,7 +85,7 @@ if __name__ == "__main__":
     opt_model = builder.create_pyomo_model(0.0,12.0)
 
     p_estimator = ParameterEstimator(opt_model)
-    p_estimator.apply_discretization('dae.collocation',nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
+    p_estimator.apply_discretization('dae.collocation',nfe=60,ncp=1,scheme='LAGRANGE-RADAU')
     
     # Provide good initial guess obtained by variance estimation
     p_estimator.initialize_from_trajectory('Z',results_variances.Z)

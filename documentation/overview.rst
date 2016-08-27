@@ -23,7 +23,7 @@ In addition, for a better understanding of chemical reaction systems, we provide
   * Solve the DAE system with collocation methods
   * Stochastic integration of the DAE
 
-* Estimate variances of Noise
+* Estimate data variances
 * Estimate kinetic parameters
 * Estimate confidence intervals of the estimated parameters
 * Visualize results

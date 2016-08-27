@@ -48,7 +48,7 @@ if __name__ == "__main__":
     # create instance of simulator
     simulator = PyomoSimulator(pyomo_model)
     # defines the discrete points wanted in the concentration profile
-    simulator.apply_discretization('dae.collocation',nfe=100,ncp=2,scheme='LAGRANGE-RADAU')
+    simulator.apply_discretization('dae.collocation',nfe=30,ncp=1,scheme='LAGRANGE-RADAU')
 
     
     # simulate
@@ -57,7 +57,7 @@ if __name__ == "__main__":
     # second model to scale and initialize
     scaled_model = builder.create_pyomo_model(0.0,200.0)
     scaled_sim = PyomoSimulator(scaled_model)
-    scaled_sim.apply_discretization('dae.collocation',nfe=100,ncp=2,scheme='LAGRANGE-RADAU')
+    scaled_sim.apply_discretization('dae.collocation',nfe=30,ncp=1,scheme='LAGRANGE-RADAU')
 
     scaled_sim.initialize_from_trajectory('Z',results_pyomo.Z)
     scaled_sim.initialize_from_trajectory('dZdt',results_pyomo.dZdt)

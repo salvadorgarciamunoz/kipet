@@ -34,15 +34,6 @@ class VarianceEstimator(Optimizer):
             raise NotImplementedError("Variance estimator requires spectral data in model as model.D[ti,lj]")
 
         self._build_scipy_lsq_arrays()
-        self._create_tmp_outputs()
-        
-    def __del__(self):
-        if os.path.exists(self._tmp2):
-            os.remove(self._tmp2)
-        if os.path.exists(self._tmp3):
-            os.remove(self._tmp3)
-        if os.path.exists(self._tmp4):
-            os.remove(self._tmp4)
         
     def run_sim(self,solver,**kwds):
         raise NotImplementedError("VarianceEstimator object does not have run_sim method. Call run_opt")
@@ -94,6 +85,8 @@ class VarianceEstimator(Optimizer):
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
 
+        self._create_tmp_outputs()
+        
         # deactivates objective functions                
         objectives_map = self.model.component_map(ctype=Objective,active=True)
         active_objectives_names = []
@@ -180,7 +173,15 @@ class VarianceEstimator(Optimizer):
             param_vals[name] = self.model.P[name].value
 
         results.P = param_vals
-        
+
+        # removes temporary files. This needs to be changes to work with pyutilib
+        if os.path.exists(self._tmp2):
+            os.remove(self._tmp2)
+        if os.path.exists(self._tmp3):
+            os.remove(self._tmp3)
+        if os.path.exists(self._tmp4):
+            os.remove(self._tmp4)
+            
         return results
 
     

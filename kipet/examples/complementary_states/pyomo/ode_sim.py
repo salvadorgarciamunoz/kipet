@@ -70,7 +70,7 @@ if __name__ == "__main__":
     # create instance of simulator
     simulator = PyomoSimulator(pyomo_model)
     # defines the discrete points wanted in the concentration profile
-    simulator.apply_discretization('dae.collocation',nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
+    simulator.apply_discretization('dae.collocation',nfe=20,ncp=1,scheme='LAGRANGE-RADAU')
 
     # simulate
     results_pyomo = simulator.run_sim('ipopt',tee=True)

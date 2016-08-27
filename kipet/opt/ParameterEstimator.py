@@ -24,15 +24,6 @@ class ParameterEstimator(Optimizer):
         # for reduce hessian
         self._idx_to_variable = dict()
         
-        self._tmpfile = "ipopt_hess"
-
-        with open(self._tmpfile,'w') as f:
-            f.write("temporary file for ipopt output")
-
-    def __del__(self):
-        if os.path.exists(self._tmpfile):
-            os.remove(self._tmpfile)
-        
     def run_sim(self,solver,**kdws):
         raise NotImplementedError("ParameterEstimator object does not have run_sim method. Call run_opt")       
 
@@ -111,14 +102,7 @@ class ParameterEstimator(Optimizer):
         #                                 report_timing=True)
 
         if covariance:
-            f = StringIO.StringIO()
-            print "Before calling solve"
-            
-            #with stdout_redirector(f):
-            #    solver_results = optimizer.solve(m,tee=True,
-            #                                     report_timing=True)
-            
-
+            self._tmpfile = "ipopt_hess"
             solver_results = optimizer.solve(m,tee=False,
                                              logfile=self._tmpfile,
                                              report_timing=True)
@@ -127,7 +111,8 @@ class ParameterEstimator(Optimizer):
             output_string = ''
             with open(self._tmpfile,'r') as f:
                 output_string = f.read()
-
+            if os.path.exists(self._tmpfile):
+                os.remove(self._tmpfile)
             #output_string = f.getvalue()
             ipopt_output,hessian_output = split_sipopt_string(output_string)
             #print hessian_output

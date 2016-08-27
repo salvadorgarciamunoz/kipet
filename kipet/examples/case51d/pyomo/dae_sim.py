@@ -153,7 +153,7 @@ if __name__ == "__main__":
 
     model = builder.create_pyomo_model(0.0,210.5257)    
 
-    model.pprint()
+    #model.pprint()
     
     sim = PyomoSimulator(model)
     # defines the discrete points wanted in the concentration profile

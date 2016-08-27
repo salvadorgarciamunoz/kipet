@@ -193,13 +193,13 @@ def plot_spectral_data(dataFrame,dimension='2D'):
         ax = fig.gca(projection='3d')
         ax.plot_surface(L, T, D, rstride=10, cstride=10, alpha=0.2)
         #cset = ax.contour(L, T, D, zdir='z',offset=-10)
-        cset = ax.contour(L, T, D, zdir='x',offset=-40,cmap='coolwarm')
-        cset = ax.contour(L, T, D, zdir='y',offset=times[-1]+40,cmap='coolwarm')
+        cset = ax.contour(L, T, D, zdir='x',offset=-20,cmap='coolwarm')
+        cset = ax.contour(L, T, D, zdir='y',offset=times[-1]+20,cmap='coolwarm')
         
         ax.set_xlabel('Wavelength')
-        ax.set_xlim(-40, lambdas[-1])
+        ax.set_xlim(-20, lambdas[-1])
         ax.set_ylabel('time')
-        ax.set_ylim(0, times[-1]+40)
+        ax.set_ylim(0, times[-1]+20)
         ax.set_zlabel('Spectra')
         #ax.set_zlim(-10, )
 
@@ -305,7 +305,7 @@ def generate_random_absorbance_data(wl_span,component_peaks,component_widths=Non
             width = component_widths[k]
         else:
             width = 1000.0
-        params['alphas'] = np.random.uniform(0.1,4.0,n_peaks)
+        params['alphas'] = np.random.uniform(0.1,1.0,n_peaks)
         params['betas'] = np.random.uniform(min_l,max_l,n_peaks)
         params['gammas'] = np.random.uniform(1.0,width,n_peaks)
         parameters_dict[k] = params
