@@ -9,7 +9,6 @@ import re
 import os
 
 
-
 class ParameterEstimator(Optimizer):
     """Optimizer for parameter estimation.
 
@@ -136,7 +135,6 @@ class ParameterEstimator(Optimizer):
             m.del_component('D_bar_constraint')
         m.del_component('objective')
 
-
     def _define_reduce_hess_order(self):
         self.model.red_hessian = Suffix(direction=Suffix.IMPORT_EXPORT)
 
@@ -246,8 +244,7 @@ class ParameterEstimator(Optimizer):
                     c_idx = i*nw+j
                     self.B_matrix[r_idx1,c_idx] = -2*self.model.S[l,c].value/variances['device']
                     self.B_matrix[r_idx2,c_idx] = -2*self.model.C[t,c].value/variances['device']
-    
-    
+
     def _compute_Vd_matrix(self,variances,**kwds):
         """Builds d covariance matrix
 
@@ -389,13 +386,13 @@ class ParameterEstimator(Optimizer):
 
         return results
 
-            
-            
+
 def split_sipopt_string(output_string):
     start_hess = output_string.find('DenseSymMatrix')
     ipopt_string = output_string[:start_hess]
     hess_string = output_string[start_hess:]
     return (ipopt_string,hess_string)
+
 
 def read_reduce_hessian2(hessian_string, n_vars):
     hessian_string  = re.sub('RedHessian unscaled\[', '', hessian_string)

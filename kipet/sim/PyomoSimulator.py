@@ -4,6 +4,7 @@ from ResultsObject import *
 from Simulator import *
 import warnings
 
+
 class PyomoSimulator(Simulator):
     """Simulator based on pyomo.dae discretization strategies.
 
@@ -38,7 +39,6 @@ class PyomoSimulator(Simulator):
         if not hasattr(self.model, 'scaling_factor'):
             self.model.scaling_factor = Suffix(direction=Suffix.EXPORT)
 
-                
     def apply_discretization(self,transformation,**kwargs):
         """Discretizes the model.
 

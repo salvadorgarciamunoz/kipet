@@ -1,6 +1,8 @@
 import six
 import pandas as pd
 import itertools
+import inspect
+import numbers
 import copy
 import logging
 import warnings
@@ -20,6 +22,7 @@ except ImportError:
 
 
 logger = logging.getLogger('ModelBuilderLogger')
+
 
 class TemplateBuilder(object):
     """Helper class for creation of models.
@@ -44,7 +47,7 @@ class TemplateBuilder(object):
         _complementary_states (set,optional): container with additional states
 
     """    
-    def __init__(self,**kwargs):
+    def __init__(self, **kwargs):
         """Template builder constructor
 
         Args:
@@ -85,7 +88,6 @@ class TemplateBuilder(object):
                 self._parameters[k] = None
         else:
             raise RuntimeError('parameters must be a dictionary parameter_name:value or a list with parameter_names')
-                    
 
         extra_states = kwargs.pop('extra_states',dict())
         if isinstance(extra_states,dict):
@@ -98,9 +100,8 @@ class TemplateBuilder(object):
         algebraics = kwargs.pop('algebraics',set())
         for y in algebraics:
             self._algebraics.add(y)
-        
-        
-    def add_parameter(self,*args, **kwds):
+
+    def add_parameter(self, *args, **kwds):
         """Add a kinetic parameter(s) to the model.
 
         Note:
@@ -151,12 +152,14 @@ class TemplateBuilder(object):
             second = args[1]
             if isinstance(first,six.string_types):
                 self._parameters[first] = second
+                if bounds is not None:
+                    self._parameters_bounds[first] = bounds
             else:
                 raise RuntimeError('Parameter argument not supported. Try str,val')
         else:
             raise RuntimeError('Parameter argument not supported. Try str,val')
         
-    def add_mixture_component(self,*args):
+    def add_mixture_component(self, *args):
         """Add a component (reactive or product) to the model.
 
         This method will keep track of the number of components in the model
@@ -181,6 +184,8 @@ class TemplateBuilder(object):
             input = args[0]
             if isinstance(input,dict):
                 for key,val in input.iteritems():
+                    if not isinstance(val, numbers.Number):
+                        raise RuntimeError('The init condition must be a number. Try str, float')
                     self._component_names.add(key)
                     self._init_conditions[key] = val
             else:
@@ -188,16 +193,19 @@ class TemplateBuilder(object):
         elif len(args)==2:
             name = args[0]
             init_condition = args[1]
+
+            if not isinstance(init_condition,numbers.Number):
+                raise RuntimeError('The second argument must be a number. Try str, float')
+
             if isinstance(name,six.string_types):
                 self._component_names.add(name)
                 self._init_conditions[name] = init_condition
             else:
                 raise RuntimeError('Mixture component data not supported. Try str, float')
         else:
-            print(len(args))
             raise RuntimeError('Mixture component data not supported. Try str, float')
             
-    def add_spectral_data(self,data):
+    def add_spectral_data(self, data):
         """Add spectral data 
 
         Args:
@@ -213,7 +221,7 @@ class TemplateBuilder(object):
         else:
             raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
         
-    def add_absorption_data(self,data):
+    def add_absorption_data(self, data):
         """Add absorption data 
 
         Args:
@@ -229,7 +237,7 @@ class TemplateBuilder(object):
         else:
             raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
 
-    def add_measurement_times(self,times):
+    def add_measurement_times(self, times):
         """Add measurement times to the model 
 
         Args:
@@ -242,7 +250,7 @@ class TemplateBuilder(object):
         for t in times:
             self._meas_times.add(t)
 
-    def add_complementary_state_variable(self,*args):
+    def add_complementary_state_variable(self, *args):
         """Add an extra state variable to the model.
 
         This method add new state variables to the model. Extra or complementary states because 
@@ -267,16 +275,22 @@ class TemplateBuilder(object):
         """
         if len(args) == 1:
             input = args[0]
-            if isinstance(input,dict):
-                for key,val in input.iteritems():
+            if isinstance(input, dict):
+                for key, val in input.iteritems():
+                    if not isinstance(val, numbers.Number):
+                        raise RuntimeError('The init condition must be a number. Try str, float')
                     self._complementary_states.add(key)
                     self._init_conditions[key] = val
             else:
                 raise RuntimeError('Complementary state data not supported. Try dict[str]=float')
-        elif len(args)==2:
+        elif len(args) == 2:
             name = args[0]
             init_condition = args[1]
-            if isinstance(name,six.string_types):
+
+            if not isinstance(init_condition, numbers.Number):
+                raise RuntimeError('The second argument must be a number. Try str, float')
+
+            if isinstance(name, six.string_types):
                 self._complementary_states.add(name)
                 self._init_conditions[name] = init_condition
             else:
@@ -285,7 +299,7 @@ class TemplateBuilder(object):
             print(len(args))
             raise RuntimeError('Complementary state data not supported. Try str, float')
 
-    def add_algebraic_variable(self,*args):
+    def add_algebraic_variable(self, *args):
         """Add an algebraic variable to the model
             
             This method tries to mimic a template implmenetation. Depending 
@@ -301,15 +315,15 @@ class TemplateBuilder(object):
 
         """
         name = args[0]
-        if isinstance(name,six.string_types):
+        if isinstance(name, six.string_types):
             self._algebraics.add(name)
-        elif isinstance(name,list) or isinstance(name,set):
+        elif isinstance(name, list) or isinstance(name, set):
             for y in name:
                 self._algebraics.add(y)
         else:
             raise RuntimeError('To add an algebraic please pass name')
         
-    def set_odes_rule(self,rule):
+    def set_odes_rule(self, rule):
         """Set the ode expressions.
 
         Defines the ordinary differential equations that define the dynamics of the model
@@ -321,9 +335,12 @@ class TemplateBuilder(object):
             None
 
         """
+        inspector = inspect.getargspec(rule)
+        if len(inspector.args) != 2:
+            raise RuntimeError('The rule should have two inputs')
         self._odes = rule
 
-    def set_algebraics_rule(self,rule):
+    def set_algebraics_rule(self, rule):
         """Set the algebraic expressions.
 
         Defines the algebraic equations for the system
@@ -335,10 +352,12 @@ class TemplateBuilder(object):
             None
 
         """
+        inspector = inspect.getargspec(rule)
+        if len(inspector.args) != 2:
+            raise RuntimeError('The rule should have two inputs')
         self._algebraic_constraints = rule
 
-        
-    def _validate_data(self,model,start_time,end_time):
+    def _validate_data(self, model, start_time, end_time):
         """Verify all inputs to the model make sense.
 
         This method is not suppose to be use by users. Only for developers use
@@ -377,7 +396,7 @@ class TemplateBuilder(object):
             if not self._meas_times:
                 raise RuntimeError('Need to add measumerement times') 
         
-    def create_pyomo_model(self,start_time,end_time):
+    def create_pyomo_model(self, start_time, end_time):
         """Create a pyomo model.
 
         This method is the core method for further simulation or optimization studies
@@ -395,12 +414,12 @@ class TemplateBuilder(object):
         pyomo_model = ConcreteModel()
         
         # Sets
-        pyomo_model.mixture_components = Set(initialize = self._component_names)
-        pyomo_model.parameter_names = Set(initialize = self._parameters.keys())
-        pyomo_model.complementary_states = Set(initialize = self._complementary_states)
+        pyomo_model.mixture_components = Set(initialize=self._component_names)
+        pyomo_model.parameter_names = Set(initialize=self._parameters.keys())
+        pyomo_model.complementary_states = Set(initialize=self._complementary_states)
         pyomo_model.states = pyomo_model.mixture_components | pyomo_model.complementary_states
 
-        pyomo_model.algebraics = Set(initialize = self._algebraics)
+        pyomo_model.algebraics = Set(initialize=self._algebraics)
         
         list_times = self._meas_times
         m_times = sorted(list_times)
@@ -428,10 +447,11 @@ class TemplateBuilder(object):
             if m_times[-1]>end_time:
                 raise RuntimeError('Measurement time {0} not within ({1},{2})'.format(m_times[-1],start_time,end_time))
 
-        pyomo_model.meas_times = Set(initialize = m_times,ordered=True)
-        pyomo_model.meas_lambdas = Set(initialize = m_lambdas,ordered=True)
+        pyomo_model.meas_times = Set(initialize=m_times, ordered=True)
+        pyomo_model.meas_lambdas = Set(initialize=m_lambdas, ordered=True)
         
-        pyomo_model.time = ContinuousSet(initialize = pyomo_model.meas_times,bounds = (start_time,end_time))
+        pyomo_model.time = ContinuousSet(initialize=pyomo_model.meas_times,
+                                         bounds=(start_time, end_time))
 
         # Variables
         pyomo_model.Z = Var(pyomo_model.time,
@@ -490,8 +510,8 @@ class TemplateBuilder(object):
         # Parameters
         pyomo_model.init_conditions = Param(pyomo_model.states,
                                             initialize=self._init_conditions)
-        pyomo_model.start_time = Param(initialize = start_time)
-        pyomo_model.end_time = Param(initialize = end_time)
+        pyomo_model.start_time = Param(initialize=start_time)
+        pyomo_model.end_time = Param(initialize=end_time)
         
         
         # Fixes parameters that were given numeric values
@@ -521,7 +541,7 @@ class TemplateBuilder(object):
             else:
                 return m.X[st,k] == self._init_conditions[k]
         pyomo_model.init_conditions_c = \
-            Constraint(pyomo_model.states,rule=rule_init_conditions)
+            Constraint(pyomo_model.states, rule=rule_init_conditions)
 
         # the generation of the constraints is not efficient but not critical
         if self._odes:
@@ -556,7 +576,7 @@ class TemplateBuilder(object):
                                                       rule=rule_algebraics)
         return pyomo_model
 
-    def create_casadi_model(self,start_time,end_time):
+    def create_casadi_model(self, start_time, end_time):
         """Create a casadi model.
 
         Casadi models are for simulation purpuses mainly
@@ -655,59 +675,52 @@ class TemplateBuilder(object):
             return casadi_model 
         else:
             raise RuntimeError('Install casadi to create casadi models')
-        
-    def write_dat_file(self,filename,start_time,end_time,fixed_dict=None):
-        """Create data file for pyomo abstract model.
-
-        This method is being removed. Dont see the need for abstract models
-
-        Args:
-            start_time (float): initial time considered in the model
-
-            end_time (float): final time considered in the model
-
-        Returns:
-            Pyomo ConcreteModel
-
-        """
-        f = open(filename,'w')
-        f.write('# abstract PyomoConcentrationModel.dat AMPL format\n')
-        # Sets
-        f.write('set parameter_names := ')
-        for name in self._parameter_names:
-            f.write('{} '.format(name))
-        f.write(';\n')
-        
-        f.write('set component_names := ')
-        for name in self._component_names:
-            f.write('{} '.format(name))
-        f.write(';\n')
-
-        if fixed_dict:
-            f.write('set fixed_parameter_names := ')
-            for key,val in fixed_dict.iteritems():
-                f.write('{0} '.format(key))
-            f.write(';\n')
-        else:
-            f.write('set fixed_parameter_names := ;\n')
 
 
-        f.write('set time := {0} {1};\n\n'.format(start_time,end_time))
+    @property
+    def num_parameters(self):
+        return len(self._parameters)
 
-        # Params
-        f.write('param start_time := {};\n'.format(start_time))
-        f.write('param end_time := {};\n'.format(end_time))
-        
-        f.write('param init_conditions := \n')
-        for key,val in self._init_conditions.iteritems():
-            f.write('{0} {1}\n'.format(key,val))
-        f.write(';\n')
+    @property
+    def num_mixture_components(self):
+        return len(self._component_names)
 
-        if fixed_dict:
-            f.write('param fixed_parameters := \n')
-            for key,val in fixed_dict.iteritems():
-                f.write('{0} {1}\n'.format(key,val))
-            f.write(';\n')
-        else:
-            f.write('param fixed_parameters := ;\n')
-        f.close()
+    @property
+    def num_complementary_states(self):
+        return len(self._complementary_states)
+
+    @property
+    def num_algebraics(self):
+        return len(self._algebraics)
+
+    @property
+    def measurement_times(self):
+        return self._meas_times
+
+    @num_parameters.setter
+    def num_parameters(self):
+        raise RuntimeError('Not supported')
+
+    @num_mixture_components.setter
+    def num_mixture_components(self):
+        raise RuntimeError('Not supported')
+
+    @num_complementary_states.setter
+    def num_complementary_states(self):
+        raise RuntimeError('Not supported')
+
+    @num_algebraics.setter
+    def num_algebraics(self):
+        raise RuntimeError('Not supported')
+
+    @measurement_times.setter
+    def measurement_times(self):
+        raise RuntimeError('Not supported')
+
+    def has_spectral_data(self):
+        return self._spectral_data is not None
+
+    def has_adsorption_data(self):
+        return self._absorption_data is not None
+
+
