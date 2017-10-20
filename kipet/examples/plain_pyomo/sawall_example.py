@@ -12,6 +12,7 @@
 
 from pyomo.dae import *
 from pyomo.environ import *
+from pyomo.core import *
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np

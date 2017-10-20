@@ -18,6 +18,7 @@ import StringIO
 
 import pdb
 
+
 class VarianceEstimator(Optimizer):
     """Optimizer for variance estimation.
 
@@ -33,12 +34,12 @@ class VarianceEstimator(Optimizer):
         if not self._spectra_given:
             raise NotImplementedError("Variance estimator requires spectral data in model as model.D[ti,lj]")
 
-        self._build_scipy_lsq_arrays()
+
         
-    def run_sim(self,solver,**kwds):
+    def run_sim(self, solver, **kwds):
         raise NotImplementedError("VarianceEstimator object does not have run_sim method. Call run_opt")
 
-    def run_opt(self,solver,**kwds):
+    def run_opt(self, solver, **kwds):
 
         """Solves estimation following Weifengs procedure.
            This method solved a sequence of optimization problems
@@ -73,14 +74,16 @@ class VarianceEstimator(Optimizer):
         """
         
         solver_opts = kwds.pop('solver_opts', dict())
-        variances = kwds.pop('variances',dict())
-        tee = kwds.pop('tee',False)
+        variances = kwds.pop('variances', dict())
+        tee = kwds.pop('tee', False)
         norm_order = kwds.pop('norm',np.inf)
-        max_iter = kwds.pop('max_iter',400)
-        tol = kwds.pop('tolerance',5.0e-5)
-        A = kwds.pop('subset_lambdas',None)
-        lsq_ipopt = kwds.pop('lsq_ipopt',False)
-        init_C = kwds.pop('init_C',None)
+        max_iter = kwds.pop('max_iter', 400)
+        tol = kwds.pop('tolerance', 5.0e-5)
+        A = kwds.pop('subset_lambdas', None)
+        lsq_ipopt = kwds.pop('lsq_ipopt', False)
+        init_C = kwds.pop('init_C', None)
+
+        species_list = kwds.pop('subset_components', None)
         
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
@@ -88,33 +91,45 @@ class VarianceEstimator(Optimizer):
         self._create_tmp_outputs()
         
         # deactivates objective functions                
-        objectives_map = self.model.component_map(ctype=Objective,active=True)
+        objectives_map = self.model.component_map(ctype=Objective, active=True)
         active_objectives_names = []
         for obj in objectives_map.itervalues():
             name = obj.cname()
             active_objectives_names.append(name)
             obj.deactivate()
 
+        list_components = []
+        if species_list is None:
+            list_components = [k for k in self._mixture_components]
+        else:
+            for k in species_list:
+                if k in self._mixture_components:
+                    list_components.append(k)
+                else:
+                    warnings.warn("Ignored {} since is not a mixture component of the model".format(k))
+
+        self._sublist_components = list_components
+
         # solves formulation 18
         if init_C is None:
-            self._solve_initalization(solver,subset_lambdas=A,tee=tee)
+            self._solve_initalization(solver, subset_lambdas=A, tee=tee)
         else:
             for t in self._meas_times:
                 for k in self._mixture_components:
-                    self.model.C[t,k].value = init_C[k][t]
-                    self.model.Z[t,k].value = init_C[k][t]
+                    self.model.C[t, k].value = init_C[k][t]
+                    self.model.Z[t, k].value = init_C[k][t]
 
             s_array = self._solve_S_from_DC(init_C)
             S_frame = pd.DataFrame(data=s_array,
-                                 columns=self._mixture_components,
-                                 index=self._meas_lambdas)
+                                   columns=self._mixture_components,
+                                   index=self._meas_lambdas)
             
             for l in self._meas_lambdas:
                 for k in self._mixture_components:
-                    self.model.S[l,k].value = S_frame[k][l] #1e-2
+                    self.model.S[l, k].value = S_frame[k][l] #1e-2
         #start looping
         #print("{: >11} {: >20} {: >16} {: >16}".format('Iter','|Zi-Zi+1|','|Ci-Ci+1|','|Si-Si+1|'))
-        print("{: >11} {: >20}".format('Iter','|Zi-Zi+1|'))
+        print("{: >11} {: >20}".format('Iter', '|Zi-Zi+1|'))
         logiterfile = "iterations.log"
         if os.path.isfile(logiterfile):
             os.remove(logiterfile)
@@ -123,11 +138,18 @@ class VarianceEstimator(Optimizer):
         if lsq_ipopt:
             self._build_s_model()
             self._build_c_model()
+        else:
+            if species_list is None:
+                self._build_scipy_lsq_arrays()
+            else:
+                lsq_ipopt = True
+                self._build_s_model()
+                self._build_c_model()
             
         for it in xrange(max_iter):
             
-            rb=ResultsObject()    
-            rb.load_from_pyomo_model(self.model,to_load=['Z','C','S','Y'])
+            rb = ResultsObject()
+            rb.load_from_pyomo_model(self.model, to_load=['Z', 'C', 'S', 'Y'])
             
             self._solve_Z(solver)
 
@@ -141,7 +163,7 @@ class VarianceEstimator(Optimizer):
             #pdb.set_trace()
             
             ra=ResultsObject()    
-            ra.load_from_pyomo_model(self.model,to_load=['Z','C','S'])
+            ra.load_from_pyomo_model(self.model, to_load=['Z','C','S'])
             
             r_diff = compute_diff_results(rb,ra)
 
@@ -151,16 +173,16 @@ class VarianceEstimator(Optimizer):
             #S_norm = r_diff.compute_var_norm('S',norm_order)
             if it>0:
                 #print("{: >11} {: >20} {: >16} {: >16}".format(it,Z_norm,C_norm,S_norm))
-                print("{: >11} {: >20}".format(it,Z_norm))
-            self._log_iterations(logiterfile,it)
-            if Z_norm<tol and it>=1:
+                print("{: >11} {: >20}".format(it, Z_norm))
+            self._log_iterations(logiterfile, it)
+            if Z_norm<tol and it >= 1:
                 break
                 
         results = ResultsObject()
         
         # retriving solutions to results object  
         results.load_from_pyomo_model(self.model,
-                                      to_load=['Z','dZdt','X','dXdt','C','S','Y'])
+                                      to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
 
         print('Iterative optimization converged. Estimating variances now')
         # compute variances
@@ -184,8 +206,7 @@ class VarianceEstimator(Optimizer):
             
         return results
 
-    
-    def _solve_initalization(self,solver,**kwds):
+    def _solve_initalization(self, solver, **kwds):
         """Solves formulation 19 in weifengs paper
 
            This method is not intended to be used by users directly
@@ -208,16 +229,17 @@ class VarianceEstimator(Optimizer):
 
         """
         solver_opts = kwds.pop('solver_opts', dict())
-        tee = kwds.pop('tee',True)
-        set_A = kwds.pop('subset_lambdas',list())
-        profile_time = kwds.pop('profile_time',False)
-        sigmas_sq = kwds.pop('variances',dict())
+        tee = kwds.pop('tee', True)
+        set_A = kwds.pop('subset_lambdas', list())
+        profile_time = kwds.pop('profile_time', False)
+        sigmas_sq = kwds.pop('variances', dict())
+
 
         if not set_A:
             set_A = self._meas_lambdas
         
         keys = sigmas_sq.keys()
-        for k in self._mixture_components:
+        for k in self._sublist_components:
             if k not in keys:
                 sigmas_sq[k] = 0.0
 
@@ -229,8 +251,8 @@ class VarianceEstimator(Optimizer):
         obj = 0.0
         for t in self._meas_times:
             for l in set_A:
-                D_bar = sum(self.model.Z[t,k]*self.model.S[l,k] for k in self.model.mixture_components)
-                obj+= (self.model.D[t,l] - D_bar)**2
+                D_bar = sum(self.model.Z[t, k]*self.model.S[l, k] for k in self._sublist_components)
+                obj+= (self.model.D[t, l] - D_bar)**2
         self.model.init_objective = Objective(expr=obj)
 
         opt = SolverFactory(solver)
@@ -244,14 +266,14 @@ class VarianceEstimator(Optimizer):
 
         for t in self._meas_times:
             for k in self._mixture_components:
-                if sigmas_sq[k]>0.0:
-                    self.model.C[t,k].value = np.random.normal(self.model.Z[t,k].value,sigmas_sq[k])
+                if k in sigmas_sq and sigmas_sq[k] > 0.0:
+                    self.model.C[t, k].value = np.random.normal(self.model.Z[t, k].value, sigmas_sq[k])
                 else:
-                    self.model.C[t,k].value = self.model.Z[t,k].value
+                    self.model.C[t, k].value = self.model.Z[t, k].value
                 
         self.model.del_component('init_objective')
         
-    def _solve_Z(self,solver,**kwds):
+    def _solve_Z(self, solver, **kwds):
         """Solves formulation 20 in weifengs paper
 
            This method is not intended to be used by users directly
@@ -275,18 +297,18 @@ class VarianceEstimator(Optimizer):
 
         """
         solver_opts = kwds.pop('solver_opts', dict())
-        tee = kwds.pop('tee',False)
-        profile_time = kwds.pop('profile_time',False)
+        tee = kwds.pop('tee', False)
+        profile_time = kwds.pop('profile_time', False)
         
         # asume this values were computed in beforehand
         for t in self._meas_times:
-            for k in self._mixture_components:
-                self.model.C[t,k].fixed = True
+            for k in self._sublist_components:
+                self.model.C[t, k].fixed = True
 
         obj = 0.0
-        for k in self.model.mixture_components:
-            x = sum((self.model.C[t,k]-self.model.Z[t,k])**2 for t in self._meas_times)
-            obj+= x
+        for k in self._sublist_components:
+            x = sum((self.model.C[t, k]-self.model.Z[t, k])**2 for t in self._meas_times)
+            obj += x
 
         self.model.z_objective = Objective(expr=obj)
         #self.model.z_objective.pprint()
@@ -295,7 +317,7 @@ class VarianceEstimator(Optimizer):
             
         opt = SolverFactory(solver)
         for key, val in solver_opts.iteritems():
-            opt.options[key]=val
+            opt.options[key] = val
 
         solver_results = opt.solve(self.model,
                                    logfile=self._tmp2,
@@ -305,7 +327,7 @@ class VarianceEstimator(Optimizer):
 
         self.model.del_component('z_objective')
 
-    def _solve_s_scipy(self,**kwds):
+    def _solve_s_scipy(self, **kwds):
         """Solves formulation 22 in weifengs paper (using scipy least_squares)
 
            This method is not intended to be used by users directly
@@ -344,16 +366,18 @@ class VarianceEstimator(Optimizer):
         
         method = kwds.pop('method','trf')
         def_tol = 1.4901161193847656e-07
-        ftol = kwds.pop('ftol',def_tol)
-        xtol = kwds.pop('xtol',def_tol)
-        gtol = kwds.pop('gtol',def_tol)
-        x_scale = kwds.pop('x_scale',1.0)
-        loss = kwds.pop('loss','linear')
-        f_scale = kwds.pop('f_scale',1.0)
-        max_nfev = kwds.pop('max_nfev',None)
-        verbose = kwds.pop('verbose',2)
-        profile_time = kwds.pop('profile_time',False)
-        tee =  kwds.pop('tee',False)
+        ftol = kwds.pop('ftol', def_tol)
+        xtol = kwds.pop('xtol', def_tol)
+        gtol = kwds.pop('gtol', def_tol)
+        x_scale = kwds.pop('x_scale', 1.0)
+        loss = kwds.pop('loss', 'linear')
+        f_scale = kwds.pop('f_scale', 1.0)
+        max_nfev = kwds.pop('max_nfev', None)
+        verbose = kwds.pop('verbose', 2)
+        profile_time = kwds.pop('profile_time', False)
+        tee = kwds.pop('tee', False)
+
+
         
         if profile_time:
             print('-----------------Solve_S--------------------')
@@ -361,25 +385,25 @@ class VarianceEstimator(Optimizer):
 
         # assumes S has been computed in the model
         n = self._n_components
-        for j,l in enumerate(self._meas_lambdas):
-            for k,c in enumerate(self._mixture_components):
-                if self.model.S[l,c].value<=0.0:
+        for j, l in enumerate(self._meas_lambdas):
+            for k, c in enumerate(self._mixture_components):
+                if self.model.S[l, c].value <= 0.0:
                     self._s_array[j*n+k] = 1e-2
                 else:
-                    self._s_array[j*n+k] = self.model.S[l,c].value
+                    self._s_array[j*n+k] = self.model.S[l, c].value
 
         for j,t in enumerate(self._meas_times):
             for k,c in enumerate(self._mixture_components):
-                self._z_array[j*n+k] = self.model.Z[t,c].value
+                self._z_array[j*n+k] = self.model.Z[t, c].value
 
-        def F(x,z_array,d_array,nl,nt,nc):
+        def F(x, z_array, d_array, nl, nt, nc):
             diff = np.zeros(nt*nl)
             for i in xrange(nt):
                 for j in xrange(nl):
-                    diff[i*nl+j]=d_array[i,j]-sum(z_array[i*nc+k]*x[j*nc+k] for k in xrange(nc))
+                    diff[i*nl+j] = d_array[i, j]-sum(z_array[i*nc+k]*x[j*nc+k] for k in xrange(nc))
             return diff
 
-        def JF(x,z_array,d_array,nl,nt,nc):
+        def JF(x, z_array, d_array, nl, nt, nc):
             row = []
             col = []
             data = []
@@ -390,7 +414,7 @@ class VarianceEstimator(Optimizer):
                         col.append(j*nc+k)
                         data.append(-z_array[i*nc+k])
             return coo_matrix((data, (row, col)),
-                              shape=(nt*nl,nc*nl))
+                              shape=(nt*nl, nc*nl))
 
         # solve
         if tee:
@@ -434,7 +458,7 @@ class VarianceEstimator(Optimizer):
 
         return res.success
 
-    def _solve_c_scipy(self,**kwds):
+    def _solve_c_scipy(self, **kwds):
         """Solves formulation 25 in weifengs paper (using scipy least_squares)
 
            This method is not intended to be used by users directly
@@ -564,7 +588,7 @@ class VarianceEstimator(Optimizer):
 
         return res.success
 
-    def _solve_variances(self,results):
+    def _solve_variances(self, results):
         """Solves formulation 23 in weifengs paper (using scipy least_squares)
 
            This method is not intended to be used by users directly
@@ -578,19 +602,19 @@ class VarianceEstimator(Optimizer):
         """
         nl = self._n_meas_lambdas
         nt = self._n_meas_times
-        nc = self._n_components
-        A = np.ones((nl,nc+1))
-        b = np.zeros((nl,1))
+        nc = len(self._sublist_components)
+        A = np.ones((nl, nc+1))
+        b = np.zeros((nl, 1))
 
         reciprocal_nt = 1.0/nt
-        for i,l in enumerate(self._meas_lambdas):
-            for j,t in enumerate(self._meas_times):
+        for i, l in enumerate(self._meas_lambdas):
+            for j, t in enumerate(self._meas_times):
                 D_bar = 0.0
-                for w,k in enumerate(self._mixture_components):
-                    A[i,w] = results.S[k][l]**2
+                for w, k in enumerate(self._sublist_components):
+                    A[i, w] = results.S[k][l]**2
                     D_bar += results.S[k][l]*results.Z[k][t]
-                b[i] += (self.model.D[t,l]-D_bar)**2
-            b[i]*=reciprocal_nt
+                b[i] += (self.model.D[t, l]-D_bar)**2
+            b[i] *= reciprocal_nt
 
         # try with a simple numpy without bounds first
         res_lsq = np.linalg.lstsq(A, b)
@@ -598,8 +622,8 @@ class VarianceEstimator(Optimizer):
         n_vars = nc+1
         
         for i in xrange(n_vars):
-            if res_lsq[0][i]<0.0:
-                if res_lsq[0][i]<-1e-5:
+            if res_lsq[0][i] < 0.0:
+                if res_lsq[0][i] < -1e-5:
                     all_nonnegative=False
                 else:
                     res_lsq[0][i] = abs(res_lsq[0][i])
@@ -607,34 +631,33 @@ class VarianceEstimator(Optimizer):
 
         variance_dict = dict()
         if not all_nonnegative:
-            x0 = np.zeros(nc+1)+1e-2
+            x0 = np.zeros(nc + 1) + 1e-2
             bb = np.zeros(nl)
             for i in xrange(nl):
-                bb[i]=b[i]
+                bb[i] = b[i]
 
-            def F(x,M,rhs):
+            def F(x, M, rhs):
                 return  rhs-M.dot(x)
 
-            def JF(x,M,rhs):
+            def JF(x, M, rhs):
                 return -M
-            res_lsq = least_squares(F,x0,JF,
-                                    bounds=(0.0,np.inf),
-                                    verbose=2,args=(A,bb))
-            for i,k in enumerate(self._mixture_components):
+            res_lsq = least_squares(F, x0, JF,
+                                    bounds=(0.0, np.inf),
+                                    verbose=2, args=(A, bb))
+            for i, k in enumerate(self._sublist_components):
                 variance_dict[k] = res_lsq.x[i]
             variance_dict['device'] = res_lsq.x[nc]
             results.sigma_sq = variance_dict
             return res_lsq.success
 
         else:
-            for i,k in enumerate(self._mixture_components):
+            for i, k in enumerate(self._sublist_components):
                 variance_dict[k] = res_lsq[0][i][0]    
             variance_dict['device'] = res_lsq[0][nc][0]
             results.sigma_sq = variance_dict
             
             return 1
 
-        
     def _build_scipy_lsq_arrays(self):
         """Creates arrays for scipy solvers
 
@@ -679,7 +702,7 @@ class VarianceEstimator(Optimizer):
         with open(self._tmp4,'w') as f:
             f.write("temporary file for ipopt output")
 
-    def _log_iterations(self,filename,iteration):
+    def _log_iterations(self, filename, iteration):
         """log solution of each subproblem in Weifengs procedure
 
            This method is not intended to be used by users directly
@@ -715,17 +738,16 @@ class VarianceEstimator(Optimizer):
         """
         self.S_model = ConcreteModel()
         self.S_model.S = Var(self._meas_lambdas,
-                             self._mixture_components,
-                             bounds=(0.0,None),
+                             self._sublist_components,
+                             bounds=(0.0, None),
                              initialize=1.0)
-        
-        #add_warm_start_suffixes(self.S_model)
-        #self.S_model.scaling_factor = Suffix(direction=Suffix.EXPORT)
-        # initialization
-        for k,v in self.model.S.iteritems():
-            self.S_model.S[k].value = v.value
 
-    def _solve_S(self,solver,**kwds):
+        # initialization
+        for l in self._meas_lambdas:
+            for k in self._sublist_components:
+                self.S_model.S[l, k].value = self.model.S[l, k].value
+
+    def _solve_S(self, solver, **kwds):
         """Solves formulation 23 from Weifengs procedure with ipopt
 
            This method is not intended to be used by users directly
@@ -737,21 +759,22 @@ class VarianceEstimator(Optimizer):
 
         """
         solver_opts = kwds.pop('solver_opts', dict())
-        tee = kwds.pop('tee',False)
-        update_nl = kwds.pop('update_nl',False)
-        profile_time = kwds.pop('profile_time',False)
+        tee = kwds.pop('tee', False)
+        update_nl = kwds.pop('update_nl', False)
+        profile_time = kwds.pop('profile_time', False)
+
 
         # initialize
         for l in self._meas_lambdas:
-            for c in self._mixture_components:
-                self.S_model.S[l,c].value = self.model.S[l,c].value
+            for c in self._sublist_components:
+                self.S_model.S[l, c].value = self.model.S[l, c].value
         
         obj = 0.0
         # asumes base model has been solved already for Z
         for t in self._meas_times:
             for l in self._meas_lambdas:
-                D_bar = sum(self.S_model.S[l,k]*self.model.Z[t,k].value for k in self._mixture_components)
-                obj+=(D_bar-self.model.D[t,l])**2
+                D_bar = sum(self.S_model.S[l, k] * self.model.Z[t, k].value for k in self._sublist_components)
+                obj += (D_bar - self.model.D[t, l]) ** 2
                     
         self.S_model.objective = Objective(expr=obj)
 
@@ -775,10 +798,9 @@ class VarianceEstimator(Optimizer):
         
         #update values in main model
         for l in self._meas_lambdas:
-            for c in self._mixture_components:
-                self.model.S[l,c].value = self.S_model.S[l,c].value
-        
-        
+            for c in self._sublist_components:
+                self.model.S[l, c].value = self.S_model.S[l, c].value
+
     def _build_c_model(self):
         """Builds s_model to solve formulation 25 with ipopt
 
@@ -792,15 +814,16 @@ class VarianceEstimator(Optimizer):
         """
         self.C_model = ConcreteModel()
         self.C_model.C = Var(self._meas_times,
-                           self._mixture_components,
-                           bounds=(0.0,None),
-                           initialize=1.0)
+                             self._sublist_components,
+                             bounds=(0.0, None),
+                             initialize=1.0)
 
         #add_warm_start_suffixes(self.C_model)
         #self.C_model.scaling_factor = Suffix(direction=Suffix.EXPORT)
 
-        for k,v in self.model.C.iteritems():
-            self.C_model.C[k].value = v.value
+        for l in self._meas_times:
+            for k in self._sublist_components:
+                self.C_model.C[l, k].value = self.model.C[l, k].value
 
     def _solve_C(self,solver,**kwds):
         """Solves formulation 23 from Weifengs procedure with ipopt
@@ -814,20 +837,16 @@ class VarianceEstimator(Optimizer):
 
         """
         solver_opts = kwds.pop('solver_opts', dict())
-        tee = kwds.pop('tee',False)
-        update_nl = kwds.pop('update_nl',False)
-        profile_time = kwds.pop('profile_time',False)
-
-        for t in self._meas_times:
-            for c in self._mixture_components:
-                self.C_model.C[t,c].value = self.model.C[t,c].value
+        tee = kwds.pop('tee', False)
+        update_nl = kwds.pop('update_nl', False)
+        profile_time = kwds.pop('profile_time', False)
         
-        obj=0.0
+        obj = 0.0
         # asumes that s model has been solved first
         for t in self._meas_times:
             for l in self._meas_lambdas:
-                D_bar = sum(self.model.S[l,k].value*self.C_model.C[t,k] for k in self._mixture_components)
-                obj+=(self.model.D[t,l]-D_bar)**2
+                D_bar = sum(self.model.S[l, k].value*self.C_model.C[t, k] for k in self._sublist_components)
+                obj += (self.model.D[t, l]-D_bar)**2
 
         self.C_model.objective = Objective(expr=obj)
                 
@@ -850,8 +869,8 @@ class VarianceEstimator(Optimizer):
 
         #updates values in main model
         for t in self._meas_times:
-            for c in self._mixture_components:
-                self.model.C[t,c].value = self.C_model.C[t,c].value
+            for c in self._sublist_components:
+                self.model.C[t, c].value = self.C_model.C[t, c].value
         
         
 def add_warm_start_suffixes(model):
@@ -863,6 +882,7 @@ def add_warm_start_suffixes(model):
     model.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
     # Obtain dual solutions from first solve and send to warm start
     model.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
+
 
 def compute_diff_results(results1,results2):
     diff_results = ResultsObject()
