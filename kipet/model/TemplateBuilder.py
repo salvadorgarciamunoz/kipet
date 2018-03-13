@@ -73,7 +73,7 @@ class TemplateBuilder(object):
         
         components = kwargs.pop('concentrations',dict())
         if isinstance(components,dict):
-            for k,v in components.iteritems():
+            for k,v in components.items():
                 self._component_names.add(k)
                 self._init_conditions[k] = v
         else:
@@ -81,7 +81,7 @@ class TemplateBuilder(object):
                 
         parameters = kwargs.pop('parameters',dict())
         if isinstance(parameters,dict):
-            for k,v in parameters.iteritems():
+            for k,v in parameters.items():
                 self._parameters[k] = v
         elif isinstance(parameters,list):
             for k in parameters:
@@ -91,7 +91,7 @@ class TemplateBuilder(object):
 
         extra_states = kwargs.pop('extra_states',dict())
         if isinstance(extra_states,dict):
-            for k,v in extra_states.iteritems():
+            for k,v in extra_states.items():
                 self._complementary_states.add(k)
                 self._init_conditions[k] = v
         else:
@@ -141,7 +141,7 @@ class TemplateBuilder(object):
                 if bounds is not None:
                     if len(bounds)!=len(name):
                         raise RuntimeError('the list of bounds must be equal to the list of parameters')
-                for k,v in name.iteritems():
+                for k,v in name.items():
                     self._parameters[k] = v
                     if bounds is not None:
                         self._parameters_bounds[k] = bounds[k]
@@ -183,7 +183,7 @@ class TemplateBuilder(object):
         if len(args) == 1:
             input = args[0]
             if isinstance(input,dict):
-                for key,val in input.iteritems():
+                for key,val in input.items():
                     if not isinstance(val, numbers.Number):
                         raise RuntimeError('The init condition must be a number. Try str, float')
                     self._component_names.add(key)
@@ -276,7 +276,7 @@ class TemplateBuilder(object):
         if len(args) == 1:
             input = args[0]
             if isinstance(input, dict):
-                for key, val in input.iteritems():
+                for key, val in input.items():
                     if not isinstance(val, numbers.Number):
                         raise RuntimeError('The init condition must be a number. Try str, float')
                     self._complementary_states.add(key)
@@ -467,7 +467,7 @@ class TemplateBuilder(object):
                             #bounds = (0.0,None),
                             initialize=1)
         # set bounds P
-        for k,v in self._parameters_bounds.iteritems():
+        for k,v in self._parameters_bounds.items():
             lb = v[0]
             ub = v[1]
             pyomo_model.P[k].setlb(lb)
@@ -515,7 +515,7 @@ class TemplateBuilder(object):
         
         
         # Fixes parameters that were given numeric values
-        for p,v in self._parameters.iteritems():
+        for p,v in self._parameters.items():
             if v is not None:
                 pyomo_model.P[p].value = v
                 pyomo_model.P[p].fixed = True
@@ -656,7 +656,7 @@ class TemplateBuilder(object):
                         casadi_model.D[t,l] = float(self._spectral_data[l][t])
 
             # Fixes parameters that were given numeric values
-            for p,v in self._parameters.iteritems():
+            for p,v in self._parameters.items():
                 if v is not None:
                     casadi_model.P[p] = v
             # validate the model before writing constraints
