@@ -235,7 +235,7 @@ class VarianceEstimator(Optimizer):
 
         opt = SolverFactory(solver)
 
-        for key, val in solver_opts.iteritems():
+        for key, val in solver_opts.items():
             opt.options[key]=val
         
         solver_results = opt.solve(self.model,
@@ -294,7 +294,7 @@ class VarianceEstimator(Optimizer):
             print('-----------------Solve_Z--------------------')
             
         opt = SolverFactory(solver)
-        for key, val in solver_opts.iteritems():
+        for key, val in solver_opts.items():
             opt.options[key]=val
 
         solver_results = opt.solve(self.model,
@@ -761,7 +761,7 @@ class VarianceEstimator(Optimizer):
 
         opt = SolverFactory(solver)
 
-        for key, val in solver_opts.iteritems():
+        for key, val in solver_opts.items():
             opt.options[key]=val
 
         solver_results = opt.solve(self.S_model,
@@ -836,7 +836,7 @@ class VarianceEstimator(Optimizer):
 
         opt = SolverFactory(solver)
 
-        for key, val in solver_opts.iteritems():
+        for key, val in solver_opts.items():
             opt.options[key]=val
                 
         solver_results = opt.solve(self.C_model,
