@@ -145,13 +145,13 @@ class Optimizer(PyomoSimulator):
 
         # fixes parameters 
         old_values = {}        
-        for k,v in parameters.iteritems():
+        for k,v in parameters.items():
             if self.model.P[k].fixed ==False:
                 old_values[k] = self.model.P[k].value
                 self.model.P[k].value = v
                 self.model.P[k].fixed = True
 
-        for k,v in self.model.P.iteritems():
+        for k,v in self.model.P.items():
             if v.fixed == False:
                 print('***WARNING parameter {} is not fixed. This method expects all parameters to be fixed.'.format(k))
             
@@ -165,13 +165,13 @@ class Optimizer(PyomoSimulator):
 
             
         opt = SolverFactory(solver)
-        for key, val in solver_opts.iteritems():
+        for key, val in solver_opts.items():
             opt.options[key]=val
 
         solver_results = opt.solve(self.model,tee=tee)
 
         #unfixes the parameters that were fixed
-        for k,v in old_values.iteritems():
+        for k,v in old_values.items():
             if not initialization:
                 self.model.P[k].value = v 
             self.model.P[k].fixed = False
