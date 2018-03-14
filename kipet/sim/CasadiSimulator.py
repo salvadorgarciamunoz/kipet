@@ -49,7 +49,7 @@ class CasadiSimulator(Simulator):
         self.nfe = kwargs.pop('nfe',1)
         self.model.start_time
         step = (self.model.end_time - self.model.start_time)/self.nfe
-        for i in xrange(0,self.nfe+1):
+        for i in range(0, self.nfe+1):
             self._times.add(i*step)
                 
         self._n_times = len(self._times)
@@ -242,7 +242,7 @@ class CasadiSimulator(Simulator):
             yk = res['zf']
                 
             # check for nan
-            for j in xrange(xk.numel()):
+            for j in range(xk.numel()):
                 if np.isnan(float(xk[j])):
                     raise RuntimeError('The iterator returned nan. exiting the program')
                     
@@ -362,6 +362,3 @@ class CasadiSimulator(Simulator):
         results.P = param_vals
         
         return results
-        
-        
-        
