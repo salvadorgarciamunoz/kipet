@@ -10,7 +10,7 @@
 #		\frac{dZ_a}{dt} = -k_1*Z_a	                Z_a(0) = 1
 #		\frac{dZ_b}{dt} = k_1*Z_a - k_2*Z_b		Z_b(0) = 0
 #               \frac{dZ_c}{dt} = k_2*Z_b	                Z_c(0) = 0
-
+from __future__ import print_function
 from kipet.model.TemplateBuilder import *
 from kipet.sim.PyomoSimulator import *
 from kipet.opt.ParameterEstimator import *
@@ -28,7 +28,7 @@ if __name__ == "__main__":
     #filename =  'original_data.csv'
     filename =  'trimmed.csv'
     D_frame = read_spectral_data_from_csv(filename)
-    print "Dimensions of D:",D_frame.shape
+    print("Dimensions of D:", D_frame.shape)
     
     """
     D_frame.T.plot(legend=False)

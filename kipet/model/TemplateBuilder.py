@@ -12,14 +12,15 @@ from pyomo.dae import *
 import numpy as np
 
 import imp
+
 try:
     imp.find_module('casadi')
     from CasadiModel import CasadiModel
     from CasadiModel import KipetCasadiStruct
-    found_casadi=True
-except ImportError:
-    found_casadi=False
 
+    found_casadi = True
+except ImportError:
+    found_casadi = False
 
 logger = logging.getLogger('ModelBuilderLogger')
 
@@ -46,7 +47,8 @@ class TemplateBuilder(object):
         
         _complementary_states (set,optional): container with additional states
 
-    """    
+    """
+
     def __init__(self, **kwargs):
         """Template builder constructor
 
@@ -70,34 +72,34 @@ class TemplateBuilder(object):
         self._complementary_states = set()
         self._algebraics = set()
         self._algebraic_constraints = None
-        
-        components = kwargs.pop('concentrations',dict())
-        if isinstance(components,dict):
-            for k,v in components.items():
+
+        components = kwargs.pop('concentrations', dict())
+        if isinstance(components, dict):
+            for k, v in components.items():
                 self._component_names.add(k)
                 self._init_conditions[k] = v
         else:
             raise RuntimeError('concentrations must be an dictionary component_name:init_condition')
-                
-        parameters = kwargs.pop('parameters',dict())
-        if isinstance(parameters,dict):
-            for k,v in parameters.items():
+
+        parameters = kwargs.pop('parameters', dict())
+        if isinstance(parameters, dict):
+            for k, v in parameters.items():
                 self._parameters[k] = v
-        elif isinstance(parameters,list):
+        elif isinstance(parameters, list):
             for k in parameters:
                 self._parameters[k] = None
         else:
             raise RuntimeError('parameters must be a dictionary parameter_name:value or a list with parameter_names')
 
-        extra_states = kwargs.pop('extra_states',dict())
-        if isinstance(extra_states,dict):
-            for k,v in extra_states.items():
+        extra_states = kwargs.pop('extra_states', dict())
+        if isinstance(extra_states, dict):
+            for k, v in extra_states.items():
                 self._complementary_states.add(k)
                 self._init_conditions[k] = v
         else:
             raise RuntimeError('Extra states must be an dictionary state_name:init_condition')
 
-        algebraics = kwargs.pop('algebraics',set())
+        algebraics = kwargs.pop('algebraics', set())
         for y in algebraics:
             self._algebraics.add(y)
 
@@ -122,26 +124,26 @@ class TemplateBuilder(object):
 
         """
         bounds = kwds.pop('bounds', None)
-        
+
         if len(args) == 1:
             name = args[0]
-            if isinstance(name,six.string_types):
+            if isinstance(name, six.string_types):
                 self._parameters[name] = None
                 if bounds is not None:
                     self._parameters_bounds[name] = bounds
-            elif isinstance(name,list) or isinstance(name,set):
+            elif isinstance(name, list) or isinstance(name, set):
                 if bounds is not None:
-                    if len(bounds)!=len(name):
+                    if len(bounds) != len(name):
                         raise RuntimeError('the list of bounds must be equal to the list of parameters')
-                for i,n in enumerate(name):
+                for i, n in enumerate(name):
                     self._parameters[n] = None
                     if bounds is not None:
                         self._parameters_bounds[n] = bounds[i]
-            elif isinstance(name,dict):
+            elif isinstance(name, dict):
                 if bounds is not None:
-                    if len(bounds)!=len(name):
+                    if len(bounds) != len(name):
                         raise RuntimeError('the list of bounds must be equal to the list of parameters')
-                for k,v in name.items():
+                for k, v in name.items():
                     self._parameters[k] = v
                     if bounds is not None:
                         self._parameters_bounds[k] = bounds[k]
@@ -150,7 +152,7 @@ class TemplateBuilder(object):
         elif len(args) == 2:
             first = args[0]
             second = args[1]
-            if isinstance(first,six.string_types):
+            if isinstance(first, six.string_types):
                 self._parameters[first] = second
                 if bounds is not None:
                     self._parameters_bounds[first] = bounds
@@ -158,7 +160,7 @@ class TemplateBuilder(object):
                 raise RuntimeError('Parameter argument not supported. Try str,val')
         else:
             raise RuntimeError('Parameter argument not supported. Try str,val')
-        
+
     def add_mixture_component(self, *args):
         """Add a component (reactive or product) to the model.
 
@@ -182,29 +184,29 @@ class TemplateBuilder(object):
         """
         if len(args) == 1:
             input = args[0]
-            if isinstance(input,dict):
-                for key,val in input.items():
+            if isinstance(input, dict):
+                for key, val in input.items():
                     if not isinstance(val, numbers.Number):
                         raise RuntimeError('The init condition must be a number. Try str, float')
                     self._component_names.add(key)
                     self._init_conditions[key] = val
             else:
                 raise RuntimeError('Mixture component data not supported. Try dict[str]=float')
-        elif len(args)==2:
+        elif len(args) == 2:
             name = args[0]
             init_condition = args[1]
 
-            if not isinstance(init_condition,numbers.Number):
+            if not isinstance(init_condition, numbers.Number):
                 raise RuntimeError('The second argument must be a number. Try str, float')
 
-            if isinstance(name,six.string_types):
+            if isinstance(name, six.string_types):
                 self._component_names.add(name)
                 self._init_conditions[name] = init_condition
             else:
                 raise RuntimeError('Mixture component data not supported. Try str, float')
         else:
             raise RuntimeError('Mixture component data not supported. Try str, float')
-            
+
     def add_spectral_data(self, data):
         """Add spectral data 
 
@@ -216,11 +218,11 @@ class TemplateBuilder(object):
             None
 
         """
-        if isinstance(data,pd.DataFrame):
+        if isinstance(data, pd.DataFrame):
             self._spectral_data = data
         else:
             raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
-        
+
     def add_absorption_data(self, data):
         """Add absorption data 
 
@@ -232,7 +234,7 @@ class TemplateBuilder(object):
             None
 
         """
-        if isinstance(data,pd.DataFrame):
+        if isinstance(data, pd.DataFrame):
             self._absorption_data = data
         else:
             raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
@@ -322,7 +324,7 @@ class TemplateBuilder(object):
                 self._algebraics.add(y)
         else:
             raise RuntimeError('To add an algebraic please pass name')
-        
+
     def set_odes_rule(self, rule):
         """Set the ode expressions.
 
@@ -377,25 +379,29 @@ class TemplateBuilder(object):
             warnings.warn('The Model does not have any mixture components')
         else:
             if self._odes:
-                dummy_balances = self._odes(model,start_time)
-                if len(self._component_names)+len(self._complementary_states)!=len(dummy_balances):
-                    print('WARNING: The number of ODEs is not the same as the number of state variables.\n If this is the desired behavior, some odes must be added after the model is created.')
-                    
+                dummy_balances = self._odes(model, start_time)
+                if len(self._component_names) + len(self._complementary_states) != len(dummy_balances):
+                    print(
+                        'WARNING: The number of ODEs is not the same as the number of state variables.\n If this is the desired behavior, some odes must be added after the model is created.')
+
             else:
-                print('WARNING: differential expressions not specified. Must be specified by user after creating the model') 
+                print(
+                    'WARNING: differential expressions not specified. Must be specified by user after creating the model')
 
         if self._algebraics:
             if self._algebraic_constraints:
-                dummy_balances = self._algebraic_constraints(model,start_time)
-                if len(self._algebraics)!=len(dummy_balances):
-                    print('WARNING: The number of algebraic equations is not the same as the number of algebraic variables.\n If this is the desired behavior, some algebraics must be added after the model is created.')
+                dummy_balances = self._algebraic_constraints(model, start_time)
+                if len(self._algebraics) != len(dummy_balances):
+                    print(
+                        'WARNING: The number of algebraic equations is not the same as the number of algebraic variables.\n If this is the desired behavior, some algebraics must be added after the model is created.')
             else:
-                print('WARNING: algebraic expressions not specified. Must be specified by user after creating the model')
-                
+                print(
+                    'WARNING: algebraic expressions not specified. Must be specified by user after creating the model')
+
         if self._absorption_data is not None:
             if not self._meas_times:
-                raise RuntimeError('Need to add measumerement times') 
-        
+                raise RuntimeError('Need to add measumerement times')
+
     def create_pyomo_model(self, start_time, end_time):
         """Create a pyomo model.
 
@@ -412,7 +418,7 @@ class TemplateBuilder(object):
         """
         # Model
         pyomo_model = ConcreteModel()
-        
+
         # Sets
         pyomo_model.mixture_components = Set(initialize=self._component_names)
         pyomo_model.parameter_names = Set(initialize=self._parameters.keys())
@@ -420,7 +426,7 @@ class TemplateBuilder(object):
         pyomo_model.states = pyomo_model.mixture_components | pyomo_model.complementary_states
 
         pyomo_model.algebraics = Set(initialize=self._algebraics)
-        
+
         list_times = self._meas_times
         m_times = sorted(list_times)
         m_lambdas = list()
@@ -429,7 +435,7 @@ class TemplateBuilder(object):
 
         if self._spectral_data is not None:
             list_times = list_times.union(set(self._spectral_data.index))
-            list_lambdas = list(self._spectral_data.columns) 
+            list_lambdas = list(self._spectral_data.columns)
             m_times = sorted(list_times)
             m_lambdas = sorted(list_lambdas)
 
@@ -437,140 +443,143 @@ class TemplateBuilder(object):
             if not self._meas_times:
                 raise RuntimeError('Need to add measumerement times')
             list_times = list(self._meas_times)
-            list_lambdas = list(self._absorption_data.index) 
+            list_lambdas = list(self._absorption_data.index)
             m_times = sorted(list_times)
             m_lambdas = sorted(list_lambdas)
 
         if m_times:
-            if m_times[0]<start_time:
-                raise RuntimeError('Measurement time {0} not within ({1},{2})'.format(m_times[0],start_time,end_time))
-            if m_times[-1]>end_time:
-                raise RuntimeError('Measurement time {0} not within ({1},{2})'.format(m_times[-1],start_time,end_time))
+            if m_times[0] < start_time:
+                raise RuntimeError('Measurement time {0} not within ({1},{2})'.format(m_times[0], start_time, end_time))
+            if m_times[-1] > end_time:
+                raise RuntimeError(
+                    'Measurement time {0} not within ({1},{2})'.format(m_times[-1], start_time, end_time))
 
         pyomo_model.meas_times = Set(initialize=m_times, ordered=True)
         pyomo_model.meas_lambdas = Set(initialize=m_lambdas, ordered=True)
-        
+
         pyomo_model.time = ContinuousSet(initialize=pyomo_model.meas_times,
                                          bounds=(start_time, end_time))
 
         # Variables
         pyomo_model.Z = Var(pyomo_model.time,
                             pyomo_model.mixture_components,
-                            #bounds=(0.0,None),
+                            # bounds=(0.0,None),
                             initialize=1)
-        
-        
+
         pyomo_model.dZdt = DerivativeVar(pyomo_model.Z,
                                          wrt=pyomo_model.time)
 
         pyomo_model.P = Var(pyomo_model.parameter_names,
-                            #bounds = (0.0,None),
+                            # bounds = (0.0,None),
                             initialize=1)
         # set bounds P
-        for k,v in self._parameters_bounds.items():
+        for k, v in self._parameters_bounds.items():
             lb = v[0]
             ub = v[1]
             pyomo_model.P[k].setlb(lb)
             pyomo_model.P[k].setub(ub)
-        
+
         pyomo_model.C = Var(pyomo_model.meas_times,
                             pyomo_model.mixture_components,
-                            bounds=(0.0,None),
+                            bounds=(0.0, None),
                             initialize=1)
-                
+
         pyomo_model.X = Var(pyomo_model.time,
                             pyomo_model.complementary_states,
-                            initialize = 1.0)
-        
+                            initialize=1.0)
+
         pyomo_model.dXdt = DerivativeVar(pyomo_model.X,
                                          wrt=pyomo_model.time)
 
         pyomo_model.Y = Var(pyomo_model.time,
                             pyomo_model.algebraics,
-                            initialize = 1.0)
-        
+                            initialize=1.0)
+
         if self._absorption_data is not None:
             s_dict = dict()
             for k in self._absorption_data.columns:
                 for l in self._absorption_data.index:
-                    s_dict[l,k] = float(self._absorption_data[k][l])
+                    s_dict[l, k] = float(self._absorption_data[k][l])
         else:
             s_dict = 1.0
-            
+
         pyomo_model.S = Var(pyomo_model.meas_lambdas,
                             pyomo_model.mixture_components,
-                            bounds=(0.0,None),
+                            bounds=(0.0, None),
                             initialize=s_dict)
 
         if self._absorption_data is not None:
             for l in pyomo_model.meas_lambdas:
                 for k in pyomo_model.mixture_components:
-                    pyomo_model.S[l,k].fixed = True
-        
+                    pyomo_model.S[l, k].fixed = True
+
         # Parameters
         pyomo_model.init_conditions = Param(pyomo_model.states,
                                             initialize=self._init_conditions)
         pyomo_model.start_time = Param(initialize=start_time)
         pyomo_model.end_time = Param(initialize=end_time)
-        
-        
+
         # Fixes parameters that were given numeric values
-        for p,v in self._parameters.items():
+        for p, v in self._parameters.items():
             if v is not None:
                 pyomo_model.P[p].value = v
                 pyomo_model.P[p].fixed = True
-        
+
         # spectral data
         if self._spectral_data is not None:
             s_data_dict = dict()
             for t in pyomo_model.meas_times:
                 for l in pyomo_model.meas_lambdas:
-                    s_data_dict[t,l] = float(self._spectral_data[l][t])
+                    s_data_dict[t, l] = float(self._spectral_data[l][t])
 
             pyomo_model.D = Param(pyomo_model.meas_times,
                                   pyomo_model.meas_lambdas,
-                                  initialize = s_data_dict)
+                                  initialize=s_data_dict)
 
         # validate the model before writing constraints
-        self._validate_data(pyomo_model,start_time,end_time)
+        self._validate_data(pyomo_model, start_time, end_time)
+
         # add ode contraints to pyomo model
-        def rule_init_conditions(m,k):
+        def rule_init_conditions(m, k):
             st = start_time
             if k in m.mixture_components:
-                return m.Z[st,k] == self._init_conditions[k]
+                return m.Z[st, k] == self._init_conditions[k]
             else:
-                return m.X[st,k] == self._init_conditions[k]
+                return m.X[st, k] == self._init_conditions[k]
+
         pyomo_model.init_conditions_c = \
             Constraint(pyomo_model.states, rule=rule_init_conditions)
 
         # the generation of the constraints is not efficient but not critical
         if self._odes:
-            def rule_odes(m,t,k):
-                exprs = self._odes(m,t)
+            def rule_odes(m, t, k):
+                exprs = self._odes(m, t)
                 if t == m.start_time.value:
                     return Constraint.Skip
                 else:
                     if k in m.mixture_components:
                         if exprs.has_key(k):
-                            return m.dZdt[t,k] == exprs[k]
+                            return m.dZdt[t, k] == exprs[k]
                         else:
                             return Constraint.Skip
                     else:
                         if exprs.has_key(k):
-                            return m.dXdt[t,k] == exprs[k]
+                            return m.dXdt[t, k] == exprs[k]
                         else:
                             return Constraint.Skip
 
             pyomo_model.odes = Constraint(pyomo_model.time,
-                                         pyomo_model.states,
-                                                   rule=rule_odes)
-            
+                                          pyomo_model.states,
+                                          rule=rule_odes)
+
         # the generation of the constraints is not efficient but not critical
         if self._algebraic_constraints:
-            n_alg_eqns = len(self._algebraic_constraints(pyomo_model,start_time))
-            def rule_algebraics(m,t,k):
-                alg_const = self._algebraic_constraints(m,t)[k]
+            n_alg_eqns = len(self._algebraic_constraints(pyomo_model, start_time))
+
+            def rule_algebraics(m, t, k):
+                alg_const = self._algebraic_constraints(m, t)[k]
                 return alg_const == 0.0
+
             pyomo_model.algebraic_consts = Constraint(pyomo_model.time,
                                                       range(n_alg_eqns),
                                                       rule=rule_algebraics)
@@ -591,7 +600,7 @@ class TemplateBuilder(object):
 
         """
         if found_casadi:
-        # Model
+            # Model
             casadi_model = CasadiModel()
 
             # Sets
@@ -600,7 +609,7 @@ class TemplateBuilder(object):
             casadi_model.complementary_states = copy.deepcopy(self._complementary_states)
             casadi_model.states = casadi_model.mixture_components.union(casadi_model.complementary_states)
             casadi_model.algebraics = self._algebraics
-            
+
             m_times = list()
             m_lambdas = list()
             if self._spectral_data is not None and self._absorption_data is not None:
@@ -608,7 +617,7 @@ class TemplateBuilder(object):
 
             if self._spectral_data is not None:
                 list_times = list(self._spectral_data.index)
-                list_lambdas = list(self._spectral_data.columns) 
+                list_lambdas = list(self._spectral_data.columns)
                 m_times = sorted(list_times)
                 m_lambdas = sorted(list_lambdas)
             if self._absorption_data is not None:
@@ -620,22 +629,24 @@ class TemplateBuilder(object):
                 m_lambdas = sorted(list_lambdas)
 
             if m_times:
-                if m_times[0]<start_time:
-                    raise RuntimeError('Measurement time {0} not within ({1},{2})'.format(m_times[0],start_time,end_time))
-                if m_times[-1]>end_time:
-                    raise RuntimeError('Measurement time {0} not within ({1},{2})'.format(m_times[-1],start_time,end_time))
+                if m_times[0] < start_time:
+                    raise RuntimeError(
+                        'Measurement time {0} not within ({1},{2})'.format(m_times[0], start_time, end_time))
+                if m_times[-1] > end_time:
+                    raise RuntimeError(
+                        'Measurement time {0} not within ({1},{2})'.format(m_times[-1], start_time, end_time))
 
             casadi_model.meas_times = m_times
             casadi_model.meas_lambdas = m_lambdas
 
             # Variables                
-            casadi_model.Z = KipetCasadiStruct('Z',list(casadi_model.mixture_components),dummy_index=True)
-            casadi_model.X = KipetCasadiStruct('X',list(casadi_model.complementary_states),dummy_index=True)
-            casadi_model.Y = KipetCasadiStruct('Y',list(casadi_model.algebraics),dummy_index=True)
-            casadi_model.P = KipetCasadiStruct('P',list(casadi_model.parameter_names))
-            casadi_model.C = KipetCasadiStruct('C',list(casadi_model.meas_times))
-            casadi_model.S = KipetCasadiStruct('S',list(casadi_model.meas_lambdas))
-            
+            casadi_model.Z = KipetCasadiStruct('Z', list(casadi_model.mixture_components), dummy_index=True)
+            casadi_model.X = KipetCasadiStruct('X', list(casadi_model.complementary_states), dummy_index=True)
+            casadi_model.Y = KipetCasadiStruct('Y', list(casadi_model.algebraics), dummy_index=True)
+            casadi_model.P = KipetCasadiStruct('P', list(casadi_model.parameter_names))
+            casadi_model.C = KipetCasadiStruct('C', list(casadi_model.meas_times))
+            casadi_model.S = KipetCasadiStruct('S', list(casadi_model.meas_lambdas))
+
             if self._parameters_bounds:
                 warnings.warn('Casadi_model do not take bounds on parameters. This is ignored in the integration')
 
@@ -647,35 +658,34 @@ class TemplateBuilder(object):
             if self._absorption_data is not None:
                 for l in casadi_model.meas_lambdas:
                     for k in casadi_model.mixture_components:
-                        casadi_model.S[l,k] = float(self._absorption_data[k][l])
+                        casadi_model.S[l, k] = float(self._absorption_data[k][l])
 
             if self._spectral_data is not None:
                 casadi_model.D = dict()
                 for t in casadi_model.meas_times:
                     for l in casadi_model.meas_lambdas:
-                        casadi_model.D[t,l] = float(self._spectral_data[l][t])
+                        casadi_model.D[t, l] = float(self._spectral_data[l][t])
 
             # Fixes parameters that were given numeric values
-            for p,v in self._parameters.items():
+            for p, v in self._parameters.items():
                 if v is not None:
                     casadi_model.P[p] = v
             # validate the model before writing constraints
-            self._validate_data(casadi_model,start_time,end_time)
+            self._validate_data(casadi_model, start_time, end_time)
             # ignores the time indes t=0
             if self._odes:
-                casadi_model.odes = self._odes(casadi_model,0)
+                casadi_model.odes = self._odes(casadi_model, 0)
                 for k in casadi_model.states:
                     if not casadi_model.odes.has_key(k):
                         raise RuntimeError('Missing ode expresion for component {}'.format(k))
 
             if self._algebraic_constraints:
-                alg_const = self._algebraic_constraints(casadi_model,0)
+                alg_const = self._algebraic_constraints(casadi_model, 0)
                 for c in alg_const:
-                    casadi_model.alg_exprs.append(c) 
-            return casadi_model 
+                    casadi_model.alg_exprs.append(c)
+            return casadi_model
         else:
             raise RuntimeError('Install casadi to create casadi models')
-
 
     @property
     def num_parameters(self):
@@ -722,5 +732,3 @@ class TemplateBuilder(object):
 
     def has_adsorption_data(self):
         return self._absorption_data is not None
-
-

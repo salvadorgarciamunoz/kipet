@@ -5,14 +5,14 @@
 #  _________________________________________________________________________
 
 # Sample Problem 
-# Estimation with know variancesof spectral data using pyomo discretization 
+# Estimation with know variances of spectral data using pyomo discretization
 #
 #		\frac{dZ_a}{dt} = -k_1*Z_a	                Z_a(0) = 1
 #		\frac{dZ_b}{dt} = k_1*Z_a - k_2*Z_b		Z_b(0) = 0
 #               \frac{dZ_c}{dt} = k_2*Z_b	                Z_c(0) = 0
 #               C_k(t_i) = Z_k(t_i) + w(t_i)    for all t_i in measurement points
 #               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
-
+from __future__ import print_function
 from kipet.model.TemplateBuilder import *
 from kipet.sim.PyomoSimulator import *
 from kipet.opt.ParameterEstimator import *
@@ -41,7 +41,7 @@ if __name__ == "__main__":
 
     ######################################
     builder = TemplateBuilder()    
-    components = {'A':1e-3,'B':0,'C':0}
+    components = {'A': 1e-3,'B': 0,'C': 0}
     builder.add_mixture_component(components)
     # note the parameter is not fixed
     builder.add_parameter('k1',bounds=(0.0,5.0))
@@ -88,9 +88,9 @@ if __name__ == "__main__":
                                       solver_opts = solver_options,
                                       variances=sigmas)
 
-    print "The estimated parameters are:"
-    for k,v in results_pyomo.P.iteritems():
-        print k,v
+    print("The estimated parameters are:")
+    for k, v in results_pyomo.P.items():
+        print(k, v)
 
     tol = 1e-1
     assert(abs(results_pyomo.P['k1']-2.0)<tol)
