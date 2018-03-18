@@ -3,6 +3,7 @@ from casadi.tools import *
 from ResultsObject import *
 from Simulator import *
 import copy
+from distutils.version import LooseVersion
 
 
 class CasadiSimulator(Simulator):
@@ -33,6 +34,11 @@ class CasadiSimulator(Simulator):
         self._fixed_variables = list()
         self._fixed_trajectories = list()
         self._fixed_variable_names = list()
+        #: (dthierry) test for the current casadi version
+        self._casadi_version_test = LooseVersion(ca.__version__) > LooseVersion('3.1.0')
+        if self._casadi_version_test:
+            print("WARNING: The current version of Casadi ({}) might have issues".format(ca.__version__))
+
         
     def apply_discretization(self,transformation,**kwargs):
         """Defines discrete points to evaluate integrator.
@@ -139,7 +145,10 @@ class CasadiSimulator(Simulator):
             expr = self.model.odes[k]
             
             if isinstance(expr,ca.SX):
-                representation = expr.getRepresentation()
+                try:
+                    representation = expr.getRepresentation()
+                except AttributeError:
+                    representation = expr.repr()
             else:
                 representation = str(expr)
             if 'nan' not in representation:
@@ -154,7 +163,10 @@ class CasadiSimulator(Simulator):
             states_l.append(X_var[k])
             expr = self.model.odes[k]
             if isinstance(expr,ca.SX):
-                representation = expr.getRepresentation()
+                try:
+                    representation = expr.getRepresentation()
+                except AttributeError:
+                    representation = expr.repr()
             else:
                 representation = str(expr)
             if 'nan' not in representation:
