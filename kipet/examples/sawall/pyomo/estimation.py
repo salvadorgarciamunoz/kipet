@@ -17,6 +17,7 @@
 #               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
 
 
+from __future__ import print_function
 from kipet.model.TemplateBuilder import *
 from kipet.opt.ParameterEstimator import *
 import matplotlib.pyplot as plt
@@ -74,16 +75,16 @@ if __name__ == "__main__":
     optimizer.initialize_from_trajectory('S',raw_results.S)
     optimizer.initialize_from_trajectory('C',raw_results.C)
     
-    
+    #: (dthierry) Missing variances. This will not work
     solver_options = {}
     solver_options = {'mu_init': 1e-6, 'bound_push':  1e-8}
     results_pyomo = optimizer.run_opt('ipopt',
                                       tee=True,
                                       solver_opts = solver_options)
 
-    print "The estimated parameters are:"
-    for k,v in results_pyomo.P.iteritems():
-        print k,v
+    print("The estimated parameters are:")
+    for k, v in results_pyomo.P.items():
+        print(k, v)
 
     tol =1e-3
     assert(abs(results_pyomo.P['k']-0.01)<tol)

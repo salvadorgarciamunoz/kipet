@@ -45,7 +45,7 @@ if __name__ == "__main__":
     # the template includes
     #      - Z variables indexed over time and components names e.g. m.Z[t,'A']
     #      - P parameters indexed over the parameter names e.g. m.P['k']
-    pyomo_model = builder.create_pyomo_model(0.0,10.0)
+    pyomo_model = builder.create_pyomo_model(0.0, 10.0)
 
     # create instance of simulator
     simulator = PyomoSimulator(pyomo_model)

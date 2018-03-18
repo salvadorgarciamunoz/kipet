@@ -128,7 +128,7 @@ discretizer = TransformationFactory('dae.collocation')
 discretizer.apply_to(model,wrt=model.time,nfe=60,ncp=1,scheme='LAGRANGE-RADAU')
 
 opt = SolverFactory('ipopt')
-
+opt.options['linear_solver'] = 'mumps'
 solver_results = opt.solve(model,tee=True)
 
 

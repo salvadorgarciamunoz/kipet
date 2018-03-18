@@ -9,7 +9,6 @@ import re
 import os
 
 
-
 class ParameterEstimator(Optimizer):
     """Optimizer for parameter estimation.
 
@@ -47,19 +46,29 @@ class ParameterEstimator(Optimizer):
         """
         
         tee = kwds.pop('tee',False)
-        with_d_vars = kwds.pop('with_d_vars',False)
-        weights = kwds.pop('weights',[1.0,1.0])
-        covariance = kwds.pop('covariance',False)
+        with_d_vars = kwds.pop('with_d_vars', False)
+        weights = kwds.pop('weights', [1.0, 1.0])
+        covariance = kwds.pop('covariance', False)
+        species_list = kwds.pop('subset_components', None)
 
+        list_components = []
+        if species_list is None:
+            list_components = [k for k in self._mixture_components]
+        else:
+            for k in species_list:
+                if k in self._mixture_components:
+                    list_components.append(k)
+                else:
+                    warnings.warn("Ignored {} since is not a mixture component of the model".format(k))
         if not self._spectra_given:
             raise NotImplementedError("Extended model requires spectral data model.D[ti,lj]")
             
         all_sigma_specified = True
         keys = sigma_sq.keys()
-        for k in self._mixture_components:
+        for k in list_components:
             if k not in keys:
                 all_sigma_specified = False
-                sigma_sq[k] = 1.0
+                sigma_sq[k] = max(sigma_sq.values())
 
         if not sigma_sq.has_key('device'):
             all_sigma_specified = False
@@ -85,13 +94,13 @@ class ParameterEstimator(Optimizer):
                     if with_d_vars:
                         expr+= (m.D[t,l] - m.D_bar[t,l])**2/(sigma_sq['device'])
                     else:
-                        D_bar = sum(m.C[t,k]*m.S[l,k] for k in m.mixture_components)
+                        D_bar = sum(m.C[t, k]*m.S[l, k] for k in list_components)
                         expr+= (m.D[t,l] - D_bar)**2/(sigma_sq['device'])
 
             expr*=weights[0]
             second_term = 0.0
             for t in m.meas_times:
-                second_term += sum((m.C[t,k]-m.Z[t,k])**2/sigma_sq[k] for k in m.mixture_components)
+                second_term += sum((m.C[t,k]-m.Z[t,k])**2/sigma_sq[k] for k in list_components)
 
             expr+=weights[1]*second_term
             return expr
@@ -136,7 +145,6 @@ class ParameterEstimator(Optimizer):
             m.del_component('D_bar_constraint')
         m.del_component('objective')
 
-
     def _define_reduce_hess_order(self):
         self.model.red_hessian = Suffix(direction=Suffix.IMPORT_EXPORT)
 
@@ -159,8 +167,8 @@ class ParameterEstimator(Optimizer):
             self._idx_to_variable[count_vars] = v
             self.model.red_hessian[v] = count_vars
             count_vars+=1
-    #@run_lineprofile()  
-    def _compute_covariance(self,hessian,variances):
+
+    def _compute_covariance(self, hessian, variances):
 
         nt = self._n_meas_times
         nw = self._n_meas_lambdas
@@ -215,7 +223,7 @@ class ParameterEstimator(Optimizer):
             i=+1
         return 1
     
-    def _compute_B_matrix(self,variances,**kwds):
+    def _compute_B_matrix(self, variances, **kwds):
         """Builds B matrix for calculation of covariances
 
            This method is not intended to be used by users directly
@@ -246,9 +254,8 @@ class ParameterEstimator(Optimizer):
                     c_idx = i*nw+j
                     self.B_matrix[r_idx1,c_idx] = -2*self.model.S[l,c].value/variances['device']
                     self.B_matrix[r_idx2,c_idx] = -2*self.model.C[t,c].value/variances['device']
-    
-    
-    def _compute_Vd_matrix(self,variances,**kwds):
+
+    def _compute_Vd_matrix(self, variances, **kwds):
         """Builds d covariance matrix
 
            This method is not intended to be used by users directly
@@ -318,7 +325,7 @@ class ParameterEstimator(Optimizer):
                                                  shape=(nd,nd)).tocsr()
         #self.Vd_matrix = Vd_dense
 
-    def run_opt(self,solver,**kwds):
+    def run_opt(self, solver, **kwds):
 
         """ Solves parameter estimation problem.
         
@@ -341,11 +348,11 @@ class ParameterEstimator(Optimizer):
 
         """
 
-        solver_opts = kwds.pop('solver_opts', dict())
-        variances = kwds.pop('variances',dict())
-        tee = kwds.pop('tee',False)
-        with_d_vars = kwds.pop('with_d_vars',False)
-        covariance = kwds.pop('covariance',False)
+        solver_opts = kwds.pop('solver_opts',  dict())
+        variances = kwds.pop('variances', dict())
+        tee = kwds.pop('tee', False)
+        with_d_vars = kwds.pop('with_d_vars', False)
+        covariance = kwds.pop('covariance', False)
         
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
@@ -364,15 +371,17 @@ class ParameterEstimator(Optimizer):
         for key, val in solver_opts.items():
             opt.options[key]=val                
 
-        active_objectives = [o for o in self.model.component_map(Objective,active=True)]
+
+        active_objectives = [o for o in self.model.component_map(Objective, active=True)]
         if active_objectives:
             print("WARNING: The model has an active objective. Running optimization with models objective.\n To solve optimization with default objective (Weifengs) deactivate all objectives in the model.")
-            solver_results = opt.solve(self.model,tee=tee)
+            solver_results = opt.solve(self.model, tee=tee)
         else:
-            self._solve_extended_model(variances,opt,
+            self._solve_extended_model(variances, opt,
                                        tee=tee,
                                        covariance=covariance,
-                                       with_d_vars=with_d_vars)
+                                       with_d_vars=with_d_vars,
+                                       **kwds)
             
         results = ResultsObject()
 
@@ -389,13 +398,13 @@ class ParameterEstimator(Optimizer):
 
         return results
 
-            
-            
+
 def split_sipopt_string(output_string):
     start_hess = output_string.find('DenseSymMatrix')
     ipopt_string = output_string[:start_hess]
     hess_string = output_string[start_hess:]
     return (ipopt_string,hess_string)
+
 
 def read_reduce_hessian2(hessian_string, n_vars):
     hessian_string  = re.sub('RedHessian unscaled\[', '', hessian_string)

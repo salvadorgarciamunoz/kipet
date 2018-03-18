@@ -106,15 +106,15 @@ if __name__ == "__main__":
     D_frame = read_spectral_data_from_csv(filename)
     meas_times = sorted(D_frame.index)
 
-    builder.add_measurement_times(meas_times)
+    #builder.add_measurement_times(meas_times)
     
-    model = builder.create_pyomo_model(0.0,1400)    
+    model = builder.create_pyomo_model(0,1400)    
 
     #model.pprint()
     
     sim = PyomoSimulator(model)
     # defines the discrete points wanted in the concentration profile
-    sim.apply_discretization('dae.collocation',nfe=80,ncp=1,scheme='LAGRANGE-RADAU')
+    sim.apply_discretization('dae.collocation',nfe=50,ncp=3,scheme='LAGRANGE-RADAU')
 
     # good initialization
     initialization = pd.read_csv("init_Z.csv",index_col=0)
@@ -141,3 +141,4 @@ if __name__ == "__main__":
     plt.title("Rates of rxn")
     plt.show()
 
+    results.Z.to_csv("initialization.csv")

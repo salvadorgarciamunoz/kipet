@@ -31,9 +31,10 @@ Directories
 Authors
 --------
 
-   * Jose Santiago Rodriguez Purdue University
    * Salvador Gracia Eli Lilly
+   * Jose Santiago Rodriguez Purdue University
    * Carl Laird Purdue University
+
 
 
 

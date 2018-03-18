@@ -94,7 +94,7 @@ if __name__ == "__main__":
         V = m.X[t,'V']
         # mass balances
         for c in m.mixture_components:
-            exprs[c] = sum(gammas[c][j]*m.Y[t,j] for j in xrange(5)) - exprs['V']/V*m.Z[t,c]
+            exprs[c] = sum(gammas[c][j]*m.Y[t,j] for j in range(5)) - exprs['V']/V*m.Z[t,c]
             if c=='C':
                 exprs[c] += 0.000107014849/m.X[t,'V']*step
         return exprs
