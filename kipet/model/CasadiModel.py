@@ -1,3 +1,4 @@
+from __future__ import print_function
 from casadi.tools import *
 import casadi as ca
 
@@ -22,8 +23,8 @@ class CasadiModel(object):
     def pprint(self):
         
         print('\nDifferential expressions:')
-        for k,v in self.odes.iteritems():
-            print k,':',v
+        for k,v in self.odes.items():
+            print(k, ':', v)
 
         print('\nAlgebraic expressions:')
         for v in self.alg_exprs:
