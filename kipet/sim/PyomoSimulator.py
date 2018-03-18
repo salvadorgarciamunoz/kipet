@@ -134,7 +134,7 @@ class PyomoSimulator(Simulator):
         self.initialize_from_trajectory('X',x_init_panel)
 
     def initialize_parameters(self,params):
-        for k,v in params.iteritems():
+        for k,v in params.items():
             self.model.P[k].value = v
             
     def initialize_from_trajectory(self,variable_name,trajectories):
@@ -380,7 +380,7 @@ class PyomoSimulator(Simulator):
         #self.model.write('f.nl')
         opt = SolverFactory(solver)
 
-        for key, val in solver_opts.iteritems():
+        for key, val in solver_opts.items():
             opt.options[key]=val
             
         solver_results = opt.solve(self.model,tee=tee)

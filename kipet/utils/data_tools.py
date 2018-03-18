@@ -299,7 +299,7 @@ def generate_random_absorbance_data(wl_span,component_peaks,component_widths=Non
     max_l = max(wl_span)
     #mean=1000.0
     #sigma=1.5*mean
-    for k,n_peaks in component_peaks.iteritems():
+    for k,n_peaks in component_peaks.items():
         params = dict()
         if component_widths:
             width = component_widths[k]

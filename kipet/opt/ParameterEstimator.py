@@ -116,7 +116,7 @@ class ParameterEstimator(Optimizer):
                                              logfile=self._tmpfile,
                                              report_timing=True)
 
-            print "Done solving building reduce hessian"
+            print("Done solving building reduce hessian")
             output_string = ''
             with open(self._tmpfile,'r') as f:
                 output_string = f.read()
@@ -125,9 +125,9 @@ class ParameterEstimator(Optimizer):
             #output_string = f.getvalue()
             ipopt_output,hessian_output = split_sipopt_string(output_string)
             #print hessian_output
-            print "build strings"
+            print("build strings")
             if tee==True:
-                print ipopt_output
+                print(ipopt_output)
             
             if not all_sigma_specified:
                 raise RuntimeError('All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
@@ -177,25 +177,25 @@ class ParameterEstimator(Optimizer):
         nd = nw*nt
         ntheta = nc*(nw+nt)+ nparams
 
-        print "Computing H matrix\n shape ({},{})".format(nparams,ntheta)
+        print("Computing H matrix\n shape ({},{})".format(nparams,ntheta))
         all_H = hessian
         H = all_H[-nparams:,:]
         #H = hessian
-        print "Computing B matrix\n shape ({},{})".format(ntheta,nd)
+        print("Computing B matrix\n shape ({},{})".format(ntheta,nd))
         self._compute_B_matrix(variances)
         B = self.B_matrix
-        print "Computing Vd matrix\n shape ({},{})".format(nd,nd)
+        print("Computing Vd matrix\n shape ({},{})".format(nd,nd))
         self._compute_Vd_matrix(variances)
         Vd = self.Vd_matrix
         """
         Vd_dense = Vd.toarray()
-        print "multiplying H*B"
+        print("multiplying H*B")
         M1 = H.dot(B)
-        print "multiplying H*B*Vd"
+        print("multiplying H*B*Vd")
         M2 = M1.dot(Vd_dense)
-        print "multiplying H*B*Vd*Bt"
+        print("multiplying H*B*Vd*Bt")
         M3 = M2.dot(B.T)
-        print "multiplying H*B*Vd*Bt*Ht"
+        print("multiplying H*B*Vd*Bt*Ht")
         V_theta = M3.dot(H)
         """
 
@@ -218,8 +218,8 @@ class ParameterEstimator(Optimizer):
         variances_p = np.diag(V_param)
         print('\nConfindence intervals:')
         i=0
-        for k,p in self.model.P.iteritems():
-            print '{} ({},{})'.format(k, p.value-variances_p[i]**0.5, p.value+variances_p[i]**0.5)
+        for k,p in self.model.P.items():
+            print ('{} ({},{})'.format(k, p.value-variances_p[i]**0.5, p.value+variances_p[i]**0.5))
             i=+1
         return 1
     
@@ -367,9 +367,10 @@ class ParameterEstimator(Optimizer):
                 solver_opts['compute_red_hessian'] = 'yes'
             
             self._define_reduce_hess_order()
+            #self.model.red_hessian.pprint()
+        for key, val in solver_opts.items():
+            opt.options[key]=val                
 
-        for key, val in solver_opts.iteritems():
-            opt.options[key] = val
 
         active_objectives = [o for o in self.model.component_map(Objective, active=True)]
         if active_objectives:
