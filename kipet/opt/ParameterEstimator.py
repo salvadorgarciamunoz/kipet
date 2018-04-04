@@ -1,9 +1,12 @@
+# -*- coding: utf-8 -*-
+
+from __future__ import print_function
+from __future__ import division
 from pyomo.environ import *
 from pyomo.dae import *
 from kipet.opt.Optimizer import *
 from pyomo.core.base.expr import Expr_if
 
-import StringIO
 import copy
 import re
 import os
@@ -70,7 +73,7 @@ class ParameterEstimator(Optimizer):
                 all_sigma_specified = False
                 sigma_sq[k] = max(sigma_sq.values())
 
-        if not sigma_sq.has_key('device'):
+        if not 'device' in sigma_sq.keys():
             all_sigma_specified = False
             sigma_sq['device'] = 1.0
             

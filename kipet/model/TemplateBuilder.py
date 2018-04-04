@@ -558,12 +558,12 @@ class TemplateBuilder(object):
                     return Constraint.Skip
                 else:
                     if k in m.mixture_components:
-                        if exprs.has_key(k):
+                        if k in exprs.keys():
                             return m.dZdt[t, k] == exprs[k]
                         else:
                             return Constraint.Skip
                     else:
-                        if exprs.has_key(k):
+                        if k in exprs.keys():
                             return m.dXdt[t, k] == exprs[k]
                         else:
                             return Constraint.Skip

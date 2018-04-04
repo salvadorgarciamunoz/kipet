@@ -82,7 +82,9 @@ class ResultsObject(object):
                     d = v.get_values()
                     keys = d.keys()
                     if keys:
-                        split_keys = zip(*keys)
+                        split_keys = v._implicit_subsets
+                        # split_keys = zip(*keys)
+                        # print(split_keys)
                         first_set = set(split_keys[0])
                         second_set = set(split_keys[1])
                         s_first_set = sorted(first_set)
