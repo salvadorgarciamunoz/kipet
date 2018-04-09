@@ -155,7 +155,7 @@ class Optimizer(PyomoSimulator):
                 self.model.P[k].fixed = True
 
         for k,v in self.model.P.items():
-            if v.fixed == False:
+            if not v.fixed:
                 print('***WARNING parameter {} is not fixed. This method expects all parameters to be fixed.'.format(k))
             
         # deactivates objective functions for simulation                

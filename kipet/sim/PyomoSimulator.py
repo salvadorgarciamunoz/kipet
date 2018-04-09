@@ -3,6 +3,7 @@ from pyomo.dae import *
 from kipet.sim.ResultsObject import *
 from kipet.sim.Simulator import *
 import warnings
+import six
 
 
 class PyomoSimulator(Simulator):
@@ -361,7 +362,7 @@ class PyomoSimulator(Simulator):
         dX_var = self.model.dXdt
         
         # check all parameters are fixed before simulating
-        for p_var_data in P_var.itervalues():
+        for p_var_data in six.itervalues(P_var):
             if not p_var_data.fixed:
                 raise RuntimeError('For simulation fix all parameters. Parameter {} is unfixed'.format(p_var_data.cname()))
 
@@ -369,7 +370,7 @@ class PyomoSimulator(Simulator):
         if self.model.nobjectives():
             objectives_map = self.model.component_map(ctype=Objective,active=True)
             active_objectives_names = []
-            for obj in objectives_map.itervalues():
+            for obj in six.itervalues(objectives_map):
                 name = obj.cname()
                 active_objectives_names.append(name)
                 str_warning = 'Deactivating objective {} for simulation'.format(name)
