@@ -92,7 +92,8 @@ for i in dvs_names:
 
     print(e_dict)
 
-    m.add_component(i + "_deq_aug", Constraint(con.index_set(), rule=lambda m, j:e_dict[(j,)] if (j,)[0] > 0 else Constraint.Skip))
+    m.add_component(i + "_deq_aug", Constraint(con.index_set(), rule=lambda m, j: \
+        e_dict[(j,)] if (j,)[0] > 0 else Constraint.Skip))
     n_con = getattr(m, i + "_deq_aug")
     n_con.pprint()
     print(n_con.rule)

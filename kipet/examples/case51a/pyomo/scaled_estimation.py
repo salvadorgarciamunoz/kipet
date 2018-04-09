@@ -22,7 +22,7 @@ from kipet.utils.data_tools import *
 import inspect
 import sys
 import os
-
+import six
 if __name__ == "__main__":
     
     with_plots = True
@@ -90,9 +90,9 @@ if __name__ == "__main__":
                                       variances=sigmas,
                                       with_d_vars=True)
 
-    print "The estimated parameters are:"
-    for k,v in results_pyomo.P.iteritems():
-        print k,v
+    print("The estimated parameters are:")
+    for k,v in six.iteritems(results_pyomo.P):
+        print(k, v)
 
     tol = 1e-1
     assert(abs(results_pyomo.P['k1']-2.0)<tol)

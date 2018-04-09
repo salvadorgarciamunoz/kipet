@@ -92,8 +92,8 @@ class PyomoSimulator(Simulator):
         z_init = []
         for t in self._times:
             for k in self._mixture_components:
-                if abs(self.model.init_conditions[k])>tol:
-                    z_init.append(self.model.init_conditions[k])
+                if abs(self.model.init_conditions[k].value)>tol:
+                    z_init.append(self.model.init_conditions[k].value)
                 else:
                     z_init.append(1.0)
 
@@ -105,8 +105,8 @@ class PyomoSimulator(Simulator):
         c_init = []
         for t in self._meas_times:
             for k in self._mixture_components:
-                if abs(self.model.init_conditions[k])>tol:
-                    c_init.append(self.model.init_conditions[k])
+                if abs(self.model.init_conditions[k].value)>tol:
+                    c_init.append(self.model.init_conditions[k].value)
                 else:
                     c_init.append(1.0)
 

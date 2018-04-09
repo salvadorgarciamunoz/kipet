@@ -515,7 +515,7 @@ class TemplateBuilder(object):
 
         # Parameters
         pyomo_model.init_conditions = Param(pyomo_model.states,
-                                            initialize=self._init_conditions)
+                                            initialize=self._init_conditions, mutable=True)
         pyomo_model.start_time = Param(initialize=start_time)
         pyomo_model.end_time = Param(initialize=end_time)
 
