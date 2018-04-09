@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from __future__ import print_function
 from pyomo.environ import *
 from pyomo.dae import *
 from pyomo.dae.diffvar import DerivativeVar
