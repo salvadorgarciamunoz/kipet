@@ -121,8 +121,8 @@ class PyomoSimulator(Simulator):
         x_init = []
         for t in self._times:
             for k in self._complementary_states:
-                if abs(self.model.init_conditions[k])>tol:
-                    x_init.append(self.model.init_conditions[k])
+                if abs(self.model.init_conditions[k].value)>tol:
+                    x_init.append(self.model.init_conditions[k].value)
                 else:
                     x_init.append(1.0)
 

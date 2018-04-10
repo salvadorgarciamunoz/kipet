@@ -6,12 +6,19 @@ from pyomo.dae import *
 from pyomo.opt import SolverFactory, ProblemFormat
 from pyomo.core.kernel.numvalue import value as value
 from os import getcwd, remove
+import sys
+
 __author__ = 'David M Thierry'  # type: str #: April 2018
 
 
 class fe_initialize(object):
-    def __init__(self, tgt_mod, src_mod, init_con=None, fixed_params=None):
+    def __init__(self, tgt_mod, src_mod, init_con=None, param_name=None, param_values=None):
         # type: (ConcreteModel, ConcreteModel) -> None
+        """
+
+        :type fixed_params: object
+        """
+
         self.tgt = tgt_mod
         self.mod = src_mod.clone()  #: deepcopy
         zeit = None
@@ -26,7 +33,7 @@ class fe_initialize(object):
         self.ncp = tgt_cts.get_discretization_info()['ncp']
 
         fe_l = tgt_cts.get_finite_elements()
-        self.fe_list = [fe_l[i+1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
+        self.fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
         self.nfe = len(self.fe_list)
 
         zeit = getattr(self.mod, self.time_set)
@@ -59,7 +66,6 @@ class fe_initialize(object):
             e_dict = {}
             fun_tup = True
             for k in con.keys():
-                print(k)
                 if isinstance(k, tuple):
                     pass
                 else:
@@ -87,7 +93,11 @@ class fe_initialize(object):
                     continue
                 else:
                     remaining_set *= s
-            self.remaining_set[i] = remaining_set
+            if isinstance(remaining_set, list):
+                self.remaining_set[i] = remaining_set
+            else:
+                self.remaining_set[i] = []
+                self.remaining_set[i].append(remaining_set)
         self.remaining_set_alg = {}
         for av in self.mod.component_objects(Var):
             if av.name in self.dvs_names:
@@ -101,37 +111,89 @@ class fe_initialize(object):
                     continue
                 else:
                     remaining_set *= s
-            self.remaining_set_alg[av.name] = remaining_set
+            if isinstance(remaining_set, list):
+                self.remaining_set_alg[av.name] = remaining_set
+            else:
+                self.remaining_set_alg[av.name] = []
+                self.remaining_set_alg[av.name].append(remaining_set)
 
         if init_con:
             ic = getattr(self.mod, init_con)
             self.mod.del_component(ic)
-        if fixed_params:
-            if isinstance(fixed_params, dict):
-                for i in fixed_params:
-                    p = getattr(self.mod, i)
-                    p.fix()
-            elif isinstance(fixed_params, str):
-                p = getattr(self.mod, fixed_params)
-                p.fix()
-        # self.cycle_ics()
+
+
+        if isinstance(param_name, list):
+            if param_values:
+                if isinstance(param_values, dict):
+                    for pname in param_name:
+                        p = getattr(self.mod, pname)
+                        for key in p.keys():
+                            try:
+                                val = param_values[pname, key]
+                                print(val)
+                                p[key].set_value(val)
+                            except KeyError:
+                                raise Exception("Missing a key of the param_values\n"
+                                                "Please provide all the required keys.\n"
+                                                "missing: {}".format(key))
+                            p[key].fix()
+                else:
+                    Exception("Arg param_values should be provided in a dictionary")
+            else:
+                Exception("Arg param_values should be provided in a dictionary")
+        elif isinstance(param_name, str):
+            if param_values:
+                if isinstance(param_values, dict):
+                    p = getattr(self.mod, param_name)
+                    for key in p.keys():
+                        try:
+                            val = param_values[param_name, key]
+                            print(val)
+                            p[key].set_value(val)
+                        except KeyError:
+                            raise Exception("Missing a key of the param_values\n"
+                                      "Please provide all the required keys.\n"
+                                            "missing: {}".format(key))
+                        p[key].fix()
+        elif not param_name:
+            pass
+        else:
+            raise Exception("wrong type for param_name")
+
+
+
         self.ip = SolverFactory('ipopt')
 
         for i in self.dvs_names:
             dv = getattr(self.mod, i)
+
             for rs in self.remaining_set[i]:
                 for k in rs:
                     k = k if isinstance(k, tuple) else (k,)
                     dv[(0,) + k].fix()
         (n, m) = reconcile_nvars_mequations(self.mod)
         if n != m:
-            print("whops")
-            # for i in self.mod.component_objects([Var, Constraint]):
-            #     i.pprint()
             raise Exception("whps, n={}, m={}".format(n, m))
+
+    def load_initial_conditions(self, init_cond=None):
+        if not isinstance(init_cond, dict):
+            raise Exception("init_cond must be a dictionary")
+        for i in self.dvs_names:
+            dv = getattr(self.mod, i)
+            for s in self.remaining_set[i]:
+                for k in s:
+                    val = init_cond[i, k]
+                    k = k if isinstance(k, tuple) else (k,)
+                    dv[(0,) + k].set_value(val)
+                    if not dv[(0,) + k].fixed:
+                        dv[(0,) + k].fix()
 
 
     def march_forward(self, fe):
+        """
+
+        :rtype: object
+        """
         print("fe {}".format(fe))
         self.adjust_h(fe)
         sol = self.ip.solve(self.mod, tee=True)
@@ -149,8 +211,8 @@ class fe_initialize(object):
             for s in self.remaining_set[i]:
                 for k in s:
                     k = k if isinstance(k, tuple) else (k,)
-                    dv[(0, ) + k].set_value(value(dv[(t_last,) + k]))
-                    if not dv[(0, ) + k].fixed:
+                    dv[(0,) + k].set_value(value(dv[(t_last,) + k]))
+                    if not dv[(0,) + k].fixed:
                         dv[(0,) + k].fix()
 
     def patch(self, fe):
@@ -203,9 +265,9 @@ def t_ij(time_set, i, j):
         float: Corresponding index of the ContinuousSet
     """
     if i < time_set.get_discretization_info()['nfe']:
-        h = time_set.get_finite_elements()[i+1] - time_set.get_finite_elements()[i]  #: This would work even for 1 fe
+        h = time_set.get_finite_elements()[i + 1] - time_set.get_finite_elements()[i]  #: This would work even for 1 fe
     else:
-        h = time_set.get_finite_elements()[i] - time_set.get_finite_elements()[i-1]  #: This would work even for 1 fe
+        h = time_set.get_finite_elements()[i] - time_set.get_finite_elements()[i - 1]  #: This would work even for 1 fe
     tau = time_set.get_discretization_info()['tau_points']
     fe = time_set.get_finite_elements()[i]
     time = fe + tau[j] * h
@@ -224,7 +286,8 @@ def write_nl(d_mod, filename=None):
     """
     if not filename:
         filename = d_mod.name + '.nl'
-    d_mod.write(filename, format=ProblemFormat.nl)
+    d_mod.write(filename, format=ProblemFormat.nl,
+                io_options={"symbolic_solver_labels":True})
     cwd = getcwd()
     print("nl file {}".format(cwd + "/" + filename))
     return cwd
@@ -251,5 +314,5 @@ def reconcile_nvars_mequations(d_mod):
         nvar = int(newl[0])
         meqn = int(newl[1])
         nl.close()
-    remove(fullpth)
+    # remove(fullpth)
     return (nvar, meqn)

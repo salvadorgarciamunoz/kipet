@@ -25,6 +25,7 @@ class ParameterEstimator(Optimizer):
         super(ParameterEstimator, self).__init__(model)
         # for reduce hessian
         self._idx_to_variable = dict()
+        self.binary = None
         if binary:
             if isinstance(binary, dict):
                 self.binary = binary
