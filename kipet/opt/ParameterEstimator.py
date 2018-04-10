@@ -6,7 +6,7 @@ from pyomo.environ import *
 from pyomo.dae import *
 from kipet.opt.Optimizer import *
 from pyomo.core.base.expr import Expr_if
-
+import six
 import copy
 import re
 import os
@@ -166,7 +166,7 @@ class ParameterEstimator(Optimizer):
                 self.model.red_hessian[v] = count_vars
                 count_vars+=1
 
-        for v in self.model.P.itervalues():
+        for v in six.itervalues(self.model.P):
             self._idx_to_variable[count_vars] = v
             self.model.red_hessian[v] = count_vars
             count_vars+=1

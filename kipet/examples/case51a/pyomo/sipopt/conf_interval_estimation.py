@@ -89,7 +89,7 @@ if __name__ == "__main__":
                                       variances=sigmas,
                                       covariance=True)
 
-    print "The estimated parameters are:"
+    print("The estimated parameters are:")
     for k,v in results_pyomo.P.iteritems():
         print k,v
 

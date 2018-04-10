@@ -1,3 +1,5 @@
+from __future__ import print_function
+from __future__ import division
 from pyomo.environ import *
 from pyomo.dae import *
 from pyomo.core import *
@@ -14,7 +16,11 @@ import copy
 import sys
 import os
 import re
-import StringIO
+try:
+    from StringIO import StringIO
+except ImportError:
+    from io import StringIO
+import six
 
 import pdb
 
@@ -93,7 +99,7 @@ class VarianceEstimator(Optimizer):
         # deactivates objective functions                
         objectives_map = self.model.component_map(ctype=Objective, active=True)
         active_objectives_names = []
-        for obj in objectives_map.itervalues():
+        for obj in six.itervalues(objectives_map):
             name = obj.cname()
             active_objectives_names.append(name)
             obj.deactivate()
@@ -146,7 +152,7 @@ class VarianceEstimator(Optimizer):
                 self._build_s_model()
                 self._build_c_model()
             
-        for it in xrange(max_iter):
+        for it in range(max_iter):
             
             rb = ResultsObject()
             rb.load_from_pyomo_model(self.model, to_load=['Z', 'C', 'S', 'Y'])
@@ -400,18 +406,18 @@ class VarianceEstimator(Optimizer):
 
         def F(x, z_array, d_array, nl, nt, nc):
             diff = np.zeros(nt*nl)
-            for i in xrange(nt):
-                for j in xrange(nl):
-                    diff[i*nl+j] = d_array[i, j]-sum(z_array[i*nc+k]*x[j*nc+k] for k in xrange(nc))
+            for i in range(nt):
+                for j in range(nl):
+                    diff[i*nl+j] = d_array[i, j]-sum(z_array[i*nc+k]*x[j*nc+k] for k in range(nc))
             return diff
 
         def JF(x, z_array, d_array, nl, nt, nc):
             row = []
             col = []
             data = []
-            for i in xrange(nt):
-                for j in xrange(nl):
-                    for k in xrange(nc):
+            for i in range(nt):
+                for j in range(nl):
+                    for k in range(nc):
                         row.append(i*nl+j)
                         col.append(j*nc+k)
                         data.append(-z_array[i*nc+k])
@@ -528,18 +534,18 @@ class VarianceEstimator(Optimizer):
 
         def F(x,s_array,d_array,nl,nt,nc):
             diff = np.zeros(nt*nl)
-            for i in xrange(nt):
-                for j in xrange(nl):
-                    diff[i*nl+j]=d_array[i,j]-sum(s_array[j*nc+k]*x[i*nc+k] for k in xrange(nc))
+            for i in range(nt):
+                for j in range(nl):
+                    diff[i*nl+j]=d_array[i,j]-sum(s_array[j*nc+k]*x[i*nc+k] for k in range(nc))
             return diff
 
         def JF(x,s_array,d_array,nl,nt,nc):
             row = []
             col = []
             data = []
-            for i in xrange(nt):
-                for j in xrange(nl):
-                    for k in xrange(nc):
+            for i in range(nt):
+                for j in range(nl):
+                    for k in range(nc):
                         row.append(i*nl+j)
                         col.append(i*nc+k)
                         data.append(-s_array[j*nc+k])
@@ -623,7 +629,7 @@ class VarianceEstimator(Optimizer):
         all_nonnegative = True
         n_vars = nc+1
         
-        for i in xrange(n_vars):
+        for i in range(n_vars):
             if res_lsq[0][i] < 0.0:
                 if res_lsq[0][i] < -1e-5:
                     all_nonnegative=False
@@ -635,7 +641,7 @@ class VarianceEstimator(Optimizer):
         if not all_nonnegative:
             x0 = np.zeros(nc + 1) + 1e-2
             bb = np.zeros(nl)
-            for i in xrange(nl):
+            for i in range(nl):
                 bb[i] = b[i]
 
             def F(x, M, rhs):

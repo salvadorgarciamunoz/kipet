@@ -1,8 +1,10 @@
+from __future__ import print_function
 import datetime
 import pandas as pd
 import numpy as np
 from pyomo.core import *
 from pyomo.environ import *
+import six
 
 class ResultsObject(object):
     def __init__(self):
@@ -55,7 +57,7 @@ class ResultsObject(object):
         model_variables = set()
         for block in instance.block_data_objects():
             block_map = block.component_map(Var)
-            for name in block_map.iterkeys():
+            for name in six.iterkeys(block_map):
                 model_variables.add(name)
                 
         user_variables = set(to_load)

@@ -14,7 +14,7 @@
 #               C_k(t_i) = Z_k(t_i) + w(t_i)    for all t_i in measurement points
 #               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
 
-
+from __future__ import print_function
 from kipet.model.TemplateBuilder import *
 from kipet.sim.PyomoSimulator import *
 from kipet.opt.ParameterEstimator import *
@@ -25,6 +25,7 @@ from kipet.utils.data_tools import *
 import os
 import sys
 import inspect
+import six
 
 if __name__ == "__main__":
 
@@ -71,10 +72,10 @@ if __name__ == "__main__":
                                             max_iter=15,
                                             subset_lambdas=A_set)
 
-    print "\nThe estimated variances are:\n"
-    for k,v in results_variances.sigma_sq.iteritems():
-        print k,v
-        
+    print("\nThe estimated variances are:\n")
+    for k,v in six.iteritems(results_variances.sigma_sq):
+        print(k, v)
+
     sigmas = results_variances.sigma_sq
 
     #################################################################################
@@ -102,9 +103,9 @@ if __name__ == "__main__":
                                       solver_opts = options,
                                       variances=sigmas)
 
-    print "The estimated parameters are:"
-    for k,v in results_pyomo.P.iteritems():
-        print k,v
+    print("The estimated parameters are:")
+    for k,v in six.iteritems(results_pyomo.P):
+        print(k, v)
 
     tol = 1e-1
     assert(abs(results_pyomo.P['k1']-2.0)<tol)
