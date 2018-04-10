@@ -12,13 +12,17 @@
 #               \frac{dZ_c}{dt} = k_2*Z_b	                Z_c(0) = 0
 #               C_k(t_i) = Z_k(t_i) + w(t_i)    for all t_i in measurement points
 #               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
+
 from __future__ import print_function
+from __future__ import division
 from kipet.model.TemplateBuilder import *
 from kipet.sim.PyomoSimulator import *
 from kipet.opt.ParameterEstimator import *
 import matplotlib.pyplot as plt
+from kipet.utils.fe_factory import *
 
 from kipet.utils.data_tools import *
+from pyomo.opt import SolverFactory
 import inspect
 import sys
 import os
@@ -59,56 +63,39 @@ if __name__ == "__main__":
     builder.set_odes_rule(rule_odes2)
 
     pyomo_model2 = builder.create_pyomo_model(0.0,10.0)
-    pyomo_model2.meas_times.pprint()
+    src = pyomo_model2.clone()
+
     optimizer = ParameterEstimator(pyomo_model2)
 
     optimizer.apply_discretization('dae.collocation',nfe=30,ncp=3,scheme='LAGRANGE-RADAU')
     optimizer.model.time.pprint()
     # Provide good initial guess
-    p_guess = {'k1':2.0,'k2':0.5}
-    raw_results = optimizer.run_lsq_given_P('ipopt',p_guess,tee=False)
-    
-    optimizer.initialize_from_trajectory('Z',raw_results.Z)
-    optimizer.initialize_from_trajectory('S',raw_results.S)
-    optimizer.initialize_from_trajectory('C',raw_results.C)
-    
-    # dont push bounds i am giving you a good guess
-    solver_options = dict()
-    solver_options['bound_relax_factor'] = 0.0
-    solver_options['mu_init'] =  1e-4
-    solver_options['bound_push'] = 1e-3
-    
-    # fixes the variances for now
-    sigmas = {'device':1.87309e-6,
-              'A':1.55189e-11,
-              'B':8.54601e-11,
-              'C':6.11854e-11}
-    
-    results_pyomo = optimizer.run_opt('ipopt',
-                                      tee=True,
-                                      solver_opts = solver_options,
-                                      variances=sigmas)
+    p_guess = {'k1':2.0, 'k2':0.5}
 
-    print("The estimated parameters are:")
-    for k, v in results_pyomo.P.items():
-        print(k, v)
+    model = optimizer.model
 
-    tol = 1e-1
-    assert(abs(results_pyomo.P['k1']-2.0)<tol)
-    assert(abs(results_pyomo.P['k2']-0.2)<tol)
-        
-    # display results
-    if with_plots:
-        results_pyomo.C.plot.line(legend=True)
-        plt.xlabel("time (s)")
-        plt.ylabel("Concentration (mol/L)")
-        plt.title("Concentration Profile")
+    fe_factory = fe_initialize(model, src, init_con="init_conditions_c", fixed_params="P")
 
-        results_pyomo.S.plot.line(legend=True)
-        plt.xlabel("Wavelength (cm)")
-        plt.ylabel("Absorbance (L/(mol cm))")
-        plt.title("Absorbance  Profile")
+    for i in fe_factory.mod.component_objects(Var):
+        print(i)
+    for i in fe_factory.mod.component_objects(Param):
+        print(i)
+    for i in fe_factory.mod.component_objects(Constraint):
+        print(i)
+    ts = getattr(fe_factory.tgt, fe_factory.time_set)
+    ts.pprint()
+    ncp = ts.get_discretization_info()['ncp']
+    tau = ts.get_discretization_info()['tau_points']
+    fe = ts.get_finite_elements()
+    print(ncp)
+    print(tau)
+    print(fe)
+    # fe_factory.tgt.pprint(filename="here_son")
+    fe_factory.run()
+    optimizer.model.P['k1'].set_value(p_guess['k1'])
+    optimizer.model.P['k2'].set_value(p_guess['k2'])
+    optimizer.model.P.fix()
+    ip = SolverFactory('ipopt')
+    ip.solve(optimizer.model, tee=True)
 
-        plt.show()
-
-
+    # fe_factory.tgt.pprint(filename="here_son_Aug")
