@@ -3,7 +3,7 @@
 from __future__ import print_function
 from pyomo.environ import *
 from pyomo.dae import *
-from pyomo.opt import SolverFactory, ProblemFormat
+from pyomo.opt import SolverFactory, ProblemFormat, TerminationCondition
 from pyomo.core.kernel.numvalue import value as value
 from os import getcwd, remove
 import sys
@@ -12,7 +12,7 @@ __author__ = 'David M Thierry'  # type: str #: April 2018
 
 
 class fe_initialize(object):
-    def __init__(self, tgt_mod, src_mod, init_con=None, param_name=None, param_values=None):
+    def __init__(self, tgt_mod, src_mod, init_con=None, param_name=None, param_values=None, inputs=None):
         # type: (ConcreteModel, ConcreteModel) -> None
         """
 
@@ -33,8 +33,11 @@ class fe_initialize(object):
         self.ncp = tgt_cts.get_discretization_info()['ncp']
 
         fe_l = tgt_cts.get_finite_elements()
+        print(len(fe_l))
         self.fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
         self.nfe = len(self.fe_list)
+        print(self.nfe)
+        sys.exit()
 
         zeit = getattr(self.mod, self.time_set)
         zeit._bounds = (0, 1)
@@ -84,15 +87,16 @@ class fe_initialize(object):
             self.mod.del_component(con)
 
         self.remaining_set = {}
+        self.weird_vars = []
         for i in self.dvs_names:
             dv = getattr(self.mod, i)
+            if dv.index_set().name == zeit.name:
+                self.remaining_set[i] = None
+                continue
             set_i = dv._implicit_subsets
             remaining_set = set_i[1]
             for s in set_i[2:]:
-                if s.name == zeit.name:
-                    continue
-                else:
-                    remaining_set *= s
+                remaining_set *= s
             if isinstance(remaining_set, list):
                 self.remaining_set[i] = remaining_set
             else:
@@ -102,12 +106,17 @@ class fe_initialize(object):
         for av in self.mod.component_objects(Var):
             if av.name in self.dvs_names:
                 continue
-            set_i = av._implicit_subsets
-            if not set_i:
+            if av.index_set().name == zeit.name:
+                self.remaining_set_alg[i] = None
                 continue
+            set_i = av._implicit_subsets
+            if not zeit in set_i:
+                self.weird_vars.append(av.name)
+                continue  #: if this happens we might be in trouble
             remaining_set = set_i[1]
             for s in set_i[2:]:
                 if s.name == zeit.name:
+                    self.remaining_set_alg[av.name] = None
                     continue
                 else:
                     remaining_set *= s
@@ -160,20 +169,46 @@ class fe_initialize(object):
         else:
             raise Exception("wrong type for param_name")
 
-
-
         self.ip = SolverFactory('ipopt')
 
         for i in self.dvs_names:
             dv = getattr(self.mod, i)
-
+            if not self.remaining_set[i]:
+                dv[0].fix()
             for rs in self.remaining_set[i]:
                 for k in rs:
                     k = k if isinstance(k, tuple) else (k,)
                     dv[(0,) + k].fix()
         (n, m) = reconcile_nvars_mequations(self.mod)
         if n != m:
-            raise Exception("whps, n={}, m={}".format(n, m))
+            raise Exception("Inconsistent problem; n={}, m={}".format(n, m))
+        self.inputs = None
+        self.input_remaining_set = {}
+        if inputs:
+            if not isinstance(inputs, dict) or isinstance(inputs, str):
+                raise Exception("Must be a dict or str")
+            if isinstance(inputs, str):
+                self.inputs = [self.inputs]
+            for i in self.inputs:
+                p = getattr(self.mod, i)
+                if p.index_set().name == zeit.name:
+                    self.input_remaining_set[i] = None
+                    continue
+                set_i = p._implicit_subsets
+                if not zeit in set_i:
+                    raise Exception("{} is not by time, this can't be an input".format(i))
+                remaining_set = set_i[1]
+                for s in set_i[2:]:
+                    if s.name == zeit.name:  #: would this ever happen?
+                        continue
+                    else:
+                        remaining_set *= s
+                if isinstance(remaining_set, list):
+                    self.input_remaining_set[i] = remaining_set
+                else:
+                    self.input_remaining_set[i] = []
+                    self.input_remaining_set[i].append(remaining_set)
+
 
     def load_initial_conditions(self, init_cond=None):
         if not isinstance(init_cond, dict):
@@ -197,11 +232,19 @@ class fe_initialize(object):
         print("fe {}".format(fe))
         self.adjust_h(fe)
         sol = self.ip.solve(self.mod, tee=True)
+        if sol.solver.termination_condition != TerminationCondition.optimal:
+            sol = self.ip.solve(self.mod, tee=False)
+            sys.exit()
+        else:
+            print("fe {} - status: optimal".format(fe))
+
         # for i in self.mod.component_objects([Var, Constraint]):
         #     i.pprint()
         # sys.exit()
         self.patch(fe)
+        self.mod.display(filename='it0')
         self.cycle_ics()
+        self.mod.display(filename='it1')
 
     def cycle_ics(self):
         ts = getattr(self.mod, self.time_set)
@@ -219,6 +262,7 @@ class fe_initialize(object):
         ts = getattr(self.mod, self.time_set)
         ttgt = getattr(self.tgt, self.time_set)
         for v in self.mod.component_objects(Var, active=True):
+            #: TODO fix this
             if not v._implicit_subsets:
                 continue
             if ts not in v._implicit_subsets:
@@ -231,13 +275,14 @@ class fe_initialize(object):
             for j in range(0, self.ncp):
                 t_tgt = t_ij(ttgt, fe, j)
                 t_src = t_ij(ts, 0, j)
+                if not drs:
+                    val = value(v[t_src])
+                    v_tgt[t_tgt].set_value(val)
+                    continue
                 for k in drs:
                     for key in k:
                         key = key if isinstance(key, tuple) else (key,)
-                        try:
-                            val = value(v[(t_src,) + key])
-                        except ValueError:
-                            pass
+                        val = value(v[(t_src,) + key])
                         v_tgt[(t_tgt,) + key].set_value(val)
 
     def adjust_h(self, fe):
@@ -249,6 +294,31 @@ class fe_initialize(object):
     def run(self):
         for i in range(0, len(self.fe_list)):
             self.march_forward(i)
+
+    def load_input(self, fe):
+        ts = getattr(self.mod, self.time_set)
+        ttgt = getattr(self.tgt, self.time_set)
+        t0 = t_ij(ttgt, fe, 0)
+        for i in self.inputs:
+            p_data = getattr(self.tgt, i)
+            p_sim = getattr(self.mod, i)
+            if not self.input_remaining_set[i]:
+                for j in range(0, self.ncp):
+                    t = t_ij(ttgt, fe, j)
+                    tsim = t_ij(ts, 0, j)
+                    val = value(p_data[t])
+                    p_sim
+                continue
+            for k in self.input_remaining_set[i]:
+                for key in k:
+                    for j in range(0, self.ncp):
+                        t = t_ij(ttgt, fe, j)
+                        val = value(p_data[(t,) + key])
+
+
+
+
+
 
 
 def t_ij(time_set, i, j):

@@ -113,15 +113,17 @@ if __name__ == "__main__":
     # builder.add_measurement_times(meas_times)
 
     model = builder.create_pyomo_model(0, 1400)
-
     # model.pprint()
 
     sim = PyomoSimulator(model)
     # defines the discrete points wanted in the concentration profile
     mod = sim.model.clone()
-    for i in mod.mixture_components:
-        print(i)
+    for i in mod.component_data_objects(Var):
+        i.setlb(0)
+
+
     sim.apply_discretization('dae.collocation', nfe=50, ncp=3, scheme='LAGRANGE-RADAU')
+    sim.model.time.pprint()
     param_name = "P"
     param_dict = {}
 
@@ -141,6 +143,8 @@ if __name__ == "__main__":
     ics_['Z', 'P'] = 0.0
     ics_['X', 'V'] = 0.0629418
     # sim.model.pprint(filename="whatnot0")
+    l = sim.model.time.get_finite_elements()
+    print(len(l), 'lenght original')
     init = fe_initialize(sim.model, mod,
                          init_con="init_conditions_c",
                          param_name=param_name,
@@ -149,30 +153,37 @@ if __name__ == "__main__":
 
     # sim.model.pprint(filename="whatnot")
     ip = SolverFactory('ipopt')
-    ip.options['bound_push'] = 1e-08
-    ip.options['linear_solver'] = 'ma57'
-    ip.solve(sim.model, tee=True)
+    init.mod.pprint()
+    # ip.options['bound_push'] = 1e-08
+    # ip.options['linear_solver'] = 'ma57'
+    # ip.options['OF_print_info_string'] = 'yes'
+    # ip.solve(sim.model, tee=True)
+    for i in init.mod.component_data_objects(Var):
+        i.setlb(0)
     init.run()
 
-    ip.options['OF_start_with_resto'] = 'yes'
-    ip.solve(sim.model, tee=True)
-    ip.options['OF_start_with_resto'] = 'no'
-    ip.solve(sim.model, tee=True)
-    ip.options['OF_start_with_resto'] = 'yes'
-    ip.solve(sim.model, tee=True)
-    ip.options['OF_start_with_resto'] = 'no'
-    ip.solve(sim.model, tee=True)
-    ip.options['OF_start_with_resto'] = 'yes'
-    ip.solve(sim.model, tee=True)
-    ip.options['OF_start_with_resto'] = 'no'
-    ip.solve(sim.model, tee=True)
+    # ip.options['OF_start_with_resto'] = 'yes'
+    # ip.solve(sim.model, tee=True)
 
+    #
+    # ip.options['OF_start_with_resto'] = 'yes'
+    # ip.options['OF_accept_every_trial_step'] = 'no'
+    # ip.options['max_iter'] = 5000
+    # ip.solve(sim.model, tee=True)
+    #
+    # ip.options['OF_start_with_resto'] = 'no'
+    # ip.options['OF_accept_every_trial_step'] = 'yes'
+    # ip.options['max_iter'] = 1
+    # ip.solve(sim.model, tee=True)
+    #
     sys.exit()
+
+
     # good initialization
-    initialization = pd.read_csv("init_Z.csv", index_col=0)
-    sim.initialize_from_trajectory('Z', initialization)
-    initialization = pd.read_csv("init_X.csv", index_col=0)
-    sim.initialize_from_trajectory('X', initialization)
+    # initialization = pd.read_csv("init_Z.csv", index_col=0)
+    # sim.initialize_from_trajectory('Z', initialization)
+    # initialization = pd.read_csv("init_X.csv", index_col=0)
+    # sim.initialize_from_trajectory('X', initialization)
 
     # simulate
     options = {}
