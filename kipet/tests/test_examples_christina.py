@@ -104,64 +104,64 @@ class TestExamples(unittest.TestCase):
         examples_dir = os.path.join(examplesMainDir,'sawall')
         self._schedule(examples_dir)
             
-    #def test_case51a_examples(self):
-	#print '##############Case51a##############'
-        #examples_dir = os.path.join(examplesMainDir,'case51a')
-        #self._schedule(examples_dir)
+    def test_case51a_examples(self):
+	print '##############Case51a##############'
+        examples_dir = os.path.join(examplesMainDir,'case51a')
+        self._schedule(examples_dir)
 
-    #def test_case51b_examples(self):
-	#print '##############Case51b##############'
-        #examples_dir = os.path.join(examplesMainDir,'case51b')
-        #self._schedule(examples_dir)
+    def test_case51b_examples(self):
+	print '##############Case51b##############'
+        examples_dir = os.path.join(examplesMainDir,'case51b')
+        self._schedule(examples_dir)
 
-    #def test_case51c_examples(self):
-	#print '##############Case51c##############'
-        #examples_dir = os.path.join(examplesMainDir,'case51c')
-        #self._schedule(examples_dir)
+    def test_case51c_examples(self):
+	print '##############Case51c##############'
+        examples_dir = os.path.join(examplesMainDir,'case51c')
+        self._schedule(examples_dir)
 
-    #def test_case51d_examples(self):
-	#print '##############Case51d##############'
-        #examples_dir = os.path.join(examplesMainDir,'case51d')
-        #self._schedule(examples_dir)
+    def test_case51d_examples(self):
+	print '##############Case51d##############'
+        examples_dir = os.path.join(examplesMainDir,'case51d')
+        self._schedule(examples_dir)
 
-    #def test_michaels_examples(self):
-	#print '##############michaels##############'
-        #examples_dir = os.path.join(examplesMainDir,'michaels')
-        #self._schedule(examples_dir)
+    def test_michaels_examples(self):
+	print '##############michaels##############'
+        examples_dir = os.path.join(examplesMainDir,'michaels')
+        self._schedule(examples_dir)
 
-    #def test_case52a_examples(self):
-	#print '##############Case52a##############'
-        #examples_dir = os.path.join(examplesMainDir,'case52a')
-        #self._schedule(examples_dir)
+    def test_case52a_examples(self):
+	print '##############Case52a##############'
+        examples_dir = os.path.join(examplesMainDir,'case52a')
+        self._schedule(examples_dir)
 
     def test_case52b_examples(self):
 	print '##############Case52b##############'
         examples_dir = os.path.join(examplesMainDir,'case52b')
         self._schedule(examples_dir)
 
-    #def test_complementary_states_examples(self):
-	#print '##############complementary_states##############'
-        #examples_dir = os.path.join(examplesMainDir,'complementary_states')
-        #self._schedule(examples_dir)
+    def test_complementary_states_examples(self):
+	print '##############complementary_states##############'
+        examples_dir = os.path.join(examplesMainDir,'complementary_states')
+        self._schedule(examples_dir)
         
-    #def test_plainpyomo_examples(self):
-        #print '##############plain_pyomo##############'
-        #examples_dir = os.path.join(examplesMainDir,'plain_pyomo')
-        #self._schedule(examples_dir)
+    def test_plainpyomo_examples(self):
+        print '##############plain_pyomo##############'
+        examples_dir = os.path.join(examplesMainDir,'plain_pyomo')
+        self._schedule(examples_dir)
 
 
 
     def run_all_examples(self):
         self.test_sawall_examples()
-        #self.test_case51a_examples()
-        #self.test_case51b_examples()
-        #self.test_case51c_examples()
-	#self.test_case51d_examples()
-	#self.test_michaels_examples()
-	#self.test_case52a_examples()
+        self.test_case51a_examples()
+        self.test_case51b_examples()
+        self.test_case51c_examples()
+	self.test_case51d_examples()
+	self.test_michaels_examples()
+	self.test_case52a_examples()
         self.test_case52b_examples()
- 	#self.test_complementary_states_examples()
-	#self.test_plain_pyomo_examples()
+ 	self.test_complementary_states_examples()
+	self.test_plain_pyomo_examples()
 
 
             
