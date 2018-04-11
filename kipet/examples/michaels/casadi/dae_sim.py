@@ -20,6 +20,12 @@ import sys
 
 
 if __name__ == "__main__":
+    
+    with_plots = True
+    if len(sys.argv)==2:
+        if int(sys.argv[1]):
+            with_plots = False
+        
         
     # create template model 
     builder = TemplateBuilder()    
@@ -115,25 +121,26 @@ if __name__ == "__main__":
     sim.fix_from_trajectory('Y','dummy_t',fixed_traj)
     # simulate
     results = sim.run_sim("idas")
-
-    # display concentration results    
-    results.Z.plot.line(legend=True)
-    plt.xlabel("time (s)")
-    plt.ylabel("Concentration (mol/L)")
-    plt.title("Concentration Profile")
-    
-    results.Y = results.Y.drop('dummy_t', 1)
-    results.Y.plot.line()
-    plt.xlabel("time (s)")
-    plt.ylabel("rxn rates (mol/L*s)")
-    plt.title("Rates of rxn")
-
-    results.X.plot.line()
-    plt.xlabel("time (s)")
-    plt.ylabel("Volume (L)")
-    plt.title("Volume")
-    plt.show()
-    
+        
     results.Z.to_csv("init_Z.csv")
     results.Y.to_csv("init_Y.csv")
     results.X.to_csv("init_X.csv")
+
+    if with_plots:
+        # display concentration results    
+        results.Z.plot.line(legend=True)
+        plt.xlabel("time (s)")
+        plt.ylabel("Concentration (mol/L)")
+        plt.title("Concentration Profile")
+        
+        results.Y = results.Y.drop('dummy_t', 1)
+        results.Y.plot.line()
+        plt.xlabel("time (s)")
+        plt.ylabel("rxn rates (mol/L*s)")
+        plt.title("Rates of rxn")
+
+        results.X.plot.line()
+        plt.xlabel("time (s)")
+        plt.ylabel("Volume (L)")
+        plt.title("Volume")
+        plt.show()
