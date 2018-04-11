@@ -22,6 +22,11 @@ import sys
 import pickle
 
 if __name__ == "__main__":
+    
+    with_plots = True
+    if len(sys.argv)==2:
+        if int(sys.argv[1]):
+            with_plots = False
 
 
     fixed_traj = read_absorption_data_from_txt('extra_states.txt')
@@ -196,43 +201,42 @@ if __name__ == "__main__":
     results_pyomo = simulator.run_sim('ipopt',
                                       tee=True,
                                       solver_opts=options)
-    
-    # display concentration results
+    if with_plots:
+        # display concentration results
 
-    
-    results_pyomo.Z.plot.line(legend=True)
-    plt.xlabel("time (s)")
-    plt.ylabel("Concentration (mol/L)")
-    plt.title("Concentration Profile")
+        results_pyomo.Z.plot.line(legend=True)
+        plt.xlabel("time (s)")
+        plt.ylabel("Concentration (mol/L)")
+        plt.title("Concentration Profile")
 
-    plt.figure()
-    
-    results_pyomo.X['V'].plot.line()
-    plt.xlabel("time (s)")
-    plt.ylabel("volumne (L)")
-    plt.title("Volume Profile")
-    
-    plt.figure()
-    results_pyomo.X['T'].plot.line()
-    plt.xlabel("time (s)")
-    plt.ylabel("Temperature (K)")
-    plt.ylim([300,350])
-    plt.title("Temperature Profile")
-
-
-    plt.figure()
-    
-    results_pyomo.X['Masa'].plot.line()
-    plt.xlabel("time (s)")
-    plt.ylabel("m_dot (g)")
-    plt.title("Masa Profile")
+        plt.figure()
+        
+        results_pyomo.X['V'].plot.line()
+        plt.xlabel("time (s)")
+        plt.ylabel("volumne (L)")
+        plt.title("Volume Profile")
+        
+        plt.figure()
+        results_pyomo.X['T'].plot.line()
+        plt.xlabel("time (s)")
+        plt.ylabel("Temperature (K)")
+        plt.ylim([300,350])
+        plt.title("Temperature Profile")
 
 
-    plt.figure()
+        plt.figure()
+        
+        results_pyomo.X['Masa'].plot.line()
+        plt.xlabel("time (s)")
+        plt.ylabel("m_dot (g)")
+        plt.title("Masa Profile")
 
-    results_pyomo.X['Msa'].plot.line()
-    plt.xlabel("time (s)")
-    plt.ylabel("m_dot (g)")
-    plt.title("Msa Profile")
 
-    plt.show()
+        plt.figure()
+
+        results_pyomo.X['Msa'].plot.line()
+        plt.xlabel("time (s)")
+        plt.ylabel("m_dot (g)")
+        plt.title("Msa Profile")
+
+        plt.show()

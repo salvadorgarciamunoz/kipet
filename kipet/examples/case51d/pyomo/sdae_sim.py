@@ -22,6 +22,11 @@ import sys
 
 if __name__ == "__main__":
     
+    with_plots = True
+    if len(sys.argv)==2:
+        if int(sys.argv[1]):
+            with_plots = False
+    
 
     fixed_traj = read_absorption_data_from_txt('extra_states.txt')
     C = read_absorption_data_from_txt('concentrations.txt')
@@ -169,63 +174,63 @@ if __name__ == "__main__":
     results = sim.run_sim('ipopt',
                           tee=True,
                           solver_opts=options)
-    
-    # display concentration results    
-    results.Z.plot.line(legend=True)
-    plt.xlabel("time (s)")
-    plt.ylabel("Concentration (mol/L)")
-    plt.title("Concentration Profile")
+    if with_plots:
+        # display concentration results    
+        results.Z.plot.line(legend=True)
+        plt.xlabel("time (s)")
+        plt.ylabel("Concentration (mol/L)")
+        plt.title("Concentration Profile")
 
-    results.S.plot.line(legend=True)
-    plt.xlabel("wave length (s)")
-    plt.ylabel("Absorbance")
-    plt.title("Absorbance Profile")
+        results.S.plot.line(legend=True)
+        plt.xlabel("wave length (s)")
+        plt.ylabel("Absorbance")
+        plt.title("Absorbance Profile")
 
-    C.plot()
-    
-    plt.figure()
-    
-    results.Y['Csat'].plot.line()
-    plt.plot(fixed_traj['Csat'],'*')
-    plt.xlabel("time (s)")
-    plt.ylabel("Csat")
-    plt.title("Saturatuon Concentration")
-    
-    plt.figure()
-    
-    results.X['V'].plot.line()
-    plt.plot(fixed_traj['V'],'*')
-    plt.xlabel("time (s)")
-    plt.ylabel("volumne (L)")
-    plt.title("Volume Profile")
+        C.plot()
+        
+        plt.figure()
+        
+        results.Y['Csat'].plot.line()
+        plt.plot(fixed_traj['Csat'],'*')
+        plt.xlabel("time (s)")
+        plt.ylabel("Csat")
+        plt.title("Saturatuon Concentration")
+        
+        plt.figure()
+        
+        results.X['V'].plot.line()
+        plt.plot(fixed_traj['V'],'*')
+        plt.xlabel("time (s)")
+        plt.ylabel("volumne (L)")
+        plt.title("Volume Profile")
 
 
-    plt.figure()
-    
-    results.X['Msa'].plot.line()
-    plt.plot(fixed_traj['Msa'],'*')
-    plt.xlabel("time (s)")
-    plt.ylabel("m_dot (g)")
-    plt.title("Msa Profile")
-    
+        plt.figure()
+        
+        results.X['Msa'].plot.line()
+        plt.plot(fixed_traj['Msa'],'*')
+        plt.xlabel("time (s)")
+        plt.ylabel("m_dot (g)")
+        plt.title("Msa Profile")
+        
 
-    plt.figure()
-    results.Y['f'].plot.line()
-    plt.xlabel("time (s)")
-    plt.ylabel("flow (K)")
-    plt.title("Inlet flow Profile")
+        plt.figure()
+        results.Y['f'].plot.line()
+        plt.xlabel("time (s)")
+        plt.ylabel("flow (K)")
+        plt.title("Inlet flow Profile")
 
-    plt.figure()
-    results.X['Masa'].plot.line()
-    plt.plot(fixed_traj['Masa'],'*')
-    plt.xlabel("time (s)")
-    plt.ylabel("m_dot (g)")
-    plt.title("Masa Profile")
+        plt.figure()
+        results.X['Masa'].plot.line()
+        plt.plot(fixed_traj['Masa'],'*')
+        plt.xlabel("time (s)")
+        plt.ylabel("m_dot (g)")
+        plt.title("Masa Profile")
 
-    results.D.T.plot(legend=False)
-    plot_spectral_data(results.D,dimension='3D')
-    results.D.to_csv("Dtl.csv")
+        results.D.T.plot(legend=False)
+        plot_spectral_data(results.D,dimension='3D')
+        results.D.to_csv("Dtl.csv")
 
-    
-    plt.show()
+        
+        plt.show()
     
