@@ -98,9 +98,9 @@ if __name__ == "__main__":
                                       solver_opts = solver_options,
                                       variances=sigmas)
 
-    print "The estimated parameters are:"
-    for k,v in results_pyomo.P.iteritems():
-        print k,v
+    print("The estimated parameters are:")
+    for k,v in six.iteritems(results_pyomo.P):
+        print(k, v)
 
     tol = 2e-1
     #assert(abs(results_pyomo.P['k1']-2.0)<tol)

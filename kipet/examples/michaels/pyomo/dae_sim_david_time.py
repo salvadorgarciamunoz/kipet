@@ -40,7 +40,7 @@ if __name__ == "__main__":
     builder.add_mixture_component(components)
 
     # add algebraics
-    algebraics = [0, 1, 2, 3, 4]  # the indices of the rate rxns
+    algebraics = [0, 1, 2, 3, 4, 5]  # the indices of the rate rxns
     builder.add_algebraic_variable(algebraics)
 
     """
@@ -93,12 +93,12 @@ if __name__ == "__main__":
     def rule_odes(m, t):
         exprs = dict()
         eta = 1e-2
-        step = 0.5 * ((t + 1) / ((t + 1) ** 2 + eta ** 2) ** 0.5 + (210.0 - t) / ((210.0 - t) ** 2 + eta ** 2) ** 0.5)
+        step = 0.5 * ((m.Y[t, 5] + 1) / ((m.Y[t, 5] + 1) ** 2 + eta ** 2) ** 0.5 + (210.0 - m.Y[t,5]) / ((210.0 - m.Y[t, 5]) ** 2 + eta ** 2) ** 0.5)
         exprs['V'] = 7.27609e-05 * step
         V = m.X[t, 'V']
         # mass balances
         for c in m.mixture_components:
-            exprs[c] = sum(gammas[c][j] * m.Y[t, j] for j in m.algebraics) - exprs['V'] / V * m.Z[t, c]
+            exprs[c] = sum(gammas[c][j] * m.Y[t, j] for j in m.algebraics if j != 5) - exprs['V'] / V * m.Z[t, c]
             if c == 'C':
                 exprs[c] += 0.02247311828 / (m.X[t, 'V'] * 210) * step
         return exprs
@@ -144,13 +144,16 @@ if __name__ == "__main__":
     ics_['X', 'V'] = 0.0629418
     # sim.model.pprint(filename="whatnot0")
     l = sim.model.time.get_finite_elements()
-    sim.model.Y.pprint()
-    print(len(l), 'lenght original')
+    for key in sim.model.time.value:
+        sim.model.Y[key, 5].set_value(key)
+        sim.model.Y[key, 5].fix()
+    inputs_sub = {}
+    inputs_sub['Y'] = [5]
     init = fe_initialize(sim.model, mod,
                          init_con="init_conditions_c",
                          param_name=param_name,
-                         param_values=param_dict)
-    print(init.weird_vars)
+                         param_values=param_dict,
+                         inputs_sub=inputs_sub)
     init.load_initial_conditions(init_cond=ics_)
 
     # sim.model.pprint(filename="whatnot")
@@ -160,8 +163,8 @@ if __name__ == "__main__":
     # ip.options['linear_solver'] = 'ma57'
     # ip.options['OF_print_info_string'] = 'yes'
     # ip.solve(sim.model, tee=True)
-    # for i in init.mod.component_data_objects(Var):
-    #     i.setlb(0)
+    for i in init.mod.component_data_objects(Var):
+        i.setlb(0)
     init.run()
 
     # ip.options['OF_start_with_resto'] = 'yes'

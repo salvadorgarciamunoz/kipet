@@ -8,49 +8,48 @@ from pyomo.core.kernel.numvalue import value as value
 from os import getcwd, remove
 import sys
 
-__author__ = 'David M Thierry'  # type: str #: April 2018
+__author__ = 'David M Thierry'  #: April 2018
 
 
 class fe_initialize(object):
-    def __init__(self, tgt_mod, src_mod, init_con=None, param_name=None, param_values=None, inputs=None):
+    def __init__(self, tgt_mod, src_mod, init_con=None, param_name=None, param_values=None, inputs=None, inputs_sub=None):
         # type: (ConcreteModel, ConcreteModel) -> None
         """
 
         :type fixed_params: object
         """
-
+        self.ip = SolverFactory('ipopt')
         self.tgt = tgt_mod
-        self.mod = src_mod.clone()  #: deepcopy
+        self.mod = src_mod.clone()  #: Deepcopy of the reference model
         zeit = None
         for i in self.mod.component_objects(ContinuousSet):
-            if i:
-                zeit = i
-            else:
-                raise Exception('no continuous_set')
+            zeit = i
+            break
+        if zeit is None:
+            raise Exception('no continuous_set')
+
         self.time_set = zeit.name
 
         tgt_cts = getattr(self.tgt, self.time_set)
         self.ncp = tgt_cts.get_discretization_info()['ncp']
 
         fe_l = tgt_cts.get_finite_elements()
-        print(len(fe_l))
         self.fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
-        self.nfe = len(self.fe_list)
-        print(self.nfe)
-        sys.exit()
-
+        self.nfe = len(self.fe_list)  #: Create a list with the step-size
+        #: Re-construct the model with [0,1] time domain
         zeit = getattr(self.mod, self.time_set)
         zeit._bounds = (0, 1)
         zeit.clear()
         zeit.construct()
-
         for i in self.mod.component_objects([Var, Constraint, DerivativeVar]):
             i.clear()
             i.construct()
 
+        #: Discretize
         d = TransformationFactory('dae.collocation')
         d.apply_to(self.mod, nfe=1, ncp=self.ncp, scheme='LAGRANGE-RADAU')
 
+        #: Find out the differential variables
         self.dvs_names = []
         self.dvar_names = []
         for i in self.mod.component_objects(Constraint):
@@ -61,8 +60,8 @@ class fe_initialize(object):
                     realname = getattr(self.mod, namel[0])
                     self.dvar_names.append(namel[0])
                     self.dvs_names.append(realname.get_state_var().name)
-        self.mod.h_i = Param(zeit, mutable=True, default=1.0)
-
+        self.mod.h_i = Param(zeit, mutable=True, default=1.0)  #: Length of finite element
+        #: Modify the collocation equations to introduce h_i (the length of finite element)
         for i in self.dvar_names:
             con = getattr(self.mod, i + '_disc_eq')
             dv = getattr(self.mod, i)
@@ -86,14 +85,16 @@ class fe_initialize(object):
                                                   rule=lambda m, j: e_dict[j] if j > 0.0 else Constraint.Skip))
             self.mod.del_component(con)
 
+        #: Sets for iteration
+        #: Differential variables
         self.remaining_set = {}
-        self.weird_vars = []
         for i in self.dvs_names:
             dv = getattr(self.mod, i)
-            if dv.index_set().name == zeit.name:
+            if dv.index_set().name == zeit.name:  #: Just time set
+                print(i, 'here')
                 self.remaining_set[i] = None
                 continue
-            set_i = dv._implicit_subsets
+            set_i = dv._implicit_subsets  #: More than just time set
             remaining_set = set_i[1]
             for s in set_i[2:]:
                 remaining_set *= s
@@ -102,18 +103,20 @@ class fe_initialize(object):
             else:
                 self.remaining_set[i] = []
                 self.remaining_set[i].append(remaining_set)
+        #: Algebraic variables
+        self.weird_vars = []
         self.remaining_set_alg = {}
         for av in self.mod.component_objects(Var):
             if av.name in self.dvs_names:
                 continue
-            if av.index_set().name == zeit.name:
-                self.remaining_set_alg[i] = None
+            if av.index_set().name == zeit.name:  #: Just time set
+                self.remaining_set_alg[av.name] = None
                 continue
             set_i = av._implicit_subsets
-            if not zeit in set_i:
-                self.weird_vars.append(av.name)
+            if set_i is None or not zeit in set_i:
+                self.weird_vars.append(av.name)  #: Not index by time!
                 continue  #: if this happens we might be in trouble
-            remaining_set = set_i[1]
+            remaining_set = set_i[1]  #: Index by time and others
             for s in set_i[2:]:
                 if s.name == zeit.name:
                     self.remaining_set_alg[av.name] = None
@@ -126,12 +129,11 @@ class fe_initialize(object):
                 self.remaining_set_alg[av.name] = []
                 self.remaining_set_alg[av.name].append(remaining_set)
 
-        if init_con:
+        if init_con is not None:  #: Delete the initial conditions (we use .fix() instead)
             ic = getattr(self.mod, init_con)
             self.mod.del_component(ic)
 
-
-        if isinstance(param_name, list):
+        if isinstance(param_name, list):  #: Time independent parameters
             if param_values:
                 if isinstance(param_values, dict):
                     for pname in param_name:
@@ -161,7 +163,7 @@ class fe_initialize(object):
                             p[key].set_value(val)
                         except KeyError:
                             raise Exception("Missing a key of the param_values\n"
-                                      "Please provide all the required keys.\n"
+                                            "Please provide all the required keys.\n"
                                             "missing: {}".format(key))
                         p[key].fix()
         elif not param_name:
@@ -169,34 +171,34 @@ class fe_initialize(object):
         else:
             raise Exception("wrong type for param_name")
 
-        self.ip = SolverFactory('ipopt')
-
+        #: Fix initial conditions
         for i in self.dvs_names:
             dv = getattr(self.mod, i)
-            if not self.remaining_set[i]:
+            if self.remaining_set[i] is None:
                 dv[0].fix()
             for rs in self.remaining_set[i]:
                 for k in rs:
                     k = k if isinstance(k, tuple) else (k,)
                     dv[(0,) + k].fix()
-        (n, m) = reconcile_nvars_mequations(self.mod)
-        if n != m:
-            raise Exception("Inconsistent problem; n={}, m={}".format(n, m))
+
         self.inputs = None
         self.input_remaining_set = {}
-        if inputs:
+
+        #: Check if inputs are declared
+        if self.inputs is not None:
             if not isinstance(inputs, dict) or isinstance(inputs, str):
                 raise Exception("Must be a dict or str")
             if isinstance(inputs, str):
                 self.inputs = [self.inputs]
             for i in self.inputs:
                 p = getattr(self.mod, i)
-                if p.index_set().name == zeit.name:
+                p.fix()
+                if p.index_set().name == zeit.name:  #: Only time-set
                     self.input_remaining_set[i] = None
                     continue
                 set_i = p._implicit_subsets
                 if not zeit in set_i:
-                    raise Exception("{} is not by time, this can't be an input".format(i))
+                    raise RuntimeError("{} is not by index by time, this can't be an input".format(i))
                 remaining_set = set_i[1]
                 for s in set_i[2:]:
                     if s.name == zeit.name:  #: would this ever happen?
@@ -208,6 +210,38 @@ class fe_initialize(object):
                 else:
                     self.input_remaining_set[i] = []
                     self.input_remaining_set[i].append(remaining_set)
+        #: Note in kipet this his hopeless. The inputs are a subset of the algebraic variables.
+        self.inputs_sub = None
+        # inputs_sub['some_var'] = ['index0', 'index1', ('index2a', 'index2b')]
+        self.inputs_sub = inputs_sub
+        if not self.inputs_sub is None:
+            if not isinstance(self.inputs_sub, dict):
+                raise TypeError("inputs_sub must be a dictionary")
+            for key in self.inputs_sub.keys():
+                if not isinstance(self.inputs_sub[key], list):
+                    raise TypeError("input_sub[{}] must be a list".format(key))
+                p = getattr(self.mod, key)
+                if p._implicit_subsets is None:
+                    raise RuntimeError("This variable is does not have multiple indices"
+                                       "Pass {} as part of the inputs keyarg instead.".format(key))
+                elif p.index_set().name == zeit.name:
+                    raise RuntimeError("This variable is indexed over time"
+                                       "Pass {} as part of the inputs keyarg instead.".format(key))
+                else:
+                    if not zeit in p._implicit_subsets:
+                        raise RuntimeError("{} is not indexed over time; it can not be an input".format(key))
+                for k in self.inputs_sub[key]:
+                    if isinstance(k, str) or isinstance(k, int) or isinstance(k, tuple):
+                        k = (k,) if not isinstance(k, tuple) else k
+                    else:
+                        raise RuntimeError("{} is not a valid index".format(k))
+                    for t in zeit:
+                        p[(t,) + k].fix()
+
+        #: Check nvars and mequations
+        (n, m) = reconcile_nvars_mequations(self.mod)
+        if n != m:
+            raise Exception("Inconsistent problem; n={}, m={}".format(n, m))
 
 
     def load_initial_conditions(self, init_cond=None):
@@ -216,13 +250,18 @@ class fe_initialize(object):
         for i in self.dvs_names:
             dv = getattr(self.mod, i)
             for s in self.remaining_set[i]:
+                if s is None:
+                    val = init_cond[i]  #: if you do not have an extra index, just put the value there
+                    dv[0].set_value(val)
+                    if not dv[0].fixed:
+                        dv[0].fix()
+                    continue
                 for k in s:
                     val = init_cond[i, k]
                     k = k if isinstance(k, tuple) else (k,)
                     dv[(0,) + k].set_value(val)
                     if not dv[(0,) + k].fixed:
                         dv[(0,) + k].fix()
-
 
     def march_forward(self, fe):
         """
@@ -231,20 +270,24 @@ class fe_initialize(object):
         """
         print("fe {}".format(fe))
         self.adjust_h(fe)
+        if self.inputs or self.inputs_sub:
+            self.load_input(fe)
+            # self.mod.display(filename='it2')
+            disp_vars(self.mod, 'it2')
         sol = self.ip.solve(self.mod, tee=True)
         if sol.solver.termination_condition != TerminationCondition.optimal:
             sol = self.ip.solve(self.mod, tee=False)
-            sys.exit()
+            if sol.solver.termination_condition != TerminationCondition.optimal:
+                raise Exception("The current iteration was unsuccesfull. Iteration :{}".format(fe))
+
         else:
             print("fe {} - status: optimal".format(fe))
-
-        # for i in self.mod.component_objects([Var, Constraint]):
-        #     i.pprint()
-        # sys.exit()
         self.patch(fe)
-        self.mod.display(filename='it0')
+        # self.mod.display(filename='it0')
+        disp_vars(self.mod, 'it0')
         self.cycle_ics()
-        self.mod.display(filename='it1')
+        disp_vars(self.mod, 'it1')
+        # self.mod.display(filename='it1')
 
     def cycle_ics(self):
         ts = getattr(self.mod, self.time_set)
@@ -252,9 +295,16 @@ class fe_initialize(object):
         for i in self.dvs_names:
             dv = getattr(self.mod, i)
             for s in self.remaining_set[i]:
+                if s is None:
+                    val = value(dv[t_last])
+                    dv[0].set_value(val)
+                    if not dv[0].fixed:
+                        dv[0].fix()
+                    continue
                 for k in s:
                     k = k if isinstance(k, tuple) else (k,)
-                    dv[(0,) + k].set_value(value(dv[(t_last,) + k]))
+                    val = value(dv[(t_last,) + k])
+                    dv[(0,) + k].set_value(val)
                     if not dv[(0,) + k].fixed:
                         dv[(0,) + k].fix()
 
@@ -262,27 +312,44 @@ class fe_initialize(object):
         ts = getattr(self.mod, self.time_set)
         ttgt = getattr(self.tgt, self.time_set)
         for v in self.mod.component_objects(Var, active=True):
-            #: TODO fix this
-            if not v._implicit_subsets:
-                continue
-            if ts not in v._implicit_subsets:
-                continue
             v_tgt = getattr(self.tgt, v.name)
+            if v.name in self.weird_vars:  #: This has got to work.
+                for k in v.keys():
+                    if v[k].stale:
+                        continue
+                    try:
+                        val = value(v[k])
+                    except ValueError:
+                        pass
+                    v_tgt[k].set_value(val)
+                continue
+            #: From this point on all variables are indexed over time.
             if v.name in self.dvs_names:
                 drs = self.remaining_set[v.name]
             else:
                 drs = self.remaining_set_alg[v.name]
-            for j in range(0, self.ncp):
+            for j in range(0, self.ncp + 1):
                 t_tgt = t_ij(ttgt, fe, j)
                 t_src = t_ij(ts, 0, j)
-                if not drs:
-                    val = value(v[t_src])
+
+                if drs is None:
+                    if v[t_src].stale:
+                        continue
+                    try:
+                        val = value(v[t_src])
+                    except ValueError:
+                        print("Error at {}, {}".format(v.name, t_src))
                     v_tgt[t_tgt].set_value(val)
                     continue
                 for k in drs:
                     for key in k:
                         key = key if isinstance(key, tuple) else (key,)
-                        val = value(v[(t_src,) + key])
+                        if v[(t_src,) + key].stale:
+                            continue
+                        try:
+                            val = value(v[(t_src,) + key])
+                        except ValueError:
+                            print("Error at {}, {}".format(v.name, (t_src,) + key))
                         v_tgt[(t_tgt,) + key].set_value(val)
 
     def adjust_h(self, fe):
@@ -292,31 +359,47 @@ class fe_initialize(object):
             hi[t].value = self.fe_list[fe]
 
     def run(self):
+        print("*"*5, end='\t')
+        print("Fe Factory: fe_initialize by DT \@2018", end='\t')
+        print("*" * 5)
         for i in range(0, len(self.fe_list)):
             self.march_forward(i)
 
     def load_input(self, fe):
-        ts = getattr(self.mod, self.time_set)
-        ttgt = getattr(self.tgt, self.time_set)
-        t0 = t_ij(ttgt, fe, 0)
-        for i in self.inputs:
-            p_data = getattr(self.tgt, i)
-            p_sim = getattr(self.mod, i)
-            if not self.input_remaining_set[i]:
-                for j in range(0, self.ncp):
-                    t = t_ij(ttgt, fe, j)
-                    tsim = t_ij(ts, 0, j)
-                    val = value(p_data[t])
-                    p_sim
-                continue
-            for k in self.input_remaining_set[i]:
-                for key in k:
-                    for j in range(0, self.ncp):
+        if not self.inputs is None:
+            ts = getattr(self.mod, self.time_set)
+            ttgt = getattr(self.tgt, self.time_set)
+            for i in self.inputs:
+                p_data = getattr(self.tgt, i)
+                p_sim = getattr(self.mod, i)
+                if self.input_remaining_set[i] is None:
+                    for j in range(0, self.ncp + 1):
                         t = t_ij(ttgt, fe, j)
-                        val = value(p_data[(t,) + key])
-
-
-
+                        tsim = t_ij(ts, 0, j)
+                        val = value(p_data[t])
+                        p_sim[tsim].set_value(val)
+                    continue
+                for k in self.input_remaining_set[i]:
+                    for key in k:
+                        for j in range(0, self.ncp + 1):
+                            t = t_ij(ttgt, fe, j)
+                            tsim = t_ij(ts, 0, j)
+                            val = value(p_data[(t,) + key])
+                            p_sim[(tsim,) + key].set_value(val)
+        if not self.inputs_sub is None:
+            ts = getattr(self.mod, self.time_set)
+            ttgt = getattr(self.tgt, self.time_set)
+            for key in self.inputs_sub.keys():
+                p_data = getattr(self.tgt, key)
+                p_sim = getattr(self.mod, key)
+                for k in self.inputs_sub[key]:
+                    k = (k,) if not isinstance(k, tuple) else k
+                    for j in range(0, self.ncp + 1):
+                        t = t_ij(ttgt, fe, j)
+                        tsim = t_ij(ts, 0, j)
+                        val = value(p_data[(t,) + k])
+                        p_sim[(tsim,) + k].set_value(val)
+                        print(key, k, val)
 
 
 
@@ -357,7 +440,7 @@ def write_nl(d_mod, filename=None):
     if not filename:
         filename = d_mod.name + '.nl'
     d_mod.write(filename, format=ProblemFormat.nl,
-                io_options={"symbolic_solver_labels":True})
+                io_options={"symbolic_solver_labels": True})
     cwd = getcwd()
     print("nl file {}".format(cwd + "/" + filename))
     return cwd
@@ -386,3 +469,10 @@ def reconcile_nvars_mequations(d_mod):
         nl.close()
     # remove(fullpth)
     return (nvar, meqn)
+
+
+def disp_vars(model, file):
+    with open(file, 'w') as f:
+        for c in model.component_objects(Var):
+            c.pprint(ostream=f)
+        f.close()

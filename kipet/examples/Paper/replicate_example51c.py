@@ -26,7 +26,7 @@ from kipet.utils.data_tools import *
 import inspect
 import sys
 import os
-
+import six
 
 if __name__ == "__main__":
 
@@ -86,13 +86,13 @@ if __name__ == "__main__":
                                             max_iter=200,
                                             subset_lambdas=A_set)
 
-    print "\nThe estimated variances are:\n"
-    for k,v in results_variances.sigma_sq.iteritems():
-        print k,v
+    print("\nThe estimated variances are:\n")
+    for k,v in six.iteritems(results_variances.sigma_sq):
+        print(k, v)
 
-    print "The estimated parameters are:"
-    for k,v in opt_model.P.iteritems():
-        print k,v.value
+    print("The estimated parameters are:")
+    for k,v in six.iteritems(opt_model.P):
+        print(k, v.value)
         
     sigmas = results_variances.sigma_sq
 
@@ -124,9 +124,9 @@ if __name__ == "__main__":
                                         with_d_vars=True)
 
     
-    print "The estimated parameters are:"
-    for k,v in results_pyomo.P.iteritems():
-        print k,v
+    print("The estimated parameters are:")
+    for k,v in six.iteritems(results_pyomo.P):
+        print(k, v)
     
     tol = 2e-1
     assert(abs(results_pyomo.P['k1']-2.0)<tol)

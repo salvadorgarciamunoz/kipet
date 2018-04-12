@@ -406,7 +406,7 @@ class PyomoSimulator(Simulator):
         # for the noise term
         if sigmas:
             for i,k in enumerate(self._mixture_components):
-                if sigmas.has_key(k):
+                if k in sigmas.keys():
                     sigma = sigmas[k]**0.5
                     dw_k = np.random.normal(0.0,sigma,self._n_meas_times)
                     n_sig[i,:] = np.random.normal(0.0,sigma,self._n_meas_times)
@@ -430,7 +430,7 @@ class PyomoSimulator(Simulator):
 
         d_results = []
         if sigmas:
-            sigma_d = sigmas.get('device')**0.5 if sigmas.has_key('device') else 0
+            sigma_d = sigmas.get('device')**0.5 if "device" in sigmas.keys() else 0
         else:
             sigma_d = 0
         if s_results and c_noise_results:

@@ -89,9 +89,9 @@ if __name__ == "__main__":
                                       variances=sigmas,
                                       covariance=True)
 
-    print "The estimated parameters are:"
-    for k,v in results_pyomo.P.iteritems():
-        print k,v
+    print("The estimated parameters are:")
+    for k,v in six.iteritems(results_pyomo.P):
+        print(k, v)
 
     tol = 1e-2
     assert(abs(results_pyomo.P['k1']-0.3)<tol)

@@ -191,7 +191,7 @@ class Optimizer(PyomoSimulator):
                 for var_data in six.itervalues(var):
                     var_data.stale=False
             else:
-                for var_data in var.itervalues():
+                for var_data in six.itervalues(var):
                     var_data.stale=True
 
         # retriving solutions to results object  

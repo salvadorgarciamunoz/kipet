@@ -122,7 +122,7 @@ if __name__ == "__main__":
         V = m.X[t,'V']
         f = m.Y[t,'f']
         for c in m.mixture_components:
-            v_sum += partial_vol[c]*(sum(gammas[c][j]*m.Y[t,'r{}'.format(j)] for j in xrange(6))+ epsilon[c]*f/V*Cin)
+            v_sum += partial_vol[c]*(sum(gammas[c][j]*m.Y[t,'r{}'.format(j)] for j in range(6))+ epsilon[c]*f/V*Cin)
         r.append(m.Y[t,'v_sum']-v_sum)
 
         return r
@@ -138,12 +138,12 @@ if __name__ == "__main__":
         # volume balance
         vol_sum = 0.0
         for c in m.mixture_components:
-            vol_sum += partial_vol[c]*(sum(gammas[c][j]*m.Y[t,'r{}'.format(j)] for j in xrange(6))+ epsilon[c]*f/V*Cin)
+            vol_sum += partial_vol[c]*(sum(gammas[c][j]*m.Y[t,'r{}'.format(j)] for j in range(6))+ epsilon[c]*f/V*Cin)
         exprs['V'] = V*m.Y[t,'v_sum']
 
         # mass balances
         for c in m.mixture_components:
-            exprs[c] = sum(gammas[c][j]*m.Y[t,'r{}'.format(j)] for j in xrange(6))+ epsilon[c]*f/V*Cin - m.Y[t,'v_sum']*m.Z[t,c]
+            exprs[c] = sum(gammas[c][j]*m.Y[t,'r{}'.format(j)] for j in range(6))+ epsilon[c]*f/V*Cin - m.Y[t,'v_sum']*m.Z[t,c]
 
         exprs['Masa'] = 180.157*V*m.Y[t,'r5']
         exprs['Msa'] = -138.121*V*m.Y[t,'r4']

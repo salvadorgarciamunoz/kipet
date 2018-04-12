@@ -438,7 +438,7 @@ class VarianceEstimator(Optimizer):
                                       self._n_meas_times,
                                       self._n_components))
         else:
-            f = StringIO.StringIO()
+            f = StringIO()
             with stdout_redirector(f):
                 res = least_squares(F,self._s_array,JF,
                                     (0.0,np.inf),method,
@@ -568,7 +568,7 @@ class VarianceEstimator(Optimizer):
                                       self._n_meas_times,
                                       self._n_components))
         else:
-            f = StringIO.StringIO()
+            f = StringIO()
             with stdout_redirector(f):
                 res = least_squares(F,self._c_array,JF,
                                     (0.0,np.inf),method,

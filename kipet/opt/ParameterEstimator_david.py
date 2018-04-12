@@ -350,16 +350,16 @@ class ParameterEstimator(Optimizer):
         nd = nt*nw
         #Vd_dense = np.zeros((nd,nd))
         v_device = variances['device']
-        for i in xrange(nt):
-            for j in xrange(nw):
-                val = sum(v_array[k]*s_array[j*nc+k]**2 for k in xrange(nc))+v_device
+        for i in range(nt):
+            for j in range(nw):
+                val = sum(v_array[k]*s_array[j*nc+k]**2 for k in range(nc))+v_device
                 row.append(i*nw+j)
                 col.append(i*nw+j)
                 data.append(val)
                 #Vd_dense[i*nw+j,i*nw+j] = val
-                for p in xrange(nw):
+                for p in range(nw):
                     if j!=p:
-                        val = sum(v_array[k]*s_array[j*nc+k]*s_array[p*nc+k] for k in xrange(nc))
+                        val = sum(v_array[k]*s_array[j*nc+k]*s_array[p*nc+k] for k in range(nc))
                         row.append(i*nw+j)
                         col.append(i*nw+p)
                         data.append(val)
