@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 #  _________________________________________________________________________
 #
 #  Kipet: Kinetic parameter estimation toolkit
@@ -13,6 +15,8 @@
 #               C_k(t_i) = Z_k(t_i) + w(t_i)    for all t_i in measurement points
 #               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
 
+
+
 from __future__ import print_function
 from __future__ import division
 from kipet.model.TemplateBuilder import *
@@ -27,8 +31,11 @@ import inspect
 import sys
 import os
 
+__author__ = "David Thierry @dthierry" #: April 2018
+
 if __name__ == "__main__":
-    
+
+
     with_plots = True
     if len(sys.argv)==2:
         if int(sys.argv[1]):
@@ -69,33 +76,22 @@ if __name__ == "__main__":
 
     optimizer.apply_discretization('dae.collocation',nfe=30,ncp=3,scheme='LAGRANGE-RADAU')
     optimizer.model.time.pprint()
+
     # Provide good initial guess
     p_guess = {'k1':2.0, 'k2':0.5}
 
+    #: @dthierry: regular stuff for fe_factory
+    param_dict = {}
+    param_dict["P", "k1"] = 2.0
+    param_dict["P", "k2"] = 0.5
     model = optimizer.model
-
-    fe_factory = fe_initialize(model, src, init_con="init_conditions_c", fixed_params="P")
-
-    for i in fe_factory.mod.component_objects(Var):
-        print(i)
-    for i in fe_factory.mod.component_objects(Param):
-        print(i)
-    for i in fe_factory.mod.component_objects(Constraint):
-        print(i)
-    ts = getattr(fe_factory.tgt, fe_factory.time_set)
-    ts.pprint()
-    ncp = ts.get_discretization_info()['ncp']
-    tau = ts.get_discretization_info()['tau_points']
-    fe = ts.get_finite_elements()
-    print(ncp)
-    print(tau)
-    print(fe)
-    # fe_factory.tgt.pprint(filename="here_son")
+    #: @dthierry: gracefully call fe_factory
+    fe_factory = fe_initialize(model, src, init_con="init_conditions_c", param_name="P", param_values=param_dict)
     fe_factory.run()
+
     optimizer.model.P['k1'].set_value(p_guess['k1'])
     optimizer.model.P['k2'].set_value(p_guess['k2'])
     optimizer.model.P.fix()
     ip = SolverFactory('ipopt')
     ip.solve(optimizer.model, tee=True)
-
-    # fe_factory.tgt.pprint(filename="here_son_Aug")
+    #: all done

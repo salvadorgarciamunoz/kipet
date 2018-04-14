@@ -74,7 +74,7 @@ class fe_initialize(object):
                     k = (k,)
                     fun_tup = False
                 e = con[k].expr._args[0]
-                e_dict[k] = e * self.mod.h_i[k[0]] == dv[k] * (1 - self.mod.h_i[k[0]])  #: As long as you don't clone
+                e_dict[k] = e * self.mod.h_i[k[0]] + dv[k] * (1 - self.mod.h_i[k[0]]) == 0.0  #: As long as you don't clone
             if fun_tup:
                 self.mod.add_component(i + "_deq_aug",
                                        Constraint(con.index_set(),
@@ -272,22 +272,17 @@ class fe_initialize(object):
         self.adjust_h(fe)
         if self.inputs or self.inputs_sub:
             self.load_input(fe)
-            # self.mod.display(filename='it2')
-            disp_vars(self.mod, 'it2')
         sol = self.ip.solve(self.mod, tee=True)
         if sol.solver.termination_condition != TerminationCondition.optimal:
-            sol = self.ip.solve(self.mod, tee=False)
+            self.ip.options["OF_start_with_resto"] = 'yes'
+            sol = self.ip.solve(self.mod, tee=True)
             if sol.solver.termination_condition != TerminationCondition.optimal:
-                raise Exception("The current iteration was unsuccesfull. Iteration :{}".format(fe))
+                raise Exception("The current iteration was unsuccessful. Iteration :{}".format(fe))
 
         else:
             print("fe {} - status: optimal".format(fe))
         self.patch(fe)
-        # self.mod.display(filename='it0')
-        disp_vars(self.mod, 'it0')
         self.cycle_ics()
-        disp_vars(self.mod, 'it1')
-        # self.mod.display(filename='it1')
 
     def cycle_ics(self):
         ts = getattr(self.mod, self.time_set)
@@ -399,7 +394,7 @@ class fe_initialize(object):
                         tsim = t_ij(ts, 0, j)
                         val = value(p_data[(t,) + k])
                         p_sim[(tsim,) + k].set_value(val)
-                        print(key, k, val)
+
 
 
 
@@ -467,7 +462,7 @@ def reconcile_nvars_mequations(d_mod):
         nvar = int(newl[0])
         meqn = int(newl[1])
         nl.close()
-    # remove(fullpth)
+    remove(fullpth)
     return (nvar, meqn)
 
 

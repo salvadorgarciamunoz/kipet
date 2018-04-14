@@ -1,15 +1,10 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 #  _________________________________________________________________________
 #
 #  Kipet: Kinetic parameter estimation toolkit
 #  Copyright (c) 2016 Eli Lilly.
 #  _________________________________________________________________________
-
-# Sample Problem 2 (From Sawall et.al.)
-# First example from WF paper simulation of ODE system using pyomo discretization and IPOPT
-#
-#		\frac{dZ_a}{dt} = -k_1*Z_a	                Z_a(0) = 1
-#		\frac{dZ_b}{dt} = k_1*Z_a - k_2*Z_b		Z_b(0) = 0
-#               \frac{dZ_c}{dt} = k_2*Z_b	                Z_c(0) = 0
 
 from kipet.model.TemplateBuilder import *
 from kipet.sim.PyomoSimulator import *
@@ -41,6 +36,8 @@ if __name__ == "__main__":
 
     # add algebraics
     algebraics = [0, 1, 2, 3, 4, 5]  # the indices of the rate rxns
+    #: @dthierry: note the fifth component. Which basically works as an input
+
     builder.add_algebraic_variable(algebraics)
 
     """
@@ -85,6 +82,7 @@ if __name__ == "__main__":
         r.append(m.Y[t, 3] - m.P['k3'] * m.Z[t, 'AC-'] * m.Z[t, 'AH'])
         r.append(m.Y[t, 4] - m.P['k4'] * m.Z[t, 'AC-'] * m.Z[t, 'BH+'])
         return r
+    #: @dthierry: there is no ae for Y[t,5]
 
 
     builder.set_algebraics_rule(rule_algebraics)
@@ -93,6 +91,7 @@ if __name__ == "__main__":
     def rule_odes(m, t):
         exprs = dict()
         eta = 1e-2
+        #: @dthierry: This thingy is now framed in terms of `m.Y[t, 5]`
         step = 0.5 * ((m.Y[t, 5] + 1) / ((m.Y[t, 5] + 1) ** 2 + eta ** 2) ** 0.5 + (210.0 - m.Y[t,5]) / ((210.0 - m.Y[t, 5]) ** 2 + eta ** 2) ** 0.5)
         exprs['V'] = 7.27609e-05 * step
         V = m.X[t, 'V']
@@ -118,15 +117,14 @@ if __name__ == "__main__":
     sim = PyomoSimulator(model)
     # defines the discrete points wanted in the concentration profile
     mod = sim.model.clone()
-    for i in mod.component_data_objects(Var):
-        i.setlb(0)
 
 
     sim.apply_discretization('dae.collocation', nfe=50, ncp=3, scheme='LAGRANGE-RADAU')
-    sim.model.time.pprint()
+
+
+    #: @dthierry we now need to explicitly tell the initial conditions and parameter values
     param_name = "P"
     param_dict = {}
-
     param_dict["P", "k0"] = 49.7796
     param_dict["P", "k1"] = 8.93156
     param_dict["P", "k2"] = 1.31765
@@ -142,54 +140,25 @@ if __name__ == "__main__":
     ics_['Z', 'AC-'] = 0.0
     ics_['Z', 'P'] = 0.0
     ics_['X', 'V'] = 0.0629418
-    # sim.model.pprint(filename="whatnot0")
-    l = sim.model.time.get_finite_elements()
-    for key in sim.model.time.value:
-        sim.model.Y[key, 5].set_value(key)
-        sim.model.Y[key, 5].fix()
+
     inputs_sub = {}
     inputs_sub['Y'] = [5]
+
+    #: @dthierry: define the values for our simulation
+    for key in sim.model.time.value:
+        sim.model.Y[key, 5].set_value(key)
+        sim.model.Y[key, 5].fix()  #: @dthierry: if you don't fix this, fe_factory is gonna complain.
+
     init = fe_initialize(sim.model, mod,
                          init_con="init_conditions_c",
                          param_name=param_name,
                          param_values=param_dict,
                          inputs_sub=inputs_sub)
     init.load_initial_conditions(init_cond=ics_)
-
-    # sim.model.pprint(filename="whatnot")
-    ip = SolverFactory('ipopt')
-    # init.mod.pprint()
-    # ip.options['bound_push'] = 1e-08
-    # ip.options['linear_solver'] = 'ma57'
-    # ip.options['OF_print_info_string'] = 'yes'
-    # ip.solve(sim.model, tee=True)
-    for i in init.mod.component_data_objects(Var):
-        i.setlb(0)
+    #: @dthierry: behold!
     init.run()
 
-    # ip.options['OF_start_with_resto'] = 'yes'
-    # ip.solve(sim.model, tee=True)
-
-    #
-    # ip.options['OF_start_with_resto'] = 'yes'
-    # ip.options['OF_accept_every_trial_step'] = 'no'
-    # ip.options['max_iter'] = 5000
-    # ip.solve(sim.model, tee=True)
-    #
-    # ip.options['OF_start_with_resto'] = 'no'
-    # ip.options['OF_accept_every_trial_step'] = 'yes'
-    # ip.options['max_iter'] = 1
-    # ip.solve(sim.model, tee=True)
-    #
-    sys.exit()
-
-
-    # good initialization
-    # initialization = pd.read_csv("init_Z.csv", index_col=0)
-    # sim.initialize_from_trajectory('Z', initialization)
-    # initialization = pd.read_csv("init_X.csv", index_col=0)
-    # sim.initialize_from_trajectory('X', initialization)
-
+    #: @dthierry: now the final run, just as before
     # simulate
     options = {}
     results = sim.run_sim('ipopt',
@@ -209,3 +178,4 @@ if __name__ == "__main__":
     plt.show()
 
     results.Z.to_csv("initialization.csv")
+    print('Bitte schön!')
