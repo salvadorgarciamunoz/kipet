@@ -36,7 +36,7 @@ if __name__ == "__main__":
     dataDirectory = os.path.abspath(
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
             inspect.currentframe() ) ) ), '..','..','data_sets'))
-    filename =  os.path.join(dataDirectory,'trim_Dij_case52a.txt')
+    filename =  os.path.join(dataDirectory,'Dij_case52a.txt')
     D_frame = read_spectral_data_from_txt(filename)
 
     """
@@ -73,8 +73,8 @@ if __name__ == "__main__":
 
     pyomo_model2 = builder.create_pyomo_model(0.0,200.0)
 
-    pyomo_model2.P['k1'].value = 0.006655
-    pyomo_model2.P['k1'].fixed = True
+    #pyomo_model2.P['k1'].value = 0.006655
+    #pyomo_model2.P['k1'].fixed = True
     
     optimizer = ParameterEstimator(pyomo_model2)
 
