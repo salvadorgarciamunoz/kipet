@@ -13,11 +13,59 @@ __author__ = 'David M Thierry'  #: April 2018
 
 class fe_initialize(object):
     def __init__(self, tgt_mod, src_mod, init_con=None, param_name=None, param_values=None, inputs=None, inputs_sub=None):
-        # type: (ConcreteModel, ConcreteModel) -> None
-        """
+        # type: (ConcreteModel, ConcreteModel, Constraint, list, dict, dict, dict) -> None
+        """fe_factory: fe_initialize class.
 
-        :type fixed_params: object
-        """
+                This class implements the finite per finite element initialization for a pyomo model initialization.
+                A march-forward simulation will be run and the resulting data will be patched to the tgt_model.
+                The current strategy is as follows:
+                Create a copy of the undiscretized model.
+                Change the corresponding time set bounds to (0,1).
+                Discretize and create the new model with the parameter h_i.
+                Deactivate initial conditions.
+                Check for params and inputs.
+
+                Note that an input needs to be a variable(fixed) indexed over time. Otherwise it would be a parameter.
+
+                The `the paran name` might be a list of strings or a single string
+                 corresponding to the parameters of the model.
+                The `param_values` dictionary needs to be declared with the following sintax:
+                `param_dict["P", "k0"] = 49.7796`
+                Where the first key corresponds to one of the parameter names, and the second to the corresponding
+                index (if any).
+                A similar structure is expected for the initial conditions and inputs.
+
+                The `inputs` and `input_sub` parameters are in place depending of whether there is a single index input
+                or a multiple index input.
+
+                Note that if the user does not provide correct information to fe_factory; an exception will be thrown
+                because of the n_var and m_eqn check for simulation.
+
+                Once the constructor is called, one can initialize the model with the following sintax:
+                `self.load_initial_conditions(init_cond=ics_dict)`
+
+                Finally, to run the initialization and automatic data patching to tgt model use:
+                `self.run()`
+
+                If a given finite element problem fails, we do will try once again with relaxed options. It is
+                recommended to go back and check the model for better understanding of the issue.
+
+                Finally, an explicit function of time on the right hand side is prohibited. Please put this information
+                into an input (fixed variable) instead.
+
+                Args:
+                    tgt_mod (ConcreteModel): The originall fully discretized model that we want to patch the information to.
+                    src_mod (ConcreteModel): The undiscretized reference model.
+                    init_con (str): The initial constraint name (corresponds to a Constraint object).
+                    param_name (list): The param name list. (Each element must correspond to a pyomo Var)
+                    param_values (dict): The corresponding values: `param_dict["param_name", "param_index"] = 49.7796`
+                    inputs (dict): The input dictionary. Use this dictonary for single index (time) inputs
+                    inputs_sub (dict): The multi-index dictionary. Use this dictionary for multi-index inputs.
+                """
+
+
+
+
         self.ip = SolverFactory('ipopt')
         self.tgt = tgt_mod
         self.mod = src_mod.clone()  #: Deepcopy of the reference model
@@ -210,7 +258,6 @@ class fe_initialize(object):
                 else:
                     self.input_remaining_set[i] = []
                     self.input_remaining_set[i].append(remaining_set)
-        #: Note in kipet this his hopeless. The inputs are a subset of the algebraic variables.
         self.inputs_sub = None
         # inputs_sub['some_var'] = ['index0', 'index1', ('index2a', 'index2b')]
         self.inputs_sub = inputs_sub
@@ -264,9 +311,18 @@ class fe_initialize(object):
                         dv[(0,) + k].fix()
 
     def march_forward(self, fe):
-        """
+        # type: (int) -> None
+        """Moves forward with the simulation.
 
-        :rtype: object
+        This method performs the actions required for setting up the `fe-th` problem.
+
+        Adjust inputs.
+        Solve current problem.
+        Patches tgt_model.
+        Cycles initial conditions
+
+        Args:
+            fe (int): The correspoding finite element.
         """
         print("fe {}".format(fe))
         self.adjust_h(fe)
@@ -285,6 +341,9 @@ class fe_initialize(object):
         self.cycle_ics()
 
     def cycle_ics(self):
+        """Cycles the initial conditions of the initializing model.
+        Take the values of states (initializing model) at t=last and patch them into t=0.
+        """
         ts = getattr(self.mod, self.time_set)
         t_last = t_ij(ts, 0, self.ncp)
         for i in self.dvs_names:
@@ -304,6 +363,12 @@ class fe_initialize(object):
                         dv[(0,) + k].fix()
 
     def patch(self, fe):
+        # type: (int) -> None
+        """ Take the current state of variables of the initializing model at fe and load it into the tgt_model
+
+        Args:
+            fe (int): The current finite element to be patched (tgt_model).
+        """
         ts = getattr(self.mod, self.time_set)
         ttgt = getattr(self.tgt, self.time_set)
         for v in self.mod.component_objects(Var, active=True):
@@ -348,12 +413,24 @@ class fe_initialize(object):
                         v_tgt[(t_tgt,) + key].set_value(val)
 
     def adjust_h(self, fe):
+        # type: (int) -> None
+        """Adjust the h_i parameter of the initializing model.
+
+        The initializing model goes from t=(0,1) so it needs to be scaled by the current time-step size.
+
+        Args:
+            fe (int): The current value of h_i
+        """
+
         hi = getattr(self.mod, "h_i")
         zeit = getattr(self.mod, self.time_set)
         for t in zeit:
             hi[t].value = self.fe_list[fe]
 
     def run(self):
+        """Runs the sequence of problems fe=0,nfe
+
+        """
         print("*"*5, end='\t')
         print("Fe Factory: fe_initialize by DT \@2018", end='\t')
         print("*" * 5)
@@ -361,6 +438,12 @@ class fe_initialize(object):
             self.march_forward(i)
 
     def load_input(self, fe):
+        # type: (int) -> None
+        """ Loads the current value of input from tgt_model into the initializing model at the current fe.
+
+        Args:
+            fe (int):  The current finite element to be loaded.
+        """
         if not self.inputs is None:
             ts = getattr(self.mod, self.time_set)
             ttgt = getattr(self.tgt, self.time_set)
@@ -467,6 +550,12 @@ def reconcile_nvars_mequations(d_mod):
 
 
 def disp_vars(model, file):
+    """Helper function for debugging
+
+    Args:
+        model (ConcreteModel): Model of interest.
+        file (str): Destination text file.
+    """
     with open(file, 'w') as f:
         for c in model.component_objects(Var):
             c.pprint(ostream=f)
