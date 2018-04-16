@@ -13,7 +13,7 @@
 #               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
 
 
-from kipet.model.TemplateBuilder import *
+from kipet.model.TemplateBuilder import * 
 from kipet.sim.PyomoSimulator import *
 from kipet.opt.ParameterEstimator import *
 import matplotlib.pyplot as plt
