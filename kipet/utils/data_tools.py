@@ -229,7 +229,7 @@ def basic_pca(dataFrame,n=4):
     plt.subplot(1,2,1)
     u_shape = U.shape
     n_l_vector = n if u_shape[0]>=n else u_shape[0]
-    for i in xrange(n_l_vector):
+    for i in range(n_l_vector):
         plt.plot(times,U[:,i])
     plt.xlabel("time")
     plt.ylabel("Components U[:,i]")
@@ -245,7 +245,7 @@ def basic_pca(dataFrame,n=4):
     plt.subplot(1,3,3)
     v_shape = V.shape
     n_r_vector = n if v_shape[0]>=n else v_shape[0]
-    for i in xrange(n_r_vector):
+    for i in range(n_r_vector):
         plt.plot(lambdas,V[i,:])
     plt.xlabel("wavelength")
     plt.ylabel("Components V[i,:]")
@@ -265,7 +265,7 @@ def absorbance(wl,alphas,betas,gammas):
     helper function to generate absorption data based on 
     lorentzian parameters
     """
-    return sum(gausian_single_peak(wl,alphas[i],betas[i],gammas[i]) for i in xrange(len(alphas)))
+    return sum(gausian_single_peak(wl,alphas[i],betas[i],gammas[i]) for i in range(len(alphas)))
 
 def generate_absorbance_data(wl_span,parameters_dict):
     """
@@ -278,7 +278,7 @@ def generate_absorbance_data(wl_span,parameters_dict):
     array = np.zeros((n_lambdas,n_components))
     for i,l in enumerate(wl_span):
         j = 0
-        for k,p in parameters_dict.iteritems():
+        for k,p in six.iteritems(parameters_dict):
             alphas = p['alphas']
             betas  = p['betas']
             gammas = p['gammas']

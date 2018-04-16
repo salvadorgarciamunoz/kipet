@@ -32,7 +32,7 @@ class TestExamples(unittest.TestCase):
         
         flag = 0
         for f in examples_pyomo:
-            print "running pyomo:",f
+            print("running pyomo:", f)
             flag = subprocess.call([sys.executable,os.path.join(examples_pyomo_dir,f),'1'],
                                    stdout=self.std_out,
                                    stderr=subprocess.STDOUT)
@@ -42,7 +42,7 @@ class TestExamples(unittest.TestCase):
             examples_casadi = [f for f in os.listdir(examples_casadi_dir) if os.path.isfile(os.path.join(examples_casadi_dir,f)) and f.endswith('.py')]
             flag = 0
             for f in examples_casadi:
-                print "running casadi:",f
+                print("running casadi:", f)
                 flag = subprocess.call([sys.executable,os.path.join(examples_casadi_dir,f),'1'],
                                        stdout=self.std_out,
                                        stderr=subprocess.STDOUT)
@@ -71,7 +71,7 @@ class TestExamples(unittest.TestCase):
         self.test_case51c_examples()
             
     def runTest(self):
-        print "hola"
+        print("hallo")
 
 if __name__ == '__main__':
     unittest.main()

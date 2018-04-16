@@ -1,6 +1,6 @@
 from pyomo.environ import *
 from pyomo.dae import *
-from ResultsObject import *
+from kipet.sim.ResultsObject import *
 import numpy as np
 import math
 import scipy

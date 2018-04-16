@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+from __future__ import print_function
+from __future__ import division
 from pyomo.environ import *
 from pyomo.dae import *
 from kipet.sim.ResultsObject import *
@@ -7,7 +10,7 @@ from contextlib import contextmanager
 import scipy
 import copy
 import sys
-
+import six
 class Optimizer(PyomoSimulator):
     """Base optimizer class.
 
@@ -152,13 +155,13 @@ class Optimizer(PyomoSimulator):
                 self.model.P[k].fixed = True
 
         for k,v in self.model.P.items():
-            if v.fixed == False:
+            if not v.fixed:
                 print('***WARNING parameter {} is not fixed. This method expects all parameters to be fixed.'.format(k))
             
         # deactivates objective functions for simulation                
         objectives_map = self.model.component_map(ctype=Objective,active=True)
         active_objectives_names = []
-        for obj in objectives_map.itervalues():
+        for obj in six.itervalues(objectives_map):
             name = obj.cname()
             active_objectives_names.append(name)
             obj.deactivate()
@@ -183,12 +186,12 @@ class Optimizer(PyomoSimulator):
             objectives_map[name].activate()
 
         # unstale variables that were marked stale
-        for var in self.model.component_map(ctype=Var).itervalues():
+        for var in six.itervalues(self.model.component_map(ctype=Var)):
             if not isinstance(var,DerivativeVar):
-                for var_data in var.itervalues():
+                for var_data in six.itervalues(var):
                     var_data.stale=False
             else:
-                for var_data in var.itervalues():
+                for var_data in six.itervalues(var):
                     var_data.stale=True
 
         # retriving solutions to results object  
