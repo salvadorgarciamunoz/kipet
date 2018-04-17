@@ -33,6 +33,11 @@ import sys
 
 if __name__ == "__main__":
     
+    with_plots = True
+    if len(sys.argv)==2:
+        if int(sys.argv[1]):
+            with_plots = False
+    
 
     fixed_traj = read_absorption_data_from_txt('extra_states.txt')
     C = read_absorption_data_from_txt('concentrations.txt')
@@ -72,6 +77,7 @@ if __name__ == "__main__":
     builder.add_complementary_state_variable(extra_states)
 
     algebraics = ['f','r0','r1','r2','r3','r4','r5','v_sum','Csat']
+
     builder.add_algebraic_variable(algebraics)
 
     gammas = dict()
@@ -174,52 +180,52 @@ if __name__ == "__main__":
     results = sim.run_sim('ipopt',
                           tee=True,
                           solver_opts=options)
-    
-    # display concentration results    
-    results.Z.plot.line(legend=True)
-    plt.xlabel("time (s)")
-    plt.ylabel("Concentration (mol/L)")
-    plt.title("Concentration Profile")
+    if with_plots:
+        # display concentration results    
+        results.Z.plot.line(legend=True)
+        plt.xlabel("time (s)")
+        plt.ylabel("Concentration (mol/L)")
+        plt.title("Concentration Profile")
 
-    C.plot()
-    
-    plt.figure()
-    
-    results.Y['Csat'].plot.line()
-    plt.plot(fixed_traj['Csat'],'*')
-    plt.xlabel("time (s)")
-    plt.ylabel("Csat")
-    plt.title("Saturatuon Concentration")
-    
-    plt.figure()
-    
-    results.X['V'].plot.line()
-    plt.plot(fixed_traj['V'],'*')
-    plt.xlabel("time (s)")
-    plt.ylabel("volumne (L)")
-    plt.title("Volume Profile")
+        C.plot()
+        
+        plt.figure()
+        
+        results.Y['Csat'].plot.line()
+        plt.plot(fixed_traj['Csat'],'*')
+        plt.xlabel("time (s)")
+        plt.ylabel("Csat")
+        plt.title("Saturatuon Concentration")
+        
+        plt.figure()
+        
+        results.X['V'].plot.line()
+        plt.plot(fixed_traj['V'],'*')
+        plt.xlabel("time (s)")
+        plt.ylabel("volumne (L)")
+        plt.title("Volume Profile")
 
 
-    plt.figure()
-    
-    results.X['Msa'].plot.line()
-    plt.plot(fixed_traj['Msa'],'*')
-    plt.xlabel("time (s)")
-    plt.ylabel("m_dot (g)")
-    plt.title("Msa Profile")
-    
+        plt.figure()
+        
+        results.X['Msa'].plot.line()
+        plt.plot(fixed_traj['Msa'],'*')
+        plt.xlabel("time (s)")
+        plt.ylabel("m_dot (g)")
+        plt.title("Msa Profile")
+        
 
-    plt.figure()
-    results.Y['f'].plot.line()
-    plt.xlabel("time (s)")
-    plt.ylabel("flow (K)")
-    plt.title("Inlet flow Profile")
+        plt.figure()
+        results.Y['f'].plot.line()
+        plt.xlabel("time (s)")
+        plt.ylabel("flow (K)")
+        plt.title("Inlet flow Profile")
 
-    plt.figure()
-    results.X['Masa'].plot.line()
-    plt.plot(fixed_traj['Masa'],'*')
-    plt.xlabel("time (s)")
-    plt.ylabel("m_dot (g)")
-    plt.title("Masa Profile")
-    
-    plt.show()
+        plt.figure()
+        results.X['Masa'].plot.line()
+        plt.plot(fixed_traj['Masa'],'*')
+        plt.xlabel("time (s)")
+        plt.ylabel("m_dot (g)")
+        plt.title("Masa Profile")
+        
+        plt.show()

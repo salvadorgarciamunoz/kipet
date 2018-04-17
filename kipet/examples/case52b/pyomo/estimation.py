@@ -13,7 +13,7 @@
 #               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
 
 
-from kipet.model.TemplateBuilder import *
+from kipet.model.TemplateBuilder import * 
 from kipet.sim.PyomoSimulator import *
 from kipet.opt.ParameterEstimator import *
 import matplotlib.pyplot as plt
@@ -32,31 +32,30 @@ if __name__ == "__main__":
         if int(sys.argv[1]):
             with_plots = False
 
-    """
+   
             
     # read 200*431 spectra matrix D_{i,j}
     # this defines the measurement points t_i and l_j as well
     dataDirectory = os.path.abspath(
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
             inspect.currentframe() ) ) ), '..','..','data_sets'))
-    #filename =  os.path.join(dataDirectory,'Dij_case52b.txt')
-    filename =  os.path.join(dataDirectory,'trim_Dij_case52b.txt')
+    filename =  os.path.join(dataDirectory,'Dij_case52b.txt')
     D_frame = read_spectral_data_from_txt(filename)
 
 
-    D = D_frame.drop(D_frame.index[[0]])
-    D_array = np.array(D)
-    columns = D.columns
-    old_index = D.index
-    new_index = [i-old_index[0] for i in old_index]
-    new_D = pd.DataFrame(data=D_array,
-                         columns=columns,
-                         index=new_index)
+    #D = D_frame.drop(D_frame.index[[0]])
+    #D_array = np.array(D)
+    #columns = D.columns
+    #old_index = D.index
+    #new_index = [i-old_index[0] for i in old_index]
+    #new_D = pd.DataFrame(data=D_array,
+    #                     columns=columns,
+    #                     index=new_index)
  
-    write_spectral_data_to_txt('new_D.txt',new_D)
-    sys.exit()
+    #write_spectral_data_to_txt('new_D.txt',new_D)
+    #sys.exit()
 
-    """
+ 
     ######################################
     builder = TemplateBuilder()    
     components = {'A':217.324e-3,'B':167.35e-3,'C':2.452e-3}
@@ -76,10 +75,10 @@ if __name__ == "__main__":
     
     builder.set_odes_rule(rule_odes2)
 
-    pyomo_model2 = builder.create_pyomo_model(0.0,200.0)
+    pyomo_model2 = builder.create_pyomo_model(0.0,1077.9)
 
-    pyomo_model2.P['k1'].value = 0.006655
-    pyomo_model2.P['k1'].fixed = True
+    #pyomo_model2.P['k1'].value = 0.006655
+    #pyomo_model2.P['k1'].fixed = True
     
     optimizer = ParameterEstimator(pyomo_model2)
 

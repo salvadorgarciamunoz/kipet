@@ -23,6 +23,12 @@ import pickle
 
 
 if __name__ == "__main__":
+    
+    with_plots = True
+    if len(sys.argv)==2:
+        if int(sys.argv[1]):
+            with_plots = False
+        
 
 
     #filename =  'original_data.csv'
@@ -152,10 +158,7 @@ if __name__ == "__main__":
     opt.initialize_from_trajectory('S',raw_results.S)
     opt.initialize_from_trajectory('C',raw_results.C)
     opt.initialize_from_trajectory('Y',raw_results.Y)
-
-    raw_results.S.plot()
-    raw_results.C.plot()
-    plt.show()
+    
     solver_options = dict()
     #solver_options['bound_relax_factor'] = 0.0
     #solver_options['mu_init'] =  1e-4
@@ -173,22 +176,26 @@ if __name__ == "__main__":
                           solver_opts = solver_options,
                           variances=sigmas)
 
-    
-    # display concentration results    
-    results.C.plot.line(legend=True)
-    plt.xlabel("time (s)")
-    plt.ylabel("Concentration (mol/L)")
-    plt.title("Concentration Profile")
+    if with_plots:
+        raw_results.S.plot()
+        raw_results.C.plot()
+        plt.show()
 
-    results.Y.plot.line()
-    plt.xlabel("time (s)")
-    plt.ylabel("rxn rates (mol/L*s)")
-    plt.title("Rates of rxn")
+        # display concentration results    
+        results.C.plot.line(legend=True)
+        plt.xlabel("time (s)")
+        plt.ylabel("Concentration (mol/L)")
+        plt.title("Concentration Profile")
 
-    results.S.plot.line(legend=True)
-    plt.xlabel("Wavelength (cm)")
-    plt.ylabel("Absorbance (L/(mol cm))")
-    plt.title("Absorbance  Profile")
-    
-    plt.show()
+        results.Y.plot.line()
+        plt.xlabel("time (s)")
+        plt.ylabel("rxn rates (mol/L*s)")
+        plt.title("Rates of rxn")
+
+        results.S.plot.line(legend=True)
+        plt.xlabel("Wavelength (cm)")
+        plt.ylabel("Absorbance (L/(mol cm))")
+        plt.title("Absorbance  Profile")
+        
+        plt.show()
 

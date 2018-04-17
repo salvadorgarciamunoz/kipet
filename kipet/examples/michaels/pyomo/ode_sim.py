@@ -23,6 +23,12 @@ import pickle
 
 
 if __name__ == "__main__":
+    
+    with_plots = True
+    if len(sys.argv)==2:
+        if int(sys.argv[1]):
+            with_plots = False
+        
         
     # create template model 
     builder = TemplateBuilder()    
@@ -110,12 +116,12 @@ if __name__ == "__main__":
     results = sim.run_sim('ipopt',
                           tee=True,
                           solver_opts=options)
-    
-    # display concentration results    
-    results.Z.plot.line(legend=True)
-    plt.xlabel("time (s)")
-    plt.ylabel("Concentration (mol/L)")
-    plt.title("Concentration Profile")
+    if with_plots:
+        # display concentration results    
+        results.Z.plot.line(legend=True)
+        plt.xlabel("time (s)")
+        plt.ylabel("Concentration (mol/L)")
+        plt.title("Concentration Profile")
 
-    plt.show()
+        plt.show()
 
