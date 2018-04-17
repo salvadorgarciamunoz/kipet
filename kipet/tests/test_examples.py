@@ -1,3 +1,7 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from __future__ import print_function
 import unittest
 import sys
 import os
@@ -46,12 +50,12 @@ class TestExamples(unittest.TestCase):
                                     stdout=self.std_out,
                                     stderr=subprocess.STDOUT)
                 if flag!=0:
-                    print "running pyomo:",f,"failed"
+                    print("running pyomo:",f,"failed")
                     count = count + 1
                     flag=1
                     #outpy=self.assertEqual(int(flag),0)
                 else:
-                    print "running pyomo:",f,"passed"
+                    print("running pyomo:",f,"passed")
                 continue
             #########################
             #####Casadi-Examples:####
@@ -67,11 +71,11 @@ class TestExamples(unittest.TestCase):
                                         stdout=self.std_out,
                                         stderr=subprocess.STDOUT)
                     if flagc!=0:
-                        print "running casadi:",f,"failed"
+                        print("running casadi:",f,"failed")
                         countc = countc + 1
                         flagc=1
                     else:
-                        print "running casadi:",f,"passed"
+                        print("running casadi:",f,"passed")
                     continue
                 #outcas=self.assertEqual(int(flag),0)
                 print countc,"files in",examples_casadi_dir,"failed"
@@ -89,63 +93,63 @@ class TestExamples(unittest.TestCase):
                                     stdout=self.std_out,
                                     stderr=subprocess.STDOUT)
                 if flag!=0:
-                    print "running plainpyomo:",f,"failed"
+                    print("running plainpyomo:",f,"failed")
                     count = count + 1
                     flag=1
                 else:
-                    print "running plainpyomo:",f,"passed"
+                    print("running plainpyomo:",f,"passed")
                 continue
             print count,"files in",examples_plainpyomo_dir,"failed"
             return self.assertEqual(int(flag),0)
            
                         
     def test_sawall_examples(self):
-	print '##############Sawall###############'
+	print('##############Sawall###############')
         examples_dir = os.path.join(examplesMainDir,'sawall')
         self._schedule(examples_dir)
             
     def test_case51a_examples(self):
-	print '##############Case51a##############'
+	print('##############Case51a##############')
         examples_dir = os.path.join(examplesMainDir,'case51a')
         self._schedule(examples_dir)
 
     def test_case51b_examples(self):
-	print '##############Case51b##############'
+	print('##############Case51b##############')
         examples_dir = os.path.join(examplesMainDir,'case51b')
         self._schedule(examples_dir)
 
     def test_case51c_examples(self):
-	print '##############Case51c##############'
+	print('##############Case51c##############')
         examples_dir = os.path.join(examplesMainDir,'case51c')
         self._schedule(examples_dir)
 
     def test_case51d_examples(self):
-	print '##############Case51d##############'
+	print('##############Case51d##############')
         examples_dir = os.path.join(examplesMainDir,'case51d')
         self._schedule(examples_dir)
 
     def test_michaels_examples(self):
-	print '##############michaels##############'
+	print('##############michaels##############')
         examples_dir = os.path.join(examplesMainDir,'michaels')
         self._schedule(examples_dir)
 
     def test_case52a_examples(self):
-	print '##############Case52a##############'
+	print('##############Case52a##############')
         examples_dir = os.path.join(examplesMainDir,'case52a')
         self._schedule(examples_dir)
 
     def test_case52b_examples(self):
-	print '##############Case52b##############'
+	print('##############Case52b##############')
         examples_dir = os.path.join(examplesMainDir,'case52b')
         self._schedule(examples_dir)
 
     def test_complementary_states_examples(self):
-	print '##############complementary_states##############'
+	print('##############complementary_states##############')
         examples_dir = os.path.join(examplesMainDir,'complementary_states')
         self._schedule(examples_dir)
         
     def test_plainpyomo_examples(self):
-        print '##############plain_pyomo##############'
+        print('##############plain_pyomo##############')
         examples_dir = os.path.join(examplesMainDir,'plain_pyomo')
         self._schedule(examples_dir)
 
@@ -166,7 +170,7 @@ class TestExamples(unittest.TestCase):
 
             
     def runTest(self):
-        print("hallo")
+        print("hallo")  #: XD
 
 if __name__ == '__main__':
     unittest.main()
