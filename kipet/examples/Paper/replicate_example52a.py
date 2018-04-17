@@ -35,7 +35,7 @@ if __name__ == "__main__":
     dataDirectory = os.path.abspath(
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
             inspect.currentframe() ) ) ), '..','data_sets'))
-    filename =  os.path.join(dataDirectory,'trim_Dij_case52a.txt')
+    filename =  os.path.join(dataDirectory,'Dij_case52a.txt')
     D_frame = read_spectral_data_from_txt(filename)
 
     ######################################
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     v_estimator.initialize_from_trajectory('C',raw_results.C)
     
     options = dict()
-    A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if i%4]
+    A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if (i % 4 == 0)]
     results_variances = v_estimator.run_opt('ipopt',
                                             tee=True,
                                             solver_options=options,
