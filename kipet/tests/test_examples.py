@@ -78,8 +78,8 @@ class TestExamples(unittest.TestCase):
                         print("running casadi:",f,"passed")
                     continue
                 #outcas=self.assertEqual(int(flag),0)
-                print countc,"files in",examples_casadi_dir,"failed"
-            print count," files in ",examples_pyomo_dir," failed"
+                print(countc,"files in",examples_casadi_dir,"failed")
+            print(count," files in ",examples_pyomo_dir," failed")
             return {self.assertEqual(int(flag),0),self.assertEqual(int(flagc),0)}
         #########################
         ##Plain_Pyomo-Examples:##
@@ -99,7 +99,7 @@ class TestExamples(unittest.TestCase):
                 else:
                     print("running plainpyomo:",f,"passed")
                 continue
-            print count,"files in",examples_plainpyomo_dir,"failed"
+            print(count,"files in",examples_plainpyomo_dir,"failed")
             return self.assertEqual(int(flag),0)
            
                         
