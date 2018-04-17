@@ -1,8 +1,9 @@
 from pyomo.environ import *
 from pyomo.dae import *
-from ResultsObject import *
-from Simulator import *
+from kipet.sim.ResultsObject import *
+from kipet.sim.Simulator import *
 import warnings
+import six
 
 
 class PyomoSimulator(Simulator):
@@ -91,8 +92,8 @@ class PyomoSimulator(Simulator):
         z_init = []
         for t in self._times:
             for k in self._mixture_components:
-                if abs(self.model.init_conditions[k])>tol:
-                    z_init.append(self.model.init_conditions[k])
+                if abs(self.model.init_conditions[k].value)>tol:
+                    z_init.append(self.model.init_conditions[k].value)
                 else:
                     z_init.append(1.0)
 
@@ -104,8 +105,8 @@ class PyomoSimulator(Simulator):
         c_init = []
         for t in self._meas_times:
             for k in self._mixture_components:
-                if abs(self.model.init_conditions[k])>tol:
-                    c_init.append(self.model.init_conditions[k])
+                if abs(self.model.init_conditions[k].value)>tol:
+                    c_init.append(self.model.init_conditions[k].value)
                 else:
                     c_init.append(1.0)
 
@@ -120,8 +121,8 @@ class PyomoSimulator(Simulator):
         x_init = []
         for t in self._times:
             for k in self._complementary_states:
-                if abs(self.model.init_conditions[k])>tol:
-                    x_init.append(self.model.init_conditions[k])
+                if abs(self.model.init_conditions[k].value)>tol:
+                    x_init.append(self.model.init_conditions[k].value)
                 else:
                     x_init.append(1.0)
 
@@ -361,7 +362,7 @@ class PyomoSimulator(Simulator):
         dX_var = self.model.dXdt
         
         # check all parameters are fixed before simulating
-        for p_var_data in P_var.itervalues():
+        for p_var_data in six.itervalues(P_var):
             if not p_var_data.fixed:
                 raise RuntimeError('For simulation fix all parameters. Parameter {} is unfixed'.format(p_var_data.cname()))
 
@@ -369,7 +370,7 @@ class PyomoSimulator(Simulator):
         if self.model.nobjectives():
             objectives_map = self.model.component_map(ctype=Objective,active=True)
             active_objectives_names = []
-            for obj in objectives_map.itervalues():
+            for obj in six.itervalues(objectives_map):
                 name = obj.cname()
                 active_objectives_names.append(name)
                 str_warning = 'Deactivating objective {} for simulation'.format(name)
@@ -405,7 +406,7 @@ class PyomoSimulator(Simulator):
         # for the noise term
         if sigmas:
             for i,k in enumerate(self._mixture_components):
-                if sigmas.has_key(k):
+                if k in sigmas.keys():
                     sigma = sigmas[k]**0.5
                     dw_k = np.random.normal(0.0,sigma,self._n_meas_times)
                     n_sig[i,:] = np.random.normal(0.0,sigma,self._n_meas_times)
@@ -429,7 +430,7 @@ class PyomoSimulator(Simulator):
 
         d_results = []
         if sigmas:
-            sigma_d = sigmas.get('device')**0.5 if sigmas.has_key('device') else 0
+            sigma_d = sigmas.get('device')**0.5 if "device" in sigmas.keys() else 0
         else:
             sigma_d = 0
         if s_results and c_noise_results:

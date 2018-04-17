@@ -97,7 +97,7 @@ class TestExamples(unittest.TestCase):
                 continue
             print count,"files in",examples_plainpyomo_dir,"failed"
             return self.assertEqual(int(flag),0)
-            
+           
                         
     def test_sawall_examples(self):
 	print '##############Sawall###############'
@@ -166,7 +166,7 @@ class TestExamples(unittest.TestCase):
 
             
     def runTest(self):
-        print "hola"
+        print("hallo")
 
 if __name__ == '__main__':
     unittest.main()

@@ -21,10 +21,17 @@ class ParameterEstimator(Optimizer):
         Pyomo model to be used in the parameter estimation
 
     """
-    def __init__(self,model):
+    def __init__(self,model, binary=None):
         super(ParameterEstimator, self).__init__(model)
         # for reduce hessian
         self._idx_to_variable = dict()
+        self.binary = None
+        if binary:
+            if isinstance(binary, dict):
+                self.binary = binary
+            else:
+                raise Exception("")
+
         
     def run_sim(self,solver,**kdws):
         raise NotImplementedError("ParameterEstimator object does not have run_sim method. Call run_opt")       
@@ -67,7 +74,6 @@ class ParameterEstimator(Optimizer):
             raise NotImplementedError("Extended model requires spectral data model.D[ti,lj]")
             
         all_sigma_specified = True
-        print(sigma_sq)
         keys = sigma_sq.keys()
         for k in list_components:
             if k not in keys:
@@ -79,37 +85,72 @@ class ParameterEstimator(Optimizer):
             sigma_sq['device'] = 1.0
             
         m = self.model
+        if self.binary:
+            m.A_var = Var(m.meas_times, m.mixture_components, initialize=1.0)
+            m.A_con = Constraint(m.meas_times, m.mixture_components,
+                                 rule=lambda m, i, j: m.A_var[i, j] == sum(self.binary[j, k] * m.Z[i, k] for k in \
+                                                                           m.mixture_components))
+            if with_d_vars:
+                m.D_bar = Var(m.meas_times,
+                              m.meas_lambdas)
 
-        if with_d_vars:
-            m.D_bar = Var(m.meas_times,
-                          m.meas_lambdas)
+                def rule_D_bar(m, t, l):
+                    return m.D_bar[t, l] == sum(m.C[t, k] * m.S[l, k] for k in m.mixture_components)
 
-            def rule_D_bar(m,t,l):
-                return m.D_bar[t,l] == sum(m.C[t,k] * m.S[l,k] for k in m.mixture_components)
-            m.D_bar_constraint = Constraint(m.meas_times,
-                                            m.meas_lambdas,
-                                            rule=rule_D_bar)
+                m.D_bar_constraint = Constraint(m.meas_times,
+                                                m.meas_lambdas,
+                                                rule=rule_D_bar)
 
-        # estimation
-        def rule_objective(m):
-            expr = 0
-            for t in m.meas_times:
-                for l in m.meas_lambdas:
-                    if with_d_vars:
-                        expr+= (m.D[t,l] - m.D_bar[t,l])**2/(sigma_sq['device'])
-                    else:
-                        D_bar = sum(m.C[t, k]*m.S[l, k] for k in list_components)
-                        expr+= (m.D[t,l] - D_bar)**2/(sigma_sq['device'])
+            # estimation
+            def rule_objective(m):
+                expr = 0
+                for t in m.meas_times:
+                    for l in m.meas_lambdas:
+                        if with_d_vars:
+                            expr += (m.D[t, l] - m.D_bar[t, l]) ** 2 / (sigma_sq['device'])
+                        else:
+                            D_bar = sum(m.C[t, k] * m.S[l, k] for k in list_components)
+                            expr += (m.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
 
-            expr*=weights[0]
-            second_term = 0.0
-            for t in m.meas_times:
-                second_term += sum((m.C[t,k]-m.Z[t,k])**2/sigma_sq[k] for k in list_components)
+                expr *= weights[0]
+                second_term = 0.0
+                for t in m.meas_times:
+                    second_term += sum((m.C[t, k] - m.A_var[t, k]) ** 2 / sigma_sq[k] for k in list_components)
 
-            expr+=weights[1]*second_term
-            return expr
-        
-        m.objective = Objective(rule=rule_objective)
+                expr += weights[1] * second_term
+                return expr
+
+            m.objective = Objective(rule=rule_objective)
+        else:  #: not binary
+            if with_d_vars:
+                m.D_bar = Var(m.meas_times,
+                              m.meas_lambdas)
+                def rule_D_bar(m,t,l):
+                    return m.D_bar[t,l] == sum(m.C[t,k] * m.S[l,k] for k in m.mixture_components)
+                m.D_bar_constraint = Constraint(m.meas_times,
+                                                m.meas_lambdas,
+                                                rule=rule_D_bar)
+
+            # estimation
+            def rule_objective(m):
+                expr = 0
+                for t in m.meas_times:
+                    for l in m.meas_lambdas:
+                        if with_d_vars:
+                            expr+= (m.D[t,l] - m.D_bar[t,l])**2/(sigma_sq['device'])
+                        else:
+                            D_bar = sum(m.C[t, k]*m.S[l, k] for k in list_components)
+                            expr+= (m.D[t,l] - D_bar)**2/(sigma_sq['device'])
+
+                expr*=weights[0]
+                second_term = 0.0
+                for t in m.meas_times:
+                    second_term += sum((m.C[t,k]-m.Z[t,k])**2/sigma_sq[k] for k in list_components)
+
+                expr+=weights[1]*second_term
+                return expr
+
+            m.objective = Objective(rule=rule_objective)
         
         #solver_results = optimizer.solve(m,tee=True,
         #                                 report_timing=True)

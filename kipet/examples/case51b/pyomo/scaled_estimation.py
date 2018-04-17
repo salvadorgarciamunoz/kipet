@@ -13,7 +13,8 @@
 #               C_k(t_i) = Z_k(t_i) + w(t_i)    for all t_i in measurement points
 #               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
 
-
+from __future__ import print_function
+from __future__ import division
 from kipet.model.TemplateBuilder import *
 from kipet.sim.PyomoSimulator import *
 from kipet.opt.ParameterEstimator import *
@@ -23,7 +24,7 @@ from kipet.utils.data_tools import *
 import inspect
 import sys
 import os
-
+import six
 if __name__ == "__main__":
 
     with_plots = True
@@ -94,9 +95,9 @@ if __name__ == "__main__":
                                       variances=sigmas,
                                       with_d_vars=True)
 
-    print "The estimated parameters are:"
-    for k,v in results_pyomo.P.iteritems():
-        print k,v
+    print("The estimated parameters are:")
+    for k,v in six.iteritems(results_pyomo.P):
+        print(k, v)
 
     tol = 1e-2
     assert(abs(results_pyomo.P['k1']-0.3)<tol)

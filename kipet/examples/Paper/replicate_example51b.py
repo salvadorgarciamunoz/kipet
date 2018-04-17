@@ -75,9 +75,9 @@ if __name__ == "__main__":
                                             max_iter=20,
                                             subset_lambdas=A_set)
 
-    print "\nThe estimated variances are:\n"
-    for k,v in results_variances.sigma_sq.iteritems():
-        print k,v
+    print("\nThe estimated variances are:\n")
+    for k, v in six.iteritems(results_variances.sigma_sq):
+        print(k, v)
         
     sigmas = results_variances.sigma_sq
     
@@ -106,9 +106,9 @@ if __name__ == "__main__":
                                       solver_opts = options,
                                       variances=sigmas)
 
-    print "The estimated parameters are:"
-    for k,v in results_pyomo.P.iteritems():
-        print k,v
+    print("The estimated parameters are:")
+    for k,v in six.iteritems(results_pyomo.P):
+        print(k, v)
 
     tol = 1e-1
     assert(abs(results_pyomo.P['k1']-0.3)<tol)

@@ -110,10 +110,10 @@ if __name__ == "__main__":
                                             solver_options=options,
                                             tolerance=1e-6)
 
-    print "\nThe estimated variances are:\n"
-    for k,v in results_variances.sigma_sq.iteritems():
-        print k,v
-    sigmas = {}#results_variances.sigma_sq
+    print("\nThe estimated variances are:\n")
+    for k,v in six.iteritems(results_variances.sigma_sq):
+        print(k, v)
+    sigmas = results_variances.sigma_sq#results_variances.sigma_sq
 
     #################################################################################
     
@@ -138,9 +138,9 @@ if __name__ == "__main__":
                                     tee=True,
                                     variances=sigmas)
 
-    print "The estimated parameters are:"
-    for k,v in opt_model.P.iteritems():
-        print k,v.value
+    print("The estimated parameters are:")
+    for k,v in six.iteritems(opt_model.P):
+        print(k, v.value)
 
     
     if with_plots:
