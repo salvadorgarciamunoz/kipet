@@ -367,7 +367,7 @@ class ParameterEstimator(Optimizer):
         if covariance:
             if solver!='ipopt_sens':
                 raise RuntimeError('To get covariance matrix the solver needs to be ipopt_sens')
-            if not solver_opts.has_key('compute_red_hessian'):
+            if not 'compute_red_hessian' in solver_opts.keys():
                 solver_opts['compute_red_hessian'] = 'yes'
             
             self._define_reduce_hess_order()
