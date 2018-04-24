@@ -49,7 +49,7 @@ if __name__ == "__main__":
     builder2.add_mixture_component({'A':1,'B':0})
 
     # note the parameter is not fixed
-    builder2.add_parameter('k',bounds=(0.0,0.1))
+    builder2.add_parameter('k',bounds=(0.0,1))
     builder2.add_spectral_data(D_frame)
 
     # define explicit system of ODEs
@@ -65,7 +65,7 @@ if __name__ == "__main__":
         
     optimizer = ParameterEstimator(pyomo_model)
     
-    optimizer.apply_discretization('dae.collocation',nfe=30,ncp=1,scheme='LAGRANGE-RADAU')
+    optimizer.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
 
     # Provide good initial guess
     
@@ -76,11 +76,14 @@ if __name__ == "__main__":
     optimizer.initialize_from_trajectory('S',raw_results.S)
     optimizer.initialize_from_trajectory('C',raw_results.C)
     
-    #: (dthierry) Missing variances. This will not work
+    sigmas = {'device':1.94554e-6,
+              'A':2.45887e-12,
+              'B':2.45887e-12}
     solver_options = {}
-    solver_options = {'mu_init': 1e-6, 'bound_push':  1e-8}
+    solver_options = {'mu_init': 1e-4, 'bound_push':  1e-6}
     results_pyomo = optimizer.run_opt('ipopt',
                                       tee=True,
+                                      variances=sigmas,
                                       solver_opts = solver_options)
 
     print("The estimated parameters are:")
