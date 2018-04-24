@@ -256,7 +256,9 @@ class ParameterEstimator(Optimizer):
                 for k, c in enumerate(self.model.mixture_components):
                     # r_idx1 = k*nt+i
                     r_idx1 = i * nc + k
-                    r_idx2 = k*nw+j+nc*nt
+                    r_idx2 = j * nc + k + nc * nt
+                    if (r_idx1 == r_idx2):
+                        exit(-1)
                     # r_idx2 = j * nc + k + nc * nw
                     # c_idx = i+j*nt
                     c_idx = i * nw + j
