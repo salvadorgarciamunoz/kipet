@@ -257,8 +257,6 @@ class ParameterEstimator(Optimizer):
                     # r_idx1 = k*nt+i
                     r_idx1 = i * nc + k
                     r_idx2 = j * nc + k + nc * nt
-                    if (r_idx1 == r_idx2):
-                        exit(-1)
                     # r_idx2 = j * nc + k + nc * nw
                     # c_idx = i+j*nt
                     c_idx = i * nw + j
