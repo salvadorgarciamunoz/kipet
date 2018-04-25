@@ -64,7 +64,7 @@ if __name__ == "__main__":
     options = {}
     #options['bound_push'] = 1e-8
     #options['tol'] = 1e-9
-    A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if i%4]
+    A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if (i % 4 == 0)]
     results_variances = v_estimator.run_opt('ipopt',
                                             tee=True,
                                             solver_options=options,
