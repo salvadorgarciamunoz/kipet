@@ -328,7 +328,7 @@ class fe_initialize(object):
         self.adjust_h(fe)
         if self.inputs or self.inputs_sub:
             self.load_input(fe)
-        sol = self.ip.solve(self.mod, tee=True)
+        sol = self.ip.solve(self.mod, tee=False)
         if sol.solver.termination_condition != TerminationCondition.optimal:
             self.ip.options["OF_start_with_resto"] = 'yes'
             sol = self.ip.solve(self.mod, tee=True)

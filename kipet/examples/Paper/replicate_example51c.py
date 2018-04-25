@@ -78,7 +78,7 @@ if __name__ == "__main__":
     # dont push bounds i am giving you a good guess
     options = dict()
 
-    A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if i%4]
+    A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if (i % 4 == 0)]
     results_variances = v_estimator.run_opt('ipopt',
                                             tee=True,
                                             solver_options=options,
