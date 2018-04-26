@@ -54,7 +54,6 @@ class TestExamples(unittest.TestCase):
                     print("running pyomo:",f,"failed")
                     count = count + 1
                     flag=1
-                    #outpy=self.assertEqual(int(flag),0)
                 else:
                     print("running pyomo:",f,"passed")
                 continue
