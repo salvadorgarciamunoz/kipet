@@ -265,7 +265,6 @@ class VarianceEstimator(Optimizer):
 
         for key, val in solver_opts.items():
             opt.options[key]=val
-        
         solver_results = opt.solve(self.model,
                                    tee=tee,
                                    report_timing=profile_time)
@@ -309,7 +308,10 @@ class VarianceEstimator(Optimizer):
         # asume this values were computed in beforehand
         for t in self._meas_times:
             for k in self._sublist_components:
-                self.model.C[t, k].fixed = True
+                if k in self.model.non_absorbing:
+                    pass
+                else:
+                    self.model.C[t, k].fixed = True
 
         obj = 0.0
         for k in self._sublist_components:
@@ -326,7 +328,8 @@ class VarianceEstimator(Optimizer):
         for key, val in solver_opts.items():
             opt.options[key]=val
 
-
+        from pyomo.opt import ProblemFormat
+        self.model.write("whatevs.nl", format=ProblemFormat.nl, io_options={"symbolic_solver_labels": True})
         solver_results = opt.solve(self.model,
                                    logfile=self._tmp2,
                                    tee=tee,
@@ -754,6 +757,9 @@ class VarianceEstimator(Optimizer):
         for l in self._meas_lambdas:
             for k in self._sublist_components:
                 self.S_model.S[l, k].value = self.model.S[l, k].value
+                if self.model.S[l, k].is_fixed():
+                    self.S_model.S[l, k].fix()
+
 
     def _solve_S(self, solver, **kwds):
         """Solves formulation 23 from Weifengs procedure with ipopt
@@ -794,7 +800,6 @@ class VarianceEstimator(Optimizer):
 
         for key, val in solver_opts.items():
             opt.options[key]=val
-
         solver_results = opt.solve(self.S_model,
                                    logfile=self._tmp3,
                                    tee=tee,
@@ -865,7 +870,6 @@ class VarianceEstimator(Optimizer):
 
         for key, val in solver_opts.items():
             opt.options[key]=val
-                
         solver_results = opt.solve(self.C_model,
                                    logfile=self._tmp4,
                                    tee=tee,

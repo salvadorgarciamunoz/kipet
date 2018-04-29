@@ -14,7 +14,7 @@
 #               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
 
 from __future__ import print_function
-from kipet.model.TemplateBuilder import *
+from kipet.model.Tmp2 import *
 from kipet.sim.PyomoSimulator import *
 from kipet.opt.ParameterEstimator import *
 from kipet.opt.VarianceEstimator import *
@@ -57,7 +57,10 @@ if __name__ == "__main__":
 
     builder.set_odes_rule(rule_odes)
     opt_model = builder.create_pyomo_model(0.0, 10.0)
-
+    non_abs = ['C']
+    builder.set_non_absorbing_species(non_abs, opt_model)
+    # opt_model.pprint()
+    # sys.exit()
     v_estimator = VarianceEstimator(opt_model)
     v_estimator.apply_discretization('dae.collocation', nfe=60, ncp=1, scheme='LAGRANGE-RADAU')
 
@@ -73,6 +76,7 @@ if __name__ == "__main__":
                                             subset_lambdas=A_set)
 
     print("\nThe estimated variances are:\n")
+
     for k, v in six.iteritems(results_variances.sigma_sq):
         print(k, v)
 

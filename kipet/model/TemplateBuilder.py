@@ -72,6 +72,8 @@ class TemplateBuilder(object):
         self._complementary_states = set()
         self._algebraics = set()
         self._algebraic_constraints = None
+        self._non_absorbing = None
+        self._is_non_abs_set = False
 
         components = kwargs.pop('concentrations', dict())
         if isinstance(components, dict):
@@ -732,3 +734,35 @@ class TemplateBuilder(object):
 
     def has_adsorption_data(self):
         return self._absorption_data is not None
+
+    def set_non_absorbing_species(self, non_abs_list, model):
+        # type: (list, ConcreteModel) -> None
+        """Sets the non absorbing component of the model.
+
+        Args:
+            non_abs_list: List of non absorbing components.
+            model: The corresponding model.
+        """
+
+        if self._is_non_abs_set:
+            raise RuntimeError('Non absorbing species have been already set up.')
+        self._is_non_abs_set = True
+        self._non_absorbing = non_abs_list
+        model.add_component('non_absorbing', Set(initialize=self._non_absorbing))
+
+        S = getattr(model, 'S')
+        C = getattr(model, 'C')
+        Z = getattr(model, 'Z')
+        times = getattr(model, 'meas_times')
+        lambdas = getattr(model, 'meas_lambdas')
+        for component in self._non_absorbing:
+            for l in lambdas:
+                S[l, component].set_value(0)
+                S[l, component].fix()
+
+        model.add_component('fixed_C', ConstraintList())
+        new_con = getattr(model, 'fixed_C')
+        for time in times:
+            for component in self._non_absorbing:
+                new_con.add(C[time, component] == Z[time, component])
+
