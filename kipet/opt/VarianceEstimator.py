@@ -318,10 +318,11 @@ class VarianceEstimator(Optimizer):
         # asume this values were computed in beforehand
         for t in self._meas_times:
             for k in self._sublist_components:
-                if k in self.model.non_absorbing:
-                    pass
-                else:
-                    self.model.C[t, k].fixed = True
+                if hasattr(self.model, 'non_absorbing'):
+                    if k in self.model.non_absorbing:
+                        pass
+                    else:
+                        self.model.C[t, k].fixed = True
 
         obj = 0.0
         for k in self._sublist_components:
