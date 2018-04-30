@@ -57,8 +57,14 @@ if __name__ == "__main__":
 
     builder.set_odes_rule(rule_odes)
     opt_model = builder.create_pyomo_model(0.0, 10.0)
+
+    #################################################################################
+    #: non absorbing species.
+    #: as straightforward as it seems, this can be easily broken. In the subsequent calls to VarianceEstimation and
+    #: ParameterEstimation things were patched up but I have no clue as to whether this is correct or not.
     non_abs = ['C']
     builder.set_non_absorbing_species(opt_model, non_abs)
+    #################################################################################
 
     v_estimator = VarianceEstimator(opt_model)
 
@@ -68,6 +74,7 @@ if __name__ == "__main__":
     # options['bound_push'] = 1e-8
     # options['tol'] = 1e-9
     A_set = [l for i, l in enumerate(opt_model.meas_lambdas) if (i % 4 == 0)]
+    #: this will take a sweet-long time to solve.
     results_variances = v_estimator.run_opt('ipopt',
                                             tee=True,
                                             solver_options=options,
@@ -130,3 +137,4 @@ if __name__ == "__main__":
     plt.title("Absorbance  Profile")
 
     plt.show()
+    print('so schwer!')
