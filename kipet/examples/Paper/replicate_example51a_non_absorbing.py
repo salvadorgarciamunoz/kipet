@@ -14,7 +14,7 @@
 #               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
 
 from __future__ import print_function
-from kipet.model.Tmp2 import *
+from kipet.model.TemplateBuilder import *
 from kipet.sim.PyomoSimulator import *
 from kipet.opt.ParameterEstimator import *
 from kipet.opt.VarianceEstimator import *
@@ -58,10 +58,10 @@ if __name__ == "__main__":
     builder.set_odes_rule(rule_odes)
     opt_model = builder.create_pyomo_model(0.0, 10.0)
     non_abs = ['C']
-    builder.set_non_absorbing_species(non_abs, opt_model)
-    # opt_model.pprint()
-    # sys.exit()
+    builder.set_non_absorbing_species(opt_model, non_abs)
+
     v_estimator = VarianceEstimator(opt_model)
+
     v_estimator.apply_discretization('dae.collocation', nfe=60, ncp=1, scheme='LAGRANGE-RADAU')
 
     options = {}
@@ -81,9 +81,12 @@ if __name__ == "__main__":
         print(k, v)
 
     sigmas = results_variances.sigma_sq
-
     #################################################################################
     opt_model = builder.create_pyomo_model(0.0, 10.0)
+
+    # print(hex(id(opt_model)))
+    # non_abs = ['C']
+    # builder.set_non_absorbing_species(opt_model, non_abs)
 
     p_estimator = ParameterEstimator(opt_model)
     p_estimator.apply_discretization('dae.collocation', nfe=60, ncp=1, scheme='LAGRANGE-RADAU')
@@ -99,21 +102,21 @@ if __name__ == "__main__":
 
     # dont push bounds i am giving you a good guess
     options = dict()
-    options['nlp_scaling_method'] = 'user-scaling'
+    # options['nlp_scaling_method'] = 'user-scaling'
     # options['mu_init'] = 1e-6
     # options['bound_push'] =1e-6
-    results_pyomo = p_estimator.run_opt('ipopt',
+    results_pyomo = p_estimator.run_opt('ipopt_sens',
                                         tee=True,
                                         solver_opts=options,
-                                        variances=sigmas)
-
+                                        variances=sigmas,
+                                        covariance=True)
     print("The estimated parameters are:")
     for k, v in six.iteritems(results_pyomo.P):
         print(k, v)
 
     tol = 1e-1
-    assert (abs(results_pyomo.P['k1'] - 2.0) < tol)
-    assert (abs(results_pyomo.P['k2'] - 0.2) < tol)
+    # assert (abs(results_pyomo.P['k1'] - 2.0) < tol)
+    # assert (abs(results_pyomo.P['k2'] - 0.2) < tol)
 
     # display results
     results_pyomo.C.plot.line(legend=True)

@@ -26,6 +26,14 @@ class ParameterEstimator(Optimizer):
         super(ParameterEstimator, self).__init__(model)
         # for reduce hessian
         self._idx_to_variable = dict()
+        self._n_actual = self._n_components
+        if hasattr(self.model, 'non_absorbing'):
+            warnings.warn("Overriden by non_absorbing")
+            list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
+            self._sublist_components = list_components
+            self._n_actual = len(self._sublist_components)
+        else:
+            self._sublist_components = [k for k in self._mixture_components]
 
     def run_sim(self, solver, **kdws):
         raise NotImplementedError("ParameterEstimator object does not have run_sim method. Call run_opt")
@@ -67,6 +75,11 @@ class ParameterEstimator(Optimizer):
         if not self._spectra_given:
             raise NotImplementedError("Extended model requires spectral data model.D[ti,lj]")
 
+        if hasattr(self.model, 'non_absorbing'):
+            warnings.warn("Overriden by non_absorbing!!!")
+            list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
+
+
         all_sigma_specified = True
         print(sigma_sq)
         keys = sigma_sq.keys()
@@ -86,7 +99,7 @@ class ParameterEstimator(Optimizer):
                           m.meas_lambdas)
 
             def rule_D_bar(m, t, l):
-                return m.D_bar[t, l] == sum(m.C[t, k] * m.S[l, k] for k in m.mixture_components)
+                return m.D_bar[t, l] == sum(m.C[t, k] * m.S[l, k] for k in m._sublist_components)
 
             m.D_bar_constraint = Constraint(m.meas_times,
                                             m.meas_lambdas,
@@ -158,14 +171,14 @@ class ParameterEstimator(Optimizer):
 
         count_vars = 1
         for t in self._meas_times:
-            for c in self._mixture_components:
+            for c in self._sublist_components:
                 v = self.model.C[t, c]
                 self._idx_to_variable[count_vars] = v
                 self.model.red_hessian[v] = count_vars
                 count_vars += 1
 
         for l in self._meas_lambdas:
-            for c in self._mixture_components:
+            for c in self._sublist_components:
                 v = self.model.S[l, c]
                 self._idx_to_variable[count_vars] = v
                 self.model.red_hessian[v] = count_vars
@@ -180,7 +193,7 @@ class ParameterEstimator(Optimizer):
 
         nt = self._n_meas_times
         nw = self._n_meas_lambdas
-        nc = self._n_components
+        nc = self._n_actual
         nparams = len(self.model.P)
         nd = nw * nt
         ntheta = nc * (nw + nt) + nparams
@@ -216,7 +229,7 @@ class ParameterEstimator(Optimizer):
 
         nt = self._n_meas_times
         nw = self._n_meas_lambdas
-        nc = self._n_components
+        nc = self._n_actual
         nparams = len(self.model.P)
         # this changes depending on the order of the suffixes passed to sipopt
         nd = nw * nt
@@ -245,7 +258,8 @@ class ParameterEstimator(Optimizer):
 
         nt = self._n_meas_times
         nw = self._n_meas_lambdas
-        nc = self._n_components
+        nc = self._n_actual
+
         nparams = len(self.model.P)
         # this changes depending on the order of the suffixes passed to sipopt
         nd = nw * nt
@@ -253,7 +267,7 @@ class ParameterEstimator(Optimizer):
         self.B_matrix = np.zeros((ntheta, nw * nt))
         for i, t in enumerate(self.model.meas_times):
             for j, l in enumerate(self.model.meas_lambdas):
-                for k, c in enumerate(self.model.mixture_components):
+                for k, c in enumerate(self._sublist_components):
                     # r_idx1 = k*nt+i
                     r_idx1 = i * nc + k
                     r_idx2 = j * nc + k + nc * nt
@@ -286,7 +300,7 @@ class ParameterEstimator(Optimizer):
         data = []
         nt = self._n_meas_times
         nw = self._n_meas_lambdas
-        nc = self._n_components
+        nc = self._n_actual
         """
         for i,t in enumerate(self.model.meas_times):
             for j,l in enumerate(self.model.meas_lambdas):
@@ -305,11 +319,11 @@ class ParameterEstimator(Optimizer):
         """
         s_array = np.zeros(nw * nc)
         v_array = np.zeros(nc)
-        for k, c in enumerate(self.model.mixture_components):
+        for k, c in enumerate(self._sublist_components):
             v_array[k] = variances[c]
 
         for j, l in enumerate(self.model.meas_lambdas):
-            for k, c in enumerate(self.model.mixture_components):
+            for k, c in enumerate(self._sublist_components):
                 s_array[j * nc + k] = self.model.S[l, c].value
 
         row = []
@@ -386,7 +400,8 @@ class ParameterEstimator(Optimizer):
         active_objectives = [o for o in self.model.component_map(Objective, active=True)]
         if active_objectives:
             print(
-                "WARNING: The model has an active objective. Running optimization with models objective.\n To solve optimization with default objective (Weifengs) deactivate all objectives in the model.")
+                "WARNING: The model has an active objective. Running optimization with models objective.\n"
+                " To solve optimization with default objective (Weifengs) deactivate all objectives in the model.")
             solver_results = opt.solve(self.model, tee=tee)
         else:
             self._solve_extended_model(variances, opt,

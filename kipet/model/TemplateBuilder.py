@@ -570,6 +570,7 @@ class TemplateBuilder(object):
                         else:
                             return Constraint.Skip
 
+
             pyomo_model.odes = Constraint(pyomo_model.time,
                                           pyomo_model.states,
                                           rule=rule_odes)
@@ -585,6 +586,8 @@ class TemplateBuilder(object):
             pyomo_model.algebraic_consts = Constraint(pyomo_model.time,
                                                       range(n_alg_eqns),
                                                       rule=rule_algebraics)
+        if self._is_non_abs_set:  #: in case of a second call after non_absorbing has been declared
+            self.set_non_absorbing_species(pyomo_model, self._non_absorbing, check=False)
         return pyomo_model
 
     def create_casadi_model(self, start_time, end_time):
@@ -735,17 +738,22 @@ class TemplateBuilder(object):
     def has_adsorption_data(self):
         return self._absorption_data is not None
 
-    def set_non_absorbing_species(self, non_abs_list, model):
-        # type: (list, ConcreteModel) -> None
+    def set_non_absorbing_species(self, model, non_abs_list, check=True):
+        # type: (ConcreteModel, list, bool) -> None
         """Sets the non absorbing component of the model.
 
         Args:
             non_abs_list: List of non absorbing components.
             model: The corresponding model.
+            check: Safeguard against setting this up twice.
         """
+        if hasattr(model, 'non_absorbing'):
+            print("non-absorbing species were already set up before.")
+            return
 
-        if self._is_non_abs_set:
+        if (self._is_non_abs_set and check):
             raise RuntimeError('Non absorbing species have been already set up.')
+
         self._is_non_abs_set = True
         self._non_absorbing = non_abs_list
         model.add_component('non_absorbing', Set(initialize=self._non_absorbing))
