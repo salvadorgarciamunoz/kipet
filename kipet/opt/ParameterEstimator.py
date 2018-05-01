@@ -99,7 +99,7 @@ class ParameterEstimator(Optimizer):
                           m.meas_lambdas)
 
             def rule_D_bar(m, t, l):
-                return m.D_bar[t, l] == sum(m.C[t, k] * m.S[l, k] for k in m._sublist_components)
+                return m.D_bar[t, l] == sum(m.C[t, k] * m.S[l, k] for k in self._sublist_components)
 
             m.D_bar_constraint = Constraint(m.meas_times,
                                             m.meas_lambdas,

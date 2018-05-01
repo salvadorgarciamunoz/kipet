@@ -99,14 +99,14 @@ sim.apply_discretization('integrator',nfe=5)
 # simulate
 results_casadi = sim.run_sim("cvodes")
 
-print results_casadi.Z['SA']
+print(results_casadi.Z['SA'])
 
 sim2 = CasadiSimulator(casadi_model)
 # defines the discrete points wanted in the concentration profile
 sim2.apply_discretization('integrator',nfe=3)
 sim2.fix_from_trajectory('Z','SA',results_casadi.Z)
-print sim2._fixed_variables
-print sim2._fixed_trajectories
+print(sim2._fixed_variables)
+print(sim2._fixed_trajectories)
 
 # simulate
 results_casadi2 = sim2.run_sim("cvodes")

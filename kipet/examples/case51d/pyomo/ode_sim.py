@@ -22,7 +22,7 @@ import sys
 import pickle
 
 if __name__ == "__main__":
-    
+
     with_plots = True
     if len(sys.argv)==2:
         if int(sys.argv[1]):
@@ -30,9 +30,9 @@ if __name__ == "__main__":
 
 
     fixed_traj = read_absorption_data_from_txt('extra_states.txt')
-    
+
     # create template model 
-    builder = TemplateBuilder()    
+    builder = TemplateBuilder()
 
     # components
     components = dict()
@@ -64,9 +64,9 @@ if __name__ == "__main__":
     extra_states['V'] = 0.0202
     extra_states['T'] = 313
     extra_states['f'] = 0.0
-    
+
     builder.add_complementary_state_variable(extra_states)
-    
+
     model = builder.create_pyomo_model(0.0,220.5257)
 
     gammas = dict()
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     gammas['HA']= [1.0,1.0,1.0,2.0,0.0]
     gammas['ASAA']= [0.0,1.0,-1.0,0.0]
     gammas['H2O']= [0.0,0.0,-1.0,-1.0]
-    
+
     partial_vol = dict()
     partial_vol['SA']=0.0952552311614
     partial_vol['AA']=0.101672206869
@@ -84,7 +84,7 @@ if __name__ == "__main__":
     partial_vol['HA']=0.060320218688
     partial_vol['ASAA']=0.186550717015
     partial_vol['H2O']=0.0243603912169
-    
+
     def vel_rxns(m,t):
         r = list()
         r.append(m.P['k1']*m.Z[t,'SA']*m.Z[t,'AA'])
@@ -94,12 +94,12 @@ if __name__ == "__main__":
         return r
 
     # variables for the disolution and cristalization rates
-    
+
     model.rc = Var(model.time,
                    bounds=(0.0,None),
                    initialize=1.0)
 
-    
+
     def rule_rc(m,t):
         C_sat = 0.000403961838576*(m.X[t,'T']-273.15)**2 - 0.002335673472454*(m.X[t,'T']-273.15)+0.428791235875747
         C_asa = m.Z[t,'ASA']
@@ -107,13 +107,13 @@ if __name__ == "__main__":
         return m.rc[t] == 0.3950206559*m.P['kc']*(C_asa-C_sat+((C_asa-C_sat)**2+1e-6)**0.5)**1.34
         #return m.rc[t]**0.7462686567 == rhs
     model.rc_constraint = Constraint(model.time,rule=rule_rc)
-    
+
 
     model.rd = Var(model.time,
                    bounds=(0.0,None),
                    initialize=1.0)
 
-    
+
     def rule_rd(m,t):
 
         C_sat = m.P['Csa']
@@ -122,10 +122,10 @@ if __name__ == "__main__":
         #step = 0.5*(1+m_sa/(m_sa**2+1e-2**2)**0.5)
         step = 1.0/(1.0+exp(-m_sa/1e-3))
         return m.rd[t] == 0.0 #m.P['kd']*(C_sat-C_sa)**2.0*step
-        
+
     model.rd_constraint = Constraint(model.time,rule=rule_rd)
 
-    
+
 
     def mass_balances(m,t):
         r = vel_rxns(m,t)
@@ -138,7 +138,7 @@ if __name__ == "__main__":
         exprs['ASAA'] = V*(r[1]-r[2]) - m.dXdt[t,'V']*m.Z[t,'ASAA']
         exprs['H2O'] = V*(-r[2]-r[3]) - m.dXdt[t,'V']*m.Z[t,'H2O']
         return exprs
-    
+
     def rule_odes(m,t,k):
         exprs = mass_balances(m,t)
         if t == m.start_time.value:
@@ -149,14 +149,14 @@ if __name__ == "__main__":
     model.odes = Constraint(model.time,
                             model.mixture_components,
                             rule=rule_odes)
-    
+
     # deal with additional states
     def rule_volume(m,t):
-        r = vel_rxns(m,t)        
+        r = vel_rxns(m,t)
         vol_sum = 0.0
         for c in m.mixture_components:
-            vol_sum += partial_vol[c]*sum(gammas[c][j]*r_val for j,r_val in enumerate(r)) 
-        
+            vol_sum += partial_vol[c]*sum(gammas[c][j]*r_val for j,r_val in enumerate(r))
+
         return m.dXdt[t,'V'] == m.X[t,'V']*vol_sum
 
     model.volume = Constraint(model.time,
@@ -168,31 +168,31 @@ if __name__ == "__main__":
     model.temperature = Constraint(model.time,
                                    rule=rule_temperature)
 
-    
+
     def rule_Masa(m,t):
         PM = 180.157
         return m.dXdt[t,'Masa'] == PM*m.X[t,'V']*m.rc[t]
 
     model.Masa = Constraint(model.time,
                             rule=rule_Masa)
-    
+
     def rule_Msa(m,t):
         PM = 138.121
         return m.dXdt[t,'Msa'] == -PM*m.X[t,'V']*m.rd[t]
 
     model.Msa = Constraint(model.time,
                            rule=rule_Msa)
-    
+
     simulator = PyomoSimulator(model)
     # defines the discrete points wanted in the concentration profile
     simulator.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
-    
+
     with open('init2.pkl', 'rb') as f:
         results_casadi = pickle.load(f)
-    
+
     simulator.initialize_from_trajectory('Z',results_casadi.Z)
     #simulator.initialize_from_trajectory('X',fixed_traj)
-    
+
     # fixes the flow
     #for t in model.time:
     #    model.X[t,'f'].fixed = True
@@ -210,12 +210,12 @@ if __name__ == "__main__":
         plt.title("Concentration Profile")
 
         plt.figure()
-        
+
         results_pyomo.X['V'].plot.line()
         plt.xlabel("time (s)")
         plt.ylabel("volumne (L)")
         plt.title("Volume Profile")
-        
+
         plt.figure()
         results_pyomo.X['T'].plot.line()
         plt.xlabel("time (s)")
@@ -225,7 +225,7 @@ if __name__ == "__main__":
 
 
         plt.figure()
-        
+
         results_pyomo.X['Masa'].plot.line()
         plt.xlabel("time (s)")
         plt.ylabel("m_dot (g)")
