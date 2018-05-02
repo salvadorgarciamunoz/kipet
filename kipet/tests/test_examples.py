@@ -68,10 +68,10 @@ class TestExamples(unittest.TestCase):
                 counts=0
                 if os.path.isdir(os.path.join(examples_pyomo_dir,'sipopt'))==True:
                     examples_sipopt_dir = os.path.join(examples_pyomo_dir,'sipopt')
-                    examples_sipopt = [g for g in os.listdir(examples_sipopt_dir) if os.path.isfile(os.path.join(examples_sipopt_dir,g)) and f.endswith('.py')]
+                    examples_sipopt = [g for g in os.listdir(examples_sipopt_dir) if os.path.isfile(os.path.join(examples_sipopt_dir,g)) and g.endswith('.py')]
                     for g in examples_sipopt:
-                        # print "running casadi:",f
-                        flags = subprocess.call([sys.executable,os.path.join(examples_sipopt_dir,f),'1'],
+                        # print "running sipopt:",g
+                        flags = subprocess.call([sys.executable,os.path.join(examples_sipopt_dir,g),'1'],
                                             stdout=self.std_out,
                                             stderr=subprocess.STDOUT)
                         if flags!=0:
