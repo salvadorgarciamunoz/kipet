@@ -116,6 +116,12 @@ class VarianceEstimator(Optimizer):
 
         self._sublist_components = list_components
 
+        if hasattr(self.model, 'non_absorbing'):
+            warnings.warn("Overriden by non_absorbing")
+            list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
+            self._sublist_components = list_components
+
+
         # solves formulation 18
         if init_C is None:
             self._solve_initalization(solver, subset_lambdas=A, tee=tee)
@@ -133,6 +139,10 @@ class VarianceEstimator(Optimizer):
             for l in self._meas_lambdas:
                 for k in self._mixture_components:
                     self.model.S[l, k].value = S_frame[k][l] #1e-2
+                    #: Some of these are gonna be non-zero
+                    if hasattr(self.model, 'non_absorbing'):
+                        if k in self.model.non_absorbing:
+                            self.model.S[l, k].value = 0.0
         #start looping
         #print("{: >11} {: >20} {: >16} {: >16}".format('Iter','|Zi-Zi+1|','|Ci-Ci+1|','|Si-Si+1|'))
         print("{: >11} {: >20}".format('Iter', '|Zi-Zi+1|'))
@@ -265,7 +275,6 @@ class VarianceEstimator(Optimizer):
 
         for key, val in solver_opts.items():
             opt.options[key]=val
-        
         solver_results = opt.solve(self.model,
                                    tee=tee,
                                    report_timing=profile_time)
@@ -309,7 +318,11 @@ class VarianceEstimator(Optimizer):
         # asume this values were computed in beforehand
         for t in self._meas_times:
             for k in self._sublist_components:
-                self.model.C[t, k].fixed = True
+                if hasattr(self.model, 'non_absorbing'):
+                    if k in self.model.non_absorbing:
+                        pass
+                    else:
+                        self.model.C[t, k].fixed = True
 
         obj = 0.0
         for k in self._sublist_components:
@@ -326,7 +339,8 @@ class VarianceEstimator(Optimizer):
         for key, val in solver_opts.items():
             opt.options[key]=val
 
-
+        from pyomo.opt import ProblemFormat
+        self.model.write("whatevs.nl", format=ProblemFormat.nl, io_options={"symbolic_solver_labels": True})
         solver_results = opt.solve(self.model,
                                    logfile=self._tmp2,
                                    tee=tee,
@@ -395,7 +409,7 @@ class VarianceEstimator(Optimizer):
         n = self._n_components
         for j, l in enumerate(self._meas_lambdas):
             for k, c in enumerate(self._mixture_components):
-                if self.model.S[l, c].value <= 0.0:
+                if self.model.S[l, c].value < 0.0:  #: only less thant zero for non-absorbing
                     self._s_array[j*n+k] = 1e-2
                 else:
                     self._s_array[j*n+k] = self.model.S[l, c].value
@@ -462,7 +476,11 @@ class VarianceEstimator(Optimizer):
         # retrive solution to pyomo model
         for j,l in enumerate(self._meas_lambdas):
             for k,c in enumerate(self._mixture_components):
-                self.model.S[l,c].value = res.x[j*n+k]
+                self.model.S[l,c].value = res.x[j*n+k]  #: Some of these are not gonna be zero
+                if hasattr(self.model, 'non_absorbing'):
+                    if c in self.model.non_absorbing:
+                        self.model.S[l, c].set_value(0.0)
+
 
         return res.success
 
@@ -754,6 +772,12 @@ class VarianceEstimator(Optimizer):
         for l in self._meas_lambdas:
             for k in self._sublist_components:
                 self.S_model.S[l, k].value = self.model.S[l, k].value
+                if hasattr(self.model, 'non_absorbing'):
+                    if k in self.model.non_absorbing:
+                        if self.model.S[l, k].value != 0.0:
+                            # print("non_zero 772")
+                            self.S_model.S[l, k].set_value(0.0)
+                            self.S_model.S[l, k].fix()
 
     def _solve_S(self, solver, **kwds):
         """Solves formulation 23 from Weifengs procedure with ipopt
@@ -776,6 +800,12 @@ class VarianceEstimator(Optimizer):
         for l in self._meas_lambdas:
             for c in self._sublist_components:
                 self.S_model.S[l, c].value = self.model.S[l, c].value
+                if hasattr(self.model, 'non_absorbing'):
+                    if c in self.model.non_absorbing:
+                        if self.model.S[l, c].value != 0.0:
+                            # print("non_zero 800")
+                            self.S_model.S[l, c].set_value(0.0)
+                            self.S_model.S[l, c].fix()
         
         obj = 0.0
         # asumes base model has been solved already for Z
@@ -794,7 +824,6 @@ class VarianceEstimator(Optimizer):
 
         for key, val in solver_opts.items():
             opt.options[key]=val
-
         solver_results = opt.solve(self.S_model,
                                    logfile=self._tmp3,
                                    tee=tee,
@@ -808,6 +837,14 @@ class VarianceEstimator(Optimizer):
         for l in self._meas_lambdas:
             for c in self._sublist_components:
                 self.model.S[l, c].value = self.S_model.S[l, c].value
+                if hasattr(self.model, 'non_absorbing'):
+                    if c in self.model.non_absorbing:
+                        if self.S_model.S[l, c].value != 0.0:
+                            # print("non_zero 837")
+                            self.model.S[l, c].set_value(0.0)
+                            self.model.S[l, c].fix()
+
+
 
     def _build_c_model(self):
         """Builds s_model to solve formulation 25 with ipopt
@@ -832,6 +869,8 @@ class VarianceEstimator(Optimizer):
         for l in self._meas_times:
             for k in self._sublist_components:
                 self.C_model.C[l, k].value = self.model.C[l, k].value
+                if hasattr(self.model, 'non_absorbing'):
+                    self.C_model.C[l, k].fix()  #: this variable does not need to be part of the optimization
 
     def _solve_C(self,solver,**kwds):
         """Solves formulation 23 from Weifengs procedure with ipopt
@@ -865,7 +904,6 @@ class VarianceEstimator(Optimizer):
 
         for key, val in solver_opts.items():
             opt.options[key]=val
-                
         solver_results = opt.solve(self.C_model,
                                    logfile=self._tmp4,
                                    tee=tee,
@@ -878,7 +916,7 @@ class VarianceEstimator(Optimizer):
         #updates values in main model
         for t in self._meas_times:
             for c in self._sublist_components:
-                self.model.C[t, c].value = self.C_model.C[t, c].value
+                self.model.C[t, c].value = self.C_model.C[t, c].value  #: does not matter for non_abs
         
         
 def add_warm_start_suffixes(model):

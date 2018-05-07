@@ -518,7 +518,7 @@ def write_nl(d_mod, filename=None):
     if not filename:
         filename = d_mod.name + '.nl'
     d_mod.write(filename, format=ProblemFormat.nl,
-                io_options={"symbolic_solver_labels": True})
+                io_options={"symbolic_solver_labels": False})
     cwd = getcwd()
     print("nl file {}".format(cwd + "/" + filename))
     return cwd
@@ -545,7 +545,10 @@ def reconcile_nvars_mequations(d_mod):
         nvar = int(newl[0])
         meqn = int(newl[1])
         nl.close()
-    remove(fullpth)
+    try:
+        remove(fullpth)
+    except OSError:
+        pass
     return (nvar, meqn)
 
 
