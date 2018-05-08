@@ -16,6 +16,9 @@ try:
 except ImportError:
     found_casadi = False
 
+if not found_casadi:
+    sys.exit()
+
 examplesMainDir = os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(inspect.getfile(
         inspect.currentframe()))), '..', 'examples'))
@@ -196,8 +199,8 @@ class TestExamples(unittest.TestCase):
         self.test_case52a_examples()
         self.test_case52b_examples()
         self.test_complementary_states_examples()
-	  self.test_plain_pyomo_examples()
-	  self.test_paper_examples()
+        self.test_plain_pyomo_examples()
+        self.test_paper_examples()
 
 
     def runTest(self):

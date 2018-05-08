@@ -1,10 +1,18 @@
-import imp
+# -*- coding: utf-8 -*-
+import sys
 try:
-    imp.find_module('casadi')
-    from CasadiModel import *
-    found_casadi=True
+    if sys.version_info.major > 3:
+        import importlib
+        importlib.util.find_spec("casadi")
+    else:
+        import imp
+        imp.find_module('casadi')
+    from kipet.model.CasadiModel import CasadiModel
+    from kipet.model.CasadiModel import KipetCasadiStruct
+    found_casadi = True
 except ImportError:
-    found_casadi=False
+    found_casadi = False
+
 
 if found_casadi:
     __all__ = ['CasadiModel.py','TemplateBuilder']
