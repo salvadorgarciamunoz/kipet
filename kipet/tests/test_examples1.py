@@ -60,9 +60,9 @@ class TestExamples(unittest.TestCase):
                     print("running pyomo:", f, "passed")
                 continue
             #####################################
-            #####Casadi- and sipopt-Examples:####
+            #####sipopt-Examples:####
             #####################################
-            if found_casadi or os.path.isdir(os.path.join(examples_pyomo_dir,'sipopt')):
+            if os.path.isdir(os.path.join(examples_pyomo_dir,'sipopt')):
             ######################################
             #########sipopt-Files#################
             ######################################
@@ -87,24 +87,24 @@ class TestExamples(unittest.TestCase):
                 #########################
                 #####Casadi-Examples:####
                 #########################
-                if os.path.isdir(os.path.join(examples_dir,'casadi'))==True:
-                    examples_casadi_dir = os.path.join(examples_dir,'casadi')
-                    examples_casadi = [f for f in os.listdir(examples_casadi_dir) if os.path.isfile(os.path.join(examples_casadi_dir,f)) and f.endswith('.py')]
-                    countc = 0
-                    flagc = 0
-                    for f in examples_casadi:
+                #if os.path.isdir(os.path.join(examples_dir,'casadi'))==True:
+                #    examples_casadi_dir = os.path.join(examples_dir,'casadi')
+                #    examples_casadi = [f for f in os.listdir(examples_casadi_dir) if os.path.isfile(os.path.join(examples_casadi_dir,f)) and f.endswith('.py')]
+                #    countc = 0
+                #    flagc = 0
+                #    for f in examples_casadi:
                         # print "running casadi:",f
-                        flagc = subprocess.call([sys.executable,os.path.join(examples_casadi_dir,f),'1'],
-                                            stdout=self.std_out,
-                                            stderr=subprocess.STDOUT)
-                        if flagc!=0:
-                            print("running casadi:",f,"failed")
-                            countc = countc + 1
-                            flagc=1
-                        else:
-                            print("running casadi:",f,"passed")
-                        continue
-                    print(countc,"files in",examples_casadi_dir,"failed")
+                #        flagc = subprocess.call([sys.executable,os.path.join(examples_casadi_dir,f),'1'],
+                #                            stdout=self.std_out,
+                #                            stderr=subprocess.STDOUT)
+                #        if flagc!=0:
+                #            print("running casadi:",f,"failed")
+                 #           countc = countc + 1
+                 #           flagc=1
+                 #       else:
+                 #           print("running casadi:",f,"passed")
+                 #       continue
+                 #   print(countc,"files in",examples_casadi_dir,"failed")
             print(count," files in ",examples_pyomo_dir," failed")
             return {self.assertEqual(int(flagc),0), self.assertEqual(int(flags),0),self.assertEqual(int(flag),0)}
         
@@ -151,25 +151,25 @@ class TestExamples(unittest.TestCase):
         examples_dir = os.path.join(examplesMainDir, 'case51c')
         self._schedule(examples_dir)
 
-    def test_case51d_examples(self):
-        print('##############Case51d##############')
-        examples_dir = os.path.join(examplesMainDir, 'case51d')
-        self._schedule(examples_dir)
+#    def test_case51d_examples(self):
+#        print('##############Case51d##############')
+#        examples_dir = os.path.join(examplesMainDir, 'case51d')
+#        self._schedule(examples_dir)
 
-    def test_michaels_examples(self):
-        print('##############michaels##############')
-        examples_dir = os.path.join(examplesMainDir, 'michaels')
-        self._schedule(examples_dir)
+#    def test_michaels_examples(self):
+#        print('##############michaels##############')
+#        examples_dir = os.path.join(examplesMainDir, 'michaels')
+#        self._schedule(examples_dir)
 
-    def test_case52a_examples(self):
-        print('##############Case52a##############')
-        examples_dir = os.path.join(examplesMainDir, 'case52a')
-        self._schedule(examples_dir)
+#    def test_case52a_examples(self):
+#        print('##############Case52a##############')
+#        examples_dir = os.path.join(examplesMainDir, 'case52a')
+#        self._schedule(examples_dir)
 
-    def test_case52b_examples(self):
-        print('##############Case52b##############')
-        examples_dir = os.path.join(examplesMainDir, 'case52b')
-        self._schedule(examples_dir)
+#    def test_case52b_examples(self):
+#        print('##############Case52b##############')
+#        examples_dir = os.path.join(examplesMainDir, 'case52b')
+#        self._schedule(examples_dir)
 
     def test_complementary_states_examples(self):
         print('##############complementary_states##############')
@@ -191,10 +191,10 @@ class TestExamples(unittest.TestCase):
         self.test_case51a_examples()
         self.test_case51b_examples()
         self.test_case51c_examples()
-        self.test_case51d_examples()
-        self.test_michaels_examples()
-        self.test_case52a_examples()
-        self.test_case52b_examples()
+        #self.test_case51d_examples()
+        #self.test_michaels_examples()
+        #self.test_case52a_examples()
+#        self.test_case52b_examples()
         self.test_complementary_states_examples()
         self.test_plain_pyomo_examples()
         self.test_paper_examples()
