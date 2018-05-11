@@ -182,11 +182,15 @@ if __name__ == "__main__":
     sim.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
     
     # good initialization
-    initialization = pd.read_csv("init_Z.csv",index_col=0)
+    dataDirectory = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe()))))
+    filename_initZ = os.path.join(dataDirectory, 'init_Z.csv')#Use absolute paths
+    initialization = pd.read_csv(filename_initZ,index_col=0)
     sim.initialize_from_trajectory('Z',initialization)
-    initialization = pd.read_csv("init_X.csv",index_col=0)
+    filename_initX = os.path.join(dataDirectory, 'init_X.csv')#Use absolute paths
+    initialization = pd.read_csv(filename_initX,index_col=0)
     sim.initialize_from_trajectory('X',initialization)
-    initialization = pd.read_csv("init_Y.csv",index_col=0)
+    filename_initY = os.path.join(dataDirectory, 'init_Y.csv')#Use absolute paths
+    initialization = pd.read_csv(filename_initY,index_col=0)
     sim.initialize_from_trajectory('Y',initialization)
             
     sim.fix_from_trajectory('Y','Csat',fixed_traj)
