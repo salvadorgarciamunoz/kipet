@@ -26,7 +26,7 @@ class TestExamples(unittest.TestCase):
     @classmethod
     def setUpClass(self):
         sys.path.append(examplesMainDir)
-        self.std_out = open("test_examples.log", "w")
+        self.std_out = open("test_tut_examples.log", "w")
 
     @classmethod
     def tearDownClass(self):
