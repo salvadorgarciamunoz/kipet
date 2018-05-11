@@ -10,14 +10,17 @@ import warnings
 from pyomo.environ import *
 from pyomo.dae import *
 import numpy as np
-
-import imp
+import sys
 
 try:
-    imp.find_module('casadi')
-    from CasadiModel import CasadiModel
-    from CasadiModel import KipetCasadiStruct
-
+    if sys.version_info.major > 3:
+        import importlib
+        importlib.util.find_spec("casadi")
+    else:
+        import imp
+        imp.find_module('casadi')
+    from kipet.model.CasadiModel import CasadiModel
+    from kipet.model.CasadiModel import KipetCasadiStruct
     found_casadi = True
 except ImportError:
     found_casadi = False
@@ -681,7 +684,7 @@ class TemplateBuilder(object):
             if self._odes:
                 casadi_model.odes = self._odes(casadi_model, 0)
                 for k in casadi_model.states:
-                    if not casadi_model.odes.has_key(k):
+                    if not k in casadi_model.odes.keys():
                         raise RuntimeError('Missing ode expresion for component {}'.format(k))
 
             if self._algebraic_constraints:

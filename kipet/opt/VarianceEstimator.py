@@ -340,7 +340,6 @@ class VarianceEstimator(Optimizer):
             opt.options[key]=val
 
         from pyomo.opt import ProblemFormat
-        self.model.write("whatevs.nl", format=ProblemFormat.nl, io_options={"symbolic_solver_labels": True})
         solver_results = opt.solve(self.model,
                                    logfile=self._tmp2,
                                    tee=tee,
