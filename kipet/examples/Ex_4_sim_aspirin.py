@@ -28,6 +28,7 @@ from kipet.utils.data_tools import *
 import matplotlib.pyplot as plt
 import numpy as np
 import sys
+import os
 
 
 
@@ -41,9 +42,19 @@ if __name__ == "__main__":
     #=========================================================================
     #USER INPUT SECTION - REQUIRED MODEL BUILDING ACTIONS
     #=========================================================================
-  
-    fixed_traj = read_absorption_data_from_txt('extra_states.txt')
-    C = read_absorption_data_from_txt('concentrations.txt')
+ 
+    dataDirectory = os.path.abspath(
+        os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
+            inspect.currentframe() ) ) ), 'data_sets'))
+    traj =  os.path.join(dataDirectory,'extra_states.txt')
+
+    dataDirectory = os.path.abspath(
+        os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
+            inspect.currentframe() ) ) ), 'data_sets'))
+    conc =  os.path.join(dataDirectory,'concentrations.txt')    
+    
+    fixed_traj = read_absorption_data_from_txt(traj)
+    C = read_absorption_data_from_txt(conc)
     
     # create template model 
     builder = TemplateBuilder()    

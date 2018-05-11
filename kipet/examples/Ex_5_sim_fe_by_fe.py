@@ -16,6 +16,7 @@ import sys
 from kipet.utils.fe_factory import *
 from pyomo.opt import *
 import pickle
+import os
 
 if __name__ == "__main__":
 
@@ -103,8 +104,11 @@ if __name__ == "__main__":
 
 
     builder.set_odes_rule(rule_odes)
+    dataDirectory = os.path.abspath(
+        os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
+            inspect.currentframe() ) ) ), 'data_sets'))
+    filename =  os.path.join(dataDirectory,'trimmed.csv')
 
-    filename = 'trimmed.csv'
     D_frame = read_spectral_data_from_csv(filename)
     meas_times = sorted(D_frame.index)
 
