@@ -29,6 +29,11 @@ import os
 
 
 if __name__ == "__main__":
+    
+    with_plots = True
+    if len(sys.argv)==2:
+        if int(sys.argv[1]):
+            with_plots = False
 
     # Load spectral data
     #################################################################################
@@ -126,16 +131,17 @@ if __name__ == "__main__":
     #tol = 1e-2
     #assert(abs(results_pyomo.P['k1']-0.00665)<tol)
 
+    if with_plots:
+        
+        # display results
+        results_pyomo.C.plot.line(legend=True)
+        plt.xlabel("time (s)")
+        plt.ylabel("Concentration (mol/L)")
+        plt.title("Concentration Profile")
 
-    # display results
-    results_pyomo.C.plot.line(legend=True)
-    plt.xlabel("time (s)")
-    plt.ylabel("Concentration (mol/L)")
-    plt.title("Concentration Profile")
-
-    results_pyomo.S.plot.line(legend=True)
-    plt.xlabel("Wavelength (cm)")
-    plt.ylabel("Absorbance (L/(mol cm))")
-    plt.title("Absorbance  Profile")
-    
-    plt.show()
+        results_pyomo.S.plot.line(legend=True)
+        plt.xlabel("Wavelength (cm)")
+        plt.ylabel("Absorbance (L/(mol cm))")
+        plt.title("Absorbance  Profile")
+        
+        plt.show()
