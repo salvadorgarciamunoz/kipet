@@ -259,7 +259,7 @@ def gausian_single_peak(wl,alpha,beta,gamma):
     helper function to generate absorption data based on 
     lorentzian parameters
     """
-    return alpha*exp(-(wl-beta)**2/gamma)
+    return alpha*np.exp(-(wl-beta)**2/gamma)
 
 def absorbance(wl,alphas,betas,gammas):
     """

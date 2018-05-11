@@ -94,7 +94,6 @@ if __name__ == "__main__":
                                       variances=sigmas,
                                       tolerance=1e-4,
                                       max_iter=40,
-                                      subset_lambdas=A_set,
                                       covariance=True)
     print("The estimated parameters are:")
     for k,v in six.iteritems(results_pyomo.P):
