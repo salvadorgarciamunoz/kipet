@@ -50,7 +50,7 @@ if __name__ == "__main__":
     builder = TemplateBuilder()
     components = {'A': 1e-3, 'B': 0, 'C': 0}
     builder.add_mixture_component(components)
-    builder.add_parameter('k1', bounds=(0.0, 4.0))
+    builder.add_parameter('k1', bounds=(0.1, 4.0))
     builder.add_parameter('k2', bounds=(0.01, 1.0))
     builder.add_spectral_data(D_frame)
 
@@ -64,7 +64,7 @@ if __name__ == "__main__":
         return exprs
 
     builder.set_odes_rule(rule_odes)
-    opt_model = builder.create_pyomo_model(0.0, 10.0)
+    opt_model = builder.create_pyomo_model(0.0, 15.0)
 
     #################################################################################
     #: non absorbing species.
@@ -99,7 +99,7 @@ if __name__ == "__main__":
 
     sigmas = results_variances.sigma_sq
     #################################################################################
-    opt_model = builder.create_pyomo_model(0.0, 10.0)
+    opt_model = builder.create_pyomo_model(0.0, 15.0)
 
     #=========================================================================
     #USER INPUT SECTION - PARAMETER ESTIMATOR
@@ -120,7 +120,7 @@ if __name__ == "__main__":
     # dont push bounds i am giving you a good guess
     options = dict()
     #options['nlp_scaling_method'] = 'user-scaling'
-    #options['mu_init'] = 1e-6
+    options['mu_init'] = 1e-6
     options['bound_push'] =1e-6
     results_pyomo = p_estimator.run_opt('ipopt_sens',
                                         tee=True,
