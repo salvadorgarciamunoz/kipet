@@ -106,7 +106,7 @@ class TestExamples(unittest.TestCase):
                  #       continue
                  #   print(countc,"files in",examples_casadi_dir,"failed")
             print(count," files in ",examples_pyomo_dir," failed")
-            return {self.assertEqual(int(flagc),0), self.assertEqual(int(flags),0),self.assertEqual(int(flag),0)}
+            return {self.assertEqual(int(flags),0),self.assertEqual(int(flag),0)}
         
         ####################################
         ##Plain_Pyomo- and Paper-Examples:##
