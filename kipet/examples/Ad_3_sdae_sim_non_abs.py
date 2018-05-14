@@ -110,10 +110,10 @@ if __name__ == "__main__":
               'B':1e-7}    
     results_sim = simulator.run_sim('ipopt',tee=True,variances=sigmas, seed=123453256)
 
-    results_sim.C.plot.line()
-
-    results_sim.S.plot.line()
-    plt.show()
+    if with_plots:
+        results_sim.C.plot.line()
+        results_sim.S.plot.line()
+        plt.show()
     
     #=========================================================================
     #USER INPUT SECTION - Using the D matrix generated we re-run the system to estimate variance and parameters
