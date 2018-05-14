@@ -16,6 +16,9 @@ try:
 except ImportError:
     found_casadi = False
 
+if not found_casadi:
+    sys.exit()
+
 examplesMainDir = os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(inspect.getfile(
         inspect.currentframe()))), 'test_problems'))
