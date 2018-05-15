@@ -237,7 +237,7 @@ class ParameterEstimator(Optimizer):
         # V_param = V_theta[ntheta:ntheta+nparams,ntheta:ntheta+nparams]
         V_param = V_theta
         variances_p = np.diag(V_param)
-        print('\nConfindence intervals:')
+        print('\nConfidence intervals:')
         i = 0
         for k, p in self.model.P.items():
             print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
