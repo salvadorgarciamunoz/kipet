@@ -36,12 +36,13 @@ class TestExamples(unittest.TestCase):
     def _schedule(self, examples_dir):
         examples_plainpyomo_dir = os.path.join(examples_dir)
         examples_plainpyomo=[f for f in os.listdir(examples_dir) if os.path.isfile(os.path.join(examples_plainpyomo_dir,f)) and f.endswith('.py')]
-
+        
         if os.path.isdir(os.path.join(examples_dir,'pyomo'))==True:
             
             examples_pyomo_dir = os.path.join(examples_dir,'pyomo')
             examples_pyomo = [f for f in os.listdir(examples_pyomo_dir) if os.path.isfile(os.path.join(examples_pyomo_dir,f)) and f.endswith('.py')]
-        
+            flags=0
+            counts=0
             #########################
             ##Pyomo-Examples:########
             #########################
@@ -66,8 +67,6 @@ class TestExamples(unittest.TestCase):
             ######################################
             #########sipopt-Files#################
             ######################################
-                flags=0
-                counts=0
                 if os.path.isdir(os.path.join(examples_pyomo_dir,'sipopt'))==True:
                     examples_sipopt_dir = os.path.join(examples_pyomo_dir,'sipopt')
                     examples_sipopt = [g for g in os.listdir(examples_sipopt_dir) if os.path.isfile(os.path.join(examples_sipopt_dir,g)) and g.endswith('.py')]
