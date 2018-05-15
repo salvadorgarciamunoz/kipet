@@ -68,7 +68,7 @@ if __name__ == "__main__":
 
     v_estimator = VarianceEstimator(opt_model)
 
-    v_estimator.apply_discretization('dae.collocation',nfe=60,ncp=1,scheme='LAGRANGE-RADAU')
+    v_estimator.apply_discretization('dae.collocation',nfe=30,ncp=1,scheme='LAGRANGE-RADAU')
 
     # Provide good initial guess
     
@@ -83,12 +83,12 @@ if __name__ == "__main__":
     # dont push bounds i am giving you a good guess
     options = dict()
 
-    A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if (i % 7 == 0)]
+    A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if i % 4 ]
     results_variances = v_estimator.run_opt('ipopt',
                                             tee=True,
                                             solver_options=options,
                                             tolerance=1e-5,
-                                            max_iter=200,
+                                            max_iter=100,
                                             subset_lambdas=A_set)
 
     print("\nThe estimated variances are:\n")
@@ -118,24 +118,26 @@ if __name__ == "__main__":
     
     # dont push bounds i am giving you a good guess
     options = dict()
-    options['nlp_scaling_method'] = 'user-scaling'
-    options['mu_strategy'] = 'adaptive'
-    #options['mu_init'] = 1e-6
-    #options['bound_push'] =1e-6
-    results_pyomo = p_estimator.run_opt('ipopt',
+    #options['nlp_scaling_method'] = 'user-scaling'
+    #options['mu_strategy'] = 'adaptive'
+    options['mu_init'] = 1e-6
+    options['bound_push'] =1e-6
+    results_pyomo = p_estimator.run_opt('ipopt_sens',
                                         tee=True,
                                         solver_opts = options,
                                         variances=sigmas,
-                                        with_d_vars=True)
+                                        with_d_vars=True,
+                                        covariance=True)
 
     
     print("The estimated parameters are:")
     for k,v in six.iteritems(results_pyomo.P):
         print(k, v)
     
-    tol = 2e-1
+    tol = 3e-1
     assert(abs(results_pyomo.P['k1']-2.0)<tol)
     assert(abs(results_pyomo.P['k2']-1.0)<tol)
+
 
     if with_plots:
     
