@@ -7,7 +7,6 @@ chemical reaction systems. The software has the following functionality
 * Simulate a reactive system described with DAEs
 
   * Solve the DAE system with collocation methods
-  * Stochastic integration of the DAE
 
 * Estimate variances of Noise
 * Estimate kinetic parameters
@@ -17,7 +16,7 @@ chemical reaction systems. The software has the following functionality
 
 License
 ------------
-TODO
+GPL-3
 
 Organization
 ------------
