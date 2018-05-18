@@ -182,8 +182,7 @@ if __name__ == "__main__":
     sim.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
     
     # good initialization
-    dataDirectory = os.path.abspath(os.path.dirname( os.path.abspath( inspect.getfile(
-            inspect.currentframe() ) ) ))
+
     filename_initZ = os.path.join(dataDirectory, 'init_Z.csv')#Use absolute paths
     initialization = pd.read_csv(filename_initZ,index_col=0)
     sim.initialize_from_trajectory('Z',initialization)
