@@ -29,7 +29,7 @@ Directories
 Authors
 --------
 
-   * Salvador Gracia Eli Lilly
+   * Salvador Garcia-Munoz Eli Lilly
    * Jose Santiago Rodriguez Purdue University
    * Carl Laird Purdue University
    * David M. Thierry Carnegie Mellon University
