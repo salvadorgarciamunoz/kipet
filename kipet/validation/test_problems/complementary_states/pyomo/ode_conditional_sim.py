@@ -14,8 +14,8 @@
 
 
 
-from kipet.model.TemplateBuilder import *
-from kipet.sim.PyomoSimulator import *
+from kipet.library.TemplateBuilder import *
+from kipet.library.PyomoSimulator import *
 import matplotlib.pyplot as plt
 from pyomo.core.base.expr import Expr_if
 from pyomo.core import *

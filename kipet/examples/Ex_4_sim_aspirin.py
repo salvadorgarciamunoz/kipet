@@ -22,9 +22,9 @@
 #        r_d = k_d*(Z_sa^{sat}-Z_sa)^d
 #        r_c = k_c*(max(Z_asa-Z_sa^{sat}))^c
 
-from kipet.model.TemplateBuilder import *
-from kipet.sim.PyomoSimulator import *
-from kipet.utils.data_tools import *
+from kipet.library.TemplateBuilder import *
+from kipet.library.PyomoSimulator import *
+from kipet.library.data_tools import *
 import matplotlib.pyplot as plt
 import numpy as np
 import sys

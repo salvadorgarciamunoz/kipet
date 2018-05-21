@@ -16,13 +16,13 @@
 
 
 
-from kipet.model.TemplateBuilder import *
-from kipet.sim.PyomoSimulator import *
-from kipet.opt.ParameterEstimator import *
-from kipet.opt.VarianceEstimator import *
+from kipet.library.TemplateBuilder import *
+from kipet.library.PyomoSimulator import *
+from kipet.library.ParameterEstimator import *
+from kipet.library.VarianceEstimator import *
 import matplotlib.pyplot as plt
 
-from kipet.utils.data_tools import *
+from kipet.library.data_tools import *
 import inspect
 import sys
 import os

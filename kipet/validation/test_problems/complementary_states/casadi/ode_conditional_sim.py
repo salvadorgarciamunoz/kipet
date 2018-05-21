@@ -14,8 +14,8 @@
 
 
 
-from kipet.model.TemplateBuilder import *
-from kipet.sim.CasadiSimulator import *
+from kipet.library.TemplateBuilder import *
+from kipet.library.CasadiSimulator import *
 import matplotlib.pyplot as plt
 import casadi as ca
 import sys

@@ -13,8 +13,8 @@
 #               \frac{dT}{dt} = heat tranference           T(0) = 290.0
 #               \frac{dV}{dt} = 100+240*t                  V(0) = 100.0
 
-from kipet.model.TemplateBuilder import *
-from kipet.sim.CasadiSimulator import *
+from kipet.library.TemplateBuilder import *
+from kipet.library.CasadiSimulator import *
 import matplotlib.pyplot as plt
 import casadi as ca
 import sys

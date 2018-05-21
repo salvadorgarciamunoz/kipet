@@ -11,8 +11,8 @@
 #		\frac{dC_b}{dt} = k*C_a		C_b(0) = 0
 
 
-from kipet.model.TemplateBuilder import *
-from kipet.sim.CasadiSimulator import *
+from kipet.library.TemplateBuilder import *
+from kipet.library.CasadiSimulator import *
 import matplotlib.pyplot as plt
 import sys
 

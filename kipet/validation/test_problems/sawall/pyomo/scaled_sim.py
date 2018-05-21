@@ -11,8 +11,8 @@
 #		\frac{dZ_b}{dt} = k*Z_a		Z_b(0) = 0
 
 
-from kipet.model.TemplateBuilder import *
-from kipet.sim.PyomoSimulator import *
+from kipet.library.TemplateBuilder import *
+from kipet.library.PyomoSimulator import *
 import matplotlib.pyplot as plt
 import sys
 

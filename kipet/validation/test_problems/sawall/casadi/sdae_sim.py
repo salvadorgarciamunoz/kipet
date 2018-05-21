@@ -14,9 +14,9 @@
 #               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S_k(l_j) + \xi_{i,j} for all t_i, for all l_j 
 
 
-from kipet.model.TemplateBuilder import *
-from kipet.sim.CasadiSimulator import *
-from kipet.utils.data_tools import *
+from kipet.library.TemplateBuilder import *
+from kipet.library.CasadiSimulator import *
+from kipet.library.data_tools import *
 import matplotlib.pyplot as plt
 import os
 import sys
