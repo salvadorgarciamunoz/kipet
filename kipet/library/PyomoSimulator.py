@@ -1,7 +1,7 @@
 from pyomo.environ import *
 from pyomo.dae import *
-from kipet.sim.ResultsObject import *
-from kipet.sim.Simulator import *
+from kipet.library.ResultsObject import *
+from kipet.library.Simulator import *
 import warnings
 import six
 

@@ -1,4 +1,4 @@
-from kipet.model.TemplateBuilder import TemplateBuilder
+from kipet.library.TemplateBuilder import TemplateBuilder
 import pandas as pd
 import pyomo.environ as pe
 import pyomo.dae as dae

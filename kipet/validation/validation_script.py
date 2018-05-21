@@ -193,7 +193,7 @@ class TestExamples(unittest.TestCase):
         #self.test_case51d_examples()
         #self.test_michaels_examples()
         #self.test_case52a_examples()
-#        self.test_case52b_examples()
+        #self.test_case52b_examples()
         self.test_complementary_states_examples()
         self.test_plain_pyomo_examples()
         self.test_paper_examples()

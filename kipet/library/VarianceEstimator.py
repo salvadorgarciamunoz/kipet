@@ -5,7 +5,7 @@ from pyomo.dae import *
 from pyomo.core import *
 from pyomo.opt import (ReaderFactory,
                        ResultsFormat)
-from kipet.opt.Optimizer import *
+from kipet.library.Optimizer import *
 from scipy.optimize import least_squares
 from scipy.sparse import coo_matrix
 #import pyutilib.subprocess

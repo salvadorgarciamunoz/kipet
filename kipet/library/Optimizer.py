@@ -3,8 +3,8 @@ from __future__ import print_function
 from __future__ import division
 from pyomo.environ import *
 from pyomo.dae import *
-from kipet.sim.ResultsObject import *
-from kipet.sim.PyomoSimulator import *
+from kipet.library.ResultsObject import *
+from kipet.library.PyomoSimulator import *
 from scipy.optimize import least_squares
 from contextlib import contextmanager
 import scipy

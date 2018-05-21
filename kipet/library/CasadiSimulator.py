@@ -1,7 +1,7 @@
 import casadi as ca
 from casadi.tools import *
-from kipet.sim.ResultsObject import *
-from kipet.sim.Simulator import *
+from kipet.library.ResultsObject import *
+from kipet.library.Simulator import *
 import copy
 from distutils.version import LooseVersion
 

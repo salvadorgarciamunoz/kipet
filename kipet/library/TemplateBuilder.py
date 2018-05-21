@@ -19,8 +19,8 @@ try:
     else:
         import imp
         imp.find_module('casadi')
-    from kipet.model.CasadiModel import CasadiModel
-    from kipet.model.CasadiModel import KipetCasadiStruct
+    from kipet.library.CasadiModel import CasadiModel
+    from kipet.library.CasadiModel import KipetCasadiStruct
     found_casadi = True
 except ImportError:
     found_casadi = False

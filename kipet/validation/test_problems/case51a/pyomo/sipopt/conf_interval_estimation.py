@@ -4,21 +4,21 @@
 #  Copyright (c) 2016 Eli Lilly.
 #  _________________________________________________________________________
 
-# Sample Problem 
-# Estimation with know variances of spectral data using pyomo discretization
+# Sample Problem 2 (From Sawall et.al.)
+# Basic simulation of ODE with spectral data using pyomo discretization 
 #
 #		\frac{dZ_a}{dt} = -k_1*Z_a	                Z_a(0) = 1
 #		\frac{dZ_b}{dt} = k_1*Z_a - k_2*Z_b		Z_b(0) = 0
 #               \frac{dZ_c}{dt} = k_2*Z_b	                Z_c(0) = 0
 #               C_k(t_i) = Z_k(t_i) + w(t_i)    for all t_i in measurement points
 #               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
-from __future__ import print_function
-from kipet.model.TemplateBuilder import *
-from kipet.sim.PyomoSimulator import *
-from kipet.opt.ParameterEstimator import *
+
+from kipet.library.TemplateBuilder import *
+from kipet.library.PyomoSimulator import *
+from kipet.library.ParameterEstimator import *
 import matplotlib.pyplot as plt
 
-from kipet.utils.data_tools import *
+from kipet.library.data_tools import *
 import inspect
 import sys
 import os
@@ -34,14 +34,14 @@ if __name__ == "__main__":
     # this defines the measurement points t_i and l_j as well
     dataDirectory = os.path.abspath(
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
-            inspect.currentframe() ) ) ), '..','..','data_sets'))
+            inspect.currentframe() ) ) ), '..','..','..','data_sets'))
     filename =  os.path.join(dataDirectory,'Dij.txt')
     D_frame = read_spectral_data_from_txt(filename)
     
 
     ######################################
     builder = TemplateBuilder()    
-    components = {'A': 1e-3,'B': 0,'C': 0}
+    components = {'A':1e-3,'B':0,'C':0}
     builder.add_mixture_component(components)
     # note the parameter is not fixed
     builder.add_parameter('k1',bounds=(0.0,5.0))
@@ -61,7 +61,7 @@ if __name__ == "__main__":
     pyomo_model2 = builder.create_pyomo_model(0.0,10.0)
     optimizer = ParameterEstimator(pyomo_model2)
 
-    optimizer.apply_discretization('dae.collocation',nfe=30,ncp=1,scheme='LAGRANGE-RADAU')
+    optimizer.apply_discretization('dae.collocation',nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
 
     # Provide good initial guess
     p_guess = {'k1':2.0,'k2':0.5}
@@ -83,13 +83,14 @@ if __name__ == "__main__":
               'B':8.54601e-11,
               'C':6.11854e-11}
     
-    results_pyomo = optimizer.run_opt('ipopt',
+    results_pyomo = optimizer.run_opt('ipopt_sens',
                                       tee=True,
                                       solver_opts = solver_options,
-                                      variances=sigmas)
+                                      variances=sigmas,
+                                      covariance=True)
 
     print("The estimated parameters are:")
-    for k, v in results_pyomo.P.items():
+    for k,v in six.iteritems(results_pyomo.P):
         print(k, v)
 
     tol = 1e-1

@@ -4,7 +4,7 @@ from __future__ import print_function
 from __future__ import division
 from pyomo.environ import *
 from pyomo.dae import *
-from kipet.opt.Optimizer import *
+from kipet.library.Optimizer import *
 from pyomo.core.base.expr import Expr_if
 import six
 import copy
