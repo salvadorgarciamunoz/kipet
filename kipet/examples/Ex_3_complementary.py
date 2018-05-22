@@ -13,8 +13,7 @@
 #       \frac{dT}{dt} = heat transfer              T(0) = 290.0
 #       \frac{dV}{dt} = 100+240*t                  V(0) = 100.0
 
-from kipet.library.TemplateBuilder import *
-from kipet.library.PyomoSimulator import *
+import kipet
 import matplotlib.pyplot as plt
 from pyomo.core.base.expr import Expr_if
 from pyomo.core import *

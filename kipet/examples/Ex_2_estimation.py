@@ -16,13 +16,8 @@
 #       Initial concentration 
 
 from __future__ import print_function
-from kipet.library.TemplateBuilder import *
-from kipet.library.PyomoSimulator import *
-from kipet.library.ParameterEstimator import *
-from kipet.library.VarianceEstimator import *
+import kipet
 import matplotlib.pyplot as plt
-
-from kipet.library.data_tools import *
 import os
 import sys
 import inspect

@@ -8,14 +8,11 @@
 # Simulation of ODE system using pyomo discretization and IPOPT
 #
 #		\frac{dZ_a}{dt} = -k(T)*Z_a*Z_b	        Z_a(0) = 6.7
-#		\frac{dZ_b}{dt} = -k(T)*Z_a*Z_b		Z_b(0) = 20.2
-#		\frac{dZ_c}{dt} = 2*k(T)*Z_a*Z_b        Z_c(0) = 0.0
-#               \frac{dT}{dt} = Tedot + Tsdot           T(0) = 293.2
+#		\frac{dZ_b}{dt} = -k(T)*Z_a*Z_b		    Z_b(0) = 20.2
+#		\frac{dZ_c}{dt} = 2*k(T)*Z_a*Z_b         Z_c(0) = 0.0
+#       \frac{dT}{dt} = Tedot + Tsdot            T(0) = 293.2
 
-
-
-from kipet.library.TemplateBuilder import *
-from kipet.library.PyomoSimulator import *
+import kipet
 import matplotlib.pyplot as plt
 from pyomo.core.base.expr import Expr_if
 from pyomo.core import *

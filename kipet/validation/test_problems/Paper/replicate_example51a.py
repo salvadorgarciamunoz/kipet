@@ -14,13 +14,13 @@
 #               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
 
 from __future__ import print_function
-from kipet.library.TemplateBuilder import *
-from kipet.library.PyomoSimulator import *
-from kipet.library.ParameterEstimator import *
-from kipet.library.VarianceEstimator import *
+#from kipet.library.TemplateBuilder import *
+#from kipet.library.PyomoSimulator import *
+#from kipet.library.ParameterEstimator import *
+#from kipet.library.VarianceEstimator import *
 import matplotlib.pyplot as plt
-
-from kipet.library.data_tools import *
+import kipet
+#from kipet.library.data_tools import *
 import os
 import sys
 import inspect
