@@ -14,12 +14,8 @@
 #       D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
 from __future__ import print_function
 from __future__ import division
-from kipet.model.TemplateBuilder import *
-from kipet.sim.PyomoSimulator import *
-from kipet.opt.ParameterEstimator import *
+import kipet
 import matplotlib.pyplot as plt
-
-from kipet.utils.data_tools import *
 import inspect
 import sys
 import os
