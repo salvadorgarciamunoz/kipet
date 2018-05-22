@@ -10,7 +10,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import sys
-import kipet
+from kipet.library.TemplateBuilder import *
+from kipet.library.PyomoSimulator import *
+from kipet.library.ParameterEstimator import *
+from kipet.library.VarianceEstimator import *
+from kipet.library.data_tools import *
 from kipet.library.fe_factory import *
 from pyomo.opt import *
 import pickle

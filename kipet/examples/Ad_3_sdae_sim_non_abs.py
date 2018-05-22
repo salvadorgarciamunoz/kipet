@@ -15,7 +15,11 @@
 #       C_k(t_i) = Z_k(t_i) + w(t_i)    for all t_i in measurement points
 #        D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
 
-import kipet
+from kipet.library.TemplateBuilder import *
+from kipet.library.PyomoSimulator import *
+from kipet.library.ParameterEstimator import *
+from kipet.library.VarianceEstimator import *
+from kipet.library.data_tools import *
 import matplotlib.pyplot as plt
 import os
 import sys

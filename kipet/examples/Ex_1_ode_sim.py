@@ -11,7 +11,9 @@
 #		\frac{dZ_b}{dt} = k_1*Z_a - k_2*Z_b		    Z_b(0) = 0
 #       \frac{dZ_c}{dt} = k_2*Z_b	                    Z_c(0) = 0
 
-import kipet
+from kipet.library.TemplateBuilder import *
+from kipet.library.PyomoSimulator import *
+
 import matplotlib.pyplot as plt
 import sys
 

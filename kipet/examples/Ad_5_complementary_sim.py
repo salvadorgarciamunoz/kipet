@@ -12,7 +12,9 @@
 #		\frac{dZ_c}{dt} = 2*k(T)*Z_a*Z_b         Z_c(0) = 0.0
 #       \frac{dT}{dt} = Tedot + Tsdot            T(0) = 293.2
 
-import kipet
+from kipet.library.TemplateBuilder import *
+from kipet.library.PyomoSimulator import *
+
 import matplotlib.pyplot as plt
 from pyomo.core.base.expr import Expr_if
 from pyomo.core import *
