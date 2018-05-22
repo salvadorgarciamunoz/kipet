@@ -3,15 +3,15 @@ from setuptools import setup, find_packages
 from distutils.core import Extension
 
 DISTNAME = 'kipet'
-VERSION = '0.0.0'
+VERSION = '1.0.0'
 PACKAGES = find_packages()
 EXTENSIONS = []
 DESCRIPTION = 'Package for kinetic estimation based on spectral or concentration data'
 LONG_DESCRIPTION = '' #open('README.md').read()
-AUTHOR = 'Jose-Santiago-Rodriguez '
+AUTHOR = 'Jose-Santiago-Rodriguez, Salvador Garcia-Munoz, Lorentz T. Biegler, David M. Thierry, Christina Schenk, Michael Short '
 MAINTAINER_EMAIL = 'TODO'
-LICENSE = 'TODO'
-URL = 'TODO'
+LICENSE = 'GPL-3'
+URL = 'https://github.com/salvadorgarciamunoz/KIPET'
 
 setuptools_kwargs = {
     'zip_safe': False,
