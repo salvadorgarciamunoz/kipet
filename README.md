@@ -22,9 +22,11 @@ Organization
 ------------
 
 Directories
-  * kipet - The root directory for KIPET source code
+  * kipet - The root directory for Kipet source code
   * documentation - user manual
-  * kipet/examples - examples and data files
+  * kipet/examples - tutorial examples and data files
+  * kipet/library - all libraries and functions
+  * kipet/validation - validation/test scripts
 
 Authors
 --------
