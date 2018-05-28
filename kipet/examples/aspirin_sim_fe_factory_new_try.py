@@ -231,12 +231,13 @@ if __name__ == "__main__":
         
     inputs_sub = {}
     
-    inputs_sub['Y'] = ['f']
+    inputs_sub['Y'] = ['f', 'Csat']
 
-    inputs_sub['Y'] = ['Csat']
-    
     sim.fix_from_trajectory('Y','Csat',fixed_traj)
-    sim.fix_from_trajectory('Y','f',fixed_traj)    
+    sim.fix_from_trajectory('Y','f',fixed_traj)
+    # for t in sim.model.time:
+    #     v = value(sim.model.Y[t, 'f'])
+    #     print(t, v)
     #: define the values for our simulation
 #    for key in sim.model.time.value:
 #        sim.model.Y[key,'f'].set_value(key)
@@ -244,7 +245,8 @@ if __name__ == "__main__":
      #   sim.model.Y[key,'Csat'].set_value(key)
      #   sim.model.Y[key,'Csat'].fix() 
 
-
+    for i in sim.model.X.itervalues():
+        i.setlb(0)
     init = fe_initialize(sim.model, mod,
                          init_con="init_conditions_c",
                          param_name=param_name,
