@@ -336,31 +336,38 @@ class fe_initialize(object):
             self.load_input(fe)
 
         # self.mod.X.display()
-        for i in self.mod.component_objects(Var):
-            i.display()
+
         for i in self.mod.X.itervalues():
-            i.setlb(0)
+            idx = i.index()
+            if idx[1] in ['Msa']:
+                i.setlb(-0.0001)
+            else:
+                i.setlb(0)
         for i in self.mod.Z.itervalues():
             i.setlb(0)
-        # for i in self.mod.component_objects(Constraint):
-        #     i.display()
-        # ni = input("keystroke")
-        # self.ip.options['max_iter'] = 0 + ni
+
         self.ip.options["OF_start_with_resto"] = 'no'
         self.ip.options['bound_push'] = 1e-02
         sol = self.ip.solve(self.mod, tee=True, symbolic_solver_labels=True)
-        # for i in self.mod.component_objects(Constraint):
-        #     i.display()
-        # ni = input("keystroke")
+
         if sol.solver.termination_condition != TerminationCondition.optimal:
             self.ip.options["OF_start_with_resto"] = 'yes'
-            self.ip.options['bound_push'] = 1e-08
-            self.ip.options["linear_solver"] = "ma57"
+            # self.ip.options["linear_solver"] = "ma57"
+            for i in self.mod.component_objects(Var):
+                i.pprint()
             sol = self.ip.solve(self.mod, tee=True, symbolic_solver_labels=True)
             if sol.solver.termination_condition != TerminationCondition.optimal:
                 self.ip.options["OF_start_with_resto"] = 'no'
-                for i in self.mod.component_data_objects(Var):
+                # for i in self.mod.component_data_objects(Var):
+                #     i.setlb(None)
+                for i in self.mod.Z.itervalues():
                     i.setlb(None)
+                for i in self.mod.X.itervalues():
+                    idx = i.index()
+                    if idx[1] in ['Msa']:
+                        i.setlb(-0.05)
+                    else:
+                        i.setlb(None)
                 sol = self.ip.solve(self.mod, tee=True, symbolic_solver_labels=True)
                 if sol.solver.termination_condition != TerminationCondition.optimal:
                     raise Exception("The current iteration was unsuccessful. Iteration :{}".format(fe))

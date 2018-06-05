@@ -183,28 +183,18 @@ if __name__ == "__main__":
         exprs['Msa'] = -138.121*V*m.Y[t,'r4']
         return exprs
 
-
-
-
     builder.set_odes_rule(rule_odes)
 
-    model = builder.create_pyomo_model(0.0,210.5257)    
- #=========================================================================
+    model = builder.create_pyomo_model(0.0, 210.5257)
+    #=========================================================================
     #USER INPUT SECTION - FE Factory
     #=========================================================================
-     
-    fe_x_list = [ii for ii in range(1, nfe_x + 1)]
-    model.fe_x_i = Set(initialize=fe_x_list)
-    
+
     sim = PyomoSimulator(model)
     mod = sim.model.clone()
-    
+    sim.apply_discretization('dae.collocation', nfe=500, ncp=3, scheme='LAGRANGE-RADAU')
+
     # defines the discrete points wanted in the concentration profile
-    sim.apply_discretization('dae.collocation', nfe=(nfe_x+1), ncp=3, scheme='LAGRANGE-RADAU')
-    
-
-    #sim.fix_from_trajectory('X','V',fixed_traj)
-
     #: we now need to explicitly tell the initial conditions and parameter values
     param_name = "P"
     param_dict = {}
@@ -227,25 +217,12 @@ if __name__ == "__main__":
     ics_['X', 'V'] = 0.0202
     ics_['X', 'Masa'] = 0.0
     ics_['X', 'Msa'] = 9.537
-    
-        
+
     inputs_sub = {}
-    
     inputs_sub['Y'] = ['f', 'Csat']
 
     sim.fix_from_trajectory('Y','Csat',fixed_traj)
     sim.fix_from_trajectory('Y','f',fixed_traj)
-    # for t in sim.model.time:
-    #     v = value(sim.model.Y[t, 'f'])
-    #     print(t, v)
-    #: define the values for our simulation
-#    for key in sim.model.time.value:
-#        sim.model.Y[key,'f'].set_value(key)
-#        sim.model.Y[key,'f'].fix()  #if you don't fix this, fe_factory is will not work complain.
-     #   sim.model.Y[key,'Csat'].set_value(key)
-     #   sim.model.Y[key,'Csat'].fix() 
-    #
-
 
     init = fe_initialize(sim.model, mod,
                          init_con="init_conditions_c",
@@ -260,25 +237,6 @@ if __name__ == "__main__":
     #=========================================================================
     #USER INPUT SECTION - SIMULATION
     #=========================================================================
-  
-    sim = PyomoSimulator(model)
-    # defines the discrete points wanted in the concentration profile
-    sim.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
-    
-    # good initialization
-
-#    filename_initZ = os.path.join(dataDirectory, 'init_Z.csv')#Use absolute paths
-#    initialization = pd.read_csv(filename_initZ,index_col=0)
-#    sim.initialize_from_trajectory('Z',initialization)
-#    filename_initX = os.path.join(dataDirectory, 'init_X.csv')#Use absolute paths
-#    initialization = pd.read_csv(filename_initX,index_col=0)
-#    sim.initialize_from_trajectory('X',initialization)
-#    filename_initY = os.path.join(dataDirectory, 'init_Y.csv')#Use absolute paths
-#    initialization = pd.read_csv(filename_initY,index_col=0)
-#    sim.initialize_from_trajectory('Y',initialization)
-            
-#    sim.fix_from_trajectory('Y','Csat',fixed_traj)
-#    sim.fix_from_trajectory('Y','f',fixed_traj)
 
     for i in sim.model.X.itervalues():
         idx = i.index()
