@@ -56,9 +56,14 @@ if __name__ == "__main__":
     
     fixed_traj = read_absorption_data_from_txt(traj)
     C = read_absorption_data_from_txt(conc)
-    
-    # create template model 
-    builder = TemplateBuilder()    
+
+    meas_times=sorted(C.index)
+    print(meas_times)
+    # How many measurement times are there
+    nfe_x = len(meas_times)
+    print(nfe_x)# create template model
+
+    builder = TemplateBuilder()
 
     # components
     components = dict()
@@ -181,7 +186,11 @@ if __name__ == "__main__":
     sim = PyomoSimulator(model)
     # defines the discrete points wanted in the concentration profile
     sim.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
-    
+    fe_l = sim.model.time.get_finite_elements()
+    fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
+    nfe = len(fe_list)  #: Create a list with the step-size
+    print(nfe)
+    # sys.exit()
     # good initialization
 
     filename_initZ = os.path.join(dataDirectory, 'init_Z.csv')#Use absolute paths

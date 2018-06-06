@@ -340,7 +340,7 @@ class fe_initialize(object):
         for i in self.mod.X.itervalues():
             idx = i.index()
             if idx[1] in ['Msa']:
-                i.setlb(-0.0001)
+                i.setlb(-0.01)
             else:
                 i.setlb(0)
         for i in self.mod.Z.itervalues():
@@ -471,6 +471,7 @@ class fe_initialize(object):
         print("*"*5, end='\t')
         print("Fe Factory: fe_initialize by DT \@2018", end='\t')
         print("*" * 5)
+        print("*" * 5 + '\tSolving for {} elements\t'.format(len(self.fe_list)) + "*" * 5 )
         for i in range(0, len(self.fe_list)):
             self.march_forward(i)
 
@@ -573,7 +574,7 @@ def reconcile_nvars_mequations(d_mod):
 
     """
     fullpth = getcwd()
-    fullpth += "/_reconcilied.nl"
+    fullpth += "/_reconciled.nl"
     write_nl(d_mod, filename=fullpth)
     with open(fullpth, 'r') as nl:
         lines = nl.readlines()

@@ -192,8 +192,12 @@ if __name__ == "__main__":
 
     sim = PyomoSimulator(model)
     mod = sim.model.clone()
-    sim.apply_discretization('dae.collocation', nfe=500, ncp=3, scheme='LAGRANGE-RADAU')
+    sim.apply_discretization('dae.collocation', nfe=471, ncp=3, scheme='LAGRANGE-RADAU')
 
+    fe_l = sim.model.time.get_finite_elements()
+    fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
+    nfe = len(fe_list)  #: Create a list with the step-size
+    print(nfe)
     # defines the discrete points wanted in the concentration profile
     #: we now need to explicitly tell the initial conditions and parameter values
     param_name = "P"

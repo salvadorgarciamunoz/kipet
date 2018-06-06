@@ -201,7 +201,11 @@ if __name__ == "__main__":
     
     # defines the discrete points wanted in the concentration profile
     sim.apply_discretization('dae.collocation', nfe=(nfe_x+1), ncp=3, scheme='LAGRANGE-RADAU')
-    
+    fe_l = sim.model.time.get_finite_elements()
+    fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
+    nfe = len(fe_list)  #: Create a list with the step-size
+    print(nfe)
+    sys.exit()
 
     #sim.fix_from_trajectory('X','V',fixed_traj)
 
@@ -261,9 +265,9 @@ if __name__ == "__main__":
     #USER INPUT SECTION - SIMULATION
     #=========================================================================
   
-    sim = PyomoSimulator(model)
+    # sim = PyomoSimulator(model)
     # defines the discrete points wanted in the concentration profile
-    sim.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
+    # sim.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
     
     # good initialization
 
@@ -296,7 +300,8 @@ if __name__ == "__main__":
 
     options = {'halt_on_ampl_error' :'yes',
                'bound_push': 1e-06,
-               'print_user_options': 'yes'}
+               'print_user_options': 'yes',
+               "max_iter": 1}
     results = sim.run_sim('ipopt',
                           tee=True,
                           solver_opts=options)
