@@ -141,7 +141,7 @@ if __name__ == "__main__":
         r.append(m.Y[t,'r3']-m.P['k3']*m.Z[t,'AA']*m.Z[t,'H2O'])
 
         # dissolution rate
-        step = 1.0/(1.0+exp(-m.X[t,'Msa']/1e-4))
+        step = 1.0/(1.0+exp(-m.X[t,'Msa']/1e-04))
         rd = m.P['kd']*(m.P['Csa']-m.Z[t,'SA']+1e-6)**1.90*step
         r.append(m.Y[t,'r4']-rd)
         #r.append(m.Y[t,'r4'])
@@ -192,7 +192,7 @@ if __name__ == "__main__":
 
     sim = PyomoSimulator(model)
     mod = sim.model.clone()
-    sim.apply_discretization('dae.collocation', nfe=471, ncp=3, scheme='LAGRANGE-RADAU')
+    sim.apply_discretization('dae.collocation', nfe=469, ncp=3, scheme='LAGRANGE-RADAU')
 
     fe_l = sim.model.time.get_finite_elements()
     fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
@@ -228,6 +228,12 @@ if __name__ == "__main__":
     sim.fix_from_trajectory('Y','Csat',fixed_traj)
     sim.fix_from_trajectory('Y','f',fixed_traj)
 
+    with open("ffe0.txt", "w") as f:
+        for t in sim.model.time:
+            val = value(sim.model.Y[t, 'f'])
+            f.write('\t' + str(t) + '\t' + str(val) + '\n')
+        f.close()
+
     init = fe_initialize(sim.model, mod,
                          init_con="init_conditions_c",
                          param_name=param_name,
@@ -235,30 +241,35 @@ if __name__ == "__main__":
                          inputs_sub=inputs_sub)
     
     init.load_initial_conditions(init_cond=ics_)
-   
+    X_bnd = {"Msa": (-0.05, None), "Masa": (-0.05, None)}
+    Z_bnd = {"AA": (0.0, None), "ASA": (0.0, None), "HA": (0.0, None), "ASAA": (0.0, None), "H2O": (0.0, None)}
+    bnd_dict = {"X": X_bnd, "Z": Z_bnd}
+    sim.model.Z.pprint()
+    init.create_bounds(bnd_dict)
     init.run()
 
     #=========================================================================
     #USER INPUT SECTION - SIMULATION
     #=========================================================================
 
-    for i in sim.model.X.itervalues():
-        idx = i.index()
-        if idx[1] in ['Msa', 'Masa']:
-            i.setlb(-0.05)
-        else:
-            i.setlb(0)
-
-    for i in sim.model.Z.itervalues():
-        i.setlb(0)
-        idx = i.index()
-        if idx[1] == 'SA':
-            i.setub(2.06269996)
+    # for i in sim.model.X.itervalues():
+    #     idx = i.index()
+    #     if idx[1] in ['Msa', 'Masa']:
+    #         i.setlb(-0.05)
+    #     else:
+    #         i.setlb(0)
+    #
+    # for i in sim.model.Z.itervalues():
+    #     i.setlb(0)
+        # idx = i.index()
+        # if idx[1] == 'SA':
+        #     i.setub(2.06269996)
 
 
     options = {'halt_on_ampl_error' :'yes',
-               'bound_push': 1e-06,
-               'print_user_options': 'yes'}
+               'bound_push': 1e-08,
+               'print_user_options': 'yes',
+               'max_iter': 0}
     results = sim.run_sim('ipopt',
                           tee=True,
                           solver_opts=options)

@@ -67,7 +67,8 @@ class fe_initialize(object):
 
 
         self.ip = SolverFactory('ipopt')
-        # self.ip.options['halt_on_ampl_error'] = 'yes'
+        self.ip.options['halt_on_ampl_error'] = 'yes'
+        self.ip.options['print_user_options'] = 'yes'
         self.tgt = tgt_mod
         self.mod = src_mod.clone()  #: Deepcopy of the reference model
         zeit = None
@@ -153,7 +154,7 @@ class fe_initialize(object):
                 self.remaining_set[i] = []
                 self.remaining_set[i].append(remaining_set)
         #: Algebraic variables
-        self.weird_vars = []
+        self.weird_vars = []  #: Not indexed by time
         self.remaining_set_alg = {}
         for av in self.mod.component_objects(Var):
             if av.name in self.dvs_names:
@@ -163,7 +164,7 @@ class fe_initialize(object):
                 continue
             set_i = av._implicit_subsets
             if set_i is None or not zeit in set_i:
-                self.weird_vars.append(av.name)  #: Not index by time!
+                self.weird_vars.append(av.name)  #: Not indexed by time!
                 continue  #: if this happens we might be in trouble
             remaining_set = set_i[1]  #: Index by time and others
             for s in set_i[2:]:
@@ -316,7 +317,7 @@ class fe_initialize(object):
                             if not dv[(0,) + k].fixed:
                                 dv[(0,) + k].fix()
 
-    def march_forward(self, fe):
+    def march_forward(self, fe, resto_strategy="bound_relax"):
         # type: (int) -> None
         """Moves forward with the simulation.
 
@@ -337,14 +338,14 @@ class fe_initialize(object):
 
         # self.mod.X.display()
 
-        for i in self.mod.X.itervalues():
-            idx = i.index()
-            if idx[1] in ['Msa']:
-                i.setlb(-0.01)
-            else:
-                i.setlb(0)
-        for i in self.mod.Z.itervalues():
-            i.setlb(0)
+        # for i in self.mod.X.itervalues():
+        #     idx = i.index()
+        #     if idx[1] in ['Msa']:
+        #         i.setlb(-0.01)
+        #     else:
+        #         i.setlb(0)
+        # for i in self.mod.Z.itervalues():
+        #     i.setlb(0)
 
         self.ip.options["OF_start_with_resto"] = 'no'
         self.ip.options['bound_push'] = 1e-02
@@ -353,22 +354,26 @@ class fe_initialize(object):
         if sol.solver.termination_condition != TerminationCondition.optimal:
             self.ip.options["OF_start_with_resto"] = 'yes'
             # self.ip.options["linear_solver"] = "ma57"
-            for i in self.mod.component_objects(Var):
-                i.pprint()
+            # for i in self.mod.component_objects(Var):
+            #     i.pprint()
             sol = self.ip.solve(self.mod, tee=True, symbolic_solver_labels=True)
             if sol.solver.termination_condition != TerminationCondition.optimal:
                 self.ip.options["OF_start_with_resto"] = 'no'
+                self.ip.options["bound_push"] = 1E-02
+                self.ip.options["OF_bound_relax_factor"] = 1E-05
+                # self.ip.options[""]
                 # for i in self.mod.component_data_objects(Var):
                 #     i.setlb(None)
-                for i in self.mod.Z.itervalues():
-                    i.setlb(None)
-                for i in self.mod.X.itervalues():
-                    idx = i.index()
-                    if idx[1] in ['Msa']:
-                        i.setlb(-0.05)
-                    else:
-                        i.setlb(None)
+                # for i in self.mod.Z.itervalues():
+                #     i.setlb(None)
+                # for i in self.mod.X.itervalues():
+                #     idx = i.index()
+                #     if idx[1] in ['Msa']:
+                #         i.setlb(-0.05)
+                #     else:
+                #         i.setlb(None)
                 sol = self.ip.solve(self.mod, tee=True, symbolic_solver_labels=True)
+                self.ip.options["OF_bound_relax_factor"] = 1E-08
                 if sol.solver.termination_condition != TerminationCondition.optimal:
                     raise Exception("The current iteration was unsuccessful. Iteration :{}".format(fe))
 
@@ -402,6 +407,7 @@ class fe_initialize(object):
     def patch(self, fe):
         # type: (int) -> None
         """ Take the current state of variables of the initializing model at fe and load it into the tgt_model
+        Note that this will skip fixed variables as a safeguard.
 
         Args:
             fe (int): The current finite element to be patched (tgt_model).
@@ -412,7 +418,7 @@ class fe_initialize(object):
             v_tgt = getattr(self.tgt, v.name)
             if v.name in self.weird_vars:  #: This has got to work.
                 for k in v.keys():
-                    if v[k].stale:
+                    if v[k].stale or v[k].is_fixed():
                         continue
                     try:
                         val = value(v[k])
@@ -430,7 +436,7 @@ class fe_initialize(object):
                 t_src = t_ij(ts, 0, j)
 
                 if drs is None:
-                    if v[t_src].stale:
+                    if v[t_src].stale or v[t_src].is_fixed():
                         continue
                     try:
                         val = value(v[t_src])
@@ -441,7 +447,7 @@ class fe_initialize(object):
                 for k in drs:
                     for key in k:
                         key = key if isinstance(key, tuple) else (key,)
-                        if v[(t_src,) + key].stale:
+                        if v[(t_src,) + key].stale or v[(t_src,) + key].is_fixed():
                             continue
                         try:
                             val = value(v[(t_src,) + key])
@@ -464,7 +470,7 @@ class fe_initialize(object):
         for t in zeit:
             hi[t].value = self.fe_list[fe]
 
-    def run(self):
+    def run(self, resto_strategy='bound_relax'):
         """Runs the sequence of problems fe=0,nfe
 
         """
@@ -473,7 +479,7 @@ class fe_initialize(object):
         print("*" * 5)
         print("*" * 5 + '\tSolving for {} elements\t'.format(len(self.fe_list)) + "*" * 5 )
         for i in range(0, len(self.fe_list)):
-            self.march_forward(i)
+            self.march_forward(i, resto_strategy=resto_strategy)
 
     def load_input(self, fe):
         # type: (int) -> None
@@ -515,6 +521,28 @@ class fe_initialize(object):
                         tsim = t_ij(ts, 0, j)
                         val = value(p_data[(t,) + k])
                         p_sim[(tsim,) + k].set_value(val)
+
+    def create_bounds(self, bound_dict):
+        ts = getattr(self.mod, self.time_set)
+        for v in bound_dict.keys():
+            var = getattr(self.mod, v)
+            varbnd = bound_dict[v]
+            if not isinstance(varbnd, dict):
+                raise RuntimeError("The entry for {} is not a dictionary".format(v))
+            for t in ts:
+                for k in varbnd.keys():
+                    bnd = varbnd[k]
+                    if not isinstance(k, tuple):
+                        k = (k,)
+                    var[(t,) + k].setlb(bnd[0])  #: Lower bound
+                    var[(t,) + k].setub(bnd[1])  #: Upper bound
+
+    def clear_bounds(self):
+        for v in self.mod.component_data_objects(Var):
+            v.setlb(None)
+            v.setub(None)
+
+
 
 
 

@@ -206,6 +206,13 @@ if __name__ == "__main__":
     sim.fix_from_trajectory('Y','Csat',fixed_traj)
     sim.fix_from_trajectory('Y','f',fixed_traj)
 
+    with open("f0.txt", "w") as f:
+        for t in sim.model.time:
+            val = value(sim.model.Y[t, 'f'])
+            f.write('\t' + str(t) + '\t' + str(val) + '\n')
+        f.close()
+
+
     options = {'halt_on_ampl_error' :'yes'}
     results = sim.run_sim('ipopt',
                           tee=True,
