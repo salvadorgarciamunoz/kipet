@@ -32,9 +32,9 @@ if __name__ == "__main__":
     builder = TemplateBuilder()  
     
     #First we define the components present in the mixture
-    builder.add_mixture_component('A',1)
-    builder.add_mixture_component('B',0)
-    builder.add_mixture_component('C',0)
+    builder.add_mixture_component('A',0.1)
+    builder.add_mixture_component('B',0.0)
+    builder.add_mixture_component('C',0.0)
     
     #Following this we add the kinetic parameters
     builder.add_parameter('k1',2.0)

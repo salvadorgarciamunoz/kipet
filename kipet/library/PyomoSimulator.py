@@ -101,7 +101,7 @@ class PyomoSimulator(Simulator):
         z_init_panel = pd.DataFrame(data=z_array,
                                  columns=self._mixture_components,
                                  index=self._times)
-
+        
         c_init = []
         for t in self._meas_times:
             for k in self._mixture_components:

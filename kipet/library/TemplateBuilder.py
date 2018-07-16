@@ -465,12 +465,23 @@ class TemplateBuilder(object):
         pyomo_model.time = ContinuousSet(initialize=pyomo_model.meas_times,
                                          bounds=(start_time, end_time))
 
+        # Parameters
+        pyomo_model.init_conditions = Param(pyomo_model.states,
+                                            initialize=self._init_conditions, mutable=True)
+        pyomo_model.start_time = Param(initialize=start_time)
+        pyomo_model.end_time = Param(initialize=end_time)
+
         # Variables
         pyomo_model.Z = Var(pyomo_model.time,
                             pyomo_model.mixture_components,
                             # bounds=(0.0,None),
                             initialize=1)
-
+        
+        for t, s in pyomo_model.Z:
+            if t == pyomo_model.start_time.value:
+                pyomo_model.Z[t, s].value = self._init_conditions[s]
+                #pyomo_model.Z[t, s].fixed = True
+            
         pyomo_model.dZdt = DerivativeVar(pyomo_model.Z,
                                          wrt=pyomo_model.time)
 
@@ -489,9 +500,20 @@ class TemplateBuilder(object):
                             bounds=(0.0, None),
                             initialize=1)
 
+        for t, s in pyomo_model.C:
+            if t == pyomo_model.start_time.value:
+                pyomo_model.C[t, s].value = self._init_conditions[s]
+                #pyomo_model.C[t, s].fixed = True
+
         pyomo_model.X = Var(pyomo_model.time,
                             pyomo_model.complementary_states,
                             initialize=1.0)
+
+        # Fixes parameters that were given numeric values
+        for t, s in pyomo_model.X:
+            if t == pyomo_model.start_time.value:
+                pyomo_model.X[t, s].value = self._init_conditions[s]
+                #pyomo_model.X[t, s].fixed = True
 
         pyomo_model.dXdt = DerivativeVar(pyomo_model.X,
                                          wrt=pyomo_model.time)
@@ -518,11 +540,7 @@ class TemplateBuilder(object):
                 for k in pyomo_model.mixture_components:
                     pyomo_model.S[l, k].fixed = True
 
-        # Parameters
-        pyomo_model.init_conditions = Param(pyomo_model.states,
-                                            initialize=self._init_conditions, mutable=True)
-        pyomo_model.start_time = Param(initialize=start_time)
-        pyomo_model.end_time = Param(initialize=end_time)
+
 
         # Fixes parameters that were given numeric values
         for p, v in self._parameters.items():
