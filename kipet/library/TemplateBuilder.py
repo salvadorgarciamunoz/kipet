@@ -69,6 +69,7 @@ class TemplateBuilder(object):
         self._parameters_bounds = dict()
         self._init_conditions = dict()
         self._spectral_data = None
+        self._concentration_data = None
         self._absorption_data = None
         self._odes = None
         self._meas_times = set()
@@ -227,6 +228,23 @@ class TemplateBuilder(object):
             self._spectral_data = data
         else:
             raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
+
+    def add_concentration_data(self, data):
+        """Add concentration data 
+
+        Args:
+            data (DataFrame): DataFrame with measurement times as 
+                              indices and concentrations as columns. 
+
+        Returns:
+            None
+
+        """
+        if isinstance(data, pd.DataFrame):
+            self._concentration_data = data
+        else:
+            raise RuntimeError('Concentration data format not supported. Try pandas.DataFrame')
+
 
     def add_absorption_data(self, data):
         """Add absorption data 
@@ -405,7 +423,7 @@ class TemplateBuilder(object):
 
         if self._absorption_data is not None:
             if not self._meas_times:
-                raise RuntimeError('Need to add measumerement times')
+                raise RuntimeError('Need to add measurement times')
 
     def create_pyomo_model(self, start_time, end_time):
         """Create a pyomo model.
@@ -446,12 +464,16 @@ class TemplateBuilder(object):
 
         if self._absorption_data is not None:
             if not self._meas_times:
-                raise RuntimeError('Need to add measumerement times')
+                raise RuntimeError('Need to add measurement times')
             list_times = list(self._meas_times)
             list_lambdas = list(self._absorption_data.index)
             m_times = sorted(list_times)
             m_lambdas = sorted(list_lambdas)
-
+        
+        if self._concentration_data is not None:
+            list_times = list_times.union(set(self._concentration_data.index))
+            m_times = sorted(list_times)
+        
         if m_times:
             if m_times[0] < start_time:
                 raise RuntimeError('Measurement time {0} not within ({1},{2})'.format(m_times[0], start_time, end_time))
@@ -494,17 +516,30 @@ class TemplateBuilder(object):
             ub = v[1]
             pyomo_model.P[k].setlb(lb)
             pyomo_model.P[k].setub(ub)
-
+            
+        if self._concentration_data is not None:
+            c_dict = dict()
+            for k in self._concentration_data.columns:
+                for c in self._concentration_data.index:
+                    c_dict[c, k] = float(self._concentration_data[k][c])
+        else:
+            c_dict = 1.0
+           
         pyomo_model.C = Var(pyomo_model.meas_times,
                             pyomo_model.mixture_components,
                             bounds=(0.0, None),
-                            initialize=1)
+                            initialize=c_dict)
 
-        for t, s in pyomo_model.C:
-            if t == pyomo_model.start_time.value:
-                pyomo_model.C[t, s].value = self._init_conditions[s]
-                #pyomo_model.C[t, s].fixed = True
-
+        if self._concentration_data is not None:
+            for t in pyomo_model.meas_times:
+                for k in pyomo_model.mixture_components:
+                    pyomo_model.C[t, k].fixed = True
+            
+        else:
+            for t, c in pyomo_model.C:
+                if t == pyomo_model.start_time.value:
+                    pyomo_model.C[t, c].value = self._init_conditions[s]
+                                
         pyomo_model.X = Var(pyomo_model.time,
                             pyomo_model.complementary_states,
                             initialize=1.0)
@@ -513,7 +548,6 @@ class TemplateBuilder(object):
         for t, s in pyomo_model.X:
             if t == pyomo_model.start_time.value:
                 pyomo_model.X[t, s].value = self._init_conditions[s]
-                #pyomo_model.X[t, s].fixed = True
 
         pyomo_model.dXdt = DerivativeVar(pyomo_model.X,
                                          wrt=pyomo_model.time)
@@ -539,8 +573,6 @@ class TemplateBuilder(object):
             for l in pyomo_model.meas_lambdas:
                 for k in pyomo_model.mixture_components:
                     pyomo_model.S[l, k].fixed = True
-
-
 
         # Fixes parameters that were given numeric values
         for p, v in self._parameters.items():
@@ -758,6 +790,9 @@ class TemplateBuilder(object):
 
     def has_adsorption_data(self):
         return self._absorption_data is not None
+    
+    def has_concentration_data(self):
+        return self._aconcentration_data is not None
 
     def set_non_absorbing_species(self, model, non_abs_list, check=True):
         # type: (ConcreteModel, list, bool) -> None

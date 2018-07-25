@@ -36,6 +36,7 @@ class PyomoSimulator(Simulator):
         self._n_times = len(self._times)
         self._ipopt_scaled = False
         self._spectra_given = hasattr(self.model, 'D')
+        self._concentration_given = hasattr(self.model, 'C')
         #creates scaling factor suffix
         if not hasattr(self.model, 'scaling_factor'):
             self.model.scaling_factor = Suffix(direction=Suffix.EXPORT)
@@ -103,20 +104,26 @@ class PyomoSimulator(Simulator):
                                  index=self._times)
         
         c_init = []
-        for t in self._meas_times:
-            for k in self._mixture_components:
-                if abs(self.model.init_conditions[k].value)>tol:
-                    c_init.append(self.model.init_conditions[k].value)
-                else:
-                    c_init.append(1.0)
+        if self._concentration_given:
+            pass
+        else:
+            for t in self._meas_times:
+                for k in self._mixture_components:
+                    if abs(self.model.init_conditions[k].value)>tol:
+                        c_init.append(self.model.init_conditions[k].value)
+                    else:
+                        c_init.append(1.0)
 
         if self._n_meas_times:
-            c_array = np.array(c_init).reshape((self._n_meas_times,self._n_components))
-            c_init_panel = pd.DataFrame(data=c_array,
+            if self._concentration_given:
+                pass
+            else:
+                c_array = np.array(c_init).reshape((self._n_meas_times,self._n_components))
+                c_init_panel = pd.DataFrame(data=c_array,
                                         columns=self._mixture_components,
                                         index=self._meas_times)
-            self.initialize_from_trajectory('C',c_init_panel)
-
+                self.initialize_from_trajectory('C',c_init_panel)
+                print("self._n_meas_times is true in _default_init in PyomoSim")
     
         x_init = []
         for t in self._times:
