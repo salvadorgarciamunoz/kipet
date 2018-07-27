@@ -507,9 +507,20 @@ class TemplateBuilder(object):
         pyomo_model.dZdt = DerivativeVar(pyomo_model.Z,
                                          wrt=pyomo_model.time)
 
+        p_dict = dict()
+        for p,v in self._parameters.items():
+            
+            if v is not None:
+                p_dict[p] = v
+            else:
+                for p, s in self._parameters_bounds.items():
+                    lb = s[0]
+                    ub = s[1]
+                    p_dict[p]=(ub-lb)/2
+
         pyomo_model.P = Var(pyomo_model.parameter_names,
                             # bounds = (0.0,None),
-                            initialize=1)
+                            initialize=p_dict)
         # set bounds P
         for k, v in self._parameters_bounds.items():
             lb = v[0]
@@ -538,7 +549,7 @@ class TemplateBuilder(object):
         else:
             for t, c in pyomo_model.C:
                 if t == pyomo_model.start_time.value:
-                    pyomo_model.C[t, c].value = self._init_conditions[s]
+                    pyomo_model.C[t, c].value = self._init_conditions[c]
                                 
         pyomo_model.X = Var(pyomo_model.time,
                             pyomo_model.complementary_states,
