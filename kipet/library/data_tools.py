@@ -70,7 +70,91 @@ def write_absorption_data_to_txt(filename,dataframe):
         for j in dataframe.columns:
             f.write("{0} {1} {2}\n".format(i,j,dataframe[j][i]))
     f.close()
+
+def write_concentration_data_to_csv(filename,dataframe):
+    """ Write concentration data Cij to csv file.
     
+        Args:
+            filename (str): name of output file
+          
+            dataframe (DataFrame): pandas DataFrame
+        
+        Returns:
+            None
+
+    """
+    dataframe.to_csv(filename)
+
+def write_concentration_data_to_txt(filename,dataframe):
+    """ Write concentration data Cij to txt file.
+    
+        Args:
+            filename (str): name of output file
+          
+            dataframe (DataFrame): pandas DataFrame
+        
+        Returns:
+            None
+
+    """
+    f = open(filename,'w')
+    for i in dataframe.index:
+        for j in dataframe.columns:
+            f.write("{0} {1} {2}\n".format(i,j,dataframe[j][i]))
+    f.close()
+
+
+def read_concentration_data_from_txt(filename):
+    """ Reads txt with concnetration data
+    
+        Args:
+            filename (str): name of input file
+          
+        Returns:
+            DataFrame
+
+    """
+
+    f = open(filename,'r')
+    data_dict = dict()
+    set_index = set()
+    set_columns = set()
+
+    for line in f:
+        if line not in ['','\n','\t','\t\n']:
+            l=line.split()
+            i = float(l[0])
+            j = l[1]
+            k = float(l[2])
+            set_index.add(i)
+            set_columns.add(j)
+            data_dict[i,j] = k
+    f.close()
+    
+    data_array = np.zeros((len(set_index),len(set_columns)))
+    sorted_index = sorted(set_index)
+    sorted_columns = set_columns
+
+    for i,idx in enumerate(sorted_index):
+        for j,jdx in enumerate(sorted_columns):
+            data_array[i,j] = data_dict[idx,jdx]
+
+    return pd.DataFrame(data=data_array,columns=sorted_columns,index=sorted_index)
+ 
+def read_concentration_data_from_csv(filename):
+    """ Reads csv with concentration data
+    
+        Args:
+            filename (str): name of input file
+         
+        Returns:
+            DataFrame
+
+    """
+    data = pd.read_csv(filename,index_col=0)
+    data.columns = [n for n in data.columns]
+    return data    
+
 def read_spectral_data_from_csv(filename):
     """ Reads csv with spectral data
     
