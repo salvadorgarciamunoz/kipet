@@ -286,7 +286,7 @@ class ParameterEstimator(Optimizer):
         for v in six.itervalues(self.model.P):
             if v.is_fixed():
                 print(v, end='\t')
-                print("fixed!!")
+                print("is fixed")
                 continue
             self._idx_to_variable[count_vars] = v
             self.model.red_hessian[v] = count_vars
@@ -299,8 +299,8 @@ class ParameterEstimator(Optimizer):
         nc = self._n_actual
         nparams = 0
         for v in six.itervalues(self.model.P):
-            if v.is_fixed():  #: Skip the fixed ones ;)
-                print(str(v) + '\thas been skipped ;)')
+            if v.is_fixed():  #: Skip the fixed ones
+                print(str(v) + '\has been skipped for covariance calculations')
                 continue
             nparams += 1
         # nparams = len(self.model.P)
@@ -377,7 +377,7 @@ class ParameterEstimator(Optimizer):
         nc = self._n_actual
         nparams = 0
         for v in six.itervalues(self.model.P):
-            if v.is_fixed():  #: Skip the fixed ones ;)
+            if v.is_fixed():  #: Skip the fixed parameters
                 continue
             nparams += 1
 
