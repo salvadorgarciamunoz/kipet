@@ -284,6 +284,10 @@ class ParameterEstimator(Optimizer):
                 count_vars += 1
 
         for v in six.itervalues(self.model.P):
+            if v.is_fixed():
+                print(v, end='\t')
+                print("is fixed")
+                continue
             self._idx_to_variable[count_vars] = v
             self.model.red_hessian[v] = count_vars
             count_vars += 1
@@ -293,7 +297,13 @@ class ParameterEstimator(Optimizer):
         nt = self._n_meas_times
         nw = self._n_meas_lambdas
         nc = self._n_actual
-        nparams = len(self.model.P)
+        nparams = 0
+        for v in six.itervalues(self.model.P):
+            if v.is_fixed():  #: Skip the fixed ones
+                print(str(v) + '\has been skipped for covariance calculations')
+                continue
+            nparams += 1
+        # nparams = len(self.model.P)
         nd = nw * nt
         ntheta = nc * (nw + nt) + nparams
 
@@ -329,7 +339,12 @@ class ParameterEstimator(Optimizer):
         nt = self._n_meas_times
         nw = self._n_meas_lambdas
         nc = self._n_actual
-        nparams = len(self.model.P)
+        nparams = 0
+        for v in six.itervalues(self.model.P):
+            if v.is_fixed():  #: Skip the fixed ones ;)
+                continue
+            nparams += 1
+
         # this changes depending on the order of the suffixes passed to sipopt
         nd = nw * nt
         ntheta = nc * (nw + nt)
@@ -339,6 +354,8 @@ class ParameterEstimator(Optimizer):
         print('\nConfidence intervals:')
         i = 0
         for k, p in self.model.P.items():
+            if p.is_fixed():
+                continue
             print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
             i = +1
         return 1
@@ -358,8 +375,13 @@ class ParameterEstimator(Optimizer):
         nt = self._n_meas_times
         nw = self._n_meas_lambdas
         nc = self._n_actual
+        nparams = 0
+        for v in six.itervalues(self.model.P):
+            if v.is_fixed():  #: Skip the fixed parameters
+                continue
+            nparams += 1
 
-        nparams = len(self.model.P)
+        #nparams = len(self.model.P)
         # this changes depending on the order of the suffixes passed to sipopt
         nd = nw * nt
         ntheta = nc * (nw + nt) + nparams
