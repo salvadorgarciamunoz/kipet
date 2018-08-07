@@ -17,8 +17,8 @@ except ImportError:
 if found_casadi: 
     __all__ = ['CasadiModel','TemplateBuilder','BaseAbstractModel','CasadiSimulator',
                'data_tools','fe_factory','Optimizer','ParameterEstimator','PyomoSimulator',
-               'ResultsObject','Simulator','VarianceEstimator'] 
+               'ResultsObject','Simulator','VarianceEstimator','FESimulator'] 
 else: 
     __all__ = ['TemplateBuilder','BaseAbstractModel',
                'data_tools','fe_factory','Optimizer','ParameterEstimator',
-               'PyomoSimulator','ResultsObject','Simulator','VarianceEstimator']  
+               'PyomoSimulator','ResultsObject','Simulator','VarianceEstimator','FESimulator']  

@@ -28,6 +28,7 @@ from kipet.library.ParameterEstimator import *
 from kipet.library.VarianceEstimator import *
 from kipet.library.data_tools import *
 from kipet.library.fe_factory import *
+from kipet.library.FESimulator import *
 from pyomo.core.kernel.expr import exp
 import matplotlib.pyplot as plt
 import numpy as np
@@ -196,45 +197,43 @@ if __name__ == "__main__":
     fe_x_list = [ii for ii in range(1, nfe_x + 1)]
     model.fe_x_i = Set(initialize=fe_x_list)
     
-    sim = PyomoSimulator(model)
-    mod = sim.model.clone()
+    sim = FESimulator(model)
     
     # defines the discrete points wanted in the concentration profile
-    sim.apply_discretization('dae.collocation', nfe=(nfe_x+1), ncp=3, scheme='LAGRANGE-RADAU')
+    sim.apply_discretization('dae.collocation', nfe=(nfe_x), ncp=3, scheme='LAGRANGE-RADAU')
     fe_l = sim.model.time.get_finite_elements()
     fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
     nfe = len(fe_list)  #: Create a list with the step-size
     print(nfe)
-
     #sys.exit()
 
     #sim.fix_from_trajectory('X','V',fixed_traj)
 
     #: we now need to explicitly tell the initial conditions and parameter values
-    param_name = "P"
-    param_dict = {}
-    param_dict["P", "k0"] = 0.0360309
-    param_dict["P", "k1"] = 0.1596062
-    param_dict["P", "k2"] = 6.8032345
-    param_dict["P", "k3"] = 1.8028763
-    param_dict["P", "kd"] = 7.1108682
-    param_dict["P", "kc"] = 0.7566864
-    param_dict["P", "Csa"] = 2.06269996
+    #param_name = "P"
+    #param_dict = {}
+    #param_dict["P", "k0"] = 0.0360309
+    #param_dict["P", "k1"] = 0.1596062
+    #param_dict["P", "k2"] = 6.8032345
+    #param_dict["P", "k3"] = 1.8028763
+    #param_dict["P", "kd"] = 7.1108682
+    #param_dict["P", "kc"] = 0.7566864
+    #param_dict["P", "Csa"] = 2.06269996
 
-    ics_ = dict()
-    ics_['Z', 'SA'] = 1.0714
-    ics_['Z', 'AA'] = 9.3828 
-    ics_['Z', 'ASA'] = 0.0177
-    ics_['Z', 'HA'] = 0.0177 
-    ics_['Z', 'ASAA'] =0.000015
-    ics_['Z', 'H2O'] = 0.0
+    #ics_ = dict()
+    #ics_['Z', 'SA'] = 1.0714
+    #ics_['Z', 'AA'] = 9.3828 
+    #ics_['Z', 'ASA'] = 0.0177
+    #ics_['Z', 'HA'] = 0.0177 
+    #ics_['Z', 'ASAA'] =0.000015
+    #ics_['Z', 'H2O'] = 0.0
 
-    ics_['X', 'V'] = 0.0202
-    ics_['X', 'Masa'] = 0.0
-    ics_['X', 'Msa'] = 9.537
+    #ics_['X', 'V'] = 0.0202
+    #ics_['X', 'Masa'] = 0.0
+    #ics_['X', 'Msa'] = 9.537
     
         
-    inputs_sub = {}
+    #inputs_sub = {}
     
     inputs_sub['Y'] = ['f', 'Csat']
 
@@ -244,24 +243,24 @@ if __name__ == "__main__":
     #     v = value(sim.model.Y[t, 'f'])
     #     print(t, v)
     #: define the values for our simulation
-#    for key in sim.model.time.value:
-#        sim.model.Y[key,'f'].set_value(key)
-#        sim.model.Y[key,'f'].fix()  #if you don't fix this, fe_factory is will not work complain.
-     #   sim.model.Y[key,'Csat'].set_value(key)
-     #   sim.model.Y[key,'Csat'].fix() 
+    #for key in sim.model.time.value:
+    #    sim.model.Y[key,'f'].set_value(key)
+    #    sim.model.Y[key,'f'].fix()  #if you don't fix this, fe_factory is will not work complain.
+    #    sim.model.Y[key,'Csat'].set_value(key)
+    #    sim.model.Y[key,'Csat'].fix() 
     #
 
 
-    init = fe_initialize(sim.model, mod,
-                         init_con="init_conditions_c",
-                         param_name=param_name,
-                         param_values=param_dict,
-                         inputs_sub=inputs_sub)
+    #init = fe_initialize(sim.model, mod,
+    #                     init_con="init_conditions_c",
+    #                     param_name=param_name,
+    #                     param_values=param_dict,
+    #                     inputs_sub=inputs_sub)
     
-    init.load_initial_conditions(init_cond=ics_)
+    #init.load_initial_conditions(init_cond=ics_)
    
-    init.run()
-
+    #init.run()
+    init = sim.call_fe_factory(inputs_sub)
     #=========================================================================
     #USER INPUT SECTION - SIMULATION
     #=========================================================================
@@ -282,8 +281,8 @@ if __name__ == "__main__":
 #    initialization = pd.read_csv(filename_initY,index_col=0)
 #    sim.initialize_from_trajectory('Y',initialization)
             
-#    sim.fix_from_trajectory('Y','Csat',fixed_traj)
-#    sim.fix_from_trajectory('Y','f',fixed_traj)
+    sim.fix_from_trajectory('Y','Csat',fixed_traj)
+    sim.fix_from_trajectory('Y','f',fixed_traj)
 
     for i in sim.model.X.itervalues():
         idx = i.index()
@@ -351,4 +350,5 @@ if __name__ == "__main__":
         plt.xlabel("time (s)")
         plt.ylabel("m_dot (g)")
         plt.title("Masa Profile")
-        plt.show()
+        
+plt.show()

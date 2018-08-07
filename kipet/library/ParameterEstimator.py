@@ -104,7 +104,6 @@ class ParameterEstimator(Optimizer):
             m.D_bar_constraint = Constraint(m.meas_times,
                                             m.meas_lambdas,
                                             rule=rule_D_bar)
-
         # estimation
         def rule_objective(m):
             expr = 0
@@ -165,6 +164,106 @@ class ParameterEstimator(Optimizer):
             m.del_component('D_bar')
             m.del_component('D_bar_constraint')
         m.del_component('objective')
+        
+        
+    def _solve_model_given_c(self, sigma_sq, optimizer, **kwds):
+        """Solves estimation based on concentration data. (known variances)
+
+           This method is not intended to be used by users directly
+        Args:
+            sigma_sq (dict): variances 
+            
+            optimizer (SolverFactory): Pyomo Solver factory object
+        
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+        Returns:
+            None
+        """
+
+        tee = kwds.pop('tee', False)
+        weights = kwds.pop('weights', [0.0, 1.0])
+        covariance = kwds.pop('covariance', False)
+        species_list = kwds.pop('subset_components', None)
+
+        list_components = []
+        if species_list is None:
+            list_components = [k for k in self._mixture_components]
+        else:
+            for k in species_list:
+                if k in self._mixture_components:
+                    list_components.append(k)
+                else:
+                    warnings.warn("Ignored {} since is not a mixture component of the model".format(k))
+
+        if not self._concentration_given:
+            raise NotImplementedError("Parameter Estimation from concentration data requires spectral data model.C[ti,cj]")
+
+        #if hasattr(self.model, 'non_absorbing'):
+        #    warnings.warn("Overriden by non_absorbing!!!")
+        #    list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
+
+        all_sigma_specified = True
+        print(sigma_sq)
+        keys = sigma_sq.keys()
+        for k in list_components:
+            if k not in keys:
+                all_sigma_specified = False
+                sigma_sq[k] = max(sigma_sq.values())
+
+        if not 'device' in sigma_sq.keys():
+            all_sigma_specified = False
+            sigma_sq['device'] = 1.0
+
+        m = self.model
+
+        # estimation
+        def rule_objective(m):
+            obj = 0
+            for t in m.meas_times:
+                obj += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components)
+
+            return obj
+
+        m.objective = Objective(rule=rule_objective)
+
+        # solver_results = optimizer.solve(m,tee=True,
+        #                                 report_timing=True)
+
+        if covariance:
+            self._tmpfile = "ipopt_hess"
+            solver_results = optimizer.solve(m, tee=True,
+                                             logfile=self._tmpfile,
+                                             report_timing=True)
+
+            print("Done solving building reduce hessian")
+            output_string = ''
+            with open(self._tmpfile, 'r') as f:
+                output_string = f.read()
+            if os.path.exists(self._tmpfile):
+                os.remove(self._tmpfile)
+            # output_string = f.getvalue()
+            ipopt_output, hessian_output = split_sipopt_string(output_string)
+            # print hessian_output
+            print("build strings")
+            if tee == True:
+                print(ipopt_output)
+
+            if not all_sigma_specified:
+                raise RuntimeError(
+                    'All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
+
+            n_vars = len(self._idx_to_variable)
+            hessian = read_reduce_hessian(hessian_output, n_vars)
+            print(hessian.size, "hessian size")
+            # hessian = read_reduce_hessian2(hessian_output,n_vars)
+            # print hessian
+            self._compute_covariance(hessian, sigma_sq)
+        else:
+            solver_results = optimizer.solve(m, tee=tee)
+
+        m.del_component('objective')
 
     def _define_reduce_hess_order(self):
         self.model.red_hessian = Suffix(direction=Suffix.IMPORT_EXPORT)
@@ -185,6 +284,10 @@ class ParameterEstimator(Optimizer):
                 count_vars += 1
 
         for v in six.itervalues(self.model.P):
+            if v.is_fixed():
+                print(v, end='\t')
+                print("is fixed")
+                continue
             self._idx_to_variable[count_vars] = v
             self.model.red_hessian[v] = count_vars
             count_vars += 1
@@ -194,7 +297,13 @@ class ParameterEstimator(Optimizer):
         nt = self._n_meas_times
         nw = self._n_meas_lambdas
         nc = self._n_actual
-        nparams = len(self.model.P)
+        nparams = 0
+        for v in six.itervalues(self.model.P):
+            if v.is_fixed():  #: Skip the fixed ones
+                print(str(v) + '\has been skipped for covariance calculations')
+                continue
+            nparams += 1
+        # nparams = len(self.model.P)
         nd = nw * nt
         ntheta = nc * (nw + nt) + nparams
 
@@ -230,7 +339,12 @@ class ParameterEstimator(Optimizer):
         nt = self._n_meas_times
         nw = self._n_meas_lambdas
         nc = self._n_actual
-        nparams = len(self.model.P)
+        nparams = 0
+        for v in six.itervalues(self.model.P):
+            if v.is_fixed():  #: Skip the fixed ones ;)
+                continue
+            nparams += 1
+
         # this changes depending on the order of the suffixes passed to sipopt
         nd = nw * nt
         ntheta = nc * (nw + nt)
@@ -240,6 +354,8 @@ class ParameterEstimator(Optimizer):
         print('\nConfidence intervals:')
         i = 0
         for k, p in self.model.P.items():
+            if p.is_fixed():
+                continue
             print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
             i = +1
         return 1
@@ -259,8 +375,13 @@ class ParameterEstimator(Optimizer):
         nt = self._n_meas_times
         nw = self._n_meas_lambdas
         nc = self._n_actual
+        nparams = 0
+        for v in six.itervalues(self.model.P):
+            if v.is_fixed():  #: Skip the fixed parameters
+                continue
+            nparams += 1
 
-        nparams = len(self.model.P)
+        #nparams = len(self.model.P)
         # this changes depending on the order of the suffixes passed to sipopt
         nd = nw * nt
         ntheta = nc * (nw + nt) + nparams
@@ -403,19 +524,33 @@ class ParameterEstimator(Optimizer):
                 "WARNING: The model has an active objective. Running optimization with models objective.\n"
                 " To solve optimization with default objective (Weifengs) deactivate all objectives in the model.")
             solver_results = opt.solve(self.model, tee=tee)
-        else:
+        elif self._spectra_given:
             self._solve_extended_model(variances, opt,
                                        tee=tee,
                                        covariance=covariance,
                                        with_d_vars=with_d_vars,
                                        **kwds)
-
+        elif self._concentration_given:
+            self._solve_model_given_c(variances, opt,
+                                      tee=tee,
+                                      covariance=covariance,
+                                      **kwds)
+        else:
+            raise RuntimeError('Must either provide concentration data or spectra in order to solve the parameter estimation problem')
+        
         results = ResultsObject()
-
-        results.load_from_pyomo_model(self.model,
+        
+        if self._spectra_given:
+            results.load_from_pyomo_model(self.model,
                                       to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
-
-        self.compute_D_given_SC(results)
+        elif self._concentration_given:
+            results.load_from_pyomo_model(self.model,
+                                      to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Y'])
+        else:
+            raise RuntimeError('Must either provide concentration data or spectra in order to solve the parameter estimation problem')
+           
+        if self._spectra_given:
+            self.compute_D_given_SC(results)
 
         param_vals = dict()
         for name in self.model.parameter_names:
