@@ -27,11 +27,13 @@ from kipet.library.PyomoSimulator import *
 from kipet.library.ParameterEstimator import *
 from kipet.library.VarianceEstimator import *
 from kipet.library.data_tools import *
-
+from kipet.library.fe_factory import *
+from pyomo.core.kernel.expr import exp
 import matplotlib.pyplot as plt
 import numpy as np
 import sys
 import os
+import pprint
 
 if __name__ == "__main__":
     
@@ -56,22 +58,25 @@ if __name__ == "__main__":
     
     fixed_traj = read_absorption_data_from_txt(traj)
     C = read_absorption_data_from_txt(conc)
+    
 
     meas_times=sorted(C.index)
     print(meas_times)
     # How many measurement times are there
     nfe_x = len(meas_times)
-    print(nfe_x)# create template model
+    print(nfe_x)
+    # create template model 
+    builder = TemplateBuilder()    
 
-    builder = TemplateBuilder()
+
 
     # components
     components = dict()
-    components['SA'] = 1.0714                  # Salicitilc acid
+    components['SA'] = 1.0714               # Salicitilc acid
     components['AA'] = 9.3828               # Acetic anhydride
-    components['ASA'] = 0.0177                 # Acetylsalicylic acid
-    components['HA'] = 0.0177                  # Acetic acid
-    components['ASAA'] = 0.000015                # Acetylsalicylic anhydride
+    components['ASA'] = 0.0177              # Acetylsalicylic acid
+    components['HA'] = 0.0177               # Acetic acid
+    components['ASAA'] = 0.000015           # Acetylsalicylic anhydride
     components['H2O'] = 0.0                 # water
 
     builder.add_mixture_component(components)
@@ -96,9 +101,12 @@ if __name__ == "__main__":
     
     builder.add_complementary_state_variable(extra_states)
 
-    algebraics = ['f','r0','r1','r2','r3','r4','r5','v_sum','Csat']
+    algebraics = ['f','Csat','r0','r1','r2','r3','r4','r5','v_sum']
 
     builder.add_algebraic_variable(algebraics)
+
+    #remove the f and Csat algebraic variables and fix them as time-dependent parameters
+    #now we fix the non-variable for the fe_factory, f and Csat
 
     gammas = dict()
     gammas['SA']=    [-1, 0, 0, 0, 1, 0]
@@ -118,12 +126,12 @@ if __name__ == "__main__":
     epsilon['H2O']= 1.0
     
     partial_vol = dict()
-    partial_vol['SA']=0.0952552311614
-    partial_vol['AA']=0.101672206869
-    partial_vol['ASA']=0.132335206093
-    partial_vol['HA']=0.060320218688
-    partial_vol['ASAA']=0.186550717015
-    partial_vol['H2O']=0.0883603912169
+    partial_vol['SA'] = 0.0952552311614
+    partial_vol['AA'] = 0.101672206869
+    partial_vol['ASA'] = 0.132335206093
+    partial_vol['HA'] = 0.060320218688
+    partial_vol['ASAA'] = 0.186550717015
+    partial_vol['H2O'] = 0.0883603912169
     
     def rule_algebraics(m,t):
         r = list()
@@ -133,7 +141,7 @@ if __name__ == "__main__":
         r.append(m.Y[t,'r3']-m.P['k3']*m.Z[t,'AA']*m.Z[t,'H2O'])
 
         # dissolution rate
-        step = 1.0/(1.0+exp(-m.X[t,'Msa']/1e-4))
+        step = 1.0/(1.0+exp(-m.X[t,'Msa']/1e-04))
         rd = m.P['kd']*(m.P['Csa']-m.Z[t,'SA']+1e-6)**1.90*step
         r.append(m.Y[t,'r4']-rd)
         #r.append(m.Y[t,'r4'])
@@ -177,43 +185,91 @@ if __name__ == "__main__":
 
     builder.set_odes_rule(rule_odes)
 
-    model = builder.create_pyomo_model(0.0,210.5257)    
+    model = builder.create_pyomo_model(0.0, 210.5257)
+    #=========================================================================
+    #USER INPUT SECTION - FE Factory
+    #=========================================================================
 
-    #=========================================================================
-    #USER INPUT SECTION - SIMULATION
-    #=========================================================================
-  
     sim = PyomoSimulator(model)
-    # defines the discrete points wanted in the concentration profile
-    sim.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
+    mod = sim.model.clone()
+    sim.apply_discretization('dae.collocation', nfe=469, ncp=3, scheme='LAGRANGE-RADAU')
+
     fe_l = sim.model.time.get_finite_elements()
     fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
     nfe = len(fe_list)  #: Create a list with the step-size
     print(nfe)
-    # sys.exit()
-    # good initialization
+    # defines the discrete points wanted in the concentration profile
+    #: we now need to explicitly tell the initial conditions and parameter values
+    param_name = "P"
+    param_dict = {}
+    param_dict["P", "k0"] = 0.0360309
+    param_dict["P", "k1"] = 0.1596062
+    param_dict["P", "k2"] = 6.8032345
+    param_dict["P", "k3"] = 1.8028763
+    param_dict["P", "kd"] = 7.1108682
+    param_dict["P", "kc"] = 0.7566864
+    param_dict["P", "Csa"] = 2.06269996
 
-    filename_initZ = os.path.join(dataDirectory, 'init_Z.csv')#Use absolute paths
-    initialization = pd.read_csv(filename_initZ,index_col=0)
-    sim.initialize_from_trajectory('Z',initialization)
-    filename_initX = os.path.join(dataDirectory, 'init_X.csv')#Use absolute paths
-    initialization = pd.read_csv(filename_initX,index_col=0)
-    sim.initialize_from_trajectory('X',initialization)
-    filename_initY = os.path.join(dataDirectory, 'init_Y.csv')#Use absolute paths
-    initialization = pd.read_csv(filename_initY,index_col=0)
-    sim.initialize_from_trajectory('Y',initialization)
-            
+    ics_ = dict()
+    ics_['Z', 'SA'] = 1.0714
+    ics_['Z', 'AA'] = 9.3828 
+    ics_['Z', 'ASA'] = 0.0177
+    ics_['Z', 'HA'] = 0.0177 
+    ics_['Z', 'ASAA'] =0.000015
+    ics_['Z', 'H2O'] = 0.0
+
+    ics_['X', 'V'] = 0.0202
+    ics_['X', 'Masa'] = 0.0
+    ics_['X', 'Msa'] = 9.537
+
+    inputs_sub = {}
+    inputs_sub['Y'] = ['f', 'Csat']
+
     sim.fix_from_trajectory('Y','Csat',fixed_traj)
     sim.fix_from_trajectory('Y','f',fixed_traj)
 
-    with open("f0.txt", "w") as f:
+    with open("ffe0.txt", "w") as f:
         for t in sim.model.time:
             val = value(sim.model.Y[t, 'f'])
             f.write('\t' + str(t) + '\t' + str(val) + '\n')
         f.close()
 
+    init = fe_initialize(sim.model, mod,
+                         init_con="init_conditions_c",
+                         param_name=param_name,
+                         param_values=param_dict,
+                         inputs_sub=inputs_sub)
+    
+    init.load_initial_conditions(init_cond=ics_)
+    X_bnd = {"Msa": (-0.05, None), "Masa": (-0.05, None)}
+    Z_bnd = {"AA": (0.0, None), "ASA": (0.0, None), "HA": (0.0, None), "ASAA": (0.0, None), "H2O": (0.0, None)}
+    bnd_dict = {"X": X_bnd, "Z": Z_bnd}
+    sim.model.Z.pprint()
+    init.create_bounds(bnd_dict)
+    init.run()
 
-    options = {'halt_on_ampl_error' :'yes'}
+    #=========================================================================
+    #USER INPUT SECTION - SIMULATION
+    #=========================================================================
+
+    # for i in sim.model.X.itervalues():
+    #     idx = i.index()
+    #     if idx[1] in ['Msa', 'Masa']:
+    #         i.setlb(-0.05)
+    #     else:
+    #         i.setlb(0)
+    #
+    # for i in sim.model.Z.itervalues():
+    #     i.setlb(0)
+        # idx = i.index()
+        # if idx[1] == 'SA':
+        #     i.setub(2.06269996)
+
+
+    options = {'halt_on_ampl_error' :'yes',
+               'bound_push': 1e-08,
+               'print_user_options': 'yes',
+               'max_iter': 0}
     results = sim.run_sim('ipopt',
                           tee=True,
                           solver_opts=options)

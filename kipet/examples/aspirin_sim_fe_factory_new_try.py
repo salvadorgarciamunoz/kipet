@@ -205,6 +205,7 @@ if __name__ == "__main__":
     fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
     nfe = len(fe_list)  #: Create a list with the step-size
     print(nfe)
+
     #sys.exit()
 
     #sim.fix_from_trajectory('X','V',fixed_traj)
@@ -350,5 +351,4 @@ if __name__ == "__main__":
         plt.xlabel("time (s)")
         plt.ylabel("m_dot (g)")
         plt.title("Masa Profile")
-        
-plt.show()
+        plt.show()
