@@ -32,7 +32,7 @@ Authors
 --------
 
    * Salvador Garcia-Munoz Eli Lilly
-   * Lorentz T. Biegler Carnegie Mellon University
+   * Lorenz T. Biegler Carnegie Mellon University
    * Jose Santiago Rodriguez Purdue University
    * Carl Laird Purdue University
    * David M. Thierry Carnegie Mellon University
