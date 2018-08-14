@@ -472,7 +472,9 @@ class TemplateBuilder(object):
         
         if self._concentration_data is not None:
             list_times = list_times.union(set(self._concentration_data.index))
+            list_concs = list(self._concentration_data.columns)
             m_times = sorted(list_times)
+            m_concs = sorted(list_concs)
         
         if m_times:
             if m_times[0] < start_time:

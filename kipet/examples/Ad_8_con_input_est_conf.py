@@ -51,7 +51,7 @@ if __name__ == "__main__":
     # note the parameter is not fixed here
     builder.add_parameter('k1',bounds=(0.0,1.0))
     builder.add_parameter('k2',bounds=(0.0,1.0))
-    builder.add_spectral_data(D_frame)
+    builder.add_concentration_data(D_frame)
 
     # define explicit system of ODEs
     def rule_odes(m,t):
@@ -74,30 +74,20 @@ if __name__ == "__main__":
 
     optimizer.apply_discretization('dae.collocation',nfe=30,ncp=1,scheme='LAGRANGE-RADAU')
 
-    # Provide a good initial guess for the least squares problem, which uses fixed 
-    # parameters. The results of the least squares will then be used to initialize the 
-    # parameter estimation optimization. (Described in Section 5.6 of documentation)
-    #p_guess = {'k1':0.3,'k2':0.05}
-    #raw_results = optimizer.run_lsq_given_P('ipopt',p_guess,tee=False)
-    
-    #optimizer.initialize_from_trajectory('Z',raw_results.Z)
-    #optimizer.initialize_from_trajectory('S',raw_results.S)
-    #optimizer.initialize_from_trajectory('dZdt',raw_results.dZdt)
-    #optimizer.initialize_from_trajectory('C',raw_results.C)
-
     solver_options = dict()
     solver_options['mu_strategy'] = 'adaptive'
 
-    # fixes the variances for now
+    # fix the variances
     sigmas = {'device':7.25435e-6,
               'A':4.29616e-6,
               'B':1.11297e-5,
               'C':1.07905e-5}
     
-    results_pyomo = optimizer.run_opt('ipopt',
+    results_pyomo = optimizer.run_opt('ipopt_sens',
+                                        variances=sigmas,
                                       tee=True,
-                                      solver_opts = solver_options,
-                                      variances=sigmas)
+                                      solver_opts = options,
+                                      covariance=True)
 
     print("The estimated parameters are:")
     for k,v in six.iteritems(results_pyomo.P):
