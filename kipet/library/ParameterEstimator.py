@@ -198,7 +198,7 @@ class ParameterEstimator(Optimizer):
                     warnings.warn("Ignored {} since is not a mixture component of the model".format(k))
 
         if not self._concentration_given:
-            raise NotImplementedError("Parameter Estimation from concentration data requires spectral data model.C[ti,cj]")
+            raise NotImplementedError("Parameter Estimation from concentration data requires concentration data model.C[ti,cj]")
 
         #if hasattr(self.model, 'non_absorbing'):
         #    warnings.warn("Overriden by non_absorbing!!!")
@@ -212,9 +212,9 @@ class ParameterEstimator(Optimizer):
                 all_sigma_specified = False
                 sigma_sq[k] = max(sigma_sq.values())
 
-        if not 'device' in sigma_sq.keys():
-            all_sigma_specified = False
-            sigma_sq['device'] = 1.0
+        #if not 'device' in sigma_sq.keys():
+        #    all_sigma_specified = False
+        #    sigma_sq['device'] = 1.0
 
         m = self.model
 
@@ -225,30 +225,32 @@ class ParameterEstimator(Optimizer):
                 obj += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components)
 
             return obj
-
+            
         m.objective = Objective(rule=rule_objective)
 
         # solver_results = optimizer.solve(m,tee=True,
         #                                 report_timing=True)
-
+        
         if covariance:
             self._tmpfile = "ipopt_hess"
-            solver_results = optimizer.solve(m, tee=True,
+            solver_results = optimizer.solve(m, tee=False,
                                              logfile=self._tmpfile,
                                              report_timing=True)
-
+            #self.model.red_hessian.pprint
             print("Done solving building reduce hessian")
             output_string = ''
             with open(self._tmpfile, 'r') as f:
                 output_string = f.read()
+                
+                print("output_string", output_string)
             if os.path.exists(self._tmpfile):
                 os.remove(self._tmpfile)
             # output_string = f.getvalue()
             ipopt_output, hessian_output = split_sipopt_string(output_string)
             # print hessian_output
             print("build strings")
-            if tee == True:
-                print(ipopt_output)
+            #if tee == True:
+            #    print(ipopt_output)
 
             if not all_sigma_specified:
                 raise RuntimeError(
@@ -258,8 +260,10 @@ class ParameterEstimator(Optimizer):
             hessian = read_reduce_hessian(hessian_output, n_vars)
             print(hessian.size, "hessian size")
             # hessian = read_reduce_hessian2(hessian_output,n_vars)
-            # print hessian
-            self._compute_covariance(hessian, sigma_sq)
+            if self._concentration_given:
+                self._compute_covariance_C(hessian, sigma_sq)
+            #else:
+            #    self._compute_covariance(hessian, sigma_sq)
         else:
             solver_results = optimizer.solve(m, tee=tee)
 
@@ -267,22 +271,29 @@ class ParameterEstimator(Optimizer):
 
     def _define_reduce_hess_order(self):
         self.model.red_hessian = Suffix(direction=Suffix.IMPORT_EXPORT)
-
         count_vars = 1
-        for t in self._meas_times:
-            for c in self._sublist_components:
-                v = self.model.C[t, c]
-                self._idx_to_variable[count_vars] = v
-                self.model.red_hessian[v] = count_vars
-                count_vars += 1
 
-        for l in self._meas_lambdas:
-            for c in self._sublist_components:
-                v = self.model.S[l, c]
-                self._idx_to_variable[count_vars] = v
-                self.model.red_hessian[v] = count_vars
-                count_vars += 1
+        if not self._spectra_given:
+            pass
+        else:
+            for t in self._meas_times:
+                for c in self._sublist_components:
+                    v = self.model.C[t, c]
+                    self._idx_to_variable[count_vars] = v
+                    self.model.red_hessian[v] = count_vars
+                    count_vars += 1
+        
+        if not self._spectra_given:
+            pass
 
+        else:
+            for l in self._meas_lambdas:
+                for c in self._sublist_components:
+                    v = self.model.S[l, c]
+                    self._idx_to_variable[count_vars] = v
+                    self.model.red_hessian[v] = count_vars
+                    count_vars += 1
+                    
         for v in six.itervalues(self.model.P):
             if v.is_fixed():
                 print(v, end='\t')
@@ -359,6 +370,64 @@ class ParameterEstimator(Optimizer):
             print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
             i = +1
         return 1
+
+    def _compute_covariance_C(self, hessian, variances):
+        """
+        Computes the covariance matrix for the paramaters taking in the Hessian
+        matrix and the variances for the problem where only C data is provided.
+        Outputs the parameter confidence intervals.
+        
+        This function is not intended to be used by the users directly
+    
+        """
+        self._compute_residuals()
+        res = self.residuals
+        #print(res)
+        #sets up matrix with variances in diagonals
+        nc = self._n_actual
+        nt = self._n_meas_times
+        varmat = np.zeros((nc,nc))
+        for c,k in enumerate(self._sublist_components):
+            varmat[c,c]=variances[k]
+        #print("varmat",varmat)
+        #R=varmat.dot(res)
+        #L = res.dot(varmat)
+        E = 0
+        for t in self._meas_times:
+            for k in self._sublist_components:
+                E += res[t,k]/(variances[k]**2)
+        
+        
+        #Now we can use the E matrix with the hessian to estimate our confidence intervals
+        nparams = 0
+        for v in six.itervalues(self.model.P):
+            if v.is_fixed():  #: Skip the fixed ones
+                print(str(v) + '\has been skipped for covariance calculations')
+                continue
+            nparams += 1
+        all_H = hessian
+        H = all_H[-nparams:, :]
+
+        #print(E_matrix)
+        #covariance_C = E_matrix.dot(H.T)
+        
+        #print("value of the objective function (sum of squared residuals/sigma^2): ", E)
+        #covari1 = res_in_vec.dot(H)
+        #covariance_C =  2/(nt-2)*E*np.linalg.inv(H)
+        #covariance_C = np.linalg.inv(H)
+        
+        covariance_C = H
+        #print(covariance_C,"covariance matrix")
+        variances_p = np.diag(covariance_C)
+        print("Parameter variances: ", variances_p)
+        print('\nConfidence intervals:')
+        i = 0
+        for k, p in self.model.P.items():
+            if p.is_fixed():
+                continue
+            print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
+            i = +1
+
 
     def _compute_B_matrix(self, variances, **kwds):
         """Builds B matrix for calculation of covariances
@@ -472,6 +541,27 @@ class ParameterEstimator(Optimizer):
                                                  shape=(nd, nd)).tocsr()
         # self.Vd_matrix = Vd_dense
 
+    def _compute_residuals(self):
+        """
+        Computes the square of residuals between the optimal solution (Z) and the concentration data (C)
+        Note that this returns a matrix of time points X components and it has not been divided by sigma^2
+        
+        This method is not intended to be used by users directly
+        """
+        nt = self._n_meas_times
+        nc = self._n_actual
+        self.residuals = dict()
+        count_c = 0
+        for c in self._sublist_components:
+            count_t = 0
+            for t in self._meas_times:
+                a = self.model.C[t, c].value
+                b = self.model.Z[t, c].value
+                r = ((a-b)**2)
+                self.residuals[t,c]=r
+                count_t += 1
+            count_c += 1
+            
     def run_opt(self, solver, **kwds):
 
         """ Solves parameter estimation problem.
@@ -514,7 +604,7 @@ class ParameterEstimator(Optimizer):
                 solver_opts['compute_red_hessian'] = 'yes'
 
             self._define_reduce_hess_order()
-            # self.model.red_hessian.pprint()
+
         for key, val in solver_opts.items():
             opt.options[key] = val
 
@@ -531,6 +621,7 @@ class ParameterEstimator(Optimizer):
                                        with_d_vars=with_d_vars,
                                        **kwds)
         elif self._concentration_given:
+            print("This prints before the solve model given c")
             self._solve_model_given_c(variances, opt,
                                       tee=tee,
                                       covariance=covariance,
@@ -565,6 +656,7 @@ def split_sipopt_string(output_string):
     start_hess = output_string.find('DenseSymMatrix')
     ipopt_string = output_string[:start_hess]
     hess_string = output_string[start_hess:]
+    print(hess_string, ipopt_string)
     return (ipopt_string, hess_string)
 
 

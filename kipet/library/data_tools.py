@@ -396,3 +396,6 @@ def generate_random_absorbance_data(wl_span,component_peaks,component_widths=Non
         parameters_dict[k] = params
 
     return generate_absorbance_data(wl_span,parameters_dict)
+
+def savitzky_golay():
+    pass
