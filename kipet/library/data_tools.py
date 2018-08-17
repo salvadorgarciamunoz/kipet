@@ -282,7 +282,7 @@ def plot_spectral_data(dataFrame,dimension='2D'):
         cset = ax.contour(L, T, D, zdir='y',offset=times[-1]+20,cmap='coolwarm')
         
         ax.set_xlabel('Wavelength')
-        ax.set_xlim(-20, lambdas[-1])
+        ax.set_xlim(lambdas[0]-20, lambdas[-1])
         ax.set_ylabel('time')
         ax.set_ylim(0, times[-1]+20)
         ax.set_zlabel('Spectra')
@@ -397,5 +397,63 @@ def generate_random_absorbance_data(wl_span,component_peaks,component_widths=Non
 
     return generate_absorbance_data(wl_span,parameters_dict)
 
-def savitzky_golay():
-    pass
+def savitzky_golay(dataFrame, window_size, orderPoly, orderDeriv=0):
+    """
+    Implementation of the Savitzky-Golay filter for Kipet. Used for smoothing data, with
+    the option to also differentiate the data. Can be used to remove high-frequency noise.
+    Creates a least-squares fit of data within each time window with a high order polynomial centered
+    centered at the middle of the window of points.
+    
+    Args:
+        dataFrame (DataFrame): the data to be smoothed (either concentration or spectral data)
+        window_size (int): the length of the window. Must be an odd integer number
+        orderPoly (int): order of the polynoial used in the filter. Should be less than window_size-1
+        orderDeriv (int): the order of the derivative to compute (default = 0 means only smoothing)
+        
+    Returns:
+        DataFrame containing the smoothed data
+    
+    References:
+        This code is an amalgamation of those developed in the scipy.org cookbook and that employed in Matlab 
+        by WeiFeng Chen.
+        Original paper: A. Savitzky, M. J. E. Golay, Smoothing and Differentiation of Data by 
+        Simplified Least Squares Procedures. Analytical Chemistry, 1964, 36 (8), pp 1627-1639.
+    """
+    # data checks
+    try:
+        window_size = np.abs(np.int(window_size))
+        orderPoly = np.abs(np.int(orderPoly))
+    except ValueError:
+        raise ValueError("window_size and order have to be of type int")
+    if window_size % 2 != 1 or window_size < 1:
+        raise TypeError("window_size size must be a positive odd number")
+    if window_size < orderPoly + 2:
+        raise TypeError("window_size is too small for the polynomials order")    
+    if orderPoly >= window_size:
+        raise ValueError("polyorder must be less than window_length.")
+
+    if not isinstance(dataFrame, pd.DataFrame):
+        raise TypeError("data must be inputted as a pandas DataFrame, try using read_spectral_data_from_txt or similar function first")
+        
+    order_range = range(orderPoly+1)
+    half_window = (window_size -1) // 2
+    # precompute coefficients
+    b = np.mat([[k**i for i in order_range] for k in range(-half_window, half_window+1)])
+    m = np.linalg.pinv(b).A[orderDeriv]
+    D = np.array(dataFrame)
+    no_noise = np.array(dataFrame)
+    # pad the signal at the extremes with values taken from the signal itself
+    for t in range(len(dataFrame.index)):
+        row = list()
+        for l in range(len(dataFrame.columns)):
+            row.append(D[t,l])
+        firstvals = row[0] - np.abs( row[1:half_window+1][::-1] - row[0] )
+        lastvals = row[-1] + np.abs(row[-half_window-1:-1][::-1] - row[-1])
+        y = np.concatenate((firstvals, row, lastvals))
+        new_row = np.convolve( m, y, mode='valid')
+        no_noise[t]=new_row
+
+    data_frame = pd.DataFrame(data=no_noise,
+                              columns = dataFrame.columns,
+                              index=dataFrame.index)
+    return data_frame
