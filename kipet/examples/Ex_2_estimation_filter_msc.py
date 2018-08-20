@@ -57,7 +57,7 @@ if __name__ == "__main__":
     builder.add_mixture_component(components)
     builder.add_parameter('k1',bounds=(0.0,5.0))
     builder.add_parameter('k2',bounds=(0.0,1.0))
-    builder.add_spectral_data(fD_frame)
+    builder.add_spectral_data(mD_frame)
 
     # define explicit system of ODEs
     def rule_odes(m,t):

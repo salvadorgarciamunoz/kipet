@@ -279,12 +279,12 @@ def plot_spectral_data(dataFrame,dimension='2D'):
         ax.plot_surface(L, T, D, rstride=10, cstride=10, alpha=0.2)
         #cset = ax.contour(L, T, D, zdir='z',offset=-10)
         cset = ax.contour(L, T, D, zdir='x',offset=-20,cmap='coolwarm')
-        cset = ax.contour(L, T, D, zdir='y',offset=times[-1]+20,cmap='coolwarm')
+        cset = ax.contour(L, T, D, zdir='y',offset=times[-1]*1.1,cmap='coolwarm')
         
         ax.set_xlabel('Wavelength')
         ax.set_xlim(lambdas[0]-20, lambdas[-1])
         ax.set_ylabel('time')
-        ax.set_ylim(0, times[-1]+20)
+        ax.set_ylim(0, times[-1]*1.1)
         ax.set_zlabel('Spectra')
         #ax.set_zlim(-10, )
 
@@ -397,6 +397,10 @@ def generate_random_absorbance_data(wl_span,component_peaks,component_widths=Non
 
     return generate_absorbance_data(wl_span,parameters_dict)
 
+#=============================================================================
+#---------------------------PRE-PROCESSING TOOLS------------------------
+#=============================================================================
+    
 def savitzky_golay(dataFrame, window_size, orderPoly, orderDeriv=0):
     """
     Implementation of the Savitzky-Golay filter for Kipet. Used for smoothing data, with
@@ -408,7 +412,7 @@ def savitzky_golay(dataFrame, window_size, orderPoly, orderDeriv=0):
         dataFrame (DataFrame): the data to be smoothed (either concentration or spectral data)
         window_size (int): the length of the window. Must be an odd integer number
         orderPoly (int): order of the polynoial used in the filter. Should be less than window_size-1
-        orderDeriv (int): the order of the derivative to compute (default = 0 means only smoothing)
+        orderDeriv (int) (optional): the order of the derivative to compute (default = 0 means only smoothing)
         
     Returns:
         DataFrame containing the smoothed data
@@ -434,12 +438,15 @@ def savitzky_golay(dataFrame, window_size, orderPoly, orderDeriv=0):
 
     if not isinstance(dataFrame, pd.DataFrame):
         raise TypeError("data must be inputted as a pandas DataFrame, try using read_spectral_data_from_txt or similar function first")
-        
+    print("Applying the Savitzky-Golay filter")
+    
     order_range = range(orderPoly+1)
     half_window = (window_size -1) // 2
     # precompute coefficients
     b = np.mat([[k**i for i in order_range] for k in range(-half_window, half_window+1)])
     m = np.linalg.pinv(b).A[orderDeriv]
+    #rate = 1
+    #m = np.linalg.pinv(b).A[orderDeriv] * rate**orderDeriv * factorial(orderDeriv)
     D = np.array(dataFrame)
     no_noise = np.array(dataFrame)
     # pad the signal at the extremes with values taken from the signal itself
@@ -454,6 +461,123 @@ def savitzky_golay(dataFrame, window_size, orderPoly, orderDeriv=0):
         no_noise[t]=new_row
 
     data_frame = pd.DataFrame(data=no_noise,
+                              columns = dataFrame.columns,
+                              index=dataFrame.index)
+    
+    return data_frame
+
+def snv(dataFrame, offset=0):
+    """
+    Implementation of the Standard Normal Variate (SNV) filter for Kipet which is a weighted normalization
+    method that is commonly used to remove scatter effects in spectroscopic data, this pre-processing 
+    step can be applied before the SG filter or used on its own. SNV can be sensitive to noisy entries 
+    in the spectra and can increase nonlinear behaviour between S and C as it is not a linear transformation.
+    
+    
+    Args:
+        dataFrame (DataFrame): the data to be processed (either concentration or spectral data)
+        offset (float): user-defined offset which can be used to avoid over-normalization for samples
+                        with near-zero standard deviation. Guide for choosing this value is for something 
+                        near the expected noise level to be specified. Default value is zero.
+        
+    Returns:
+        DataFrame containing pre-processed data
+    
+    References:
+
+    """
+    # data checks
+    if not isinstance(dataFrame, pd.DataFrame):
+        raise TypeError("data must be inputted as a pandas DataFrame, try using read_spectral_data_from_txt or similar function first")
+    print("Applying the SNV pre-processing")    
+
+    D = np.array(dataFrame)
+    snv_proc = np.array(dataFrame)
+    for t in range(len(dataFrame.index)):
+        row = list()
+        sum_spectra = 0
+        for l in range(len(dataFrame.columns)):
+            row.append(D[t,l])
+            sum_spectra += D[t,l]
+        mean_spectra = sum_spectra/(len(dataFrame.columns))
+        std = 0
+        for l in range(len(dataFrame.columns)):
+            std += (mean_spectra-D[t,l])**2
+        new_row = list()
+        for l in range(len(dataFrame.columns)):
+            if offset ==0:
+                w = (D[t,l]-mean_spectra)*(std/(len(dataFrame.columns)-1))**0.5
+            else:
+                w = (D[t,l]-mean_spectra)*(std/(len(dataFrame.columns)-1))**0.5 + 1/offset
+            new_row.append(w)
+                
+        snv_proc[t]=new_row
+
+    data_frame = pd.DataFrame(data=snv_proc,
+                              columns = dataFrame.columns,
+                              index=dataFrame.index)
+    return data_frame
+
+def msc(dataFrame, reference_spectra=None):
+    """
+    Implementation of the Multiplicative Scatter Correction (MSC) filter for Kipet which is simple pre-processing
+    method that attempts to remove scaling effects and offset effects in spectroscopic data. This pre-processing 
+    step can be applied before the SG filter or used on its own. This approach requires a reference spectrum which
+    must be determined beforehand. In this implementation, the default reference spectrum is the average spectrum 
+    of the dataset provided, however an optional argument exists for user-defined reference spectra to be provided.    
+    
+    Args:
+        dataFrame (DataFrame):          the data to be processed (either concentration or spectral data)
+        reference_spectra (DataFrame):  optional user-provided reference spectra argument. Default is to automatically
+                                        determine this using the average spectra values.
+        
+    Returns:
+        DataFrame pre-processed data
+    
+    References:
+
+    """
+    # data checks
+    if not isinstance(dataFrame, pd.DataFrame):
+        raise TypeError("data must be inputted as a pandas DataFrame, try using read_spectral_data_from_txt or similar function first")
+    print("Applying the MSC pre-processing")  
+    
+    #Want to make it possible to include user-defined reference spectra
+    #this is not great as we could provide the data with some conditioning 
+    #in order to construct references based on different user inputs
+    if reference_spectra != None:
+        if not isinstance(reference_spectra, pd.DataFrame):
+            raise TypeError("data must be inputted as a pandas DataFrame, try using read_spectral_data_from_txt or similar function first")
+        
+        if len(dataFrame.columns) != len(reference_spectra.columns) and len(dataFrame.rows) != len(reference_spectra.rows):
+            raise NotImplementedError("the reference spectra must have the same number of entries as the data")
+    
+    D = np.array(dataFrame)
+    ref = np.array(dataFrame)
+    msc_proc = np.array(dataFrame)
+    
+    # the average spectrum is calculated as reference spectra for MSC when none is given by user
+    if reference_spectra == None:
+        sum_spectra = 0
+        
+        for t in range(len(dataFrame.index)):
+            sum_spectra = 0
+            for l in range(len(dataFrame.columns)):
+                sum_spectra += D[t,l]
+            mean_spectra = sum_spectra/(len(dataFrame.columns))
+            for l in range(len(dataFrame.columns)):
+                ref[t,l] = mean_spectra 
+    else:
+        #should add in some checks and additional ways to formulate these depending on what input the user provides
+        #need to find out the type of data usually inputted here in order to do this
+        ref = reference_spectra
+    for t in range(len(dataFrame.index)):
+        row = list()
+        fit = np.polyfit(ref[t,:],D[t,:],1, full=True)
+        row[:] = (D[t,:] - fit[0][1]) / fit[0][0]
+        msc_proc[t,:]=row  
+
+    data_frame = pd.DataFrame(data=msc_proc,
                               columns = dataFrame.columns,
                               index=dataFrame.index)
     return data_frame

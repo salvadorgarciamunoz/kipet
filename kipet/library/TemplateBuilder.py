@@ -78,6 +78,8 @@ class TemplateBuilder(object):
         self._algebraic_constraints = None
         self._non_absorbing = None
         self._is_non_abs_set = False
+        self._is_D_deriv = False
+        self._is_C_deriv = False
 
         components = kwargs.pop('concentrations', dict())
         if isinstance(components, dict):
@@ -228,7 +230,17 @@ class TemplateBuilder(object):
             self._spectral_data = data
         else:
             raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
-
+        
+        D = np.array(data)
+        for t in range(len(data.index)):
+            for l in range(len(data.columns)):
+                if D[t,l] >= 0:
+                    pass
+                else:
+                    self._is_D_deriv = True
+        if self._is_D_deriv == True:
+            print("Warning! Since D-matrix contains negative values Kipet is assuming a derivative of D has been inputted")
+        
     def add_concentration_data(self, data):
         """Add concentration data 
 
@@ -244,7 +256,15 @@ class TemplateBuilder(object):
             self._concentration_data = data
         else:
             raise RuntimeError('Concentration data format not supported. Try pandas.DataFrame')
-
+        C = np.array(data)
+        for t in range(len(data.index)):
+            for l in range(len(data.columns)):
+                if C[t,l] >= 0:
+                    pass
+                else:
+                    self._is_C_deriv = True
+        if self._is_C_deriv == True:
+            print("Warning! Since C-matrix contains negative values Kipet is assuming a derivative of C has been inputted")
 
     def add_absorption_data(self, data):
         """Add absorption data 
@@ -537,10 +557,15 @@ class TemplateBuilder(object):
                     c_dict[c, k] = float(self._concentration_data[k][c])
         else:
             c_dict = 1.0
-           
+        
+        if self._is_C_deriv == True:
+            c_bounds = (None, None)
+        else:
+            c_bounds = (0.0, None)  
+            
         pyomo_model.C = Var(pyomo_model.meas_times,
                             pyomo_model.mixture_components,
-                            bounds=(0.0, None),
+                            bounds=c_bounds,
                             initialize=c_dict)
 
         if self._concentration_data is not None:
@@ -576,10 +601,15 @@ class TemplateBuilder(object):
                     s_dict[l, k] = float(self._absorption_data[k][l])
         else:
             s_dict = 1.0
-
+            
+        if self._is_D_deriv == True:
+            s_bounds = (None, None)
+        else:
+            s_bounds = (0.0, None)
+            
         pyomo_model.S = Var(pyomo_model.meas_lambdas,
                             pyomo_model.mixture_components,
-                            bounds=(0.0, None),
+                            bounds=s_bounds,
                             initialize=s_dict)
 
         if self._absorption_data is not None:
