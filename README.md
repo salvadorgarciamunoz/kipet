@@ -6,6 +6,7 @@ chemical reaction systems. The software has the following functionality
 
 * Simulate a reactive system described with DAEs
 * Solve the DAE system with collocation methods
+* Pre-process data
 * Estimate variances of noise
 * Estimate kinetic parameters from spectra or concentration
 * Estimate confidence intervals of the estimated parameters
