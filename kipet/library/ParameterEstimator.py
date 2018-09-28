@@ -368,7 +368,7 @@ class ParameterEstimator(Optimizer):
             if p.is_fixed():
                 continue
             print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
-            i = +1
+            i += 1
         return 1
 
     def _compute_covariance_C(self, hessian, variances):
