@@ -347,22 +347,23 @@ class fe_initialize(object):
         #         i.setlb(-0.01)
         #     else:
         #         i.setlb(0)
-        for i in self.mod.Z.itervalues():
-            i.setlb(0)
+        #for i in self.mod.Z.itervalues():
+            #i.setlb(0)
 
+        self.ip.options["OF_start_with_resto"] = 'no'
         self.ip.options['bound_push'] = 1e-02
         sol = self.ip.solve(self.mod, tee=True, symbolic_solver_labels=True)
-        if fe == 0:
-            self.mod.display(filename='broke.txt')
-            self.mod.pprint(filename='nwings.txt')
-            # sys.exit()
+
         if sol.solver.termination_condition != TerminationCondition.optimal:
+            self.ip.options["OF_start_with_resto"] = 'yes'
             # self.ip.options["linear_solver"] = "ma57"
             # for i in self.mod.component_objects(Var):
             #     i.pprint()
             sol = self.ip.solve(self.mod, tee=True, symbolic_solver_labels=True)
             if sol.solver.termination_condition != TerminationCondition.optimal:
+                self.ip.options["OF_start_with_resto"] = 'no'
                 self.ip.options["bound_push"] = 1E-02
+                self.ip.options["OF_bound_relax_factor"] = 1E-05
                 # self.ip.options[""]
                 # for i in self.mod.component_data_objects(Var):
                 #     i.setlb(None)
@@ -375,6 +376,7 @@ class fe_initialize(object):
                 #     else:
                 #         i.setlb(None)
                 sol = self.ip.solve(self.mod, tee=True, symbolic_solver_labels=True)
+                self.ip.options["OF_bound_relax_factor"] = 1E-08
                 if sol.solver.termination_condition != TerminationCondition.optimal:
                     raise Exception("The current iteration was unsuccessful. Iteration :{}".format(fe))
 
