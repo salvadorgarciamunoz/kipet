@@ -78,6 +78,7 @@ class TemplateBuilder(object):
         self._algebraic_constraints = None
         self._non_absorbing = None
         self._is_non_abs_set = False
+        self._feed_times = set() #For inclusion of discrete feeds CS
         self._is_D_deriv = False
         self._is_C_deriv = False
 
@@ -281,7 +282,35 @@ class TemplateBuilder(object):
             self._absorption_data = data
         else:
             raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
+    #For inclusion of discrete jumps
+    def rem_measurement_times(self, times):
+        """Add measurement times to the model
 
+        Args:
+            times (array_like): measurement points
+
+        Returns:
+            None
+
+        """
+        for t in times:
+            self._meas_times.remove(t)
+    #For inclusion of discrete jumps
+    def add_feed_times(self, times):
+        """Add measurement times to the model 
+
+        Args:
+            times (array_like): feeding points 
+
+        Returns:
+            None
+
+        """
+        for t in times:
+            self._feed_times.add(t)
+            self._meas_times.add(t)#added here to avoid double addition CS
+
+    #For inclusion of discrete jumps
     def add_measurement_times(self, times):
         """Add measurement times to the model 
 
@@ -472,6 +501,8 @@ class TemplateBuilder(object):
 
         list_times = self._meas_times
         m_times = sorted(list_times)
+        list_feedtimes = self._feed_times #For inclusion of discrete feeds CS
+        feed_times = sorted(list_feedtimes)#For inclusion of discrete feeds CS
         m_lambdas = list()
         if self._spectral_data is not None and self._absorption_data is not None:
             raise RuntimeError('Either add absorption data or spectral data but not both')
@@ -479,22 +510,27 @@ class TemplateBuilder(object):
         if self._spectral_data is not None:
             list_times = list_times.union(set(self._spectral_data.index))
             list_lambdas = list(self._spectral_data.columns)
+            list_feedtimes = self._feed_times  # For inclusion of discrete feeds CS
             m_times = sorted(list_times)
             m_lambdas = sorted(list_lambdas)
+            feed_times = sorted(list_feedtimes)  # For inclusion of discrete feeds CS
 
         if self._absorption_data is not None:
             if not self._meas_times:
                 raise RuntimeError('Need to add measurement times')
             list_times = list(self._meas_times)
             list_lambdas = list(self._absorption_data.index)
+            list_feedtimes = self._feed_times  # For inclusion of discrete feeds CS
             m_times = sorted(list_times)
             m_lambdas = sorted(list_lambdas)
+            feed_times = sorted(list_feedtimes)  # For inclusion of discrete feeds CS
         
         if self._concentration_data is not None:
             list_times = list_times.union(set(self._concentration_data.index))
             list_concs = list(self._concentration_data.columns)
             m_times = sorted(list_times)
             m_concs = sorted(list_concs)
+            feed_times = sorted(list_feedtimes)  # For inclusion of discrete feeds CS
         
         if m_times:
             if m_times[0] < start_time:
@@ -502,8 +538,13 @@ class TemplateBuilder(object):
             if m_times[-1] > end_time:
                 raise RuntimeError(
                     'Measurement time {0} not within ({1},{2})'.format(m_times[-1], start_time, end_time))
+        #For inclusion of discrete feeds CS
+        if self._feed_times is not None:
+            list_feedtimes = list(self._feed_times)
+            feed_times = sorted(list_feedtimes)
 
         pyomo_model.meas_times = Set(initialize=m_times, ordered=True)
+        pyomo_model.feed_times = Set(initialize=feed_times, ordered=True) #For inclusion of discrete feeds CS
         pyomo_model.meas_lambdas = Set(initialize=m_lambdas, ordered=True)
 
         pyomo_model.time = ContinuousSet(initialize=pyomo_model.meas_times,
@@ -628,7 +669,7 @@ class TemplateBuilder(object):
             s_data_dict = dict()
             for t in pyomo_model.meas_times:
                 for l in pyomo_model.meas_lambdas:
-                    s_data_dict[t, l] = float(self._spectral_data[l][t])
+                        s_data_dict[t, l] = float(self._spectral_data[l][t])
 
             pyomo_model.D = Param(pyomo_model.meas_times,
                                   pyomo_model.meas_lambdas,
@@ -808,6 +849,10 @@ class TemplateBuilder(object):
     def measurement_times(self):
         return self._meas_times
 
+    @property
+    def feed_times(self):
+        return self._feed_times  # added for feeding points CS
+
     @num_parameters.setter
     def num_parameters(self):
         raise RuntimeError('Not supported')
@@ -827,6 +872,10 @@ class TemplateBuilder(object):
     @measurement_times.setter
     def measurement_times(self):
         raise RuntimeError('Not supported')
+
+    @feed_times.setter
+    def feed_times(self):
+        raise RuntimeError('Not supported')  # added for feeding points CS
 
     def has_spectral_data(self):
         return self._spectral_data is not None
