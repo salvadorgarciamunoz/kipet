@@ -7,12 +7,14 @@ from pyomo.opt import SolverFactory, ProblemFormat, TerminationCondition
 from pyomo.core.kernel.numvalue import value as value
 from os import getcwd, remove
 import sys
+import six
+
 
 __author__ = 'David M Thierry'  #: April 2018
 
 
 class fe_initialize(object):
-    def __init__(self, tgt_mod, src_mod, init_con=None, param_name=None, param_values=None, inputs=None, inputs_sub=None):
+    def __init__(self, tgt_mod, src_mod, init_con=None, param_name=None, param_values=None, inputs=None, inputs_sub=None,jump_times=None,jump_states=None):
         # type: (ConcreteModel, ConcreteModel, str, list, dict, dict, dict) -> None
         """fe_factory: fe_initialize class.
 
@@ -82,12 +84,13 @@ class fe_initialize(object):
 
         tgt_cts = getattr(self.tgt, self.time_set)
         self.ncp = tgt_cts.get_discretization_info()['ncp']
-
+        
         fe_l = tgt_cts.get_finite_elements()
         self.fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
         self.nfe = len(self.fe_list)  #: Create a list with the step-size
         #: Re-construct the model with [0,1] time domain
         zeit = getattr(self.mod, self.time_set)
+        #print()
         zeit._bounds = (0, 1)
         zeit.clear()
         zeit.construct()
@@ -141,7 +144,7 @@ class fe_initialize(object):
         for i in self.dvs_names:
             dv = getattr(self.mod, i)
             if dv.index_set().name == zeit.name:  #: Just time set
-                # print(i, 'here')
+                #print(i, 'here')
                 self.remaining_set[i] = None
                 continue
             set_i = dv._implicit_subsets  #: More than just time set
@@ -154,7 +157,7 @@ class fe_initialize(object):
                 self.remaining_set[i] = []
                 self.remaining_set[i].append(remaining_set)
         #: Algebraic variables
-        self.weird_vars = []  #: Not indexed by time
+        self.weird_vars = [] #:Not indexed by time
         self.remaining_set_alg = {}
         for av in self.mod.component_objects(Var):
             if av.name in self.dvs_names:
@@ -291,6 +294,8 @@ class fe_initialize(object):
         (n, m) = reconcile_nvars_mequations(self.mod)
         if n != m:
             raise Exception("Inconsistent problem; n={}, m={}".format(n, m))
+        self.jump = False
+
 
 
     def load_initial_conditions(self, init_cond=None):
@@ -335,7 +340,6 @@ class fe_initialize(object):
         self.adjust_h(fe)
         if self.inputs or self.inputs_sub:
             self.load_input(fe)
-
         # self.mod.X.display()
 
         # for i in self.mod.X.itervalues():
@@ -344,8 +348,8 @@ class fe_initialize(object):
         #         i.setlb(-0.01)
         #     else:
         #         i.setlb(0)
-        # for i in self.mod.Z.itervalues():
-        #     i.setlb(0)
+        #for i in self.mod.Z.itervalues():
+            #i.setlb(0)
 
         self.ip.options["OF_start_with_resto"] = 'no'
         self.ip.options['bound_push'] = 1e-02
@@ -380,14 +384,53 @@ class fe_initialize(object):
         else:
             print("fe {} - status: optimal".format(fe))
         self.patch(fe)
-        self.cycle_ics()
+        self.cycle_ics(fe)
+        
+    #Inclusion of discrete jumps: (CS)
+    def load_discrete_jump(self, var_dic, jump_times, feed_times):
+        """Method is used to define and load the places where discrete jumps are located, e.g. 
+        dosing points or external inputs.
+        Args:
+            var_dic (dict): dictionary containing which variables are inputted and by how much
+            jump_times (dict): dict containing the times that each variable is inputted
+            feed_times (list): list of additional time points needed for inputs
+        
+        Returns:
+            None
+        """
+        self.jump = True
+        self.disc_jump_v_dict = var_dic
+        self.jump_times_dict = jump_times #now dictionary
+        self.feed_times_set = feed_times
+        count = 0
+        for i in six.iterkeys(self.jump_times_dict):
+            for j in six.iteritems(self.jump_times_dict[i]):
+                count += 1
+        if len(self.feed_times_set) > count:
+            raise Exception("Error: Check feed time points in set feed_times and in jump_times again.\n"
+                            "There are more time points in feed_times than jump_times provided.")
 
-    def cycle_ics(self):
+
+
+    def cycle_ics(self, curr_fe):
         """Cycles the initial conditions of the initializing model.
         Take the values of states (initializing model) at t=last and patch them into t=0.
+        Check:
+        https://github.com/dthierry/cappresse/blob/pyomodae-david/nmpc_mhe/aux/utils.py
+        fe_cp function!
         """
+        
+        #For checking whether jump happens in right element:
+        #print('*'* 20)
+        #print("Current Finite element [cycle_ics]{}".format(curr_fe)) #comment out these lines?
+        #print('*' * 20)
+
         ts = getattr(self.mod, self.time_set)
         t_last = t_ij(ts, 0, self.ncp)
+        
+        #Inclusion of discrete jumps: (CS)
+        ttgt = getattr(self.tgt, self.time_set)
+
         for i in self.dvs_names:
             dv = getattr(self.mod, i)
             for s in self.remaining_set[i]:
@@ -412,6 +455,7 @@ class fe_initialize(object):
         Args:
             fe (int): The current finite element to be patched (tgt_model).
         """
+        ###########################
         ts = getattr(self.mod, self.time_set)
         ttgt = getattr(self.tgt, self.time_set)
         for v in self.mod.component_objects(Var, active=True):
@@ -454,7 +498,61 @@ class fe_initialize(object):
                         except ValueError:
                             print("Error at {}, {}".format(v.name, (t_src,) + key))
                         v_tgt[(t_tgt,) + key].set_value(val)
-
+        ##############################
+        #Inclusion of discrete jumps: (CS)
+        if self.jump:
+            kn=0
+            for ki in self.jump_times_dict.keys():
+                if not isinstance(ki, str):
+                    print("ki is not str")
+                vtjumpkeydict = self.jump_times_dict[ki]
+                for l in vtjumpkeydict.keys():
+                    self.jump_time = vtjumpkeydict[l]
+                    self.jump_fe, self.jump_cp = fe_cp(ttgt,self.jump_time)
+                    if self.jump_time not in self.feed_times_set:
+                        raise Exception("Error: Check feed time points in set feed_times and in jump_times again.\n"
+                                        "They do not match.\n"
+                                        "Jump_time is not included in feed_times.")
+                    elif fe == self.jump_fe+1:
+                                #################################
+                        for v in self.disc_jump_v_dict.keys():
+                            if not isinstance(v, str):
+                                print("v is not str")
+                                sys.exit()
+                            vkeydict = self.disc_jump_v_dict[v]
+                            # print(len(self.feed_times_set))
+                            # print(len(self.jump_times_dict.keys()))
+                            for k in vkeydict.keys():
+                                if k==l:##############!!!!!#Match in between two components of dictionaries
+                                    var = getattr(self.tgt, v)
+                                    con_name = 'd' + v + 'dt_disc_eq'
+                                    con = getattr(self.tgt, con_name)
+                                    self.tgt.add_component(v + "_dummy_eq_" + str(kn), ConstraintList())
+                                    conlist = getattr(self.tgt, v + "_dummy_eq_" + str(kn))
+                                    varname = v + "_dummy_" + str(kn)
+                                    self.tgt.add_component(varname, Var())
+                                    vdummy = getattr(self.tgt, varname)
+                                    jump_delta = vkeydict[k]
+                                    self.tgt.add_component(v + '_jumpdelta' + str(kn), Param(initialize=jump_delta))
+                                    jump_param  = getattr(self.tgt, v + '_jumpdelta' + str(kn))
+                                    if not isinstance(k, tuple):
+                                        k = (k,)
+                                    exprjump = vdummy - var[(self.jump_time,)+k] == jump_param
+                                    self.tgt.add_component("jumpdelta_expr"+str(kn), Constraint(expr=exprjump))
+                                    for kcp in range(1,self.ncp+1):
+                                        curr_time = t_ij(ttgt,self.jump_fe+1,kcp)
+                                        if not isinstance(k, tuple):
+                                            knew = (k,)
+                                        else:
+                                            knew = k
+                                        idx = (curr_time,) +  knew
+                                        con[idx].deactivate()
+                                        e=con[idx].expr.clone()
+                                        e._args[0]._args[1]=vdummy
+                                        con[idx].set_value(e)
+                                        conlist.add(con[idx].expr)
+                    kn=kn+1
+            #########################################
     def adjust_h(self, fe):
         # type: (int) -> None
         """Adjust the h_i parameter of the initializing model.
@@ -470,7 +568,7 @@ class fe_initialize(object):
         for t in zeit:
             hi[t].value = self.fe_list[fe]
 
-    def run(self, resto_strategy='bound_relax'):
+    def run(self, resto_strategy="bound_relax"):
         """Runs the sequence of problems fe=0,nfe
 
         """
@@ -541,10 +639,6 @@ class fe_initialize(object):
         for v in self.mod.component_data_objects(Var):
             v.setlb(None)
             v.setub(None)
-
-
-
-
 
 
 
@@ -629,3 +723,31 @@ def disp_vars(model, file):
         for c in model.component_objects(Var):
             c.pprint(ostream=f)
         f.close()
+
+#Function needed for inclusion of discrete jump to get fe and cp:
+def fe_cp(time_set, feedtime):
+    # type: (ContinuousSet, float) -> tuple
+    # """Return the corresponding fe and cp for a given time
+    # Args:
+    #    time_set:
+    #    t:
+    # """
+    fe_l = time_set.get_lower_element_boundary(feedtime)
+   # print("fe_l", fe_l)
+    fe = None
+    j = 0
+    for i in time_set.get_finite_elements():
+        if fe_l == i:
+            fe = j
+            break
+        j += 1
+    h = time_set.get_finite_elements()[1] - time_set.get_finite_elements()[0]
+    tauh = [i * h for i in time_set.get_discretization_info()['tau_points']]
+    j = 0  #: Watch out for LEGENDRE
+    cp = None
+    for i in tauh:
+        if round(i + fe_l, 6) == feedtime:
+            cp = j
+            break
+        j += 1
+    return fe, cp
