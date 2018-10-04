@@ -19,6 +19,7 @@ from kipet.library.FESimulator import *
 from pyomo.opt import *
 import pickle
 import os
+import six
 
 if __name__ == "__main__":
 
@@ -119,7 +120,7 @@ if __name__ == "__main__":
     builder.set_odes_rule(rule_odes)
     
     #Add time points where feed as discrete jump should take place:
-    feed_times=[100., 300.]
+    feed_times=[101.035, 400.,303.126]
     builder.add_feed_times(feed_times)
 
     model = builder.create_pyomo_model(0, 600)
@@ -153,11 +154,11 @@ if __name__ == "__main__":
     #to this function as an argument dictionary
     
     #New Inputs for discrete feeds
-    Z_step = {'AH': .3, 'A-': .3} #Which component and which amount is added
-    X_step = {'V': 20.}
+    Z_step = {'AH': .3, 'A-': .1} #Which component and which amount is added
+    X_step = {'V': .01}
     jump_states = {'Z': Z_step, 'X': X_step}
-    jump_points1 = {'AH': 100., 'A-': 300.}#Which component is added at which point in time
-    jump_points2 = {'V': 300.}
+    jump_points1 = {'AH': 101.035, 'A-': 400.}#Which component is added at which point in time
+    jump_points2 = {'V': 303.126}
     jump_times = {'Z': jump_points1, 'X': jump_points2}
 
     init = sim.call_fe_factory(inputs_sub, jump_states, jump_times, feed_times)

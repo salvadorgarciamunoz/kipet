@@ -7,6 +7,7 @@ from pyomo.opt import SolverFactory, ProblemFormat, TerminationCondition
 from pyomo.core.kernel.numvalue import value as value
 from os import getcwd, remove
 import sys
+import six
 
 
 __author__ = 'David M Thierry'  #: April 2018
@@ -387,11 +388,25 @@ class fe_initialize(object):
         
     #Inclusion of discrete jumps: (CS)
     def load_discrete_jump(self, var_dic, jump_times, feed_times):
+        """Method is used to define and load the places where discrete jumps are located, e.g. 
+        dosing points or external inputs.
+        Args:
+            var_dic (dict): dictionary containing which variables are inputted and by how much
+            jump_times (dict): dict containing the times that each variable is inputted
+            feed_times (list): list of additional time points needed for inputs
+        
+        Returns:
+            None
+        """
         self.jump = True
         self.disc_jump_v_dict = var_dic
         self.jump_times_dict = jump_times #now dictionary
         self.feed_times_set = feed_times
-        if len(self.feed_times_set) > len(self.jump_times_dict.keys()):
+        count = 0
+        for i in six.iterkeys(self.jump_times_dict):
+            for j in six.iteritems(self.jump_times_dict[i]):
+                count += 1
+        if len(self.feed_times_set) > count:
             raise Exception("Error: Check feed time points in set feed_times and in jump_times again.\n"
                             "There are more time points in feed times than jump_times provided.")
 
