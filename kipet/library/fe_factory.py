@@ -408,7 +408,7 @@ class fe_initialize(object):
                 count += 1
         if len(self.feed_times_set) > count:
             raise Exception("Error: Check feed time points in set feed_times and in jump_times again.\n"
-                            "There are more time points in feed times than jump_times provided.")
+                            "There are more time points in feed_times than jump_times provided.")
 
 
 
