@@ -48,6 +48,8 @@ class TemplateBuilder(object):
         
         _meas_times (set, optional): container of measurement times
         
+        _feed_times (set, optional): container of feed times
+        
         _complementary_states (set,optional): container with additional states
 
     """
@@ -282,19 +284,21 @@ class TemplateBuilder(object):
             self._absorption_data = data
         else:
             raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
+        
     #For inclusion of discrete jumps
-    def rem_measurement_times(self, times):
-        """Add measurement times to the model
+    #def rem_measurement_times(self, times):
+        #"""Add measurement times to the model
 
-        Args:
-            times (array_like): measurement points
+        #Args:
+            #times (array_like): measurement points
 
-        Returns:
-            None
+        #Returns:
+            #None
 
-        """
-        for t in times:
-            self._meas_times.remove(t)
+        #"""
+        #for t in times:
+            #self._meas_times.remove(t)
+            
     #For inclusion of discrete jumps
     def add_feed_times(self, times):
         """Add measurement times to the model 
