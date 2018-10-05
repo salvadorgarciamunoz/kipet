@@ -101,7 +101,7 @@ if __name__ == "__main__":
     #options['nlp_scaling_method'] = 'gradient-based'
     #options['bound_relax_factor'] = 0
     # finally we run the optimization
-    results_pyomo = p_estimator.run_opt('ipopt_sens',
+    results_pyomo = p_estimator.run_opt('k_aug',
                                         variances=sigmas,
                                       tee=True,
                                       solver_opts = options,
