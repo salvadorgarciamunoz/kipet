@@ -6,7 +6,6 @@ from pyomo.environ import *
 from pyomo.dae import *
 from kipet.library.Optimizer import *
 from pyomo.core.base.expr import Expr_if
-import numpy as np
 import six
 import copy
 import re
@@ -80,6 +79,7 @@ class ParameterEstimator(Optimizer):
             warnings.warn("Overriden by non_absorbing!!!")
             list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
 
+
         all_sigma_specified = True
         print(sigma_sq)
         keys = sigma_sq.keys()
@@ -128,7 +128,7 @@ class ParameterEstimator(Optimizer):
         # solver_results = optimizer.solve(m,tee=True,
         #                                 report_timing=True)
 
-        if covariance and self.solver=='ipopt_sens':
+        if covariance:
             self._tmpfile = "ipopt_hess"
             solver_results = optimizer.solve(m, tee=False,
                                              logfile=self._tmpfile,
@@ -156,83 +156,6 @@ class ParameterEstimator(Optimizer):
             print(hessian.size, "hessian size")
             # hessian = read_reduce_hessian2(hessian_output,n_vars)
             # print hessian
-            self._compute_covariance(hessian, sigma_sq)
-            
-        if covariance and self.solver == 'k_aug':            
-            m.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
-            m.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
-            m.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
-            m.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
-            m.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
-
-            m.dof_v = Suffix(direction=Suffix.EXPORT)  #: SUFFIX FOR K_AUG
-            m.rh_name = Suffix(direction=Suffix.IMPORT)  #: SUFFIX FOR K_AUG AS WELL
-            
-            count_vars = 1
-
-            if not self._spectra_given:
-                pass
-            else:
-                for t in self._meas_times:
-                    for c in self._sublist_components:
-                        m.C[t, c].set_suffix_value(m.dof_v,count_vars)
-                        
-                        count_vars += 1
-        
-            if not self._spectra_given:
-                pass
-            else:
-                for l in self._meas_lambdas:
-                    for c in self._sublist_components:
-                        m.S[l, c].set_suffix_value(m.dof_v,count_vars)
-                        count_vars += 1
-                    
-            for v in six.itervalues(self.model.P):
-                if v.is_fixed():
-                    continue
-                m.P.set_suffix_value(m.dof_v,count_vars)
-                count_vars += 1
-           
-            self._tmpfile = "k_aug_hess"
-            ip = SolverFactory('ipopt')
-            solver_results = ip.solve(m, tee=False,
-                                             logfile=self._tmpfile,
-                                             report_timing=True)
-            k_aug = SolverFactory('k_aug')
-            #k_aug.options["compute_inv"] = ""
-            m.ipopt_zL_in.update(m.ipopt_zL_out)  #: be sure that the multipliers got updated!
-            m.ipopt_zU_in.update(m.ipopt_zU_out)
-            #m.write(filename="mynl.nl", format=ProblemFormat.nl)
-            k_aug.solve(m, tee=False)
-            print("Done solving building reduce hessian")
-
-            if not all_sigma_specified:
-                raise RuntimeError(
-                    'All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
-
-            n_vars = len(self._idx_to_variable)
-            print("n_vars",n_vars)
-            #m.rh_name.pprint()
-            var_loc = m.rh_name
-            for v in six.itervalues(self._idx_to_variable):
-                try:
-                    var_loc[v]
-                except:
-                    print(v, "is an error")
-                    var_loc[v] = 0
-                    print(v, "is thus set to ", var_loc[v])
-                    print(var_loc[v])
-
-            vlocsize = len(var_loc)
-            print("var_loc size, ", vlocsize) 
-            unordered_hessian = np.loadtxt('result_red_hess.txt')
-            if os.path.exists('result_red_hess.txt'):
-                os.remove('result_red_hess.txt')
-            #hessian = read_reduce_hessian_k_aug(hessian_output, n_vars)
-            #hessian =hessian_output
-            #print(hessian)
-            print(unordered_hessian.size, "unordered hessian size")
-            hessian = self._order_k_aug_hessian(unordered_hessian, var_loc)
             self._compute_covariance(hessian, sigma_sq)
         else:
             solver_results = optimizer.solve(m, tee=tee)
@@ -308,13 +231,12 @@ class ParameterEstimator(Optimizer):
         # solver_results = optimizer.solve(m,tee=True,
         #                                 report_timing=True)
         
-        if covariance and self.solver == 'ipopt_sens':
+        if covariance:
             self._tmpfile = "ipopt_hess"
             solver_results = optimizer.solve(m, tee=False,
                                              logfile=self._tmpfile,
                                              report_timing=True)
             #self.model.red_hessian.pprint
-            m.P.pprint()
             print("Done solving building reduce hessian")
             output_string = ''
             with open(self._tmpfile, 'r') as f:
@@ -342,87 +264,6 @@ class ParameterEstimator(Optimizer):
                 self._compute_covariance_C(hessian, sigma_sq)
             #else:
             #    self._compute_covariance(hessian, sigma_sq)
-            
-        if covariance and self.solver == 'k_aug':            
-            m.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
-            m.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
-            m.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
-            m.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
-            m.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
-
-            m.dof_v = Suffix(direction=Suffix.EXPORT)  #: SUFFIX FOR K_AUG
-            m.rh_name = Suffix(direction=Suffix.IMPORT)  #: SUFFIX FOR K_AUG AS WELL
-            
-            count_vars = 1
-
-            if not self._spectra_given:
-                pass
-            else:
-                for t in self._meas_times:
-                    for c in self._sublist_components:
-                        m.C[t, c].set_suffix_value(m.dof_v,count_vars)
-                        
-                        count_vars += 1
-        
-            if not self._spectra_given:
-                pass
-            else:
-                for l in self._meas_lambdas:
-                    for c in self._sublist_components:
-                        m.S[l, c].set_suffix_value(m.dof_v,count_vars)
-                        count_vars += 1
-                    
-            for v in six.itervalues(self.model.P):
-                if v.is_fixed():
-                    continue
-                m.P.set_suffix_value(m.dof_v,count_vars)
-                count_vars += 1
-                
-            self._tmpfile = "k_aug_hess"
-            ip = SolverFactory('ipopt')
-            solver_results = ip.solve(m, tee=True,
-                                             logfile=self._tmpfile,
-                                             report_timing=True)
-            m.P.pprint()
-            k_aug = SolverFactory('k_aug')
-            
-            #k_aug.options["no_scale"] = ""
-            m.ipopt_zL_in.update(m.ipopt_zL_out)  #: be sure that the multipliers got updated!
-            m.ipopt_zU_in.update(m.ipopt_zU_out)
-            #m.write(filename="mynl.nl", format=ProblemFormat.nl)
-            k_aug.solve(m, tee=True)
-            print("Done solving building reduce hessian")
-
-            if not all_sigma_specified:
-                raise RuntimeError(
-                    'All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
-
-            n_vars = len(self._idx_to_variable)
-            print("n_vars",n_vars)
-            #m.rh_name.pprint()
-            var_loc = m.rh_name
-            for v in six.itervalues(self._idx_to_variable):
-                try:
-                    var_loc[v]
-                except:
-                    print(v, "is an error")
-                    var_loc[v] = 0
-                    print(v, "is thus set to ", var_loc[v])
-                    print(var_loc[v])
-
-            vlocsize = len(var_loc)
-            print("var_loc size, ", vlocsize) 
-            unordered_hessian = np.loadtxt('result_red_hess.txt')
-            if os.path.exists('result_red_hess.txt'):
-                os.remove('result_red_hess.txt')
-            #hessian = read_reduce_hessian_k_aug(hessian_output, n_vars)
-            #hessian =hessian_output
-            #print(hessian)
-            print(unordered_hessian.size, "unordered hessian size")
-            hessian = self._order_k_aug_hessian(unordered_hessian, var_loc)
-            
-            if self._concentration_given:
-                self._compute_covariance_C(hessian, sigma_sq)
         else:
             solver_results = optimizer.solve(m, tee=tee)
 
@@ -721,27 +562,6 @@ class ParameterEstimator(Optimizer):
                 count_t += 1
             count_c += 1
             
-    def _order_k_aug_hessian(self, unordered_hessian, var_loc):
-        """
-        not meant to be used directly by users. Takes in the inverse of the reduced hessian
-        outputted by k_aug and uses the rh_name to find the locations of the variables and then 
-        re-orders the hessian to be in a format where the other functions are able to compute the
-        confidence intervals in a way similar to that utilized by sIpopt.
-        """
-        vlocsize = len(var_loc)
-        n_vars = len(self._idx_to_variable)
-        hessian = np.zeros((n_vars,n_vars))
-        i = 0
-        for vi in six.itervalues(self._idx_to_variable):
-            j = 0
-            for vj in six.itervalues(self._idx_to_variable):
-                h = unordered_hessian[(var_loc[vi]),(var_loc[vj])]
-                hessian[i,j] = h
-                j+=1
-            i+=1                        
-        print(hessian.size, "hessian size")
-        return hessian 
-      
     def run_opt(self, solver, **kwds):
 
         """ Solves parameter estimation problem.
@@ -770,21 +590,19 @@ class ParameterEstimator(Optimizer):
         tee = kwds.pop('tee', False)
         with_d_vars = kwds.pop('with_d_vars', False)
         covariance = kwds.pop('covariance', False)
-        self.solver = solver
+
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
 
         # Look at the output in results
-        opt = SolverFactory(self.solver)
+        opt = SolverFactory(solver)
 
         if covariance:
-            if self.solver != 'ipopt_sens' and self.solver != 'k_aug':
-                raise RuntimeError('To get covariance matrix the solver needs to be ipopt_sens or k_aug')
-            if self.solver == 'ipopt_sens':
-                if not 'compute_red_hessian' in solver_opts.keys():
-                    solver_opts['compute_red_hessian'] = 'yes'
-            if self.solver == 'k_aug':
-                solver_opts['compute_inv']=''
+            if solver != 'ipopt_sens':
+                raise RuntimeError('To get covariance matrix the solver needs to be ipopt_sens')
+            if not 'compute_red_hessian' in solver_opts.keys():
+                solver_opts['compute_red_hessian'] = 'yes'
+
             self._define_reduce_hess_order()
 
         for key, val in solver_opts.items():
@@ -838,15 +656,9 @@ def split_sipopt_string(output_string):
     start_hess = output_string.find('DenseSymMatrix')
     ipopt_string = output_string[:start_hess]
     hess_string = output_string[start_hess:]
-    #print(hess_string, ipopt_string)
+    print(hess_string, ipopt_string)
     return (ipopt_string, hess_string)
 
-def split_k_aug_string(output_string):
-    start_hess = output_string.find('')
-    ipopt_string = output_string[:start_hess]
-    hess_string = output_string[start_hess:]
-    #print(hess_string, ipopt_string)
-    return (ipopt_string, hess_string)
 
 def read_reduce_hessian2(hessian_string, n_vars):
     hessian_string = re.sub('RedHessian unscaled\[', '', hessian_string)
@@ -862,24 +674,9 @@ def read_reduce_hessian2(hessian_string, n_vars):
                 hessian[row, col] = float(hess_line[2])
                 hessian[col, row] = float(hess_line[2])
     return hessian
-    
-def read_reduce_hessian(hessian_string, n_vars):
-    hessian = np.zeros((n_vars, n_vars))
-    for i, line in enumerate(hessian_string.split('\n')):
-        if i > 0:  # ignores header
-            if line not in ['', ' ', '\t']:
-                hess_line = line.split(']=')
-                if len(hess_line) == 2:
-                    value = float(hess_line[1])
-                    column_line = hess_line[0].split(',')
-                    col = int(column_line[1])
-                    row_line = column_line[0].split('[')
-                    row = int(row_line[1])
-                    hessian[row, col] = float(value)
-                    hessian[col, row] = float(value)
-    return hessian
 
-def read_reduce_hessian_k_aug(hessian_string, n_vars):
+
+def read_reduce_hessian(hessian_string, n_vars):
     hessian = np.zeros((n_vars, n_vars))
     for i, line in enumerate(hessian_string.split('\n')):
         if i > 0:  # ignores header

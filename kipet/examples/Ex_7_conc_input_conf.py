@@ -56,7 +56,7 @@ if __name__ == "__main__":
     components = {'A':1e-3,'B':0,'C':0}
     builder.add_mixture_component(components)
     builder.add_parameter('k1',bounds=(0.0,5.0))
-    builder.add_parameter('k2',bounds=(0.00,2.0))
+    builder.add_parameter('k2',bounds=(0.00,1.0))
     builder.add_concentration_data(D_frame)
 
     # define explicit system of ODEs
