@@ -1015,9 +1015,9 @@ class VarianceEstimator(Optimizer):
                 vtjumpkeydict = self.jump_times_dict[ki]
                 for l in vtjumpkeydict.keys():
                     self.jump_time = vtjumpkeydict[l]
-                    print('jumptime:',self.jump_time)
+                    #print('jumptime:',self.jump_time)
                     self.jump_fe, self.jump_cp = fe_cp(ttgt,self.jump_time)
-                    print('jump_el, el:',self.jump_fe, fe)
+                    #print('jump_el, el:',self.jump_fe, fe)
                     if fe == self.jump_fe+1:
                         print("jump_constraints!")
                                 #################################
