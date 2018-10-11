@@ -161,20 +161,6 @@ if __name__ == "__main__":
     jump_points1 = {'AH': 100.0}#Which component is added at which point in time
     jump_points2 = {'V': 200.}
     jump_times = {'Z': jump_points1, 'X': jump_points2}
-    # if len(feed_times)!=len(jump_times):
-    #     print('WARNING')
-    # Z_step = {'A': .1, 'B': .2} #Which component and which amount is added
-    # jump_states = {'Z': Z_step}
-    # jump_points = {'A': 1., 'B':4.5} #Which component is added at which point in time
-    # jump_times={'Z':jump_points}
-
-    # jump_points = {'CDI': 0.54806, 'S2':4.51467}
-
-    # just one:
-    # Z_step = {'S2': 68./200} #Which component and which amount is added
-    # jump_states = {'Z': Z_step}
-    # jump_points = {'S2': 4.51467}#4.564722}#4.51467}
-    # jump_times={'Z':jump_points}
 
     init = sim.call_fe_factory(inputs_sub, jump_states, jump_times, feed_times, fixedy)
 
@@ -195,15 +181,32 @@ if __name__ == "__main__":
     model = builder.create_pyomo_model(0, 700)  # changed from 600 due to data
     v_estimator = VarianceEstimator(model)
     v_estimator.apply_discretization('dae.collocation', nfe=50, ncp=3, scheme='LAGRANGE-RADAU')
-    v_estimator.initialize_from_trajectory('Z', results.Z)
-    v_estimator.initialize_from_trajectory('S', results.S)
-    v_estimator.initialize_from_trajectory('C', results.C)
+
+    p_guess = {'k0': 49.7796, 'k1': 8.93156, 'k2':1.31765, 'k3':0.310870, 'k4':3.87809}
+
+    raw_results = v_estimator.run_lsq_given_P('ipopt', p_guess, tee=False)
+
+    v_estimator.initialize_from_trajectory('Z', raw_results.Z)
+    v_estimator.initialize_from_trajectory('S', raw_results.S)
+    v_estimator.initialize_from_trajectory('dZdt', raw_results.dZdt)
+    v_estimator.initialize_from_trajectory('C', raw_results.C)
+
+    v_estimator.scale_variables_from_trajectory('Z',raw_results.Z)
+    v_estimator.scale_variables_from_trajectory('S',raw_results.S)
+    v_estimator.scale_variables_from_trajectory('C',raw_results.C)
+    v_estimator.scale_variables_from_trajectory('dZdt',raw_results.dZdt)
+
+    # v_estimator.initialize_from_trajectory('Z', results.Z)
+    # v_estimator.initialize_from_trajectory('S', results.S)
+    # v_estimator.initialize_from_trajectory('C', results.C)
 
     options = {}
     options['mu_init'] = 1e-7
-    options['bound_push'] = 1e-8
+    #options['bound_push'] = 1e-8
     options['linear_solver'] = 'ma57'
     options['ma57_pivot_order'] = 4
+    # #options['bound_relax_factor'] = 0.0
+    # options['mu_strategy'] = 'adaptive'
     # options['tol'] = 1e-9
     # print(opt_model.pprint())
     # opt_model.pprint(filename="fullfemodel.txt")
@@ -257,7 +260,6 @@ if __name__ == "__main__":
     # ('AC-', 4.432377193670943e-07)
     # ('P', 4.596013737184771e-07)
     # ('device', 4.93456158881624e-06)
-    sys.exit()
     if with_plots:
         results_variances.C.plot.line(legend=True)
         plt.xlabel("time (h)")
@@ -270,7 +272,7 @@ if __name__ == "__main__":
         plt.title("Absorbance  Profile")
 
         plt.show()
-    sigmas = results_variances.sigma_sq
+    #sigmas = results_variances.sigma_sq
 
     # if with_plots:
     #     # display concentration results

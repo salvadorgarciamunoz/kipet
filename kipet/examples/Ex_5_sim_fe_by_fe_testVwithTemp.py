@@ -30,8 +30,7 @@ if __name__ == "__main__":
     #=========================================================================
     #USER INPUT SECTION - REQUIRED MODEL BUILDING ACTIONS
     #=========================================================================
-     
-    # create template model 
+    # create template model
     builder = TemplateBuilder()
 
     # components
@@ -47,17 +46,25 @@ if __name__ == "__main__":
     builder.add_mixture_component(components)
 
     # add algebraics
-    algebraics = ['0', '1', '2', '3', '4', '5']  # the indices of the rate rxns
-    # note the fifth component. Which basically works as an input
+    algebraics = ['0', '1', '2', '3', '4', '5', 'k4T', 'Temp']  # the indices of the rate rxns
+    # note the fifth, sixth and seventh components. Which basically work as inputs
 
     builder.add_algebraic_variable(algebraics)
+
+    # Load Temp data:
+    dataDirectory = os.path.abspath(
+        os.path.join(os.path.dirname(os.path.abspath(inspect.getfile(
+            inspect.currentframe()))), 'data_sets'))
+    Ttraj = os.path.join(dataDirectory, 'Tempvalues.csv')
+    fixed_Ttraj = read_absorption_data_from_csv(Ttraj)
 
     params = dict()
     params['k0'] = 49.7796
     params['k1'] = 8.93156
     params['k2'] = 1.31765
     params['k3'] = 0.310870
-    params['k4'] = 3.87809
+    params['k4Tr'] = 3.87809
+    params['E'] = 20.
 
     builder.add_parameter(params)
 
@@ -77,14 +84,20 @@ if __name__ == "__main__":
     gammas['AC-'] = [0, 1, -1, -1, -1]
     gammas['P'] = [0, 0, 0, 1, 1]
 
+
     def rule_algebraics(m, t):
         r = list()
         r.append(m.Y[t, '0'] - m.P['k0'] * m.Z[t, 'AH'] * m.Z[t, 'B'])
         r.append(m.Y[t, '1'] - m.P['k1'] * m.Z[t, 'A-'] * m.Z[t, 'C'])
         r.append(m.Y[t, '2'] - m.P['k2'] * m.Z[t, 'AC-'])
         r.append(m.Y[t, '3'] - m.P['k3'] * m.Z[t, 'AC-'] * m.Z[t, 'AH'])
-        r.append(m.Y[t, '4'] - m.P['k4'] * m.Z[t, 'AC-'] * m.Z[t, 'BH+'])#6 is k4T
+        r.append(m.Y[t, '4'] - m.Y[t, 'k4T'] * m.Z[t, 'AC-'] * m.Z[t, 'BH+'])  # 6 is k4T
+        Tr = 303.15
+        # add temperature dependence via Arrhenius law
+        r.append(m.Y[t, 'k4T'] - m.P['k4Tr'] * exp(m.P['E'](1 / m.Y[t, 'Temp'] - 1 / Tr)))
         return r
+
+
     #: there is no ae for Y[t,5] because step equn under rule_odes functions as the switch for the "C" equation
 
     builder.set_algebraics_rule(rule_algebraics)
@@ -109,14 +122,15 @@ if __name__ == "__main__":
 
     builder.set_odes_rule(rule_odes)
 
+    # Add time points where feed as discrete jump should take place:
     #builder.add_measurement_times([100., 300.])
-    feed_times=[100., 200.]
+    feed_times = [100., 200.]
     builder.add_feed_times(feed_times)
 
     dataDirectory = os.path.abspath(
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
             inspect.currentframe() ) ) ),'data_sets'))
-    filename =  os.path.join(dataDirectory,'trimmedcoarser2.csv')
+    filename =  os.path.join(dataDirectory,'trimmed.csv')
 
     D_frame = read_spectral_data_from_csv(filename)
     meas_times = sorted(D_frame.index)#add feed times and meas times before adding data to model
@@ -126,30 +140,33 @@ if __name__ == "__main__":
     #=========================================================================
     #USER INPUT SECTION - FE Factory
     #=========================================================================
-     
+
     # call FESimulator
     # FESimulator re-constructs the current TemplateBuilder into fe_factory syntax
-    # there is no need to call PyomoSimulator any more as FESimulator is a child class 
+    # there is no need to call PyomoSimulator any more as FESimulator is a child class
     sim = FESimulator(model)
-    
+
     # defines the discrete points wanted in the concentration profile
-    sim.apply_discretization('dae.collocation', nfe=30, ncp=3, scheme='LAGRANGE-RADAU')
+    sim.apply_discretization('dae.collocation', nfe=50, ncp=3, scheme='LAGRANGE-RADAU')
 
     #Since the model cannot discriminate inputs from other algebraic elements, we still
     #need to define the inputs as inputs_sub
     inputs_sub = {}
-    inputs_sub['Y'] = ['5']
+    inputs_sub['Y'] = ['5','Temp']
+    sim.fix_from_trajectory('Y', 'Temp', fixed_Ttraj)
+
 
     fixedy = True  # instead of things above
+    fixedtraj = True
 
     # #since these are inputs we need to fix this
     # for key in sim.model.time.value:
     #     sim.model.The.set_value(key)
     #     sim.model.Y[key, '5'].fix()
 
-    #this will allow for the fe_factory to run the element by element march forward along 
+    #this will allow for the fe_factory to run the element by element march forward along
     #the elements and also automatically initialize the PyomoSimulator model, allowing
-    #for the use of the run_sim() function as before. We only need to provide the inputs 
+    #for the use of the run_sim() function as before. We only need to provide the inputs
     #to this function as an argument dictionary
 
     Z_step = {'AH': .3} #Which component and which amount is added
@@ -159,7 +176,7 @@ if __name__ == "__main__":
     jump_points2 = {'V': 200.}
     jump_times = {'Z': jump_points1, 'X': jump_points2}
 
-    init = sim.call_fe_factory(inputs_sub, jump_states, jump_times, feed_times, fixedy)
+    init = sim.call_fe_factory(inputs_sub, jump_states, jump_times, feed_times, fixedy, fixedtraj)
 
     # init = sim.call_fe_factory(inputs_sub)
     #=========================================================================
