@@ -56,7 +56,7 @@ class FESimulator(PyomoSimulator):
             if t[0] == st:
                 self.ics_['X',t[1]] = v.value
 
-    def call_fe_factory(self, inputs_sub=None, jump_states=None, jump_times=None, feed_times=None, fixedtraj=False, fixedy=False):#added for inclusion of discrete jumps CS
+    def call_fe_factory(self, inputs_sub=None, jump_states=None, jump_times=None, feed_times=None, fixedtraj=False, fixedy=False, yfix=None, yfixtraj=None):#added for inclusion of discrete jumps CS
         """
         call_fe_factory:
     
@@ -69,6 +69,8 @@ class FESimulator(PyomoSimulator):
         self.inputs_sub=inputs_sub
         self.fixedtraj=fixedtraj
         self.fixedy=fixedy
+        self.yfix = yfix
+        self.yfixtraj = yfixtraj
 
         self.jump_times=jump_times #added for inclusion of discrete jumps CS
         self.jump_states=jump_states
@@ -77,7 +79,7 @@ class FESimulator(PyomoSimulator):
                          init_con="init_conditions_c",
                          param_name=self.param_name,
                          param_values=self.param_dict,
-                         inputs_sub=self.inputs_sub,fixedtraj=self.fixedtraj,fixedy=self.fixedy)
+                         inputs_sub=self.inputs_sub)#,fixedtraj=self.fixedtraj,fixedy=self.fixedy,yfix=self.yfix, yfixtraj=self.yfixtraj)
     
         init.load_initial_conditions(init_cond=self.ics_)
         #print(jump_states)

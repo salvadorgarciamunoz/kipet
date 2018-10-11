@@ -14,7 +14,7 @@ __author__ = 'David M Thierry'  #: April 2018
 
 
 class fe_initialize(object):
-    def __init__(self, tgt_mod, src_mod, init_con=None, param_name=None, param_values=None, inputs=None, inputs_sub=None,jump_times=None,jump_states=None,fixedtraj=False, fixedy=False):
+    def __init__(self, tgt_mod, src_mod, init_con=None, param_name=None, param_values=None, inputs=None, inputs_sub=None):#, jump_times=None, jump_states=None, fixedtraj=False, fixedy=False, yfix=None, yfixtraj=None):
         # type: (ConcreteModel, ConcreteModel, str, list, dict, dict, dict) -> None
         """fe_factory: fe_initialize class.
 

@@ -476,7 +476,7 @@ class PyomoSimulator(Simulator):
         for t in self._meas_times:
             for l in self._meas_lambdas:
                 s_data_dict[t,l] = float(results.D[l][t])
-                
+
         #Added due to estimation with fe-factory and inputs where data already loaded to model before
         if self._spectra_given:
             self.model.del_component(self.model.D)
