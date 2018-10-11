@@ -88,49 +88,7 @@ class ParameterEstimator(Optimizer):
         if hasattr(self.model, 'non_absorbing'):
             warnings.warn("Overriden by non_absorbing!!!")
             list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
-        ########################
-        # """inputs section"""
-        # self.fixedtraj=fixedtraj
-        # self.fixedy=fixedy
-        # self.inputs_sub = inputs_sub
-        # for k in self.inputs_sub.keys():
-        #     if not isinstance(self.inputs_sub[k], list):
-        #         print("wrong type for inputs_sub {}".format(type(self.inputs_sub[k])))
-        #         #raise Exception
-        #     for i in self.inputs_sub[k]:
-        #         #try:
-        #         if self.fixedtraj==True or self.fixedy==True:
-        #             if self.fixedtraj==True:
-        #                 reft = trajectories[(k, i)]
-        #                 self.fix_from_trajectory(k, i, reft)
-        #         # since these are inputs we need to fix this
-        #             if self.fixedy==True:
-        #                 for key in self.model.time.value:
-        #                     vark=getattr(self.model,k)
-        #                     vark[key, i].set_value(key)
-        #                     vark[key, i].fix()
-        #                     #check this again!!!!
-        #         else:
-        #             print("A trajectory or fixed input is missing for {}\n".format((k, i)))
-        #         # except KeyError:
-        #         #     print("A trajectory is missing for {}\n".format((k,i)))
-        # """/end inputs section"""
-        # if jump:
-        #     self.disc_jump_v_dict = var_dic
-        #     self.jump_times_dict = jump_times  # now dictionary
-        #     if not isinstance(self.disc_jump_v_dict, dict):
-        #         print("disc_jump_v_dict is of type {}".format(type(self.disc_jump_v_dict)))
-        #         raise Exception # wrong type
-        #     if not isinstance(self.jump_times_dict, dict):
-        #         print("disc_jump_times is of type {}".format(type(self.jump_times_dict)))
-        #         raise Exception # wrong type
-        #     # all good.
-        #     self.load_discrete_jump()
-        #
-        # self.model.pprint(filename="some_dummy_fileparam.txt")
-        # print("we are here!")
 
-        #########################
         all_sigma_specified = True
         print(sigma_sq)
         keys = sigma_sq.keys()
@@ -246,15 +204,6 @@ class ParameterEstimator(Optimizer):
         covariance = kwds.pop('covariance', False)
         species_list = kwds.pop('subset_components', None)
 
-        # inputs = kwds.pop("inputs", None)
-        # inputs_sub = kwds.pop("inputs_sub", None)
-        # trajectories = kwds.pop("trajectories", None)
-        # fixedtraj = kwds.pop('fixedtraj', False)
-        # fixedy = kwds.pop('fixedy', False)
-        #
-        # jump = kwds.pop("jump", False)
-        # var_dic = kwds.pop("jump_states", None)
-        # jump_times = kwds.pop("jump_times", None)
 
 
 
@@ -288,50 +237,6 @@ class ParameterEstimator(Optimizer):
         #    sigma_sq['device'] = 1.0
 
         m = self.model
-
-        # ########################
-        # """inputs section"""
-        # self.fixedtraj = fixedtraj
-        # self.fixedy = fixedy
-        # self.inputs_sub = inputs_sub
-        # for k in self.inputs_sub.keys():
-        #     if not isinstance(self.inputs_sub[k], list):
-        #         print("wrong type for inputs_sub {}".format(type(self.inputs_sub[k])))
-        #         # raise Exception
-        #     for i in self.inputs_sub[k]:
-        #         # try:
-        #         if self.fixedtraj == True or self.fixedy == True:
-        #             if self.fixedtraj == True:
-        #                 reft = trajectories[(k, i)]
-        #                 self.fix_from_trajectory(k, i, reft)
-        #             # since these are inputs we need to fix this
-        #             if self.fixedy == True:
-        #                 for key in self.model.time.value:
-        #                     vark = getattr(self.model, k)
-        #                     vark[key, i].set_value(key)
-        #                     vark[key, i].fix()
-        #                     # check this again!!!!
-        #         else:
-        #             print("A trajectory or fixed input is missing for {}\n".format((k, i)))
-        #         # except KeyError:
-        #         #     print("A trajectory is missing for {}\n".format((k,i)))
-        # """/end inputs section"""
-        # if jump:
-        #     self.disc_jump_v_dict = var_dic
-        #     self.jump_times_dict = jump_times  # now dictionary
-        #     if not isinstance(self.disc_jump_v_dict, dict):
-        #         print("disc_jump_v_dict is of type {}".format(type(self.disc_jump_v_dict)))
-        #         raise Exception  # wrong type
-        #     if not isinstance(self.jump_times_dict, dict):
-        #         print("disc_jump_times is of type {}".format(type(self.jump_times_dict)))
-        #         raise Exception  # wrong type
-        #     # all good.
-        #     self.load_discrete_jump()
-        #
-        # self.model.pprint(filename="some_dummy_fileparam.txt")
-        # print("we are here!")
-
-        #########################
 
         # estimation
         def rule_objective(m):
@@ -852,22 +757,20 @@ class ParameterEstimator(Optimizer):
                 print("wrong type for inputs_sub {}".format(type(self.inputs_sub[k])))
                 # raise Exception
             for i in self.inputs_sub[k]:
-                # try:
-                if self.fixedtraj == True or self.fixedy == True:
-                    if self.fixedtraj == True:
-                        reft = trajectories[(k, i)]
-                        self.fix_from_trajectory(k, i, reft)
-                    # since these are inputs we need to fix this
-                    if self.fixedy == True:
-                        for key in self.model.time.value:
-                            vark = getattr(self.model, k)
-                            vark[key, i].set_value(key)
-                            vark[key, i].fix()
-                            # check this again!!!!
+                if self.fixedtraj==True or self.fixedy==True:
+                    for ij,j in trajectories:
+                        if i==j:
+                            reft = trajectories[(k, i)]
+                            self.fix_from_trajectory(k, i, reft)
+                #     # since these are inputs we need to fix this
+                        elif i!=j:
+                            for key in self.model.time.value:
+                                vark = getattr(self.model, k)
+                                vark[key, i].set_value(key)
+                                vark[key, i].fix()
+                        # check this again!!!!
                 else:
                     print("A trajectory or fixed input is missing for {}\n".format((k, i)))
-                # except KeyError:
-                #     print("A trajectory is missing for {}\n".format((k,i)))
         """/end inputs section"""
         if jump:
             self.disc_jump_v_dict = var_dic
