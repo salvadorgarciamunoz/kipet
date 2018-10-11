@@ -124,13 +124,13 @@ if __name__ == "__main__":
 
     # Add time points where feed as discrete jump should take place:
     #builder.add_measurement_times([100., 300.])
-    feed_times = [100., 200.]
+    feed_times = [101.035, 303.126]
     builder.add_feed_times(feed_times)
 
     dataDirectory = os.path.abspath(
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
             inspect.currentframe() ) ) ),'data_sets'))
-    filename =  os.path.join(dataDirectory,'trimmed.csv')
+    filename =  os.path.join(dataDirectory,'trimmedcoarser2.csv')
 
     D_frame = read_spectral_data_from_csv(filename)
     meas_times = sorted(D_frame.index)#add feed times and meas times before adding data to model
@@ -158,11 +158,10 @@ if __name__ == "__main__":
 
     fixedy = True  # instead of things above
     fixedtraj = True
-
     # #since these are inputs we need to fix this
-    # for key in sim.model.time.value:
-    #     sim.model.The.set_value(key)
-    #     sim.model.Y[key, '5'].fix()
+    for key in sim.model.time.value:
+        sim.model.Y[key, '5'].set_value(key)
+        sim.model.Y[key, '5'].fix()
 
     #this will allow for the fe_factory to run the element by element march forward along
     #the elements and also automatically initialize the PyomoSimulator model, allowing
@@ -172,11 +171,11 @@ if __name__ == "__main__":
     Z_step = {'AH': .3} #Which component and which amount is added
     X_step = {'V': 20.}
     jump_states = {'Z': Z_step, 'X': X_step}
-    jump_points1 = {'AH': 100.0}#Which component is added at which point in time
-    jump_points2 = {'V': 200.}
+    jump_points1 = {'AH': 101.035}#Which component is added at which point in time
+    jump_points2 = {'V': 303.126}
     jump_times = {'Z': jump_points1, 'X': jump_points2}
 
-    init = sim.call_fe_factory(inputs_sub, jump_states, jump_times, feed_times, fixedy, fixedtraj)
+    init = sim.call_fe_factory(inputs_sub, jump_states, jump_times, feed_times)#, fixedy, fixedtraj)
 
     # init = sim.call_fe_factory(inputs_sub)
     #=========================================================================

@@ -113,7 +113,8 @@ if __name__ == "__main__":
     builder.set_odes_rule(rule_odes)
 
     #builder.add_measurement_times([100., 300.])
-    feed_times = [100., 200.]
+    # feed_times = [100., 200.]
+    feed_times = [101.035, 303.126]
     builder.add_feed_times(feed_times)
 
     dataDirectory = os.path.abspath(
@@ -144,25 +145,35 @@ if __name__ == "__main__":
     inputs_sub['Y'] = ['5']
 
     #since these are inputs we need to fix this
-    # for key in sim.model.time.value:
-    #     sim.model.Y[key, '5'].set_value(key)
-    #     sim.model.Y[key, '5'].fix()
+    for key in sim.model.time.value:
+        sim.model.Y[key, '5'].set_value(key)
+        sim.model.Y[key, '5'].fix()
+
+
     fixedy=True #instead of things above
+    yfix={}
+    yfix['Y']=['5']#needed in case of different input fixes
 
     #this will allow for the fe_factory to run the element by element march forward along 
     #the elements and also automatically initialize the PyomoSimulator model, allowing
     #for the use of the run_sim() function as before. We only need to provide the inputs 
     #to this function as an argument dictionary
 
-
+    #
+    # Z_step = {'AH': .3} #Which component and which amount is added
+    # X_step = {'V': 20.}
+    # jump_states = {'Z': Z_step, 'X': X_step}
+    # jump_points1 = {'AH': 100.0}#Which component is added at which point in time
+    # jump_points2 = {'V': 200.}
+    # jump_times = {'Z': jump_points1, 'X': jump_points2}
     Z_step = {'AH': .3} #Which component and which amount is added
     X_step = {'V': 20.}
     jump_states = {'Z': Z_step, 'X': X_step}
-    jump_points1 = {'AH': 100.0}#Which component is added at which point in time
-    jump_points2 = {'V': 200.}
+    jump_points1 = {'AH': 101.035}#Which component is added at which point in time
+    jump_points2 = {'V': 303.126}
     jump_times = {'Z': jump_points1, 'X': jump_points2}
 
-    init = sim.call_fe_factory(inputs_sub, jump_states, jump_times, feed_times, fixedy)
+    init = sim.call_fe_factory(inputs_sub, jump_states, jump_times, feed_times)#, fixedy, yfix)#yfix
 
     # init = sim.call_fe_factory(inputs_sub)
     # sys.exit()
@@ -307,11 +318,17 @@ if __name__ == "__main__":
     # and define our parameter estimation problem and discretization strategy
     model = builder.create_pyomo_model(0, 700)  # changed from 600 due to data
     model.del_component(params)
+    # builder.add_parameter('k0', bounds=(0,100.))
+    # builder.add_parameter('k1', bounds=(0,20.))
+    # builder.add_parameter('k2', bounds=(0,4.))
+    # builder.add_parameter('k3', bounds=(0,1.))
+    # builder.add_parameter('k4', bounds=(0,8.))
+    model.del_component(params)
     builder.add_parameter('k0', bounds=(0,100.))
-    builder.add_parameter('k1', bounds=(0,20.))
-    builder.add_parameter('k2', bounds=(0,4.))
-    builder.add_parameter('k3', bounds=(0,1.))
-    builder.add_parameter('k4', bounds=(0,8.))
+    builder.add_parameter('k1', 8.93156)#bounds=(0,20.))
+    builder.add_parameter('k2', 1.31765)#bounds=(0,4.))
+    builder.add_parameter('k3', 0.310870)#bounds=(0,1.))
+    builder.add_parameter('k4', 3.87809)#bounds=(0,8.))
     model =builder.create_pyomo_model(0,700)
     p_estimator = ParameterEstimator(model)
     p_estimator.apply_discretization('dae.collocation', nfe=50, ncp=3, scheme='LAGRANGE-RADAU')
@@ -321,7 +338,7 @@ if __name__ == "__main__":
     # p_estimator.initialize_from_trajectory('Z', results_variances.Z)
     # p_estimator.initialize_from_trajectory('S', results_variances.S)
     # p_estimator.initialize_from_trajectory('C', results_variances.C)
-    p_guess = {'k0': 49.7796, 'k1': 8.93156, 'k2': 1.31765, 'k3': 0.310870, 'k4': 3.87809}  # , 'k5m':0.3, 'k5p':0.05, 'k6':0.3, 'k7':0.05}
+    p_guess = {'k0': 49.7796}#, 'k1': 8.93156, 'k2': 1.31765, 'k3': 0.310870, 'k4': 3.87809}  # , 'k5m':0.3, 'k5p':0.05, 'k6':0.3, 'k7':0.05}
     # builder.add_parameter('k1',1.3)
     # builder.add_parameter('k2',5.8)
     # builder.add_parameter('k3',1.2)
@@ -339,18 +356,19 @@ if __name__ == "__main__":
     options['mu_init'] = 1e-6
     options['bound_push'] = 1e-6
     # finally we run the optimization
-    results_pyomo = p_estimator.run_opt('ipopt_sens',
+    results_pyomo = p_estimator.run_opt('ipopt',
                                         tee=True,
                                         solver_opts=options,
                                         variances=sigmas,
                                         with_d_vars=True,
-                                        covariance=True,
+                                        #covariance=True,
                                         inputs_sub=inputs_sub,
                                         #trajectories=trajs,
                                         jump=True,
                                         jump_times=jump_times,
                                         jump_states=jump_states,
-                                        fixedy=True
+                                        fixedy=True,
+                                        yfix=yfix
                                         )
 
     # And display the results

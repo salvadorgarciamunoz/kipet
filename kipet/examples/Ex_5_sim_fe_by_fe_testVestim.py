@@ -113,7 +113,8 @@ if __name__ == "__main__":
     builder.set_odes_rule(rule_odes)
 
     #builder.add_measurement_times([100., 300.])
-    feed_times = [100., 200.]
+    # feed_times = [100., 200.]
+    feed_times = [101.035, 303.126]
     builder.add_feed_times(feed_times)
 
     dataDirectory = os.path.abspath(
@@ -144,25 +145,33 @@ if __name__ == "__main__":
     inputs_sub['Y'] = ['5']
 
     #since these are inputs we need to fix this
-    # for key in sim.model.time.value:
-    #     sim.model.Y[key, '5'].set_value(key)
-    #     sim.model.Y[key, '5'].fix()
+    for key in sim.model.time.value:
+        sim.model.Y[key, '5'].set_value(key)
+        sim.model.Y[key, '5'].fix()
     fixedy=True #instead of things above
+    yfix={}
+    yfix['Y']=['5']#needed in case of different input fixes
 
     #this will allow for the fe_factory to run the element by element march forward along 
     #the elements and also automatically initialize the PyomoSimulator model, allowing
     #for the use of the run_sim() function as before. We only need to provide the inputs 
     #to this function as an argument dictionary
 
-
+    #
+    # Z_step = {'AH': .3} #Which component and which amount is added
+    # X_step = {'V': 20.}
+    # jump_states = {'Z': Z_step, 'X': X_step}
+    # jump_points1 = {'AH': 100.0}#Which component is added at which point in time
+    # jump_points2 = {'V': 200.}
+    # jump_times = {'Z': jump_points1, 'X': jump_points2}
     Z_step = {'AH': .3} #Which component and which amount is added
     X_step = {'V': 20.}
     jump_states = {'Z': Z_step, 'X': X_step}
-    jump_points1 = {'AH': 100.0}#Which component is added at which point in time
-    jump_points2 = {'V': 200.}
+    jump_points1 = {'AH': 101.035}#Which component is added at which point in time
+    jump_points2 = {'V': 303.126}
     jump_times = {'Z': jump_points1, 'X': jump_points2}
 
-    init = sim.call_fe_factory(inputs_sub, jump_states, jump_times, feed_times, fixedy)
+    init = sim.call_fe_factory(inputs_sub, jump_states, jump_times, feed_times)#, fixedy)
 
     # init = sim.call_fe_factory(inputs_sub)
     # sys.exit()
@@ -178,33 +187,46 @@ if __name__ == "__main__":
                           tee=True,
                           solver_opts=options)
     #sys.exit()
+    model = builder.create_pyomo_model(0, 700)
+    model.del_component(params)
+    # builder.add_parameter('k0', bounds=(0,100.))
+    # builder.add_parameter('k1', bounds=(0,20.))
+    # builder.add_parameter('k2', bounds=(0,4.))
+    # builder.add_parameter('k3', bounds=(0,1.))
+    # builder.add_parameter('k4', bounds=(0,8.))
+    model.del_component(params)
+    builder.add_parameter('k0', bounds=(0, 100.))
+    builder.add_parameter('k1', 8.93156)  # bounds=(0,20.))
+    builder.add_parameter('k2', 1.31765)  # bounds=(0,4.))
+    builder.add_parameter('k3', 0.310870)  # bounds=(0,1.))
+    builder.add_parameter('k4', 3.87809)  # bounds=(0,8.))
     model = builder.create_pyomo_model(0, 700)  # changed from 600 due to data
     v_estimator = VarianceEstimator(model)
     v_estimator.apply_discretization('dae.collocation', nfe=50, ncp=3, scheme='LAGRANGE-RADAU')
 
-    p_guess = {'k0': 49.7796, 'k1': 8.93156, 'k2':1.31765, 'k3':0.310870, 'k4':3.87809}
+    # p_guess = {'k0': 49.7796}#, 'k1': 8.93156, 'k2':1.31765, 'k3':0.310870, 'k4':3.87809}
+    #
+    # raw_results = v_estimator.run_lsq_given_P('ipopt', p_guess, tee=False)
 
-    raw_results = v_estimator.run_lsq_given_P('ipopt', p_guess, tee=False)
-
-    v_estimator.initialize_from_trajectory('Z', raw_results.Z)
-    v_estimator.initialize_from_trajectory('S', raw_results.S)
-    v_estimator.initialize_from_trajectory('dZdt', raw_results.dZdt)
-    v_estimator.initialize_from_trajectory('C', raw_results.C)
-
-    v_estimator.scale_variables_from_trajectory('Z',raw_results.Z)
-    v_estimator.scale_variables_from_trajectory('S',raw_results.S)
-    v_estimator.scale_variables_from_trajectory('C',raw_results.C)
-    v_estimator.scale_variables_from_trajectory('dZdt',raw_results.dZdt)
+    v_estimator.initialize_from_trajectory('Z', results.Z)
+    v_estimator.initialize_from_trajectory('S', results.S)
+    v_estimator.initialize_from_trajectory('dZdt', results.dZdt)
+    v_estimator.initialize_from_trajectory('C', results.C)
+    #
+    # v_estimator.scale_variables_from_trajectory('Z',raw_results.Z)
+    # v_estimator.scale_variables_from_trajectory('S',raw_results.S)
+    # v_estimator.scale_variables_from_trajectory('C',raw_results.C)
+    # v_estimator.scale_variables_from_trajectory('dZdt',raw_results.dZdt)
 
     # v_estimator.initialize_from_trajectory('Z', results.Z)
     # v_estimator.initialize_from_trajectory('S', results.S)
     # v_estimator.initialize_from_trajectory('C', results.C)
 
     options = {}
-    options['mu_init'] = 1e-7
-    #options['bound_push'] = 1e-8
-    options['linear_solver'] = 'ma57'
-    options['ma57_pivot_order'] = 4
+    options['mu_init'] = 1e-6
+    options['bound_push'] = 1e-6
+    # options['linear_solver'] = 'ma57'
+    # options['ma57_pivot_order'] = 4
     # #options['bound_relax_factor'] = 0.0
     # options['mu_strategy'] = 'adaptive'
     # options['tol'] = 1e-9
@@ -240,7 +262,8 @@ if __name__ == "__main__":
                                             jump=True,
                                             jump_times=jump_times,
                                             jump_states=jump_states,
-                                            fixedy=True)#added
+                                            fixedy=True,
+                                            yfix=yfix)#added
 
     print("\nThe estimated variances are:\n")
 
