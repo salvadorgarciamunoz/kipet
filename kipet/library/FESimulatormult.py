@@ -63,8 +63,12 @@ class FESimulator(PyomoSimulator):
                 This function applies all the inputs necessary for fe_factory to work, using Kipet syntax.
     
                 Args:
-                    none
+                    inputs_sub (dict): dictionary of inputs
+                    jump_states (dict): dictionary of which variables and states are inputted and by how much
+                    jump_times (dict): dictionary in same form as jump_states with times of input
+                    feed_times (list): list of additional times needed, should be the same times as jump_times
         """
+        #added for inclusion of inputs of different kind CS
         self.inputs_sub = None
         self.inputs_sub=inputs_sub
         self.fixedtraj=fixedtraj
@@ -79,11 +83,10 @@ class FESimulator(PyomoSimulator):
                          init_con="init_conditions_c",
                          param_name=self.param_name,
                          param_values=self.param_dict,
-                         inputs_sub=self.inputs_sub)#,fixedtraj=self.fixedtraj,fixedy=self.fixedy,yfix=self.yfix, yfixtraj=self.yfixtraj)
+                         inputs_sub=self.inputs_sub)
     
         init.load_initial_conditions(init_cond=self.ics_)
-        #print(jump_states)
-        #print(jump_times)
+
         if jump_times!=None and jump_states!=None:
             init.load_discrete_jump(jump_states, jump_times, feed_times) #added for inclusion of discrete jumps
         init.run()
