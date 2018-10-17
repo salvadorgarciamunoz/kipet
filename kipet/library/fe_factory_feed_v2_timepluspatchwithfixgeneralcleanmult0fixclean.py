@@ -14,7 +14,7 @@ __author__ = 'David M Thierry'  #: April 2018
 
 
 class fe_initialize(object):
-    def __init__(self, tgt_mod, src_mod, init_con=None, param_name=None, param_values=None, inputs=None, inputs_sub=None):#, jump_times=None, jump_states=None, fixedtraj=False, fixedy=False, yfix=None, yfixtraj=None):
+    def __init__(self, tgt_mod, src_mod, init_con=None, param_name=None, param_values=None, inputs=None, inputs_sub=None,jump_times=None,jump_states=None):
         # type: (ConcreteModel, ConcreteModel, str, list, dict, dict, dict) -> None
         """fe_factory: fe_initialize class.
 
@@ -348,9 +348,9 @@ class fe_initialize(object):
         #         i.setlb(-0.01)
         #     else:
         #         i.setlb(0)
-        # for i in self.mod.Z.itervalues():
-        # i.setlb(0)
-        ##########Non0fix##############
+        #for i in self.mod.Z.itervalues():
+            #i.setlb(0)
+
         self.ip.options["OF_start_with_resto"] = 'no'
         self.ip.options['bound_push'] = 1e-02
         sol = self.ip.solve(self.mod, tee=True, symbolic_solver_labels=True)
@@ -384,63 +384,23 @@ class fe_initialize(object):
         else:
             print("fe {} - status: optimal".format(fe))
         self.patch(fe)
-        # if fe==self.jump_fe:
-        #     self.tgt.pprint(filename="full_atjump.txt")
-        # if fe==self.jump_fe + 1:
-        #     self.tgt.pprint(filename="full_atjumpp1.txt")
         self.cycle_ics(fe)
-        ##########################0fix#################
-        # for i in self.mod.Z.itervalues():
-        #     i.setlb(0)
-        #
-        # self.ip.options['bound_push'] = 1e-02
-        # sol = self.ip.solve(self.mod, tee=True, symbolic_solver_labels=True)
-        # if fe == 0:
-        #     self.mod.display(filename='broke.txt')
-        #     self.mod.pprint(filename='nwings.txt')
-        #     # sys.exit()
-        # if sol.solver.termination_condition != TerminationCondition.optimal:
-        #     # self.ip.options["linear_solver"] = "ma57"
-        #     # for i in self.mod.component_objects(Var):
-        #     #     i.pprint()
-        #     sol = self.ip.solve(self.mod, tee=True, symbolic_solver_labels=True)
-        #     if sol.solver.termination_condition != TerminationCondition.optimal:
-        #         self.ip.options["bound_push"] = 1E-02
-        #         # self.ip.options[""]
-        #         # for i in self.mod.component_data_objects(Var):
-        #         #     i.setlb(None)
-        #         # for i in self.mod.Z.itervalues():
-        #         #     i.setlb(None)
-        #         # for i in self.mod.X.itervalues():
-        #         #     idx = i.index()
-        #         #     if idx[1] in ['Msa']:
-        #         #         i.setlb(-0.05)
-        #         #     else:
-        #         #         i.setlb(None)
-        #         sol = self.ip.solve(self.mod, tee=True, symbolic_solver_labels=True)
-        #         if sol.solver.termination_condition != TerminationCondition.optimal:
-        #             raise Exception("The current iteration was unsuccessful. Iteration :{}".format(fe))
-        #
-        # else:
-        #     print("fe {} - status: optimal".format(fe))
-        # self.patch(fe)
-        # self.cycle_ics(fe)
-############################
+        
     #Inclusion of discrete jumps: (CS)
     def load_discrete_jump(self, var_dic, jump_times, feed_times):
-        """Method is used to define and load the places where discrete jumps are located, e.g.
+        """Method is used to define and load the places where discrete jumps are located, e.g. 
         dosing points or external inputs.
         Args:
             var_dic (dict): dictionary containing which variables are inputted and by how much
             jump_times (dict): dict containing the times that each variable is inputted
             feed_times (list): list of additional time points needed for inputs
-
+        
         Returns:
             None
         """
         self.jump = True
         self.disc_jump_v_dict = var_dic
-        self.jump_times_dict = jump_times  # now dictionary
+        self.jump_times_dict = jump_times #now dictionary
         self.feed_times_set = feed_times
         count = 0
         for i in six.iterkeys(self.jump_times_dict):
@@ -449,6 +409,7 @@ class fe_initialize(object):
         if len(self.feed_times_set) > count:
             raise Exception("Error: Check feed time points in set feed_times and in jump_times again.\n"
                             "There are more time points in feed_times than jump_times provided.")
+
 
 
     def cycle_ics(self, curr_fe):
@@ -544,56 +505,28 @@ class fe_initialize(object):
             for ki in self.jump_times_dict.keys():
                 if not isinstance(ki, str):
                     print("ki is not str")
-                   # sys.exit()
-                vartjump = getattr(self.tgt, ki)
                 vtjumpkeydict = self.jump_times_dict[ki]
-                for l in vtjumpkeydict.keys(): 
+                for l in vtjumpkeydict.keys():
                     self.jump_time = vtjumpkeydict[l]
-                    #print('jump_time:',  self.jump_time)
                     self.jump_fe, self.jump_cp = fe_cp(ttgt,self.jump_time)
-                    print('jump_el, el:',self.jump_fe, fe)
                     if self.jump_time not in self.feed_times_set:
                         raise Exception("Error: Check feed time points in set feed_times and in jump_times again.\n"
-                                        "They do not match.")
+                                        "They do not match.\n"
+                                        "Jump_time is not included in feed_times.")
                     elif fe == self.jump_fe+1:
-                        t_tgt = t_ij(ttgt, fe, 0)
                                 #################################
-                        for v in self.disc_jump_v_dict.keys():                                
+                        for v in self.disc_jump_v_dict.keys():
                             if not isinstance(v, str):
                                 print("v is not str")
                                 sys.exit()
                             vkeydict = self.disc_jump_v_dict[v]
-                            # print(len(self.jump_times_dict))
                             # print(len(self.feed_times_set))
-                            print(len(self.jump_times_dict.keys()))
-                            # if self.jump_time not in self.feed_times_set:
-                            #     raise Exception("Error: Check feed time points in set feed_times and in jump_times again.\n"
-                            #                     "They do not match.\n"
-                            #                     "Jump_time is not included in feed_times.")
-                            # if len(self.feed_times_set)>len(self.jump_times_dict.keys()):
-                            #     raise Exception("Error: Check feed time points in set feed_times and in jump_times again.\n"
-                            #                     "There are more time points in feed times than jump_times provided.")
-                            # elif len(vkeydict)!=len(vtjumpkeydict):
-                            #     raise Exception('Warning: Check feed time points in set feed_times and in jump_times again.')
-                               # print("Warning: Check feed time points in set feed_times and in jump_times again.")
-                                #sys.exit()
+                            # print(len(self.jump_times_dict.keys()))
                             for k in vkeydict.keys():
                                 if k==l:##############!!!!!#Match in between two components of dictionaries
-                                    #print(k,l)
                                     var = getattr(self.tgt, v)
-                                    dvar = getattr(self.tgt, "d" + v + "dt")
                                     con_name = 'd' + v + 'dt_disc_eq'
                                     con = getattr(self.tgt, con_name)
-                                    # with open('file_constraint.txt', 'w') as f:
-                                    #     con.pprint(ostream=f)
-                                    #     for i in range(0, self.ncp + 1):
-                                    #         curr_time = t_ij(ttgt,self.jump_fe+1,i)
-                                    #         f.write(str(curr_time))
-                                    #         f.write('\n')
-                                    #     f.close()
-                                    # with open('fileMIN.txt', 'w') as f:
-                                    #     var.display(ostream=f)
-                                    #     f.close()
                                     self.tgt.add_component(v + "_dummy_eq_" + str(kn), ConstraintList())
                                     conlist = getattr(self.tgt, v + "_dummy_eq_" + str(kn))
                                     varname = v + "_dummy_" + str(kn)
@@ -606,7 +539,7 @@ class fe_initialize(object):
                                         k = (k,)
                                     exprjump = vdummy - var[(self.jump_time,)+k] == jump_param
                                     self.tgt.add_component("jumpdelta_expr"+str(kn), Constraint(expr=exprjump))
-                                    for kcp in range(1,self.ncp+1):###############Fix this!!!!!!!11
+                                    for kcp in range(1,self.ncp+1):
                                         curr_time = t_ij(ttgt,self.jump_fe+1,kcp)
                                         if not isinstance(k, tuple):
                                             knew = (k,)
@@ -618,12 +551,8 @@ class fe_initialize(object):
                                         e._args[0]._args[1]=vdummy
                                         con[idx].set_value(e)
                                         conlist.add(con[idx].expr)
-                        # self.tgt.pprint(filename="some_dummy_filefe.txt")
-                        # print("we are here!")
                     kn=kn+1
-                #self.tgt.pprint(filename='fullmodelsim.txt')
             #########################################
-                       # sys.exit()
     def adjust_h(self, fe):
         # type: (int) -> None
         """Adjust the h_i parameter of the initializing model.
@@ -639,7 +568,7 @@ class fe_initialize(object):
         for t in zeit:
             hi[t].value = self.fe_list[fe]
 
-    def run(self, resto_strategy='bound_relax'):
+    def run(self, resto_strategy="bound_relax"):
         """Runs the sequence of problems fe=0,nfe
 
         """
