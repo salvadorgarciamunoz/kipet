@@ -62,16 +62,6 @@ class ParameterEstimator(Optimizer):
         weights = kwds.pop('weights', [1.0, 1.0])
         covariance = kwds.pop('covariance', False)
         species_list = kwds.pop('subset_components', None)
-        
-        # inputs = kwds.pop("inputs", None)
-        # inputs_sub = kwds.pop("inputs_sub", None)
-        # trajectories = kwds.pop("trajectories", None)
-        # fixedtraj = kwds.pop('fixedtraj', False)
-        # fixedy = kwds.pop('fixedy', False)
-        #
-        # jump = kwds.pop("jump", False)
-        # var_dic = kwds.pop("jump_states", None)
-        # jump_times = kwds.pop("jump_times", None)
 
         list_components = []
         if species_list is None:
@@ -163,14 +153,6 @@ class ParameterEstimator(Optimizer):
             n_vars = len(self._idx_to_variable)
             hessian = read_reduce_hessian(hessian_output, n_vars)
             print(hessian.size, "hessian size")
-            ###########added for eig Covariance outputs##########
-            ##print(type(hessian))
-            #origredhessian=np.linalg.inv(hessian)
-            #np.savetxt('invredhessian.out', hessian, delimiter=',')
-            #eigH,vH=np.linalg.eig(hessian)
-            #np.savetxt('eiginvredhessian.out',eigH)
-            #print(hessian.size, "hessian size")
-            ######################################################
             # hessian = read_reduce_hessian2(hessian_output,n_vars)
             # print hessian
             self._compute_covariance(hessian, sigma_sq)
@@ -203,9 +185,6 @@ class ParameterEstimator(Optimizer):
         weights = kwds.pop('weights', [0.0, 1.0])
         covariance = kwds.pop('covariance', False)
         species_list = kwds.pop('subset_components', None)
-
-
-
 
         list_components = []
         if species_list is None:
@@ -581,7 +560,7 @@ class ParameterEstimator(Optimizer):
                 self.residuals[t,c]=r
                 count_t += 1
             count_c += 1
-    #####################
+######################### Added for using inputs model for parameter estimation, CS##########
     def load_discrete_jump(self):
         self.jump = True
 
@@ -622,7 +601,6 @@ class ParameterEstimator(Optimizer):
             for ki in self.jump_times_dict.keys():
                 if not isinstance(ki, str):
                     print("ki is not str")
-                vartjump = getattr(self.model, ki)
                 vtjumpkeydict = self.jump_times_dict[ki]
                 for l in vtjumpkeydict.keys():
                     self.jump_time = vtjumpkeydict[l]
@@ -635,25 +613,22 @@ class ParameterEstimator(Optimizer):
                         for v in self.disc_jump_v_dict.keys():
                             if not isinstance(v, str):
                                 print("v is not str")
-                                #sys.exit()
                             vkeydict = self.disc_jump_v_dict[v]
                             if len(vkeydict)!=len(vtjumpkeydict):
                                 print("Error: the number of input components and their feed do not match with the number of feeding time points")
-                              #  sys.exit()
                             for k in vkeydict.keys():
-                                if k==l:##############!!!!!#Match in between two components of dictionaries
-                                    #print(k,l)
+                                if k==l:#Match in between two components of dictionaries
                                     var = getattr(self.model, v)
                                     dvar = getattr(self.model, "d" + v + "dt")
                                     con_name = 'd' + v + 'dt_disc_eq'
                                     con = getattr(self.model, con_name)
-                                    with open('file_constraint.txt', 'w') as f:
-                                        con.pprint(ostream=f)
-                                        for i in range(0, self.ncp + 1):
-                                            curr_time = t_ij(ttgt,self.jump_fe+1,i)
-                                            f.write(str(curr_time))
-                                            f.write('\n')
-                                        f.close()
+                                    # with open('file_constraint.txt', 'w') as f:
+                                    #     con.pprint(ostream=f)
+                                    #     for i in range(0, self.ncp + 1):
+                                    #         curr_time = t_ij(ttgt,self.jump_fe+1,i)
+                                    #         f.write(str(curr_time))
+                                    #         f.write('\n')
+                                    #     f.close()
                                     # with open('fileMIN.txt', 'w') as f:
                                     #     var.display(ostream=f)
                                     #     f.close()
@@ -669,7 +644,7 @@ class ParameterEstimator(Optimizer):
                                         k = (k,)
                                     exprjump = vdummy - var[(self.jump_time,)+k] == jump_param
                                     self.model.add_component("jumpdelta_expr"+str(kn), Constraint(expr=exprjump))
-                                    for kcp in range(1,self.ncp+1):###############Fix this!!!!!!!11
+                                    for kcp in range(1,self.ncp+1):
                                         curr_time = t_ij(ttgt,self.jump_fe+1,kcp)
                                         if not isinstance(k, tuple):
                                             knew = (k,)
@@ -681,13 +656,8 @@ class ParameterEstimator(Optimizer):
                                         e._args[0]._args[1]=vdummy
                                         con[idx].set_value(e)
                                         conlist.add(con[idx].expr)
-                        # if self.jump_time==200.0:
-                        #     self.model.pprint(filename="some_dummy_fileparam.txt")
-                        #     print("we are here!")
-                        #     sys.exit()
                     kn=kn+1
-                #self.model.pprint(filename='fullmodelve.txt')
-
+####################################################################
             
     def run_opt(self, solver, **kwds):
 
@@ -718,6 +688,7 @@ class ParameterEstimator(Optimizer):
         with_d_vars = kwds.pop('with_d_vars', False)
         covariance = kwds.pop('covariance', False)
 
+        #additional arguments for inputs CS
         inputs = kwds.pop("inputs", None)
         inputs_sub = kwds.pop("inputs_sub", None)
         trajectories = kwds.pop("trajectories", None)
@@ -751,7 +722,7 @@ class ParameterEstimator(Optimizer):
 
         active_objectives = [o for o in self.model.component_map(Objective, active=True)]
 
-        """inputs section"""
+        """inputs section""" # additional section for inputs from trajectory and fixed inputs, CS
         self.fixedtraj = fixedtraj
         self.fixedy = fixedy
         self.inputs_sub = inputs_sub
@@ -762,64 +733,32 @@ class ParameterEstimator(Optimizer):
                 print("wrong type for inputs_sub {}".format(type(self.inputs_sub[k])))
                 # raise Exception
             for i in self.inputs_sub[k]:
-                if self.fixedtraj==True or self.fixedy==True:
-                    # print(type(trajectories))
-                    # for j in trajectories[(k,j)]:
-                    #     print(trajectories.keys())
-                    #     if i==j:
-                    #         reft = trajectories[(k, i)]
-                    #         self.fix_from_trajectory(k, i, reft)
-
-                # #     # since these are inputs we need to fix this
-                #         elif i!=j:
-                #             for key in self.model.time.value:
-                #                 vark = getattr(self.model, k)
-                #                 vark[key, i].set_value(key)
-                #                 vark[key, i].fix()
-                    if self.fixedtraj == True and i in self.yfixtraj.keys():
-                        if not isinstance(self.yfixtraj.keys[i], list):
-                            print("wrong type for yfixtraj {}".format(type(self.yfixtraj[i])))
-                        reft = trajectories[(k, i)]
-                        self.fix_from_trajectory(k, i, reft)
-                        # since these are inputs we need to fix this
-                    if self.fixedy==True and i in self.yfix.keys():
-                        if not isinstance(self.yfix.keys[i], list):
-                            print("wrong type for yfix {}".format(type(self.yfix[i])))
-                        for key in self.model.time.value:
-                            vark=getattr(self.model,k)
-                            vark[key, i].set_value(key)
-                            vark[key, i].fix()
-                        # check this again!!!!
+                # print(self.inputs_sub[k])
+                # print(i)
+                if self.fixedtraj==True:
+                    for j in self.yfixtraj.keys():
+                        for l in self.yfixtraj[j]:
+                            if i==l:
+                                # print('herel:fixedy', l)
+                                if not isinstance(self.yfixtraj[j], list):
+                                    print("wrong type for yfixtraj {}".format(type(self.yfixtraj[j])))
+                                reft = trajectories[(k, i)]
+                                self.fix_from_trajectory(k, i, reft)
+                if self.fixedy==True:
+                    for j in self.yfix.keys():
+                        for l in self.yfix[j]:
+                            if i==l:
+                                # print('herel:fixedy',l)
+                                if not isinstance(self.yfix[j], list):
+                                    print("wrong type for yfix {}".format(type(self.yfix[j])))
+                                for key in self.model.time.value:
+                                    vark=getattr(self.model,k)
+                                    vark[key, i].set_value(key)
+                                    vark[key, i].fix()# since these are inputs we need to fix this
                 else:
                     print("A trajectory or fixed input is missing for {}\n".format((k, i)))
         """/end inputs section"""
 
-        # """inputs section"""
-        # self.fixedtraj=fixedtraj
-        # self.fixedy=fixedy
-        # self.inputs_sub = inputs_sub
-        # for k in self.inputs_sub.keys():
-        #     if not isinstance(self.inputs_sub[k], list):
-        #         print("wrong type for inputs_sub {}".format(type(self.inputs_sub[k])))
-        #         #raise Exception
-        #     for i in self.inputs_sub[k]:
-        #         #try:
-        #         if self.fixedtraj==True or self.fixedy==True:
-        #             if self.fixedtraj==True:
-        #                 reft = trajectories[(k, i)]
-        #                 self.fix_from_trajectory(k, i, reft)
-        #         # since these are inputs we need to fix this
-        #             if self.fixedy==True:
-        #                 for key in self.model.time.value:
-        #                     vark=getattr(self.model,k)
-        #                     vark[key, i].set_value(key)
-        #                     vark[key, i].fix()
-        #                     #check this again!!!!
-        #         else:
-        #             print("A trajectory or fixed input is missing for {}\n".format((k, i)))
-        #         # except KeyError:
-        #         #     print("A trajectory is missing for {}\n".format((k,i)))
-        # """/end inputs section"""
         if jump:
             self.disc_jump_v_dict = var_dic
             self.jump_times_dict = jump_times  # now dictionary
@@ -881,7 +820,7 @@ def split_sipopt_string(output_string):
     start_hess = output_string.find('DenseSymMatrix')
     ipopt_string = output_string[:start_hess]
     hess_string = output_string[start_hess:]
-    #print(hess_string, ipopt_string)
+    print(hess_string, ipopt_string)
     return (ipopt_string, hess_string)
 
 
@@ -916,7 +855,7 @@ def read_reduce_hessian(hessian_string, n_vars):
                     hessian[row, col] = float(value)
                     hessian[col, row] = float(value)
     return hessian
-#######################
+#######################additional for inputs###CS
 def t_ij(time_set, i, j):
     # type: (ContinuousSet, int, int) -> float
     """Return the corresponding time(continuous set) based on the i-th finite element and j-th collocation point
@@ -966,4 +905,4 @@ def fe_cp(time_set, feedtime):
             break
         j += 1
     return fe, cp
-
+################################################
