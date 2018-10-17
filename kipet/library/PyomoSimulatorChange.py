@@ -441,7 +441,6 @@ class PyomoSimulator(Simulator):
             sigma_d = sigmas.get('device')**0.5 if "device" in sigmas.keys() else 0
         else:
             sigma_d = 0
-        #print(self._meas_times)
         if s_results and c_noise_results:
             for i,t in enumerate(self._meas_times):
                 for j,l in enumerate(self._meas_lambdas):
@@ -453,35 +452,30 @@ class PyomoSimulator(Simulator):
                     if sigma_d:
                         suma+= np.random.normal(0.0,sigma_d)
                     d_results.append(suma)
-        #print('len(d_results):',len(d_results))
 
-                    
-            
+
         s_array = np.array(s_results).reshape((self._n_meas_lambdas,self._n_components))
-        #print('s_array shape:', s_array.shape)
 
         results.S = pd.DataFrame(data=s_array,
                                  columns=self._mixture_components,
                                  index=self._meas_lambdas)
-        #print(self._n_meas_times)
-                        
+
         d_array = np.array(d_results).reshape((self._n_meas_times,self._n_meas_lambdas))
         print('d_array shape:', d_array.shape)
         results.D = pd.DataFrame(data=d_array,
                                  columns=self._meas_lambdas,
                                  index=self._meas_times)
-        #print(self._meas_times)
-            
+
         s_data_dict = dict()
         for t in self._meas_times:
             for l in self._meas_lambdas:
                 s_data_dict[t,l] = float(results.D[l][t])
 
-        #Added due to estimation with fe-factory and inputs where data already loaded to model before
+        #Added due to estimation with fe-factory and inputs where data already loaded to model before (CS)
         if self._spectra_given:
             self.model.del_component(self.model.D)
             self.model.del_component(self.model.D_index)
-
+        #########
         self.model.D = Param(self._meas_times,
                              self._meas_lambdas,
                              initialize = s_data_dict)
