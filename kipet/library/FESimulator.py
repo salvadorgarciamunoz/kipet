@@ -5,7 +5,7 @@ from pyomo.environ import *
 from pyomo.dae import *
 from kipet.library.ResultsObject import *
 from kipet.library.Simulator import *
-from kipet.library.PyomoSimulatorChange import *
+from kipet.library.PyomoSimulator import *
 from kipet.library.fe_factory import *
 import warnings
 import six
