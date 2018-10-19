@@ -94,7 +94,7 @@ if __name__ == "__main__":
     for k,v in six.iteritems(results_pyomo.P):
         print(k, v)
 
-    tol = 1e-2
+    tol = 3e-2
     assert(abs(results_pyomo.P['k1']-0.3)<tol)
     assert(abs(results_pyomo.P['k2']-0.05)<tol)
         
