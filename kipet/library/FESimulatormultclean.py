@@ -6,9 +6,7 @@ from pyomo.dae import *
 from kipet.library.ResultsObject import *
 from kipet.library.Simulator import *
 from kipet.library.PyomoSimulatorChange import *
-#from kipet.library.fe_factory_0fix import *
-#from kipet.library.fe_factory_feed_v2_timepluspatchwithfixgeneralcleanmult import *
-from kipet.library.fe_factoryclean import *
+from kipet.library.fe_factory import *
 import warnings
 import six
 import sys
