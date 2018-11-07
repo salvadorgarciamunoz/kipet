@@ -26,6 +26,8 @@ class ParameterEstimator(Optimizer):
     def __init__(self, model):
         super(ParameterEstimator, self).__init__(model)
         # for reduce hessian
+        self.hessian = None
+        self._estimability =False
         self._idx_to_variable = dict()
         self._n_actual = self._n_components
         if hasattr(self.model, 'non_absorbing'):
@@ -233,6 +235,8 @@ class ParameterEstimator(Optimizer):
             #print(hessian)
             print(unordered_hessian.size, "unordered hessian size")
             hessian = self._order_k_aug_hessian(unordered_hessian, var_loc)
+            if self._estimability == True:
+                self.hessian = hessian
             self._compute_covariance(hessian, sigma_sq)
         else:
             solver_results = optimizer.solve(m, tee=tee)
@@ -380,10 +384,10 @@ class ParameterEstimator(Optimizer):
                 
             self._tmpfile = "k_aug_hess"
             ip = SolverFactory('ipopt')
-            solver_results = ip.solve(m, tee=True,
+            solver_results = ip.solve(m, tee=False,
                                              logfile=self._tmpfile,
                                              report_timing=True)
-            m.P.pprint()
+            #m.P.pprint()
             k_aug = SolverFactory('k_aug')
             
             #k_aug.options["no_scale"] = ""
@@ -420,7 +424,8 @@ class ParameterEstimator(Optimizer):
             #print(hessian)
             print(unordered_hessian.size, "unordered hessian size")
             hessian = self._order_k_aug_hessian(unordered_hessian, var_loc)
-            
+            if self._estimability == True:
+                self.hessian = hessian
             if self._concentration_given:
                 self._compute_covariance_C(hessian, sigma_sq)
         else:
@@ -759,7 +764,11 @@ class ParameterEstimator(Optimizer):
             
             with_d_vars (bool,optional): flag to the optimizer whether to add 
             variables and constraints for D_bar(i,j)
-
+            
+            estimability (bool, optional): flag to tell the model whether it is 
+            being used by the estimability analysis and therefore will need to return the 
+            hessian for analysis.
+            
         Returns:
             Results object with loaded results
 
@@ -770,6 +779,8 @@ class ParameterEstimator(Optimizer):
         tee = kwds.pop('tee', False)
         with_d_vars = kwds.pop('with_d_vars', False)
         covariance = kwds.pop('covariance', False)
+        estimability = kwds.pop('estimability', False)
+        
         self.solver = solver
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
@@ -785,10 +796,14 @@ class ParameterEstimator(Optimizer):
                     solver_opts['compute_red_hessian'] = 'yes'
             if self.solver == 'k_aug':
                 solver_opts['compute_inv']=''
+
             self._define_reduce_hess_order()
 
         for key, val in solver_opts.items():
             opt.options[key] = val
+
+        if estimability == True:
+            self._estimability = True
 
         active_objectives = [o for o in self.model.component_map(Objective, active=True)]
         if active_objectives:
@@ -831,7 +846,10 @@ class ParameterEstimator(Optimizer):
 
         results.P = param_vals
 
-        return results
+        if self._estimability == True:
+            return self.hessian, results
+        else:
+            return results
 
 
 def split_sipopt_string(output_string):
