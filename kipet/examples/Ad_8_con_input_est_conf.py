@@ -74,8 +74,8 @@ if __name__ == "__main__":
 
     optimizer.apply_discretization('dae.collocation',nfe=30,ncp=1,scheme='LAGRANGE-RADAU')
 
-    solver_options = dict()
-    solver_options['mu_strategy'] = 'adaptive'
+    options = dict()
+    options['mu_strategy'] = 'adaptive'
 
     # fix the variances
     sigmas = {'device':7.25435e-6,
@@ -84,9 +84,9 @@ if __name__ == "__main__":
               'C':1.07905e-5}
     
     results_pyomo = optimizer.run_opt('ipopt_sens',
-                                        variances=sigmas,
+                                      variances=sigmas,
                                       tee=True,
-                                      solver_opts = options,
+                                      solver_options = options,
                                       covariance=True)
 
     print("The estimated parameters are:")
