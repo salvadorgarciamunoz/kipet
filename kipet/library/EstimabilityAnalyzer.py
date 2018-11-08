@@ -82,7 +82,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         # this is the current chosen strategy.
         p_estimator = ParameterEstimator(self.model)
         p_estimator.apply_discretization('dae.collocation',nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
-        sigmas = {'A':1e-10,'B':1e-10,'C':1e-11, 'device':3e-6}
+        sigmas = {'A':1e-10,'B':1e-10,'C':1e-11, 'D':1e-11,'E':1e-11,'device':3e-9}
         hessian, results_pyomo = p_estimator.run_opt('k_aug',
                                             variances=sigmas,
                                             tee=True,
@@ -91,6 +91,15 @@ class EstimabilityAnalyzer(ParameterEstimator):
                                             covariance=True,
                                             estimability=True)
         #Get the appropriate columns with the appropriate parameters
+        results_pyomo.C.plot.line(legend=True)
+    #    plt.xlabel("time (s)")
+    #    plt.ylabel("Concentration (mol/L)")
+    #    plt.title("Concentration Profile")
+        
+        results_pyomo.Z.plot.line(legend=True)
+    #    plt.xlabel("time (s)")
+    #    plt.ylabel("Concentration (mol/L)")
+    #    plt.title("Concentration Profile")
         print(hessian.size)
         nvars = np.size(hessian,0)
         print(hessian)
@@ -110,80 +119,98 @@ class EstimabilityAnalyzer(ParameterEstimator):
         print(H)
         #euclidean norm for each column of Hessian relating parameters to outputs
         eucnorm = dict()
-        paramdict = dict()
+        #paramdict = dict()
         count=0
         for i in range(nparams):
             print(i)
             total = 0
             for row in range(len(H)):
                 total += H[row][count]**2
-            print(idx_to_param[i])
-            
+            print(idx_to_param[i])            
             float(total)
             total = np.asscalar(total)
             print(total)
             sqr = (total)**(0.5)
             eucnorm[count]=sqr
-            paramdict[count]=idx_to_param[i]
+            #paramdict[count]=idx_to_param[i]
             count+=1
            
         print("Euclidean Norms: ", eucnorm)
         
         sorted_euc = sorted(eucnorm.values(), reverse=True)
         print("Sorted Norms: ",sorted_euc)
-        print("Param dict ordered: ",paramdict)
+
         count=0
         ordered_params = dict()
-        for p in paramdict:
-            if sorted_euc[count]==eucnorm[count]:
-                ordered_params[count] = p
+        for p in idx_to_param:
+            for t in idx_to_param:
+                if sorted_euc[p]==eucnorm[t]:
+                    ordered_params[count] = t
             count +=1
         print("Euclidean Norms, sorted: ",sorted_euc)
         print("params: ", idx_to_param)
-        print("ordered param dict: ", paramdict)
+        #print("ordered param dict: ", paramdict)
         print("ordered params:", ordered_params)
-        for i in paramdict:
+        for i in idx_to_param:
             print(i)
-            print("paramdict[i]:", paramdict[i])
+            print("idx_to_param[i]:", idx_to_param[i])
             
-        for i in paramdict:
+        for i in ordered_params:
             print(i)
             print("orderedparams[i]:", ordered_params[i])
             
         iter_count=0
-        self.param_ranks[1] = paramdict[0]
-        #The ranking strategy of Yao, where the X and Z matrices are formed
-        for i in range(nparams):
+        self.param_ranks[1] = idx_to_param[ordered_params[0]]
+        for i in self.param_ranks:
             print(i)
+            print("parameter ranked first:", self.param_ranks[i])
+            
+        #The ranking strategy of Yao, where the X and Z matrices are formed
+        next_est = dict()
+        X= None
+        kcol = None
+        for i in range(nparams-1):
+            print("i", i)
             print(iter_count)
-            print(nvars)
-            X = np.zeros((nvars,i))
+            print("nvars:",nvars)
+            if i==0:
+                print("hi there")
+                X = np.zeros((nvars,1))
+                #X = X.reshape((nvars,1))
             print(X)
     
-            for k in range(i):
+            for k in range(i+1):
                 print("iter_count",iter_count)
                 
-            for x in range(i):
-                paramhere = paramdict[x]
+            for x in range(i+1):
+                paramhere = ordered_params[x]
                 print("paramhere:", paramhere)
                 print(x)
-                print("Hcol", H[:][x])
-                print(H[:][x].shape)
+                print("Hcol", H[:][ordered_params[x]])
+                print(H[:][ordered_params[x]].shape)
                 
-                kcol = H[:][x].T
+                kcol = H[:][ordered_params[x]].T
                 print("X size: ", X.shape)
                 print("kcol size: ", kcol.shape)
                 print(kcol)
                 recol= kcol.reshape((nvars,1))
-                print(recol)
-                print(recol.shape)
+                print("recol",recol)
+                print("recolshape: ", recol.shape)
+                if x >= 1:
+                    X = np.append(X,np.zeros([len(X),1]),1)
+                print("X",X)
+                print(X.shape)
                 for n in range(nvars):
-                    #print("x",x)
-                    #print("n",n)
-                    X[n][x] = recol[n][x]
+                    print("x",x)
+                    print("ordered param x",ordered_params[x])
+                    print("n",n)
+                    print(X[n][x])
+                    print(recol[n][0])
+                    X[n][x] = recol[n][0]
                 print(X)
                 print(X.shape)
                 #Use Ordinary Least Squares to use X to predict Z
+            try:
                 A = X.T.dot(X)
                 print("A",A)
                 print("Ashape:", A.shape)
@@ -204,28 +231,52 @@ class EstimabilityAnalyzer(ParameterEstimator):
                 print("Zbar shape: ", Zbar.shape)
                 #Get residuals of prediction
                 Res = Z.T - Zbar
-                magres = dict()
-                counter=0
-                for i in range(nparams):
-                    total = 0
-                    for row in range(len(Res)):
-                        total += Res[row][counter]**2
-                    float(total)
-                    total = np.asscalar(total)
-                    sqr = (total)**(0.5)
-                    magres[counter]=sqr
-                    counter +=1
-                print(magres)
-                print(paramdict)
-                for i in paramdict:
-                    print(i)
-                    print("paramdict[i]:", paramdict[i])
-                sorted_magres = sorted(magres.values(), reverse=True)
-                self.param_ranks[(iter_count+2)]=sorted_magres[0]
-                iter_count += 1
-                for i in self.param_ranks:
-                    print(i)
-                    print("self.param_ranks:", self.param_ranks[i])
+            except:
+                print("Singular matrix, unable to continure the procedure")
+                break
+            magres = dict()
+            counter=0
+            for i in range(nparams):
+                total = 0
+                for row in range(len(Res)):
+                    total += Res[row][counter]**2
+                float(total)
+                total = np.asscalar(total)
+                sqr = (total)**(0.5)
+                magres[counter]=sqr
+                counter +=1
+            print("magres: ", magres)
+            print(ordered_params)
+            for i in ordered_params:
+                print(i)
+                print("ordered_params[i]:", ordered_params[i])
+            sorted_magres = sorted(magres.values(), reverse=True)
+            print("sorted_magres",sorted_magres)
+            count2=0
+            for p in idx_to_param:
+                for t in idx_to_param:
+                    if sorted_magres[p]==magres[t]:
+                        next_est[count2] = t
+                count2 += 1
+            print("next_est",next_est)  
+            self.param_ranks[(iter_count+2)]=idx_to_param[next_est[0]]
+            iter_count += 1
+            for i in self.param_ranks:
+                print(i)
+                print("self.param_ranks:", self.param_ranks[i])
+            print("======================PARAMETER RANKED======================")
+            print("len(self.param_ranks)", len(self.param_ranks))
+            print("nparam-1", nparams - 1)
+            if len(self.param_ranks) == nparams - 1:
+                print(len(self.param_ranks))
+                print(nparams-1)
+                print("All parameters have been ranked")
+                break
+        
+        print("The parameters are ranked in the following order from most estimable to least estimable:")
+        
+        for i in self.param_ranks:
+            print("Number ", i, "is ", self.param_ranks[i])
             
         
     def run_analyzer(self, method = None, parameter_rankings = None):
