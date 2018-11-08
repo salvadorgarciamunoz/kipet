@@ -218,13 +218,13 @@ class ParameterEstimator(Optimizer):
                 try:
                     var_loc[v]
                 except:
-                    print(v, "is an error")
+                    #print(v, "is an error")
                     var_loc[v] = 0
-                    print(v, "is thus set to ", var_loc[v])
-                    print(var_loc[v])
+                    #print(v, "is thus set to ", var_loc[v])
+                    #print(var_loc[v])
 
             vlocsize = len(var_loc)
-            print("var_loc size, ", vlocsize) 
+            #print("var_loc size, ", vlocsize) 
             unordered_hessian = np.loadtxt('result_red_hess.txt')
             if os.path.exists('result_red_hess.txt'):
                 os.remove('result_red_hess.txt')
@@ -314,7 +314,7 @@ class ParameterEstimator(Optimizer):
                                              logfile=self._tmpfile,
                                              report_timing=True)
             #self.model.red_hessian.pprint
-            m.P.pprint()
+            #m.P.pprint()
             print("Done solving building reduce hessian")
             output_string = ''
             with open(self._tmpfile, 'r') as f:
