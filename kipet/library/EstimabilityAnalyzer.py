@@ -70,7 +70,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
                 raise RuntimeError('The param_scaling must be type dict')
         
         if meas_scaling == None:
-            meas_scaling = 0.01
+            meas_scaling = 0.001
             print("WARNING: No scaling for measurments provided by user, so uncertainties based on measurements will be set to 0.01")
         elif meas_scaling != None:
             if isinstance(meas_scaling, int) or isinstance(meas_scaling, float):

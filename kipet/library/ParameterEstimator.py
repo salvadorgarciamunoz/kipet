@@ -375,7 +375,14 @@ class ParameterEstimator(Optimizer):
                     for c in self._sublist_components:
                         m.S[l, c].set_suffix_value(m.dof_v,count_vars)
                         count_vars += 1
-                    
+                        
+            #if self._concentration_given:
+            #    for t in self._meas_times:
+            #        for c in self._sublist_components:
+            #            m.Z[t, c].set_suffix_value(m.dof_v,count_vars)
+            #            
+            #            count_vars += 1
+                        
             for v in six.itervalues(self.model.P):
                 if v.is_fixed():
                     continue
