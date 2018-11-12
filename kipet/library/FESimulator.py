@@ -70,11 +70,6 @@ class FESimulator(PyomoSimulator):
         #added for inclusion of inputs of different kind CS
         self.inputs_sub=inputs_sub
 
-        self.fixedtraj = fixedtraj
-        self.fixedy = fixedy
-        self.yfix = yfix
-        self.yfixtraj = yfixtraj
-
         self.jump_times=jump_times
         self.jump_states=jump_states
         self.feed_times=feed_times
