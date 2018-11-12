@@ -7,7 +7,6 @@
 # Sample Problem 
 # Parameter estimation with fixed variances of concentration data with inputs using pyomo discretization and fe-factory
 
-
 from kipet.library.TemplateBuilder import *
 from kipet.library.PyomoSimulator import *
 from kipet.library.ParameterEstimator import *
@@ -96,7 +95,6 @@ if __name__ == "__main__":
     jump_points2 = {'T': 10.0}
     jump_times = {'Z': jump_points1, 'X': jump_points2}
 
-
     init = sim.call_fe_factory(jump_states=jump_states, jump_times=jump_times, feed_times=feed_times)
     #They should be added in this way in case some arguments of all the ones available are not necessary here.
 
@@ -141,13 +139,9 @@ if __name__ == "__main__":
     p_estimator = ParameterEstimator(model)
     p_estimator.apply_discretization('dae.collocation', nfe=40, ncp=3, scheme='LAGRANGE-RADAU')
 
-
     # # Again we provide options for the solver
     options = dict()
-    #p_estimator.initialize_from_trajectory('Z', results.Z)
-    #p_estimator.initialize_from_trajectory('S', results.S)
-    #p_estimator.initialize_from_trajectory('dZdt', results.dZdt)
-    #p_estimator.initialize_from_trajectory('C', results.C)
+
     # finally we run the optimization
     
     results_pyomo = p_estimator.run_opt('ipopt_sens',
@@ -167,7 +161,6 @@ if __name__ == "__main__":
                                         #yfixtraj=yfixtraj
                                         )
     #The commented arguments are available as well but not necessary here.
-
     
     print("The estimated parameters are:")
     for k,v in six.iteritems(results_pyomo.P):
