@@ -34,7 +34,6 @@ if __name__ == "__main__":
     if len(sys.argv)==2:
         if int(sys.argv[1]):
             with_plots = False
- 
         
     #=========================================================================
     #USER INPUT SECTION - REQUIRED MODEL BUILDING ACTIONS
@@ -67,8 +66,7 @@ if __name__ == "__main__":
     # add additional state variables
     extra_states = dict()
     extra_states['V'] = 0.0629418
-    
-    
+      
     builder.add_complementary_state_variable(extra_states)
 
     # stoichiometric coefficients
@@ -76,7 +74,6 @@ if __name__ == "__main__":
     gammas['A'] = [-1, 0]
     gammas['B'] = [1, -1]
     gammas['C'] = [0, 1]
-    
     
     # define system of DAEs
 
@@ -111,9 +108,7 @@ if __name__ == "__main__":
     #Add time points where feed as discrete jump should take place: before adding data to the model!!!
     feed_times=[3.6341]
     builder.add_feed_times(feed_times)
-    
-    
-    
+     
     # Load spectral data from the relevant file location. As described in section 4.3.1
     #################################################################################
     dataDirectory = os.path.abspath(
@@ -123,8 +118,7 @@ if __name__ == "__main__":
     D_frame = read_spectral_data_from_txt(filename)
     
     builder.add_spectral_data(D_frame)
-    
-    
+       
     opt_model = builder.create_pyomo_model(0.0,10.0)
     
     #=========================================================================
@@ -144,8 +138,7 @@ if __name__ == "__main__":
     inputs_sub = {}
     inputs_sub['Y'] = ['3','Temp']
     sim.fix_from_trajectory('Y', 'Temp', fixed_Ttraj)
-
-
+    
     trajs = dict()
     trajs[('Y', 'Temp')] = fixed_Ttraj
 
@@ -170,9 +163,9 @@ if __name__ == "__main__":
     
     init = sim.call_fe_factory(inputs_sub=inputs_sub, jump_states=jump_states, jump_times=jump_times, feed_times=feed_times)
     # They should be added in this way in case some arguments of all the ones available are not necessary here.
-#=========================================================================
+    #=========================================================================
     #USER INPUT SECTION - SIMULATION
-#========================================================================
+    #========================================================================
     #: now the final run, just as before
     # simulate
     options = {}
@@ -201,9 +194,9 @@ if __name__ == "__main__":
         plt.ylabel("Volume (L)")
         plt.title("total volume")
         plt.show()
-#=========================================================================
+    #=========================================================================
     #USER INPUT SECTION - Variance Estimation
-#========================================================================
+    #========================================================================
     model=builder.create_pyomo_model(0.0,10.0)
     #Now introduce parameters as non fixed
     model.del_component(params)
@@ -220,7 +213,6 @@ if __name__ == "__main__":
 
     A_set = [l for i, l in enumerate(model.meas_lambdas) if (i % 4 == 0)]
 
-    #
     # #: this will take a sweet-long time to solve.
     results_variances = v_estimator.run_opt('ipopt',
                                             tee=True,
@@ -273,9 +265,9 @@ if __name__ == "__main__":
         plt.title("total volume")
         plt.show()
 
-#=========================================================================
+    #=========================================================================
     #USER INPUT SECTION - Parameter Estimation
-#========================================================================
+    #========================================================================
     #In case the variances are known, they can also be fixed instead of running the Variance Estimation.
     #sigmas={'C': 1e-10,
             #'B': 1e-10,
@@ -292,19 +284,14 @@ if __name__ == "__main__":
     p_estimator = ParameterEstimator(model)
     p_estimator.apply_discretization('dae.collocation', nfe=50, ncp=3, scheme='LAGRANGE-RADAU')
 
-    # # Certain problems may require initializations and scaling and these can be provided from the
-    # # variance estimation step. This is optional.
-    # p_estimator.initialize_from_trajectory('Z', results_variances.Z)
-    # p_estimator.initialize_from_trajectory('S', results_variances.S)
-    # p_estimator.initialize_from_trajectory('C', results_variances.C)
-
+    # Certain problems may require initializations and scaling and these can be provided from the
+    # variance estimation step. This is optional.
     p_estimator.initialize_from_trajectory('Z', results.Z)
     p_estimator.initialize_from_trajectory('S', results.S)
     p_estimator.initialize_from_trajectory('dZdt', results.dZdt)
     p_estimator.initialize_from_trajectory('C', results.C)
 
-
-    # # Again we provide options for the solver
+    # Again we provide options for the solver
     options = dict()
 
     # finally we run the optimization
