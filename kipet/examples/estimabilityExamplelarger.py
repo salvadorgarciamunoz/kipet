@@ -99,8 +99,8 @@ if __name__ == "__main__":
     # define the uncertainty surrounding each of the parameters
     param_uncertainties = {'k1':0.09,'k2':0.01,'k3':0.02,'k4':0.01}
     # measurement scaling
-    meas_uncertainty = 0.001
-    e_analyzer.rank_params_yao(meas_scaling = meas_uncertainty, param_scaling = param_uncertainties)
+    meas_uncertainty = 0.000001
+    listparams = e_analyzer.rank_params_yao(meas_scaling = meas_uncertainty, param_scaling = param_uncertainties)
 
     
     # Again we provide options for the solver, this time providing the scaling that we set above
