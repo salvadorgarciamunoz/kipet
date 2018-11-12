@@ -156,7 +156,7 @@ if __name__ == "__main__":
     #print('yfix:',yfix.keys())
     yfixtraj={}
     yfixtraj['Y']=['Temp']
-    ##print('yfixtraj:',yfixtraj.keys['Y'])
+    
     ## #since these are inputs we need to fix this
     for key in sim.model.time.value:
         sim.model.Y[key, '3'].set_value(key)
@@ -208,9 +208,9 @@ if __name__ == "__main__":
     #Now introduce parameters as non fixed
     model.del_component(params)
     builder.add_parameter('k1',bounds=(0.0,5.0))
-    builder.add_parameter('k2Tr',0.2265)#bounds=(0.0,10.0))
+    builder.add_parameter('k2Tr',0.2265)
     builder.add_parameter('E',2.)
-    model = builder.create_pyomo_model(0, 10)  # changed from 600 due to data
+    model = builder.create_pyomo_model(0, 10)
     v_estimator = VarianceEstimator(model)
     v_estimator.apply_discretization('dae.collocation', nfe=50, ncp=3, scheme='LAGRANGE-RADAU')
     v_estimator.initialize_from_trajectory('Z', results.Z)
