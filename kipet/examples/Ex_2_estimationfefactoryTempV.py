@@ -108,7 +108,7 @@ if __name__ == "__main__":
     
     builder.set_odes_rule(rule_odes)
     
-    #Add time points where feed as discrete jump should take place:
+    #Add time points where feed as discrete jump should take place: before adding data to the model!!!
     feed_times=[3.6341]
     builder.add_feed_times(feed_times)
     
