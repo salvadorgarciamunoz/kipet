@@ -10,7 +10,7 @@ chemical reaction systems. The software has the following functionality
 * Estimate variances of noise
 * Estimate kinetic parameters from spectra or concentration
 * Estimate confidence intervals of the estimated parameters
-* Able to estimate parameters for problems where there is dosing / inputs into the system
+* Able to estimate variances and parameters for problems where there is dosing / inputs into the system
 * Visualize results
 
 
