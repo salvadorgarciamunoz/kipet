@@ -61,7 +61,7 @@ if __name__ == "__main__":
     builder.add_mixture_component('E',0.0)
     
     #Following this we add the kinetic parameters
-    builder.add_parameter('k1',bounds=(0.5,1.5))
+    builder.add_parameter('k1',bounds=(0.1,1.5))
     builder.add_parameter('k2',bounds=(0.0,0.3))
     builder.add_parameter('k3',bounds=(0.0,0.4))
     builder.add_parameter('k4',bounds=(0.0,0.6))
@@ -88,19 +88,21 @@ if __name__ == "__main__":
     # In order to run the paramter estimation we create a pyomo model as described in section 4.3.4
 
     # and define our parameter estimation problem and discretization strategy
-    p_estimator = ParameterEstimator(opt_model)
-    p_estimator.apply_discretization('dae.collocation',nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
+    #p_estimator = ParameterEstimator(opt_model)
+    #p_estimator.apply_discretization('dae.collocation',nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
     
     #p_estimator.initialize_from_trajectory('Z',results_variances.Z)
     #p_estimator.initialize_from_trajectory('S',results_variances.S)
     #p_estimator.initialize_from_trajectory('C',results_variances.C)    
     # Here we use the estimability analysis tools
     e_analyzer = EstimabilityAnalyzer(opt_model)
+    e_analyzer.apply_discretization('dae.collocation',nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
     # define the uncertainty surrounding each of the parameters
     param_uncertainties = {'k1':0.09,'k2':0.01,'k3':0.02,'k4':0.01}
+    sigmas = {'A':1e-10,'B':1e-10,'C':1e-11, 'D':1e-11,'E':1e-11,'device':3e-9}
     # measurement scaling
     meas_uncertainty = 0.000001
-    listparams = e_analyzer.rank_params_yao(meas_scaling = meas_uncertainty, param_scaling = param_uncertainties)
+    listparams = e_analyzer.rank_params_yao(meas_scaling = meas_uncertainty, param_scaling = param_uncertainties, sigmas =sigmas)
 
     
     # Again we provide options for the solver, this time providing the scaling that we set above
