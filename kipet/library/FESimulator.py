@@ -67,8 +67,10 @@ class FESimulator(PyomoSimulator):
                     jump_times (dict): dictionary in same form as jump_states with times of input
                     feed_times (list): list of additional times needed, should be the same times as jump_times 
         """
+        #added for inclusion of inputs of different kind CS
         self.inputs_sub=inputs_sub
-        self.jump_times=jump_times #added for inclusion of discrete jumps CS
+
+        self.jump_times=jump_times
         self.jump_states=jump_states
         self.feed_times=feed_times
         
