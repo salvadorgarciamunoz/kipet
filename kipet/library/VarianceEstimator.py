@@ -33,15 +33,13 @@ class VarianceEstimator(Optimizer):
         model (model): Pyomo model.
 
     """
-    def __init__(self,model):
+    def __init__(self, model):
         super(VarianceEstimator, self).__init__(model)
         add_warm_start_suffixes(self.model)
 
         if not self._spectra_given:
             raise NotImplementedError("Variance estimator requires spectral data in model as model.D[ti,lj]")
 
-
-        
     def run_sim(self, solver, **kwds):
         raise NotImplementedError("VarianceEstimator object does not have run_sim method. Call run_opt")
 
@@ -54,10 +52,10 @@ class VarianceEstimator(Optimizer):
         Args:
 
             solver_opts (dict, optional): options passed to the nonlinear solver
-        
+
             tee (bool,optional): flag to tell the optimizer whether to stream output
             to the terminal or not
-        
+
             norm (optional): norm for checking convergence. The default value is the infinity norm,
             it uses same options as scipy.linalg.norm
 
@@ -70,7 +68,7 @@ class VarianceEstimator(Optimizer):
 
             lsq_ipopt (bool,optional): Determines whether to use ipopt for solving the least squares 
             problems in Weifengs procedure. Default False. The default used scipy.least_squares.
-            
+
             init_C (DataFrame,optional): Dataframe with concentration data used to start Weifengs procedure.
 
         Returns:
@@ -78,7 +76,7 @@ class VarianceEstimator(Optimizer):
             None
 
         """
-        
+
         solver_opts = kwds.pop('solver_opts', dict())
         variances = kwds.pop('variances', dict())
         tee = kwds.pop('tee', False)
@@ -89,8 +87,22 @@ class VarianceEstimator(Optimizer):
         lsq_ipopt = kwds.pop('lsq_ipopt', False)
         init_C = kwds.pop('init_C', None)
 
+        # additional arguments for inputs CS
+        inputs = kwds.pop("inputs", None)
+        inputs_sub = kwds.pop("inputs_sub", None)
+        trajectories = kwds.pop("trajectories", None)
+        fixedtraj = kwds.pop('fixedtraj', False)
+        fixedy = kwds.pop('fixedy', False)
+        yfix = kwds.pop("yfix", None)
+        yfixtraj = kwds.pop("yfixtraj", None)
+
+        jump = kwds.pop("jump", False)
+        var_dic = kwds.pop("jump_states", None)
+        jump_times = kwds.pop("jump_times", None)
+        feed_times = kwds.pop("feed_times", None)
+
         species_list = kwds.pop('subset_components', None)
-        
+
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
 
@@ -121,6 +133,60 @@ class VarianceEstimator(Optimizer):
             list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
             self._sublist_components = list_components
 
+#############################
+        """inputs section""" # additional section for inputs from trajectory and fixed inputs, CS
+        self.fixedtraj = fixedtraj
+        self.fixedy = fixedy
+        self.inputs_sub = inputs_sub
+        self.yfix = yfix
+        self.yfixtraj = yfixtraj
+        if self.inputs_sub!=None:
+            for k in self.inputs_sub.keys():
+                if not isinstance(self.inputs_sub[k], list):
+                    print("wrong type for inputs_sub {}".format(type(self.inputs_sub[k])))
+                    # raise Exception
+                for i in self.inputs_sub[k]:
+                    if self.fixedtraj==True:
+                        for j in self.yfixtraj.keys():
+                            for l in self.yfixtraj[j]:
+                                if i==l:
+                                    if not isinstance(self.yfixtraj[j], list):
+                                        print("wrong type for yfixtraj {}".format(type(self.yfixtraj[j])))
+                                    reft = trajectories[(k, i)]
+                                    self.fix_from_trajectory(k, i, reft)
+                    if self.fixedy==True:
+                        for j in self.yfix.keys():
+                            for l in self.yfix[j]:
+                                if i==l:
+                                    if not isinstance(self.yfix[j], list):
+                                        print("wrong type for yfix {}".format(type(self.yfix[j])))
+                                    for key in self.model.time.value:
+                                        vark=getattr(self.model,k)
+                                        vark[key, i].set_value(key)
+                                        vark[key, i].fix()# since these are inputs we need to fix this
+                    else:
+                        print("A trajectory or fixed input is missing for {}\n".format((k, i)))
+        """/end inputs section"""
+
+        if jump:
+            self.disc_jump_v_dict = var_dic
+            self.jump_times_dict = jump_times  # now dictionary
+            self.feed_times_set = feed_times
+            if not isinstance(self.disc_jump_v_dict, dict):
+                print("disc_jump_v_dict is of type {}".format(type(self.disc_jump_v_dict)))
+                raise Exception  # wrong type
+            if not isinstance(self.jump_times_dict, dict):
+                print("disc_jump_times is of type {}".format(type(self.jump_times_dict)))
+                raise Exception  # wrong type
+            count = 0
+            for i in six.iterkeys(self.jump_times_dict):
+                for j in six.iteritems(self.jump_times_dict[i]):
+                    count += 1
+            if len(self.feed_times_set) > count:
+                raise Exception("Error: Check feed time points in set feed_times and in jump_times again.\n"
+                            "There are more time points in feed_times than jump_times provided.")
+            self.load_discrete_jump()
+######################################################
 
         # solves formulation 18
         if init_C is None:
@@ -249,7 +315,6 @@ class VarianceEstimator(Optimizer):
         set_A = kwds.pop('subset_lambdas', list())
         profile_time = kwds.pop('profile_time', False)
         sigmas_sq = kwds.pop('variances', dict())
-
 
         if not set_A:
             set_A = self._meas_lambdas
@@ -398,8 +463,6 @@ class VarianceEstimator(Optimizer):
         profile_time = kwds.pop('profile_time', False)
         tee = kwds.pop('tee', False)
 
-
-        
         if profile_time:
             print('-----------------Solve_S--------------------')
             t0 = time.time()
@@ -479,7 +542,6 @@ class VarianceEstimator(Optimizer):
                 if hasattr(self.model, 'non_absorbing'):
                     if c in self.model.non_absorbing:
                         self.model.S[l, c].set_value(0.0)
-
 
         return res.success
 
@@ -570,7 +632,6 @@ class VarianceEstimator(Optimizer):
             return coo_matrix((data, (row, col)),
                               shape=(nt*nl,nc*nt))
 
-        
         # solve
         if tee:
             res = least_squares(F,self._c_array,JF,
@@ -794,7 +855,6 @@ class VarianceEstimator(Optimizer):
         update_nl = kwds.pop('update_nl', False)
         profile_time = kwds.pop('profile_time', False)
 
-
         # initialize
         for l in self._meas_lambdas:
             for c in self._sublist_components:
@@ -842,8 +902,6 @@ class VarianceEstimator(Optimizer):
                             # print("non_zero 837")
                             self.model.S[l, c].set_value(0.0)
                             self.model.S[l, c].fix()
-
-
 
     def _build_c_model(self):
         """Builds s_model to solve formulation 25 with ipopt
@@ -916,8 +974,97 @@ class VarianceEstimator(Optimizer):
         for t in self._meas_times:
             for c in self._sublist_components:
                 self.model.C[t, c].value = self.C_model.C[t, c].value  #: does not matter for non_abs
-        
-        
+#############################################################################
+    # additional for the use of model with inputs for variance estimation, CS
+    def load_discrete_jump(self):
+        self.jump = True
+
+        zeit = None
+        for i in self.model.component_objects(ContinuousSet):
+            zeit = i
+            break
+        if zeit is None:
+            raise Exception('no continuous_set')
+        self.time_set = zeit.name
+
+        tgt_cts = getattr(self.model, self.time_set)  ## please correct me (not necessary!)
+        self.ncp = tgt_cts.get_discretization_info()['ncp']
+        fe_l = tgt_cts.get_finite_elements()
+        fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
+
+        for i in range(0, len(fe_list)):  # test whether integer elements
+            self.jump_constraints(i)
+        # self.jump_constraints()
+
+    def jump_constraints(self, fe):
+        # type: (int) -> None
+        """ Take the current state of variables of the initializing model at fe and load it into the tgt_model
+        Note that this will skip fixed variables as a safeguard.
+
+        Args:
+            fe (int): The current finite element to be patched (tgt_model).
+        """
+        ###########################
+        if not isinstance(fe, int):
+            raise Exception  # wrong type
+        ttgt = getattr(self.model, self.time_set)
+        ##############################
+        # Inclusion of discrete jumps: (CS)
+        if self.jump:
+            kn = 0
+            for ki in self.jump_times_dict.keys():
+                if not isinstance(ki, str):
+                    print("ki is not str")
+                vtjumpkeydict = self.jump_times_dict[ki]
+                for l in vtjumpkeydict.keys():
+                    self.jump_time = vtjumpkeydict[l]
+                    # print('jumptime:',self.jump_time)
+                    self.jump_fe, self.jump_cp = fe_cp(ttgt, self.jump_time)
+                    if self.jump_time not in self.feed_times_set:
+                        raise Exception("Error: Check feed time points in set feed_times and in jump_times again.\n"
+                                        "They do not match.\n"
+                                        "Jump_time is not included in feed_times.")
+                    # print('jump_el, el:',self.jump_fe, fe)
+                    if fe == self.jump_fe + 1:
+                        #print("jump_constraints!")
+                        #################################
+                        for v in self.disc_jump_v_dict.keys():
+                            if not isinstance(v, str):
+                                print("v is not str")
+                            vkeydict = self.disc_jump_v_dict[v]
+                            for k in vkeydict.keys():
+                                if k == l:#Match in between two components of dictionaries
+                                    var = getattr(self.model, v)
+                                    dvar = getattr(self.model, "d" + v + "dt")
+                                    con_name = 'd' + v + 'dt_disc_eq'
+                                    con = getattr(self.model, con_name)
+                                    self.model.add_component(v + "_dummy_eq_" + str(kn), ConstraintList())
+                                    conlist = getattr(self.model, v + "_dummy_eq_" + str(kn))
+                                    varname = v + "_dummy_" + str(kn)
+                                    self.model.add_component(varname, Var())
+                                    vdummy = getattr(self.model, varname)
+                                    jump_delta = vkeydict[k]
+                                    self.model.add_component(v + '_jumpdelta' + str(kn), Param(initialize=jump_delta))
+                                    jump_param = getattr(self.model, v + '_jumpdelta' + str(kn))
+                                    if not isinstance(k, tuple):
+                                        k = (k,)
+                                    exprjump = vdummy - var[(self.jump_time,) + k] == jump_param
+                                    self.model.add_component("jumpdelta_expr" + str(kn), Constraint(expr=exprjump))
+                                    for kcp in range(1, self.ncp + 1):
+                                        curr_time = t_ij(ttgt, self.jump_fe + 1, kcp)
+                                        if not isinstance(k, tuple):
+                                            knew = (k,)
+                                        else:
+                                            knew = k
+                                        idx = (curr_time,) + knew
+                                        con[idx].deactivate()
+                                        e = con[idx].expr.clone()
+                                        e._args[0]._args[1] = vdummy
+                                        con[idx].set_value(e)
+                                        conlist.add(con[idx].expr)
+                    kn = kn + 1
+#############################################################
+
 def add_warm_start_suffixes(model):
     # Ipopt bound multipliers (obtained from solution)
     model.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
@@ -936,4 +1083,54 @@ def compute_diff_results(results1,results2):
     diff_results.C = results1.C - results2.C
     return diff_results
 
-    
+#######################additional for inputs###CS
+def t_ij(time_set, i, j):
+    # type: (ContinuousSet, int, int) -> float
+    """Return the corresponding time(continuous set) based on the i-th finite element and j-th collocation point
+    From the NMPC_MHE framework by @dthierry.
+
+    Args:
+        time_set (ContinuousSet): Parent Continuous set
+        i (int): finite element
+        j (int): collocation point
+
+    Returns:
+        float: Corresponding index of the ContinuousSet
+    """
+    if i < time_set.get_discretization_info()['nfe']:
+        h = time_set.get_finite_elements()[i + 1] - time_set.get_finite_elements()[i]  #: This would work even for 1 fe
+    else:
+        h = time_set.get_finite_elements()[i] - time_set.get_finite_elements()[i - 1]  #: This would work even for 1 fe
+    tau = time_set.get_discretization_info()['tau_points']
+    fe = time_set.get_finite_elements()[i]
+    time = fe + tau[j] * h
+    return round(time, 6)
+
+
+def fe_cp(time_set, feedtime):
+    # type: (ContinuousSet, float) -> tuple
+    # """Return the corresponding fe and cp for a given time
+    # Args:
+    #    time_set:
+    #    t:
+    # """
+    fe_l = time_set.get_lower_element_boundary(feedtime)
+    # print("fe_l", fe_l)
+    fe = None
+    j = 0
+    for i in time_set.get_finite_elements():
+        if fe_l == i:
+            fe = j
+            break
+        j += 1
+    h = time_set.get_finite_elements()[1] - time_set.get_finite_elements()[0]
+    tauh = [i * h for i in time_set.get_discretization_info()['tau_points']]
+    j = 0  #: Watch out for LEGENDRE
+    cp = None
+    for i in tauh:
+        if round(i + fe_l, 6) == feedtime:
+            cp = j
+            break
+        j += 1
+    return fe, cp
+###########################################################

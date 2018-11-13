@@ -230,13 +230,30 @@ class TemplateBuilder(object):
 
         """
         if isinstance(data, pd.DataFrame):
-            self._spectral_data = data
+            #add zero rows for feed times that are not in original measurements in D-matrix (CS):
+            df = pd.DataFrame(index=self._feed_times, columns=data.columns)
+            for t in self._feed_times:
+                if t not in data.index:#for points that are the same in original measurement times and feed times (CS)
+                    df.loc[t] = [0.0 for n in range(len(data.columns))]
+            dfall=data.append(df)
+            dfall.sort_index(inplace=True)
+            dfall.index=dfall.index.to_series().apply(lambda x: np.round(x, 6)) #time from data rounded to 6 digits
+            ##############Filter out NaN############### points that are the same in original measurement times and feed times (CS)
+            count=0
+            for j in dfall.index:
+                if count>=1 and count<len(dfall.index):
+                    if dfall.index[count]==dfall.index[count-1]:
+                        dfall=dfall.dropna()
+                count+=1
+            ###########################################
+            self._spectral_data = dfall
         else:
             raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
         
-        D = np.array(data)
-        for t in range(len(data.index)):
-            for l in range(len(data.columns)):
+        D = np.array(dfall)
+
+        for t in range(len(dfall.index)):
+            for l in range(len(dfall.columns)):
                 if D[t,l] >= 0:
                     pass
                 else:
@@ -256,13 +273,28 @@ class TemplateBuilder(object):
 
         """
         if isinstance(data, pd.DataFrame):
-            self._concentration_data = data
+            dfc = pd.DataFrame(index=self._feed_times, columns=data.columns)
+            for t in self._feed_times:
+                if t not in data.index:#for points that are the same in original meas times and feed times
+                    dfc.loc[t] = [0.0 for n in range(len(data.columns))]
+            dfallc=data.append(dfc)
+            dfallc.sort_index(inplace=True)
+            dfallc.index=dfallc.index.to_series().apply(lambda x: np.round(x, 6)) #time from data rounded to 6 digits
+            ##############Filter out NaN###############
+            count=0
+            for j in dfallc.index:
+                if count>=1 and count<len(dfallc.index):
+                    if dfallc.index[count]==dfallc.index[count-1]:
+                        dfallc=dfallc.dropna()
+                count+=1
+            ###########################################
+            self._concentration_data = dfallc
         else:
             raise RuntimeError('Concentration data format not supported. Try pandas.DataFrame')
-        C = np.array(data)
-        for t in range(len(data.index)):
-            for l in range(len(data.columns)):
-                if C[t,l] >= 0:
+        C = np.array(dfallc)
+        for t in range(len(dfallc.index)):
+            for l in range(len(dfallc.columns)):
+                if C[t, l] >= 0:
                     pass
                 else:
                     self._is_C_deriv = True
@@ -284,21 +316,7 @@ class TemplateBuilder(object):
             self._absorption_data = data
         else:
             raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
-        
-    #For inclusion of discrete jumps
-    #def rem_measurement_times(self, times):
-        #"""Add measurement times to the model
 
-        #Args:
-            #times (array_like): measurement points
-
-        #Returns:
-            #None
-
-        #"""
-        #for t in times:
-            #self._meas_times.remove(t)
-            
     #For inclusion of discrete jumps
     def add_feed_times(self, times):
         """Add measurement times to the model 
@@ -311,6 +329,7 @@ class TemplateBuilder(object):
 
         """
         for t in times:
+            t = round(t, 6)  #for added ones when generating data otherwise too many digits due to different data types CS
             self._feed_times.add(t)
             self._meas_times.add(t)#added here to avoid double addition CS
 
@@ -326,6 +345,7 @@ class TemplateBuilder(object):
 
         """
         for t in times:
+            t = round(t, 6)  #for added ones when generating data otherwise too many digits due to different data types CS
             self._meas_times.add(t)
 
     def add_complementary_state_variable(self, *args):
@@ -514,27 +534,22 @@ class TemplateBuilder(object):
         if self._spectral_data is not None:
             list_times = list_times.union(set(self._spectral_data.index))
             list_lambdas = list(self._spectral_data.columns)
-            list_feedtimes = self._feed_times  # For inclusion of discrete feeds CS
             m_times = sorted(list_times)
             m_lambdas = sorted(list_lambdas)
-            feed_times = sorted(list_feedtimes)  # For inclusion of discrete feeds CS
 
         if self._absorption_data is not None:
             if not self._meas_times:
                 raise RuntimeError('Need to add measurement times')
             list_times = list(self._meas_times)
             list_lambdas = list(self._absorption_data.index)
-            list_feedtimes = self._feed_times  # For inclusion of discrete feeds CS
             m_times = sorted(list_times)
             m_lambdas = sorted(list_lambdas)
-            feed_times = sorted(list_feedtimes)  # For inclusion of discrete feeds CS
         
         if self._concentration_data is not None:
             list_times = list_times.union(set(self._concentration_data.index))
             list_concs = list(self._concentration_data.columns)
             m_times = sorted(list_times)
             m_concs = sorted(list_concs)
-            feed_times = sorted(list_feedtimes)  # For inclusion of discrete feeds CS
         
         if m_times:
             if m_times[0] < start_time:
@@ -542,6 +557,7 @@ class TemplateBuilder(object):
             if m_times[-1] > end_time:
                 raise RuntimeError(
                     'Measurement time {0} not within ({1},{2})'.format(m_times[-1], start_time, end_time))
+
         #For inclusion of discrete feeds CS
         if self._feed_times is not None:
             list_feedtimes = list(self._feed_times)
@@ -879,7 +895,7 @@ class TemplateBuilder(object):
 
     @feed_times.setter
     def feed_times(self):
-        raise RuntimeError('Not supported')  # added for feeding points CS
+        raise RuntimeError('Not supported') #added for feeding points CS
 
     def has_spectral_data(self):
         return self._spectral_data is not None
@@ -888,7 +904,7 @@ class TemplateBuilder(object):
         return self._absorption_data is not None
     
     def has_concentration_data(self):
-        return self._aconcentration_data is not None
+        return self._concentration_data is not None
 
     def set_non_absorbing_species(self, model, non_abs_list, check=True):
         # type: (ConcreteModel, list, bool) -> None
