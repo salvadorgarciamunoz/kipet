@@ -436,7 +436,6 @@ class PyomoSimulator(Simulator):
 
         #addition for inputs estimation with concentration data CS:
         if self._concentration_given==True and self._absorption_given==False:
-            print(self._concentration_given)
             c_noise_results = []
             for i,t in enumerate(self._meas_times):
                 for j,k in enumerate(self._mixture_components):
