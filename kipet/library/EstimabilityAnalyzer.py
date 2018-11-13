@@ -7,6 +7,8 @@ from pyomo.dae import *
 from kipet.library.ParameterEstimator import *
 from pyomo.core.base.expr import Expr_if
 from scipy.optimize import least_squares
+import matplotlib.pyplot as plt
+import numpy as np
 import scipy
 import six
 import copy
@@ -36,7 +38,203 @@ class EstimabilityAnalyzer(ParameterEstimator):
     def run_sim(self, solver, **kdws):
         raise NotImplementedError("EstimabilityAnalyzer object does not have run_sim method. Call run_analyzer")
 
-    def rank_params_yao(self, param_scaling = None, meas_scaling = None):
+    def get_sensitivities_for_params(self, **kwds):
+        """ Obtains the sensitivities using k_aug
+        
+        Args:        
+            sigmasq (dict, optional): map of component name to noise variance. The
+            map also contains the device noise variance
+            
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+            
+            with_d_vars (bool,optional): flag to the optimizer whether to add 
+            variables and constraints for D_bar(i,j)
+            
+            estimability (bool, optional): flag to tell the model whether it is 
+            being used by the estimability analysis and therefore will need to return the 
+            hessian for analysis.
+            
+        Returns:
+            Results object with loaded results
+
+        """        
+        if not self.model.time.get_discretization_info():
+            raise RuntimeError('apply discretization first before initializing')
+        sigma_sq = kwds.pop('sigmasq', dict())
+        tee = kwds.pop('tee', False)
+        species_list = kwds.pop('subset_components', None)
+
+        list_components = []
+        if species_list is None:
+            list_components = [k for k in self._mixture_components]
+        else:
+            for k in species_list:
+                if k in self._mixture_components:
+                    list_components.append(k)
+                else:
+                    warnings.warn("Ignored {} since is not a mixture component of the model".format(k))
+
+        if not self._concentration_given:
+            raise NotImplementedError("Parameter Estimation from concentration data requires concentration data model.C[ti,cj]")
+
+        all_sigma_specified = True
+        print(sigma_sq)
+        keys = sigma_sq.keys()
+        for k in list_components:
+            if k not in keys:
+                all_sigma_specified = False
+                sigma_sq[k] = max(sigma_sq.values())
+                
+        if not all_sigma_specified:
+            raise RuntimeError(
+                'All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
+        
+        m = self.model
+
+        # estimation
+        def rule_objective(m):
+            obj = 0
+            for t in m.meas_times:
+                obj += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components)
+
+            return obj
+            
+        m.objective = Objective(rule=rule_objective)
+
+        #set dummy variable for k_aug to do sensitivities
+        paramcount = 0
+        paramlist=list()
+        varcount = 0
+        varlist = list()
+        for k,v in six.iteritems(m.P):
+            print(k,v)
+            if v.is_fixed():
+                paramcount +=1
+                paramlist.append(k)
+            else:
+                varcount += 1
+                varlist.append(k)
+                
+        if paramcount >= 1:
+            m.dpset = Set(initialize = paramlist)
+            m.dummyP= Var(m.dpset)
+            for i in paramlist:
+                print("dummyP", i)
+                m.dummyP[i] = m.P[i].value
+                
+        if varcount >= 1:
+            m.dvset = Set(initialize = varlist)
+            m.dummyV= Param(m.dvset, mutable =True)
+            for i in varlist:
+                print("dummyV", i)
+                print(m.P[i].value)
+                m.dummyV[i] = m.P[i].value
+        
+        #set dummy constraints   
+        def dummy_constraints(m,p):
+            if p in varlist:
+                return 0 == m.dummyV[p] - m.P[p] 
+            if p in paramlist:
+                return 0 == m.dummyP[p] - m.P[p] 
+           
+        m.dummyC = Constraint(m.parameter_names, rule=dummy_constraints)     
+        
+        #set up suffixes for Ipopt that are required for k_aug
+        m.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
+        m.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
+        m.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+        m.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
+        m.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
+
+        #: K_AUG SUFFIXES  
+        m.dcdp = Suffix(direction=Suffix.EXPORT)  #: the dummy constraints
+        # m.DeltaP = Suffix(direction=Suffix.EXPORT)  #:
+        m.var_order = Suffix(direction=Suffix.EXPORT)  #: Important variables (primal)
+        
+        #: please check the dsdp_in_.in file generated !
+        #: please check the dxdp_.dat file generated if var_order was set!
+        # set which are the variables and which are the parameters
+        
+        count_vars = 1
+        print("count_vars:",count_vars)
+        if not self._spectra_given:
+            pass
+        else:
+            for t in self._meas_times:
+                for c in self._sublist_components:
+                    m.C[t, c].set_suffix_value(m.var_order,count_vars)
+                        
+                    count_vars += 1
+        
+        if not self._spectra_given:
+            pass
+        else:
+            for l in self._meas_lambdas:
+                for c in self._sublist_components:
+                    m.S[l, c].set_suffix_value(m.var_order,count_vars)
+                    count_vars += 1
+                        
+        if self._concentration_given:
+            for t in self._meas_times:
+                for c in self._sublist_components:
+                    m.Z[t, c].set_suffix_value(m.var_order,count_vars)
+                        
+                    count_vars += 1
+        
+        count_dcdp = 1
+        print("count_vars:",count_vars)                
+        #for k,v in six.iteritems(self.model.P):
+        #    if v.is_fixed():
+        #        continue
+        #    m.P[k].set_suffix_value(m.var_order,count_vars)
+        #    count_vars += 1
+        idx_to_param = dict()
+        for p in m.parameter_names:
+            
+            m.dummyC[p].set_suffix_value(m.dcdp,count_dcdp)
+            idx_to_param[count_dcdp]=p
+            count_dcdp+=1
+        
+        #m.var_order.pprint()
+        #m.dcdp.pprint()    
+        #: Clear this file
+        with open('ipopt.opt', 'w') as f:
+            f.close()
+                
+        #first solve with Ipopt
+        ip = SolverFactory('ipopt')
+        solver_results = ip.solve(m, tee=False,
+                                  #logfile=self._tmpfile,
+                                  report_timing=True)
+
+        m.ipopt_zL_in.update(m.ipopt_zL_out)
+        m.ipopt_zU_in.update(m.ipopt_zU_out) 
+        
+        k_aug = SolverFactory('k_aug')
+        k_aug.options['dsdp_mode'] = ""  #: sensitivity mode!
+        #solve with k_aug in sensitivity mode
+        k_aug.solve(m, tee=True)
+        print("Done solving sensitivities")
+            
+        print('k_aug dsdp')
+        m.dcdp.pprint()
+        
+        
+        for i,k in six.iteritems(m.dcdp):
+            print(i,k)
+            print(type(i))
+      
+        #dsdp = read_dsdp(count_dcdp)
+        dsdp = np.loadtxt('dxdp_.dat')
+        print(dsdp)
+        
+        if os.path.exists('dxdp_.dat'):
+            os.remove('dxdp_.dat')
+        print(idx_to_param)
+        return dsdp , idx_to_param
+
+    def rank_params_yao(self, param_scaling = None, meas_scaling = None, sigmas = None):
         """This function ranks parameters in the method described in Yao (2003) by obtaining the sensitivities related
         to the parameters in the model through solving the original NLP model for concentrations, getting the sensitivities
         relating to each paramater, and then using them to predict the next sensitivity. User must provide scaling factors
@@ -82,42 +280,35 @@ class EstimabilityAnalyzer(ParameterEstimator):
         # In order to get the sensitivites the problem is solved using the parameter estimator for concentrations.
         # While this may not be the most efficient way to get the sensitivities for large difficult models,
         # this is the current chosen strategy.
-        p_estimator = ParameterEstimator(self.model)
-        p_estimator.apply_discretization('dae.collocation',nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
-        sigmas = {'A':1e-10,'B':1e-10,'C':1e-11, 'D':1e-11,'E':1e-11,'device':3e-9}
-        hessian, results_pyomo = p_estimator.run_opt('k_aug',
-                                            variances=sigmas,
-                                            tee=True,
-                                            #solver_opts = options,
-                                            with_d_vars = True,
-                                            covariance=True,
-                                            estimability=True)
-        #Get the appropriate columns with the appropriate parameters
-        results_pyomo.C.plot.line(legend=True)
-    #    plt.xlabel("time (s)")
-    #    plt.ylabel("Concentration (mol/L)")
-    #    plt.title("Concentration Profile")
+        #p_estimator = ParameterEstimator(self.model)
+        #p_estimator.apply_discretization('dae.collocation',nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
         
-        results_pyomo.Z.plot.line(legend=True)
-    #    plt.xlabel("time (s)")
-    #    plt.ylabel("Concentration (mol/L)")
-    #    plt.title("Concentration Profile")
-        print(hessian.size)
-        nvars = np.size(hessian,0)
-        print("hessian", hessian)
+        dsdp, idx_to_param = self.get_sensitivities_for_params(tee=True,sigmasq=sigmas)
+                                            #'k_aug',
+                                            # variances=sigmas,
+                                            #tee=True,
+                                            #solver_opts = options,
+                                            #with_d_vars = True,
+                                            #covariance=True,
+                                            #estimability=True)
+        #Get the appropriate columns with the appropriate parameters
+
+        print(dsdp.size)
+        nvars = np.size(dsdp,0)
+        print("dsdp", dsdp)
         nparams = 0
-        idx_to_param = {}
+        #idx_to_param = {}
         for v in six.itervalues(self.model.P):
             if v.is_fixed():
                 print(v, end='\t')
                 print("is fixed")
                 continue
             print("v", v)
-            idx_to_param[nparams]=v
+            #idx_to_param[nparams]=v
             nparams += 1
             
-        all_H = hessian
-        H = all_H[-nparams:, :]
+        all_H = dsdp
+        H = all_H[:,-nparams:]
         print("H", H)
         H_scaled = H
 
@@ -142,7 +333,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
             total = 0
             for row in range(len(H)):
                 total += H[row][count]**2
-            print(idx_to_param[i])            
+            print(idx_to_param[1 + i])            
             float(total)
             total = np.asscalar(total)
             print(total)
@@ -160,8 +351,8 @@ class EstimabilityAnalyzer(ParameterEstimator):
         ordered_params = dict()
         for p in idx_to_param:
             for t in idx_to_param:
-                if sorted_euc[p]==eucnorm[t]:
-                    ordered_params[count] = t
+                if sorted_euc[p-1]==eucnorm[t-1]:
+                    ordered_params[count] = t-1
             count +=1
         print("Euclidean Norms, sorted: ",sorted_euc)
         print("params: ", idx_to_param)
@@ -202,10 +393,11 @@ class EstimabilityAnalyzer(ParameterEstimator):
                 paramhere = ordered_params[x]
                 print("paramhere:", paramhere)
                 print(x)
-                print("Hcol", H[:][ordered_params[x]])
-                print(H[:][ordered_params[x]].shape)
+                print("H shape: ", H.shape)
+                print("Hcol", H[:,ordered_params[x]])
+                print(H[:,ordered_params[x]].shape)
                 
-                kcol = H[:][ordered_params[x]].T
+                kcol = H[:,ordered_params[x]].T
                 print("X size: ", X.shape)
                 print("kcol size: ", kcol.shape)
                 print(kcol)
@@ -217,11 +409,11 @@ class EstimabilityAnalyzer(ParameterEstimator):
                 print("X",X)
                 print(X.shape)
                 for n in range(nvars):
-                    print("x",x)
-                    print("ordered param x",ordered_params[x])
-                    print("n",n)
-                    print(X[n][x])
-                    print(recol[n][0])
+                    #print("x",x)
+                    #print("ordered param x",ordered_params[x])
+                    #print("n",n)
+                    #print(X[n][x])
+                    #print(recol[n][0])
                     X[n][x] = recol[n][0]
                 print(X)
                 print(X.shape)
@@ -233,13 +425,14 @@ class EstimabilityAnalyzer(ParameterEstimator):
                 B= np.linalg.inv(A)
                 print("B",B)
                 print("B shape: ", B.shape)
-                C = X.dot(B)
+                C = B.dot(X.T)
                 print(C)
                 print(C.shape)
-                D=C.dot(X.T)
+                D=X.dot(C)
                 print("D",D)
                 print("D shape",D.shape)
-                Z = H
+                Z = H.T
+                print("Z.shape", Z.shape)
                 Zbar=D.dot(Z.T)
                 print(H)
                 print(H.shape)
@@ -248,7 +441,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
                 #Get residuals of prediction
                 Res = Z.T - Zbar
             except:
-                print("Singular matrix, unable to continure the procedure")
+                print("Singular matrix, unable to continue the procedure")
                 break
             magres = dict()
             counter=0
@@ -271,7 +464,8 @@ class EstimabilityAnalyzer(ParameterEstimator):
             count2=0
             for p in idx_to_param:
                 for t in idx_to_param:
-                    if sorted_magres[p]==magres[t]:
+                    print(t)
+                    if sorted_magres[p-1]==magres[t-1]:
                         next_est[count2] = t
                 count2 += 1
             print("next_est",next_est)  
@@ -538,3 +732,25 @@ class EstimabilityAnalyzer(ParameterEstimator):
         #        self.initialize_from_trajectory('dXdt',base_values.dXdt)
         
         return results
+
+    
+def read_dxdp(dxdp_string, dxdp, n_vars):
+    """
+    Args:
+        
+        
+    """
+    dxdp = np.zeros((n_vars, n_vars))
+    for i, line in enumerate(hessian_string.split('\n')):
+        if i > 0:  # ignores header
+            if line not in ['', ' ', '\t']:
+                hess_line = line.split(']=')
+                if len(hess_line) == 2:
+                    value = float(hess_line[1])
+                    column_line = hess_line[0].split(',')
+                    col = int(column_line[1])
+                    row_line = column_line[0].split('[')
+                    row = int(row_line[1])
+                    hessian[row, col] = float(value)
+                    hessian[col, row] = float(value)
+    return hessian    

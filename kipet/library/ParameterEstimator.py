@@ -346,8 +346,8 @@ class ParameterEstimator(Optimizer):
                 self._compute_covariance_C(hessian, sigma_sq)
             #else:
             #    self._compute_covariance(hessian, sigma_sq)
-            
-        if covariance and self.solver == 'k_aug':            
+        
+        elif covariance and self.solver == 'k_aug':            
             m.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
             m.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
             m.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
@@ -356,7 +356,8 @@ class ParameterEstimator(Optimizer):
 
             m.dof_v = Suffix(direction=Suffix.EXPORT)  #: SUFFIX FOR K_AUG
             m.rh_name = Suffix(direction=Suffix.IMPORT)  #: SUFFIX FOR K_AUG AS WELL
-            
+            m.dof_v.pprint()
+            m.rh_name.pprint()
             count_vars = 1
 
             if not self._spectra_given:
@@ -380,7 +381,7 @@ class ParameterEstimator(Optimizer):
             #    for t in self._meas_times:
             #        for c in self._sublist_components:
             #            m.Z[t, c].set_suffix_value(m.dof_v,count_vars)
-            #            
+                        
             #            count_vars += 1
                         
             for v in six.itervalues(self.model.P):
@@ -410,7 +411,7 @@ class ParameterEstimator(Optimizer):
 
             n_vars = len(self._idx_to_variable)
             print("n_vars",n_vars)
-            #m.rh_name.pprint()
+            m.rh_name.pprint()
             var_loc = m.rh_name
             for v in six.itervalues(self._idx_to_variable):
                 try:
@@ -808,10 +809,10 @@ class ParameterEstimator(Optimizer):
 
         for key, val in solver_opts.items():
             opt.options[key] = val
-
+            
         if estimability == True:
             self._estimability = True
-
+            #solver_opts['dsdp_mode'] = ""
         active_objectives = [o for o in self.model.component_map(Objective, active=True)]
         if active_objectives:
             print(
