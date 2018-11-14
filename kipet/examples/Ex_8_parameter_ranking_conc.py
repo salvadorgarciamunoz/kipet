@@ -25,11 +25,6 @@ import six
 import pandas as pd
 
 if __name__ == "__main__":
-
-#    with_plots = True
-#    if len(sys.argv)==2:
-#        if int(sys.argv[1]):
-#            with_plots = False
  
         
     #=========================================================================
