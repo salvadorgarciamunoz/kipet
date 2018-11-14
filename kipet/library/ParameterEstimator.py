@@ -598,7 +598,7 @@ class ParameterEstimator(Optimizer):
             if p.is_fixed():
                 continue
             print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
-            i = +1
+            i += 1
 
     def _compute_B_matrix(self, variances, **kwds):
         """Builds B matrix for calculation of covariances
@@ -826,7 +826,6 @@ class ParameterEstimator(Optimizer):
 
 ####################################################################
 
-
     def _order_k_aug_hessian(self, unordered_hessian, var_loc):
         """
         not meant to be used directly by users. Takes in the inverse of the reduced hessian
@@ -880,6 +879,7 @@ class ParameterEstimator(Optimizer):
         tee = kwds.pop('tee', False)
         with_d_vars = kwds.pop('with_d_vars', False)
         covariance = kwds.pop('covariance', False)
+
         estimability = kwds.pop('estimability', False)
 
         #additional arguments for inputs CS
@@ -897,6 +897,7 @@ class ParameterEstimator(Optimizer):
         feed_times = kwds.pop("feed_times", None)
 
         self.solver = solver
+        
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
 
@@ -1127,7 +1128,6 @@ def fe_cp(time_set, feedtime):
     return fe, cp
 ################################################
 
-
 def read_reduce_hessian_k_aug(hessian_string, n_vars):
     hessian = np.zeros((n_vars, n_vars))
     for i, line in enumerate(hessian_string.split('\n')):
@@ -1143,4 +1143,3 @@ def read_reduce_hessian_k_aug(hessian_string, n_vars):
                     hessian[row, col] = float(value)
                     hessian[col, row] = float(value)
     return hessian
-

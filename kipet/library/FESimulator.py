@@ -54,17 +54,25 @@ class FESimulator(PyomoSimulator):
             if t[0] == st:
                 self.ics_['X',t[1]] = v.value
 
-    def call_fe_factory(self, inputs_sub=None):
+    def call_fe_factory(self, inputs_sub=None, jump_states=None, jump_times=None, feed_times=None):#added for inclusion of discrete jumps CS
         """
         call_fe_factory:
     
                 This function applies all the inputs necessary for fe_factory to work, using Kipet syntax.
+                Requires external inputs/dosing points to be specified with the following arguments.
     
                 Args:
-                    none
+                    inputs_sub (dict): dictionary of inputs 
+                    jump_states (dict): dictionary of which variables and states are inputted and by how much
+                    jump_times (dict): dictionary in same form as jump_states with times of input
+                    feed_times (list): list of additional times needed, should be the same times as jump_times 
         """
-        self.inputs_sub = None
+        #added for inclusion of inputs of different kind CS
         self.inputs_sub=inputs_sub
+
+        self.jump_times=jump_times
+        self.jump_states=jump_states
+        self.feed_times=feed_times
         
         init = fe_initialize(self.p_sim.model, self.c_sim,
                          init_con="init_conditions_c",
@@ -73,5 +81,7 @@ class FESimulator(PyomoSimulator):
                          inputs_sub=self.inputs_sub)
     
         init.load_initial_conditions(init_cond=self.ics_)
-   
+
+        if jump_times!=None and jump_states!=None:
+            init.load_discrete_jump(jump_states, jump_times, feed_times) #added for inclusion of discrete jumps
         init.run()

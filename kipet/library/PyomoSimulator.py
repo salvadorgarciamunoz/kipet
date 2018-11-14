@@ -4,6 +4,7 @@ from kipet.library.ResultsObject import *
 from kipet.library.Simulator import *
 import warnings
 import six
+import sys
 
 
 class PyomoSimulator(Simulator):
@@ -37,6 +38,8 @@ class PyomoSimulator(Simulator):
         self._ipopt_scaled = False
         self._spectra_given = hasattr(self.model, 'D')
         self._concentration_given = hasattr(self.model, 'C')
+        self._absorption_given = hasattr(self.model, 'S') #added for special case of absorption data available but not concentration data CS
+
         #creates scaling factor suffix
         if not hasattr(self.model, 'scaling_factor'):
             self.model.scaling_factor = Suffix(direction=Suffix.EXPORT)
@@ -367,6 +370,7 @@ class PyomoSimulator(Simulator):
         P_var = self.model.P            
         X_var = self.model.X
         dX_var = self.model.dXdt
+        C_var = self.model.C  #added for estimation with inputs and conc data CS
         
         # check all parameters are fixed before simulating
         for p_var_data in six.itervalues(P_var):
@@ -405,7 +409,7 @@ class PyomoSimulator(Simulator):
         # retriving solutions to results object  
         results.load_from_pyomo_model(self.model,
                                       to_load=['Z','dZdt','X','dXdt','Y'])
-        
+
         c_noise_results = []
 
         w = np.zeros((self._n_components,self._n_meas_times))
@@ -427,9 +431,19 @@ class PyomoSimulator(Simulator):
 
         c_noise_array = np.array(c_noise_results).reshape((self._n_meas_times,self._n_components))
         results.C = pd.DataFrame(data=c_noise_array,
-                                 columns=self._mixture_components,
-                                 index=self._meas_times)
-        
+                                columns=self._mixture_components,
+                                index=self._meas_times)
+
+        #addition for inputs estimation with concentration data CS:
+        if self._concentration_given==True and self._absorption_given==False:
+            c_noise_results = []
+            for i,t in enumerate(self._meas_times):
+                for j,k in enumerate(self._mixture_components):
+                    c_noise_results.append(C_var[t,k].value)
+            c_noise_array = np.array(c_noise_results).reshape((self._n_meas_times,self._n_components))
+            results.C = pd.DataFrame(data=c_noise_array,
+                                    columns=self._mixture_components,
+                                    index=self._meas_times)
         s_results = []
         for l in self._meas_lambdas:
             for k in self._mixture_components:
@@ -451,22 +465,28 @@ class PyomoSimulator(Simulator):
                     if sigma_d:
                         suma+= np.random.normal(0.0,sigma_d)
                     d_results.append(suma)
-                    
-            
+
+
         s_array = np.array(s_results).reshape((self._n_meas_lambdas,self._n_components))
         results.S = pd.DataFrame(data=s_array,
                                  columns=self._mixture_components,
                                  index=self._meas_lambdas)
-                        
+
         d_array = np.array(d_results).reshape((self._n_meas_times,self._n_meas_lambdas))
         results.D = pd.DataFrame(data=d_array,
                                  columns=self._meas_lambdas,
                                  index=self._meas_times)
-            
+
         s_data_dict = dict()
         for t in self._meas_times:
             for l in self._meas_lambdas:
                 s_data_dict[t,l] = float(results.D[l][t])
+
+        #Added due to estimation with fe-factory and inputs where data already loaded to model before (CS)
+        if self._spectra_given:
+            self.model.del_component(self.model.D)
+            self.model.del_component(self.model.D_index)
+        #########
 
         self.model.D = Param(self._meas_times,
                              self._meas_lambdas,
