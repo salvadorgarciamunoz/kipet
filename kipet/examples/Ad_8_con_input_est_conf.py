@@ -86,7 +86,7 @@ if __name__ == "__main__":
     results_pyomo = optimizer.run_opt('ipopt_sens',
                                         variances=sigmas,
                                       tee=True,
-                                      solver_opts = options,
+                                      solver_opts = solver_options,
                                       covariance=True)
 
     print("The estimated parameters are:")
