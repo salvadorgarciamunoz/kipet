@@ -368,7 +368,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
                 count2 += 1
 
             # Add next most estimable param to the ranking list  
-            self.param_ranks[(iter_count+2)]=idx_to_param[next_est[0]+1]
+            self.param_ranks[(iter_count+2)]=idx_to_param[next_est[0]]
             iter_count += 1
             
             print("======================PARAMETER RANKED======================")
