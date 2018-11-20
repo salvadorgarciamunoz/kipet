@@ -5,7 +5,7 @@
 #  _________________________________________________________________________
 
 # Aspirin Example
-#
+# find the model details in the Kipet documentation
 #		\frac{dZ_aa}{dt} = -r_0-r_1-r_3-\frac{\dot{v}}{V}*Z_aa
 # 	    	\frac{dZ_ha}{dt} = r_0+r_1+r_2+2r_3-\frac{\dot{v}}{V}*Z_ha
 #        \frac{dZ_asaa}{dt} = r_1-r_2-\frac{\dot{v}}{V}*Z_asaa
@@ -29,7 +29,7 @@ from kipet.library.VarianceEstimator import *
 from kipet.library.data_tools import *
 from kipet.library.fe_factory import *
 from kipet.library.FESimulator import *
-from pyomo.core.kernel.expr import exp
+#from pyomo.core.kernel.expr import exp
 import matplotlib.pyplot as plt
 import numpy as np
 import sys
@@ -141,8 +141,8 @@ if __name__ == "__main__":
         r.append(m.Y[t,'r2']-m.P['k2']*m.Z[t,'ASAA']*m.Z[t,'H2O'])
         r.append(m.Y[t,'r3']-m.P['k3']*m.Z[t,'AA']*m.Z[t,'H2O'])
 
-        # dissolution rate
-        step = 1.0/(1.0+exp(-m.X[t,'Msa']/1e-4))
+        # dissolution rate/1e-4    5e-2
+        step = 1.0/(1.0 + exp(-m.X[t,'Msa']/5e-2))
         rd = m.P['kd']*(m.P['Csa']-m.Z[t,'SA']+1e-6)**1.90*step
         r.append(m.Y[t,'r4']-rd)
         #r.append(m.Y[t,'r4'])
@@ -199,103 +199,48 @@ if __name__ == "__main__":
     
     sim = FESimulator(model)
     
-    # defines the discrete points wanted in the concentration profile
-    sim.apply_discretization('dae.collocation', nfe=(nfe_x), ncp=3, scheme='LAGRANGE-RADAU')
+    # defines the discrete points wanted in the concentration profile(nfe_x)
+    sim.apply_discretization('dae.collocation', nfe=200, ncp=3, scheme='LAGRANGE-RADAU')
     fe_l = sim.model.time.get_finite_elements()
     fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
     nfe = len(fe_list)  #: Create a list with the step-size
     print(nfe)
-    #sys.exit()
-
-    #sim.fix_from_trajectory('X','V',fixed_traj)
-
-    #: we now need to explicitly tell the initial conditions and parameter values
-    #param_name = "P"
-    #param_dict = {}
-    #param_dict["P", "k0"] = 0.0360309
-    #param_dict["P", "k1"] = 0.1596062
-    #param_dict["P", "k2"] = 6.8032345
-    #param_dict["P", "k3"] = 1.8028763
-    #param_dict["P", "kd"] = 7.1108682
-    #param_dict["P", "kc"] = 0.7566864
-    #param_dict["P", "Csa"] = 2.06269996
-
-    #ics_ = dict()
-    #ics_['Z', 'SA'] = 1.0714
-    #ics_['Z', 'AA'] = 9.3828 
-    #ics_['Z', 'ASA'] = 0.0177
-    #ics_['Z', 'HA'] = 0.0177 
-    #ics_['Z', 'ASAA'] =0.000015
-    #ics_['Z', 'H2O'] = 0.0
-
-    #ics_['X', 'V'] = 0.0202
-    #ics_['X', 'Masa'] = 0.0
-    #ics_['X', 'Msa'] = 9.537
     
-        
-    #inputs_sub = {}
+    for i in sim.model.X.itervalues():
+        idx = i.index()
+        if idx[1] in ['Msa']:
+            i.setlb(0)
+        else:
+            i.setlb(0)
+            
+    inputs_sub = {}
     
     inputs_sub['Y'] = ['f', 'Csat']
 
     sim.fix_from_trajectory('Y','Csat',fixed_traj)
     sim.fix_from_trajectory('Y','f',fixed_traj)
-    # for t in sim.model.time:
-    #     v = value(sim.model.Y[t, 'f'])
-    #     print(t, v)
-    #: define the values for our simulation
-    #for key in sim.model.time.value:
-    #    sim.model.Y[key,'f'].set_value(key)
-    #    sim.model.Y[key,'f'].fix()  #if you don't fix this, fe_factory is will not work complain.
-    #    sim.model.Y[key,'Csat'].set_value(key)
-    #    sim.model.Y[key,'Csat'].fix() 
-    #
 
-
-    #init = fe_initialize(sim.model, mod,
-    #                     init_con="init_conditions_c",
-    #                     param_name=param_name,
-    #                     param_values=param_dict,
-    #                     inputs_sub=inputs_sub)
-    
-    #init.load_initial_conditions(init_cond=ics_)
-   
-    #init.run()
     init = sim.call_fe_factory(inputs_sub)
     #=========================================================================
     #USER INPUT SECTION - SIMULATION
     #=========================================================================
   
-    # sim = PyomoSimulator(model)
-    # defines the discrete points wanted in the concentration profile
-    # sim.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
-    
-    # good initialization
-
-#    filename_initZ = os.path.join(dataDirectory, 'init_Z.csv')#Use absolute paths
-#    initialization = pd.read_csv(filename_initZ,index_col=0)
-#    sim.initialize_from_trajectory('Z',initialization)
-#    filename_initX = os.path.join(dataDirectory, 'init_X.csv')#Use absolute paths
-#    initialization = pd.read_csv(filename_initX,index_col=0)
-#    sim.initialize_from_trajectory('X',initialization)
-#    filename_initY = os.path.join(dataDirectory, 'init_Y.csv')#Use absolute paths
-#    initialization = pd.read_csv(filename_initY,index_col=0)
-#    sim.initialize_from_trajectory('Y',initialization)
             
-    sim.fix_from_trajectory('Y','Csat',fixed_traj)
-    sim.fix_from_trajectory('Y','f',fixed_traj)
+    #sim.fix_from_trajectory('Y','Csat',fixed_traj)
+    #sim.fix_from_trajectory('Y','f',fixed_traj)
 
-    for i in sim.model.X.itervalues():
-        idx = i.index()
-        if idx[1] in ['Msa', 'Masa']:
-            i.setlb(-0.05)
-        else:
-            i.setlb(0)
+    #for i in sim.model.X.itervalues():
+    #    idx = i.index()
+    #    if idx[1] in ['Msa', 'Masa']:
+    #        i.setlb(-0.05)
+    #    else:
+    #        i.setlb(0)
 
-    for i in sim.model.Z.itervalues():
-        i.setlb(0)
-        idx = i.index()
-        if idx[1] == 'SA':
-            i.setub(2.06269996)
+    #for i in sim.model.Z.itervalues():
+    #    i.setlb(0)
+    #    idx = i.index()
+    #    if idx[1] == 'SA':
+    #        i.setub(2.06269996)
 
 
     options = {'halt_on_ampl_error' :'yes',

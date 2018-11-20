@@ -6,6 +6,7 @@ from pyomo.environ import *
 from pyomo.dae import *
 from kipet.library.Optimizer import *
 from pyomo.core.base.expr import Expr_if
+import numpy as np
 import six
 import copy
 import re
@@ -25,6 +26,8 @@ class ParameterEstimator(Optimizer):
     def __init__(self, model):
         super(ParameterEstimator, self).__init__(model)
         # for reduce hessian
+        self.hessian = None
+        self._estimability = False
         self._idx_to_variable = dict()
         self._n_actual = self._n_components
         if hasattr(self.model, 'non_absorbing'):
@@ -43,16 +46,16 @@ class ParameterEstimator(Optimizer):
 
            This method is not intended to be used by users directly
         Args:
-            sigma_sq (dict): variances 
-            
+            sigma_sq (dict): variances
+
             optimizer (SolverFactory): Pyomo Solver factory object
-        
+
             tee (bool,optional): flag to tell the optimizer whether to stream output
             to the terminal or not
 
-            with_d_vars (bool,optional): flag to the optimizer whether to add 
+            with_d_vars (bool,optional): flag to the optimizer whether to add
             variables and constraints for D_bar(i,j)
-        
+
         Returns:
             None
         """
@@ -79,7 +82,6 @@ class ParameterEstimator(Optimizer):
             warnings.warn("Overriden by non_absorbing!!!")
             list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
 
-
         all_sigma_specified = True
         print(sigma_sq)
         keys = sigma_sq.keys()
@@ -104,6 +106,7 @@ class ParameterEstimator(Optimizer):
             m.D_bar_constraint = Constraint(m.meas_times,
                                             m.meas_lambdas,
                                             rule=rule_D_bar)
+
         # estimation
         def rule_objective(m):
             expr = 0
@@ -128,7 +131,7 @@ class ParameterEstimator(Optimizer):
         # solver_results = optimizer.solve(m,tee=True,
         #                                 report_timing=True)
 
-        if covariance:
+        if covariance and self.solver == 'ipopt_sens':
             self._tmpfile = "ipopt_hess"
             solver_results = optimizer.solve(m, tee=False,
                                              logfile=self._tmpfile,
@@ -157,6 +160,85 @@ class ParameterEstimator(Optimizer):
             # hessian = read_reduce_hessian2(hessian_output,n_vars)
             # print hessian
             self._compute_covariance(hessian, sigma_sq)
+
+        if covariance and self.solver == 'k_aug':
+            m.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
+            m.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
+            m.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+            m.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
+            m.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
+
+            m.dof_v = Suffix(direction=Suffix.EXPORT)  #: SUFFIX FOR K_AUG
+            m.rh_name = Suffix(direction=Suffix.IMPORT)  #: SUFFIX FOR K_AUG AS WELL
+
+            count_vars = 1
+
+            if not self._spectra_given:
+                pass
+            else:
+                for t in self._meas_times:
+                    for c in self._sublist_components:
+                        m.C[t, c].set_suffix_value(m.dof_v, count_vars)
+
+                        count_vars += 1
+
+            if not self._spectra_given:
+                pass
+            else:
+                for l in self._meas_lambdas:
+                    for c in self._sublist_components:
+                        m.S[l, c].set_suffix_value(m.dof_v, count_vars)
+                        count_vars += 1
+
+            for v in six.itervalues(self.model.P):
+                if v.is_fixed():
+                    continue
+                m.P.set_suffix_value(m.dof_v, count_vars)
+                count_vars += 1
+
+            self._tmpfile = "k_aug_hess"
+            ip = SolverFactory('ipopt')
+            solver_results = ip.solve(m, tee=False,
+                                      logfile=self._tmpfile,
+                                      report_timing=True)
+            k_aug = SolverFactory('k_aug')
+            # k_aug.options["compute_inv"] = ""
+            m.ipopt_zL_in.update(m.ipopt_zL_out)  #: be sure that the multipliers got updated!
+            m.ipopt_zU_in.update(m.ipopt_zU_out)
+            # m.write(filename="mynl.nl", format=ProblemFormat.nl)
+            k_aug.solve(m, tee=False)
+            print("Done solving building reduce hessian")
+
+            if not all_sigma_specified:
+                raise RuntimeError(
+                    'All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
+
+            n_vars = len(self._idx_to_variable)
+            print("n_vars", n_vars)
+            # m.rh_name.pprint()
+            var_loc = m.rh_name
+            for v in six.itervalues(self._idx_to_variable):
+                try:
+                    var_loc[v]
+                except:
+                    print(v, "is an error")
+                    var_loc[v] = 0
+                    print(v, "is thus set to ", var_loc[v])
+                    print(var_loc[v])
+
+            vlocsize = len(var_loc)
+            print("var_loc size, ", vlocsize)
+            unordered_hessian = np.loadtxt('result_red_hess.txt')
+            if os.path.exists('result_red_hess.txt'):
+                os.remove('result_red_hess.txt')
+            # hessian = read_reduce_hessian_k_aug(hessian_output, n_vars)
+            # hessian =hessian_output
+            # print(hessian)
+            print(unordered_hessian.size, "unordered hessian size")
+            hessian = self._order_k_aug_hessian(unordered_hessian, var_loc)
+            if self._estimability == True:
+                self.hessian = hessian
+            self._compute_covariance(hessian, sigma_sq)
         else:
             solver_results = optimizer.solve(m, tee=tee)
 
@@ -164,20 +246,19 @@ class ParameterEstimator(Optimizer):
             m.del_component('D_bar')
             m.del_component('D_bar_constraint')
         m.del_component('objective')
-        
-        
+
     def _solve_model_given_c(self, sigma_sq, optimizer, **kwds):
         """Solves estimation based on concentration data. (known variances)
 
            This method is not intended to be used by users directly
         Args:
-            sigma_sq (dict): variances 
-            
+            sigma_sq (dict): variances
+
             optimizer (SolverFactory): Pyomo Solver factory object
-        
+
             tee (bool,optional): flag to tell the optimizer whether to stream output
             to the terminal or not
-        
+
         Returns:
             None
         """
@@ -198,9 +279,10 @@ class ParameterEstimator(Optimizer):
                     warnings.warn("Ignored {} since is not a mixture component of the model".format(k))
 
         if not self._concentration_given:
-            raise NotImplementedError("Parameter Estimation from concentration data requires concentration data model.C[ti,cj]")
+            raise NotImplementedError(
+                "Parameter Estimation from concentration data requires concentration data model.C[ti,cj]")
 
-        #if hasattr(self.model, 'non_absorbing'):
+        # if hasattr(self.model, 'non_absorbing'):
         #    warnings.warn("Overriden by non_absorbing!!!")
         #    list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
 
@@ -212,7 +294,7 @@ class ParameterEstimator(Optimizer):
                 all_sigma_specified = False
                 sigma_sq[k] = max(sigma_sq.values())
 
-        #if not 'device' in sigma_sq.keys():
+        # if not 'device' in sigma_sq.keys():
         #    all_sigma_specified = False
         #    sigma_sq['device'] = 1.0
 
@@ -225,23 +307,24 @@ class ParameterEstimator(Optimizer):
                 obj += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components)
 
             return obj
-            
+
         m.objective = Objective(rule=rule_objective)
 
         # solver_results = optimizer.solve(m,tee=True,
         #                                 report_timing=True)
-        
-        if covariance:
+
+        if covariance and self.solver == 'ipopt_sens':
             self._tmpfile = "ipopt_hess"
             solver_results = optimizer.solve(m, tee=False,
                                              logfile=self._tmpfile,
                                              report_timing=True)
-            #self.model.red_hessian.pprint
+            # self.model.red_hessian.pprint
+            m.P.pprint()
             print("Done solving building reduce hessian")
             output_string = ''
             with open(self._tmpfile, 'r') as f:
                 output_string = f.read()
-                
+
                 print("output_string", output_string)
             if os.path.exists(self._tmpfile):
                 os.remove(self._tmpfile)
@@ -249,7 +332,7 @@ class ParameterEstimator(Optimizer):
             ipopt_output, hessian_output = split_sipopt_string(output_string)
             # print hessian_output
             print("build strings")
-            #if tee == True:
+            # if tee == True:
             #    print(ipopt_output)
 
             if not all_sigma_specified:
@@ -262,8 +345,98 @@ class ParameterEstimator(Optimizer):
             # hessian = read_reduce_hessian2(hessian_output,n_vars)
             if self._concentration_given:
                 self._compute_covariance_C(hessian, sigma_sq)
-            #else:
+            # else:
             #    self._compute_covariance(hessian, sigma_sq)
+
+        elif covariance and self.solver == 'k_aug':
+            m.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
+            m.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
+            m.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+            m.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
+            m.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
+
+            m.dof_v = Suffix(direction=Suffix.EXPORT)  #: SUFFIX FOR K_AUG
+            m.rh_name = Suffix(direction=Suffix.IMPORT)  #: SUFFIX FOR K_AUG AS WELL
+            m.dof_v.pprint()
+            m.rh_name.pprint()
+            count_vars = 1
+
+            if not self._spectra_given:
+                pass
+            else:
+                for t in self._meas_times:
+                    for c in self._sublist_components:
+                        m.C[t, c].set_suffix_value(m.dof_v, count_vars)
+
+                        count_vars += 1
+
+            if not self._spectra_given:
+                pass
+            else:
+                for l in self._meas_lambdas:
+                    for c in self._sublist_components:
+                        m.S[l, c].set_suffix_value(m.dof_v, count_vars)
+                        count_vars += 1
+
+            # if self._concentration_given:
+            #    for t in self._meas_times:
+            #        for c in self._sublist_components:
+            #            m.Z[t, c].set_suffix_value(m.dof_v,count_vars)
+
+            #            count_vars += 1
+
+            for v in six.itervalues(self.model.P):
+                if v.is_fixed():
+                    continue
+                m.P.set_suffix_value(m.dof_v, count_vars)
+                count_vars += 1
+
+            self._tmpfile = "k_aug_hess"
+            ip = SolverFactory('ipopt')
+            solver_results = ip.solve(m, tee=False,
+                                      logfile=self._tmpfile,
+                                      report_timing=True)
+            # m.P.pprint()
+            k_aug = SolverFactory('k_aug')
+
+            # k_aug.options["no_scale"] = ""
+            m.ipopt_zL_in.update(m.ipopt_zL_out)  #: be sure that the multipliers got updated!
+            m.ipopt_zU_in.update(m.ipopt_zU_out)
+            # m.write(filename="mynl.nl", format=ProblemFormat.nl)
+            k_aug.solve(m, tee=True)
+            print("Done solving building reduce hessian")
+
+            if not all_sigma_specified:
+                raise RuntimeError(
+                    'All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
+
+            n_vars = len(self._idx_to_variable)
+            print("n_vars", n_vars)
+            m.rh_name.pprint()
+            var_loc = m.rh_name
+            for v in six.itervalues(self._idx_to_variable):
+                try:
+                    var_loc[v]
+                except:
+                    print(v, "is an error")
+                    var_loc[v] = 0
+                    print(v, "is thus set to ", var_loc[v])
+                    print(var_loc[v])
+
+            vlocsize = len(var_loc)
+            print("var_loc size, ", vlocsize)
+            unordered_hessian = np.loadtxt('result_red_hess.txt')
+            if os.path.exists('result_red_hess.txt'):
+                os.remove('result_red_hess.txt')
+            # hessian = read_reduce_hessian_k_aug(hessian_output, n_vars)
+            # hessian =hessian_output
+            # print(hessian)
+            print(unordered_hessian.size, "unordered hessian size")
+            hessian = self._order_k_aug_hessian(unordered_hessian, var_loc)
+            if self._estimability == True:
+                self.hessian = hessian
+            if self._concentration_given:
+                self._compute_covariance_C(hessian, sigma_sq)
         else:
             solver_results = optimizer.solve(m, tee=tee)
 
@@ -282,7 +455,7 @@ class ParameterEstimator(Optimizer):
                     self._idx_to_variable[count_vars] = v
                     self.model.red_hessian[v] = count_vars
                     count_vars += 1
-        
+
         if not self._spectra_given:
             pass
 
@@ -293,7 +466,7 @@ class ParameterEstimator(Optimizer):
                     self._idx_to_variable[count_vars] = v
                     self.model.red_hessian[v] = count_vars
                     count_vars += 1
-                    
+
         for v in six.itervalues(self.model.P):
             if v.is_fixed():
                 print(v, end='\t')
@@ -376,29 +549,28 @@ class ParameterEstimator(Optimizer):
         Computes the covariance matrix for the paramaters taking in the Hessian
         matrix and the variances for the problem where only C data is provided.
         Outputs the parameter confidence intervals.
-        
+
         This function is not intended to be used by the users directly
-    
+
         """
         self._compute_residuals()
         res = self.residuals
-        #print(res)
-        #sets up matrix with variances in diagonals
+        # print(res)
+        # sets up matrix with variances in diagonals
         nc = self._n_actual
         nt = self._n_meas_times
-        varmat = np.zeros((nc,nc))
-        for c,k in enumerate(self._sublist_components):
-            varmat[c,c]=variances[k]
-        #print("varmat",varmat)
-        #R=varmat.dot(res)
-        #L = res.dot(varmat)
+        varmat = np.zeros((nc, nc))
+        for c, k in enumerate(self._sublist_components):
+            varmat[c, c] = variances[k]
+        # print("varmat",varmat)
+        # R=varmat.dot(res)
+        # L = res.dot(varmat)
         E = 0
         for t in self._meas_times:
             for k in self._sublist_components:
-                E += res[t,k]/(variances[k]**2)
-        
-        
-        #Now we can use the E matrix with the hessian to estimate our confidence intervals
+                E += res[t, k] / (variances[k] ** 2)
+
+        # Now we can use the E matrix with the hessian to estimate our confidence intervals
         nparams = 0
         for v in six.itervalues(self.model.P):
             if v.is_fixed():  #: Skip the fixed ones
@@ -408,16 +580,16 @@ class ParameterEstimator(Optimizer):
         all_H = hessian
         H = all_H[-nparams:, :]
 
-        #print(E_matrix)
-        #covariance_C = E_matrix.dot(H.T)
-        
-        #print("value of the objective function (sum of squared residuals/sigma^2): ", E)
-        #covari1 = res_in_vec.dot(H)
-        #covariance_C =  2/(nt-2)*E*np.linalg.inv(H)
-        #covariance_C = np.linalg.inv(H)
-        
+        # print(E_matrix)
+        # covariance_C = E_matrix.dot(H.T)
+
+        # print("value of the objective function (sum of squared residuals/sigma^2): ", E)
+        # covari1 = res_in_vec.dot(H)
+        # covariance_C =  2/(nt-2)*E*np.linalg.inv(H)
+        # covariance_C = np.linalg.inv(H)
+
         covariance_C = H
-        #print(covariance_C,"covariance matrix")
+        # print(covariance_C,"covariance matrix")
         variances_p = np.diag(covariance_C)
         print("Parameter variances: ", variances_p)
         print('\nConfidence intervals:')
@@ -428,15 +600,14 @@ class ParameterEstimator(Optimizer):
             print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
             i += 1
 
-
     def _compute_B_matrix(self, variances, **kwds):
         """Builds B matrix for calculation of covariances
 
            This method is not intended to be used by users directly
 
         Args:
-            variances (dict): variances 
-            
+            variances (dict): variances
+
         Returns:
             None
         """
@@ -450,7 +621,7 @@ class ParameterEstimator(Optimizer):
                 continue
             nparams += 1
 
-        #nparams = len(self.model.P)
+        # nparams = len(self.model.P)
         # this changes depending on the order of the suffixes passed to sipopt
         nd = nw * nt
         ntheta = nc * (nw + nt) + nparams
@@ -478,8 +649,8 @@ class ParameterEstimator(Optimizer):
            This method is not intended to be used by users directly
 
         Args:
-            variances (dict): variances 
-            
+            variances (dict): variances
+
         Returns:
             None
         """
@@ -545,7 +716,7 @@ class ParameterEstimator(Optimizer):
         """
         Computes the square of residuals between the optimal solution (Z) and the concentration data (C)
         Note that this returns a matrix of time points X components and it has not been divided by sigma^2
-        
+
         This method is not intended to be used by users directly
         """
         nt = self._n_meas_times
@@ -557,28 +728,146 @@ class ParameterEstimator(Optimizer):
             for t in self._meas_times:
                 a = self.model.C[t, c].value
                 b = self.model.Z[t, c].value
-                r = ((a-b)**2)
-                self.residuals[t,c]=r
+                r = ((a - b) ** 2)
+                self.residuals[t, c] = r
                 count_t += 1
             count_c += 1
-            
+
+######################### Added for using inputs model for parameter estimation, CS##########
+    def load_discrete_jump(self):
+        self.jump = True
+
+        zeit = None
+        for i in self.model.component_objects(ContinuousSet):
+            zeit = i
+            break
+        if zeit is None:
+            raise Exception('no continuous_set')
+        self.time_set = zeit.name
+
+        tgt_cts = getattr(self.model, self.time_set)  ## please correct me (not necessary!)
+        self.ncp = tgt_cts.get_discretization_info()['ncp']
+        fe_l = tgt_cts.get_finite_elements()
+        fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
+
+        for i in range(0, len(fe_list)):  # test whether integer elements
+            self.jump_constraints(i)
+
+    ###########################
+    def jump_constraints(self, fe):
+        # type: (int) -> None
+        """ Take the current state of variables of the initializing model at fe and load it into the tgt_model
+        Note that this will skip fixed variables as a safeguard.
+
+        Args:
+            fe (int): The current finite element to be patched (tgt_model).
+        """
+        ###########################
+        if not isinstance(fe, int):
+            raise Exception  # wrong type
+        ttgt = getattr(self.model, self.time_set)
+        ##############################
+        # Inclusion of discrete jumps: (CS)
+        if self.jump:
+            kn = 0
+            for ki in self.jump_times_dict.keys():
+                if not isinstance(ki, str):
+                    print("ki is not str")
+                vtjumpkeydict = self.jump_times_dict[ki]
+                for l in vtjumpkeydict.keys():
+                    self.jump_time = vtjumpkeydict[l]
+                    # print('jumptime:',self.jump_time)
+                    self.jump_fe, self.jump_cp = fe_cp(ttgt, self.jump_time)
+                    if self.jump_time not in self.feed_times_set:
+                        raise Exception("Error: Check feed time points in set feed_times and in jump_times again.\n"
+                                        "They do not match.\n"
+                                        "Jump_time is not included in feed_times.")
+                    # print('jump_el, el:',self.jump_fe, fe)
+                    if fe == self.jump_fe + 1:
+                        # print("jump_constraints!")
+                        #################################
+                        for v in self.disc_jump_v_dict.keys():
+                            if not isinstance(v, str):
+                                print("v is not str")
+                            vkeydict = self.disc_jump_v_dict[v]
+                            for k in vkeydict.keys():
+                                if k == l:  # Match in between two components of dictionaries
+                                    var = getattr(self.model, v)
+                                    dvar = getattr(self.model, "d" + v + "dt")
+                                    con_name = 'd' + v + 'dt_disc_eq'
+                                    con = getattr(self.model, con_name)
+
+                                    self.model.add_component(v + "_dummy_eq_" + str(kn), ConstraintList())
+                                    conlist = getattr(self.model, v + "_dummy_eq_" + str(kn))
+                                    varname = v + "_dummy_" + str(kn)
+                                    self.model.add_component(varname, Var())
+                                    vdummy = getattr(self.model, varname)
+                                    jump_delta = vkeydict[k]
+                                    self.model.add_component(v + '_jumpdelta' + str(kn),
+                                                             Param(initialize=jump_delta))
+                                    jump_param = getattr(self.model, v + '_jumpdelta' + str(kn))
+                                    if not isinstance(k, tuple):
+                                        k = (k,)
+                                    exprjump = vdummy - var[(self.jump_time,) + k] == jump_param
+                                    self.model.add_component("jumpdelta_expr" + str(kn), Constraint(expr=exprjump))
+                                    for kcp in range(1, self.ncp + 1):
+                                        curr_time = t_ij(ttgt, self.jump_fe + 1, kcp)
+                                        if not isinstance(k, tuple):
+                                            knew = (k,)
+                                        else:
+                                            knew = k
+                                        idx = (curr_time,) + knew
+                                        con[idx].deactivate()
+                                        e = con[idx].expr.clone()
+                                        e._args[0]._args[1] = vdummy
+                                        con[idx].set_value(e)
+                                        conlist.add(con[idx].expr)
+                    kn = kn + 1
+
+####################################################################
+
+    def _order_k_aug_hessian(self, unordered_hessian, var_loc):
+        """
+        not meant to be used directly by users. Takes in the inverse of the reduced hessian
+        outputted by k_aug and uses the rh_name to find the locations of the variables and then
+        re-orders the hessian to be in a format where the other functions are able to compute the
+        confidence intervals in a way similar to that utilized by sIpopt.
+        """
+        vlocsize = len(var_loc)
+        n_vars = len(self._idx_to_variable)
+        hessian = np.zeros((n_vars, n_vars))
+        i = 0
+        for vi in six.itervalues(self._idx_to_variable):
+            j = 0
+            for vj in six.itervalues(self._idx_to_variable):
+                h = unordered_hessian[(var_loc[vi]), (var_loc[vj])]
+                hessian[i, j] = h
+                j += 1
+            i += 1
+        print(hessian.size, "hessian size")
+        return hessian
+
     def run_opt(self, solver, **kwds):
 
         """ Solves parameter estimation problem.
-        
+
         Args:
             solver (str): name of the nonlinear solver to used
-          
+
             solver_opts (dict, optional): options passed to the nonlinear solver
-        
+
             variances (dict, optional): map of component name to noise variance. The
             map also contains the device noise variance
-            
+
             tee (bool,optional): flag to tell the optimizer whether to stream output
             to the terminal or not
-            
-            with_d_vars (bool,optional): flag to the optimizer whether to add 
+
+            with_d_vars (bool,optional): flag to the optimizer whether to add
             variables and constraints for D_bar(i,j)
+
+            estimability (bool, optional): flag to tell the model whether it is
+            being used by the estimability analysis and therefore will need to return the
+            hessian for analysis.
 
         Returns:
             Results object with loaded results
@@ -591,24 +880,106 @@ class ParameterEstimator(Optimizer):
         with_d_vars = kwds.pop('with_d_vars', False)
         covariance = kwds.pop('covariance', False)
 
+        estimability = kwds.pop('estimability', False)
+
+        #additional arguments for inputs CS
+        inputs = kwds.pop("inputs", None)
+        inputs_sub = kwds.pop("inputs_sub", None)
+        trajectories = kwds.pop("trajectories", None)
+        fixedtraj = kwds.pop("fixedtraj", False)
+        fixedy = kwds.pop("fixedy", False)
+        yfix = kwds.pop("yfix", None)
+        yfixtraj = kwds.pop("yfixtraj", None)
+
+        jump = kwds.pop("jump", False)
+        var_dic = kwds.pop("jump_states", None)
+        jump_times = kwds.pop("jump_times", None)
+        feed_times = kwds.pop("feed_times", None)
+
+        self.solver = solver
+        
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
 
         # Look at the output in results
-        opt = SolverFactory(solver)
+        opt = SolverFactory(self.solver)
 
         if covariance:
-            if solver != 'ipopt_sens':
-                raise RuntimeError('To get covariance matrix the solver needs to be ipopt_sens')
-            if not 'compute_red_hessian' in solver_opts.keys():
-                solver_opts['compute_red_hessian'] = 'yes'
+            if self.solver != 'ipopt_sens' and self.solver != 'k_aug':
+                raise RuntimeError('To get covariance matrix the solver needs to be ipopt_sens or k_aug')
+            if self.solver == 'ipopt_sens':
+                if not 'compute_red_hessian' in solver_opts.keys():
+                    solver_opts['compute_red_hessian'] = 'yes'
+            if self.solver == 'k_aug':
+                solver_opts['compute_inv'] = ''
 
             self._define_reduce_hess_order()
 
         for key, val in solver_opts.items():
             opt.options[key] = val
 
+        if estimability == True:
+            self._estimability = True
+            # solver_opts['dsdp_mode'] = ""
         active_objectives = [o for o in self.model.component_map(Objective, active=True)]
+
+        """inputs section""" # additional section for inputs from trajectory and fixed inputs, CS
+        self.fixedtraj = fixedtraj
+        self.fixedy = fixedy
+        self.inputs_sub = inputs_sub
+        self.yfix = yfix
+        self.yfixtraj = yfixtraj
+        if self.inputs_sub!=None:
+            for k in self.inputs_sub.keys():
+                if not isinstance(self.inputs_sub[k], list):
+                    print("wrong type for inputs_sub {}".format(type(self.inputs_sub[k])))
+                    # raise Exception
+                for i in self.inputs_sub[k]:
+                    # print(self.inputs_sub[k])
+                    # print(i)
+                    if self.fixedtraj==True:
+                        for j in self.yfixtraj.keys():
+                            for l in self.yfixtraj[j]:
+                                if i==l:
+                                    # print('herel:fixedy', l)
+                                    if not isinstance(self.yfixtraj[j], list):
+                                        print("wrong type for yfixtraj {}".format(type(self.yfixtraj[j])))
+                                    reft = trajectories[(k, i)]
+                                    self.fix_from_trajectory(k, i, reft)
+                    if self.fixedy==True:
+                        for j in self.yfix.keys():
+                            for l in self.yfix[j]:
+                                if i==l:
+                                    # print('herel:fixedy',l)
+                                    if not isinstance(self.yfix[j], list):
+                                        print("wrong type for yfix {}".format(type(self.yfix[j])))
+                                    for key in self.model.time.value:
+                                        vark=getattr(self.model,k)
+                                        vark[key, i].set_value(key)
+                                        vark[key, i].fix()# since these are inputs we need to fix this
+                    else:
+                        print("A trajectory or fixed input is missing for {}\n".format((k, i)))
+        """/end inputs section"""
+
+        if jump:
+            self.disc_jump_v_dict = var_dic
+            self.jump_times_dict = jump_times  # now dictionary
+            self.feed_times_set = feed_times
+            if not isinstance(self.disc_jump_v_dict, dict):
+                print("disc_jump_v_dict is of type {}".format(type(self.disc_jump_v_dict)))
+                raise Exception  # wrong type
+            if not isinstance(self.jump_times_dict, dict):
+                print("disc_jump_times is of type {}".format(type(self.jump_times_dict)))
+                raise Exception  # wrong type
+            count = 0
+            for i in six.iterkeys(self.jump_times_dict):
+                for j in six.iteritems(self.jump_times_dict[i]):
+                    count += 1
+            if len(self.feed_times_set) > count:
+                raise Exception("Error: Check feed time points in set feed_times and in jump_times again.\n"
+                            "There are more time points in feed_times than jump_times provided.")
+            self.load_discrete_jump()
+
         if active_objectives:
             print(
                 "WARNING: The model has an active objective. Running optimization with models objective.\n"
@@ -627,19 +998,21 @@ class ParameterEstimator(Optimizer):
                                       covariance=covariance,
                                       **kwds)
         else:
-            raise RuntimeError('Must either provide concentration data or spectra in order to solve the parameter estimation problem')
-        
+            raise RuntimeError(
+                'Must either provide concentration data or spectra in order to solve the parameter estimation problem')
+
         results = ResultsObject()
-        
+
         if self._spectra_given:
             results.load_from_pyomo_model(self.model,
-                                      to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
+                                          to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
         elif self._concentration_given:
             results.load_from_pyomo_model(self.model,
-                                      to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Y'])
+                                          to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Y'])
         else:
-            raise RuntimeError('Must either provide concentration data or spectra in order to solve the parameter estimation problem')
-           
+            raise RuntimeError(
+                'Must either provide concentration data or spectra in order to solve the parameter estimation problem')
+
         if self._spectra_given:
             self.compute_D_given_SC(results)
 
@@ -649,14 +1022,25 @@ class ParameterEstimator(Optimizer):
 
         results.P = param_vals
 
-        return results
+        if self._estimability == True:
+            return self.hessian, results
+        else:
+            return results
 
 
 def split_sipopt_string(output_string):
     start_hess = output_string.find('DenseSymMatrix')
     ipopt_string = output_string[:start_hess]
     hess_string = output_string[start_hess:]
-    print(hess_string, ipopt_string)
+    # print(hess_string, ipopt_string)
+    return (ipopt_string, hess_string)
+
+
+def split_k_aug_string(output_string):
+    start_hess = output_string.find('')
+    ipopt_string = output_string[:start_hess]
+    hess_string = output_string[start_hess:]
+    # print(hess_string, ipopt_string)
     return (ipopt_string, hess_string)
 
 
@@ -677,6 +1061,74 @@ def read_reduce_hessian2(hessian_string, n_vars):
 
 
 def read_reduce_hessian(hessian_string, n_vars):
+    hessian = np.zeros((n_vars, n_vars))
+    for i, line in enumerate(hessian_string.split('\n')):
+        if i > 0:  # ignores header
+            if line not in ['', ' ', '\t']:
+                hess_line = line.split(']=')
+                if len(hess_line) == 2:
+                    value = float(hess_line[1])
+                    column_line = hess_line[0].split(',')
+                    col = int(column_line[1])
+                    row_line = column_line[0].split('[')
+                    row = int(row_line[1])
+                    hessian[row, col] = float(value)
+                    hessian[col, row] = float(value)
+    return hessian
+
+#######################additional for inputs###CS
+def t_ij(time_set, i, j):
+    # type: (ContinuousSet, int, int) -> float
+    """Return the corresponding time(continuous set) based on the i-th finite element and j-th collocation point
+    From the NMPC_MHE framework by @dthierry.
+
+    Args:
+        time_set (ContinuousSet): Parent Continuous set
+        i (int): finite element
+        j (int): collocation point
+
+    Returns:
+        float: Corresponding index of the ContinuousSet
+    """
+    if i < time_set.get_discretization_info()['nfe']:
+        h = time_set.get_finite_elements()[i + 1] - time_set.get_finite_elements()[i]  #: This would work even for 1 fe
+    else:
+        h = time_set.get_finite_elements()[i] - time_set.get_finite_elements()[i - 1]  #: This would work even for 1 fe
+    tau = time_set.get_discretization_info()['tau_points']
+    fe = time_set.get_finite_elements()[i]
+    time = fe + tau[j] * h
+    return round(time, 6)
+
+
+def fe_cp(time_set, feedtime):
+    # type: (ContinuousSet, float) -> tuple
+    # """Return the corresponding fe and cp for a given time
+    # Args:
+    #    time_set:
+    #    t:
+    # """
+    fe_l = time_set.get_lower_element_boundary(feedtime)
+   # print("fe_l", fe_l)
+    fe = None
+    j = 0
+    for i in time_set.get_finite_elements():
+        if fe_l == i:
+            fe = j
+            break
+        j += 1
+    h = time_set.get_finite_elements()[1] - time_set.get_finite_elements()[0]
+    tauh = [i * h for i in time_set.get_discretization_info()['tau_points']]
+    j = 0  #: Watch out for LEGENDRE
+    cp = None
+    for i in tauh:
+        if round(i + fe_l, 6) == feedtime:
+            cp = j
+            break
+        j += 1
+    return fe, cp
+################################################
+
+def read_reduce_hessian_k_aug(hessian_string, n_vars):
     hessian = np.zeros((n_vars, n_vars))
     for i, line in enumerate(hessian_string.split('\n')):
         if i > 0:  # ignores header
