@@ -30,11 +30,19 @@ class ParameterEstimator(Optimizer):
         self._estimability = False
         self._idx_to_variable = dict()
         self._n_actual = self._n_components
+        
         if hasattr(self.model, 'non_absorbing'):
             warnings.warn("Overriden by non_absorbing")
             list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
             self._sublist_components = list_components
             self._n_actual = len(self._sublist_components)
+            
+        if hasattr(self.model, 'known_absorbance'):
+            warnings.warn("Overriden by known_absorbance")
+            list_components = [k for k in self._mixture_components if k not in self._known_absorbance]
+            self._sublist_components = list_components
+            self._n_actual = len(self._sublist_components)
+            
         else:
             self._sublist_components = [k for k in self._mixture_components]
 
@@ -79,8 +87,12 @@ class ParameterEstimator(Optimizer):
             raise NotImplementedError("Extended model requires spectral data model.D[ti,lj]")
 
         if hasattr(self.model, 'non_absorbing'):
-            warnings.warn("Overriden by non_absorbing!!!")
+            warnings.warn("Overriden by non_absorbing!")
             list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
+        
+        if hasattr(self.model, 'known_absorbance'):
+            warnings.warn("Overriden by known_absorbance!")
+            list_components = [k for k in self._mixture_components if k not in self._known_absorbance]
 
         all_sigma_specified = True
         print(sigma_sq)

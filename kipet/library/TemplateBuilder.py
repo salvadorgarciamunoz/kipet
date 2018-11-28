@@ -78,11 +78,15 @@ class TemplateBuilder(object):
         self._complementary_states = set()
         self._algebraics = set()
         self._algebraic_constraints = None
+        self._known_absorbance = None
+        self._is_known_abs_set = False
+        self._known_absorbance_data = None
         self._non_absorbing = None
         self._is_non_abs_set = False
         self._feed_times = set() #For inclusion of discrete feeds CS
         self._is_D_deriv = False
         self._is_C_deriv = False
+        
 
         components = kwargs.pop('concentrations', dict())
         if isinstance(components, dict):
@@ -745,6 +749,10 @@ class TemplateBuilder(object):
                                                       rule=rule_algebraics)
         if self._is_non_abs_set:  #: in case of a second call after non_absorbing has been declared
             self.set_non_absorbing_species(pyomo_model, self._non_absorbing, check=False)
+            
+        if self._is_known_abs_set:  #: in case of a second call after known_absorbing has been declared
+            self.set_known_absorbing_species(pyomo_model, self._known_absorbance, self._known_absorbance_data, check=False)
+            
         return pyomo_model
 
     def create_casadi_model(self, start_time, end_time):
@@ -942,3 +950,35 @@ class TemplateBuilder(object):
             for component in self._non_absorbing:
                 new_con.add(C[time, component] == Z[time, component])
 
+    def set_known_absorbing_species(self, model, known_abs_list, absorbance_data, check=True):
+        # type: (ConcreteModel, list, dataframe, bool) -> None
+        """Sets the known absorbance profiles for specific components of the model.
+
+        Args:
+            knon_abs_list: List of known species absorbance components.
+            model: The corresponding model.
+            absorbance_data: the dataframe containing the known component spectra
+            check: Safeguard against setting this up twice.
+        """
+        if hasattr(model, 'known_absorbance'):
+            print("species with known absorbance were already set up before.")
+            return
+
+        if (self._is_non_abs_set and check):
+            raise RuntimeError('Species with known absorbance were already set up before.')
+
+        self._is_known_abs_set = True
+        self._known_absorbance = known_abs_list
+        self._known_absorbance_data = absorbance_data
+        model.add_component('known_absorbance', Set(initialize=self._known_absorbance))
+        S = getattr(model, 'S')
+        C = getattr(model, 'C')
+        Z = getattr(model, 'Z')
+        times = getattr(model, 'meas_times')
+        lambdas = getattr(model, 'meas_lambdas')
+        model.known_absorbance_data = self._known_absorbance_data
+        for component in self._known_absorbance:
+            for l in lambdas:
+                S[l, component].set_value(self._known_absorbance_data[component][l])
+                S[l, component].fix()
+        print("we got here again")
