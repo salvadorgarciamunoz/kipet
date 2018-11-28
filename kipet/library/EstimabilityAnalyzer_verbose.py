@@ -441,7 +441,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
                         next_est[count2] = t
                 count2 += 1
             print("next_est",next_est)  
-            self.param_ranks[(iter_count+2)]=idx_to_param[next_est[0]+1]
+            self.param_ranks[(iter_count+2)]=idx_to_param[next_est[0]]
             iter_count += 1
             for i in self.param_ranks:
                 print(i)
