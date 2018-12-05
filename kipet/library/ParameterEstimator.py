@@ -299,7 +299,7 @@ class ParameterEstimator(Optimizer):
         #    list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
 
         all_sigma_specified = True
-        print(sigma_sq)
+        #print(sigma_sq)
         keys = sigma_sq.keys()
         for k in list_components:
             if k not in keys:
@@ -1004,7 +1004,6 @@ class ParameterEstimator(Optimizer):
                                        with_d_vars=with_d_vars,
                                        **kwds)
         elif self._concentration_given:
-            print("This prints before the solve model given c")
             self._solve_model_given_c(variances, opt,
                                       tee=tee,
                                       covariance=covariance,
