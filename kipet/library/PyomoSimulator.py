@@ -38,6 +38,8 @@ class PyomoSimulator(Simulator):
         self._ipopt_scaled = False
         self._spectra_given = hasattr(self.model, 'D')
         self._concentration_given = hasattr(self.model, 'C')
+        self._absorption_given = hasattr(self.model, 'S') #added for special case of absorption data available but not concentration data CS
+
         #creates scaling factor suffix
         if not hasattr(self.model, 'scaling_factor'):
             self.model.scaling_factor = Suffix(direction=Suffix.EXPORT)
@@ -407,9 +409,33 @@ class PyomoSimulator(Simulator):
         # retriving solutions to results object  
         results.load_from_pyomo_model(self.model,
                                       to_load=['Z','dZdt','X','dXdt','Y'])
-        
+
+        c_noise_results = []
+
+        w = np.zeros((self._n_components,self._n_meas_times))
+        n_sig = np.zeros((self._n_components,self._n_meas_times))
+        # for the noise term
+        if sigmas:
+            for i,k in enumerate(self._mixture_components):
+                if k in sigmas.keys():
+                    sigma = sigmas[k]**0.5
+                    dw_k = np.random.normal(0.0,sigma,self._n_meas_times)
+                    n_sig[i,:] = np.random.normal(0.0,sigma,self._n_meas_times)
+                    w[i,:] = np.cumsum(dw_k)
+
+        # this addition is not efficient but it can be changed later
+        for i,t in enumerate(self._meas_times):
+            for j,k in enumerate(self._mixture_components):
+                #c_noise_results.append(Z_var[t,k].value+ w[j,i])
+                c_noise_results.append(Z_var[t,k].value+ n_sig[j,i])
+
+        c_noise_array = np.array(c_noise_results).reshape((self._n_meas_times,self._n_components))
+        results.C = pd.DataFrame(data=c_noise_array,
+                                columns=self._mixture_components,
+                                index=self._meas_times)
+
         #addition for inputs estimation with concentration data CS:
-        if self._concentration_given is not None:
+        if self._concentration_given==True and self._absorption_given==False:
             c_noise_results = []
             for i,t in enumerate(self._meas_times):
                 for j,k in enumerate(self._mixture_components):
@@ -418,31 +444,6 @@ class PyomoSimulator(Simulator):
             results.C = pd.DataFrame(data=c_noise_array,
                                     columns=self._mixture_components,
                                     index=self._meas_times)
-        if self._spectra_given:
-            c_noise_results = []
-
-            w = np.zeros((self._n_components,self._n_meas_times))
-            n_sig = np.zeros((self._n_components,self._n_meas_times))
-            # for the noise term
-            if sigmas:
-                for i,k in enumerate(self._mixture_components):
-                    if k in sigmas.keys():
-                        sigma = sigmas[k]**0.5
-                        dw_k = np.random.normal(0.0,sigma,self._n_meas_times)
-                        n_sig[i,:] = np.random.normal(0.0,sigma,self._n_meas_times)
-                        w[i,:] = np.cumsum(dw_k)
-
-            # this addition is not efficient but it can be changed later
-            for i,t in enumerate(self._meas_times):
-                for j,k in enumerate(self._mixture_components):
-                    #c_noise_results.append(Z_var[t,k].value+ w[j,i])
-                    c_noise_results.append(Z_var[t,k].value+ n_sig[j,i])
-
-            c_noise_array = np.array(c_noise_results).reshape((self._n_meas_times,self._n_components))
-            results.C = pd.DataFrame(data=c_noise_array,
-                                    columns=self._mixture_components,
-                                    index=self._meas_times)
-        
         s_results = []
         for l in self._meas_lambdas:
             for k in self._mixture_components:
