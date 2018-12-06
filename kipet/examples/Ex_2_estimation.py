@@ -54,7 +54,8 @@ if __name__ == "__main__":
     builder = TemplateBuilder()    
     components = {'A':1e-3,'B':0,'C':0}
     builder.add_mixture_component(components)
-    builder.add_parameter('k1',bounds=(0.0,5.0))
+    builder.add_parameter('k1', init=4.0, bounds=(0.0,5.0)) 
+    #There is also the option of providing initial values: Just add init=... as additional argument as above.
     builder.add_parameter('k2',bounds=(0.0,1.0))
     builder.add_spectral_data(D_frame)
 
