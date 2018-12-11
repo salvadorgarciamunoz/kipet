@@ -19,15 +19,17 @@ __author__ = 'Michael Short'  #: November 2018
 
 class EstimabilityAnalyzer(ParameterEstimator):
     """This class is for estimability analysis. For now it will be used to select the parameter set that
-    is suitable for estimation based on a mean squared error (MSE) based approach first described by
-    Wu, McLean, Harris, and McAuley (2011). The class will contain a number of functions that will perform the 
-    estimability analysis. This should eventually be expanded to include a host of functions and methods.
+    is suitable for estimation based on a mean squared error (MSE) approach first described by Wu, McLean,
+    Harris, and McAuley (2011). This, in time, will be expanded to be able to do estimability analysis 
+    for spectral data problems as well. The class will contain a number of functions that will perform the 
+    estimability analysis. 
 
     Parameters
     ----------
     model : TemplateBuilder
-        The full model TemplateBuilder problem needs to be fed into the Estimability Analyzer as this is needed
-        in order to build the sensitivities for ranking parameters as well as for constructing the simplified models
+        The full model TemplateBuilder problem needs to be fed into the Estimability Analyzer as this is 
+        needed in order to build the sensitivities for ranking parameters as well as for constructing the 
+        simplified models
     """
 
     def __init__(self, model):
@@ -36,6 +38,9 @@ class EstimabilityAnalyzer(ParameterEstimator):
         
     def run_sim(self, solver, **kdws):
         raise NotImplementedError("EstimabilityAnalyzer object does not have run_sim method. Call run_analyzer")
+
+    def run_opt(self, solver, **kdws):
+        raise NotImplementedError("EstimabilityAnalyzer object does not have run_opt method. Call run_analyzer")
 
     def get_sensitivities_for_params(self, **kwds):
         """ Obtains the sensitivities (dsdp) using k_aug. This function only works for
@@ -52,9 +57,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         Returns:
             dsdp (numpy matrix):  sensitivity matrix with columns being parameters and rows the Z vars
             idx_to_params (dict): dictionary that maps the columns to the parameters
-            (This should probably be a global variable, not a return)
-        """       
-        
+        """               
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before running the estimability')
             
@@ -76,7 +79,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
             raise NotImplementedError("In order to use the estimability analysis from concentration data requires concentration data model.C[ti,cj]")
 
         all_sigma_specified = True
-        #print(sigma_sq)
+
         keys = sigma_sq.keys()
         for k in list_components:
             if k not in keys:
@@ -147,8 +150,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         m.dcdp = Suffix(direction=Suffix.EXPORT)  #: the dummy constraints
         m.var_order = Suffix(direction=Suffix.EXPORT)  #: Important variables (primal)
         
-        # set which are the variables and which are the parameters for k_aug
-        
+        # set which are the variables and which are the parameters for k_aug       
         count_vars = 1
         #print("count_vars:",count_vars)
         if not self._spectra_given:
@@ -171,15 +173,13 @@ class EstimabilityAnalyzer(ParameterEstimator):
         if self._concentration_given:
             for t in self._meas_times:
                 for c in self._sublist_components:
-                    m.Z[t, c].set_suffix_value(m.var_order,count_vars)
-                        
+                    m.Z[t, c].set_suffix_value(m.var_order,count_vars)                        
                     count_vars += 1
-        
+                    
         count_dcdp = 1
 
         idx_to_param = dict()
-        for p in m.parameter_names:
-            
+        for p in m.parameter_names:            
             m.dummyC[p].set_suffix_value(m.dcdp,count_dcdp)
             idx_to_param[count_dcdp]=p
             count_dcdp+=1
@@ -191,7 +191,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         #first solve with Ipopt
         ip = SolverFactory('ipopt')
         solver_results = ip.solve(m, tee=False,
-                                  report_timing=True)
+                                  report_timing=False)
 
         m.ipopt_zL_in.update(m.ipopt_zL_out)
         m.ipopt_zU_in.update(m.ipopt_zU_out) 
@@ -201,30 +201,29 @@ class EstimabilityAnalyzer(ParameterEstimator):
         #solve with k_aug in sensitivity mode
         k_aug.solve(m, tee=True)
         print("Done solving sensitivities")
-            
-        #print('k_aug dsdp')
-        #m.dcdp.pprint()
 
         dsdp = np.loadtxt('dxdp_.dat')
         
         if os.path.exists('dxdp_.dat'):
             os.remove('dxdp_.dat')
         print(idx_to_param)
+        
         return dsdp , idx_to_param
 
     def rank_params_yao(self, param_scaling = None, meas_scaling = None, sigmas = None):
-        """This function ranks parameters in the method described in Yao (2003) by obtaining the sensitivities related
-        to the parameters in the model through solving the original NLP model for concentrations, getting the sensitivities
-        relating to each paramater, and then using them to predict the next sensitivity. User must provide scaling factors
-        as defined in the paper. These are in the form of dictionaries, relating the confidences to the initial
+        """This function ranks parameters in the method described in Yao (2003) by obtaining the 
+        sensitivities related to the parameters in the model through solving the original NLP model 
+        for concentrations, getting the sensitivities relating to each paramater, and then using 
+        them to predict the next sensitivity. User must provide scaling factors as defined in the 
+        paper. These are in the form of dictionaries, relating the confidences to the initial
         guesses for the parameters as well as for the confidence in the measurements.
 
         Args:
         ----------
-        param_scaling (dictionary): dictionary including each parameter and their relative uncertainty. e.g. a value of 
-        0.5 means that the value for the real parameter is within 50% of the guessed value
+        param_scaling (dictionary): dictionary including each parameter and their relative uncertainty.
+        e.g. a value of 0.5 means that the value for the real parameter is within 50% of the guessed value
     
-        meas_scaling (scalar): scalar value showing the certainty of the measurement obtained from the device 
+        meas_scaling (scalar): scalar value showing the certainty of the measurement, obtained from the device 
         manufacturer or general knowledge of process
         
         sigmasq (dict): map of component name to noise variance. The map also contains the device noise variance.
@@ -255,9 +254,34 @@ class EstimabilityAnalyzer(ParameterEstimator):
                 print("meas_scaling", meas_scaling)
             else:
                 raise RuntimeError('The meas_scaling must be type int')
+         
+        if sigmas == None:
+            sigmas ={}
+            print("WARNING: No variances provided by user, so variances are assumed to be 1.")
+            # sigmas need to be specified
+            for p in self.model.P:
+                sigmas[p] = 1
+                print("automated sigmas", sigmas)
                 
+        elif sigmas != None:
+            if type(param_scaling) is not dict:
+                raise RuntimeError('The param_scaling must be type dict')
+            
+            else:
+                keys = sigmas.keys()
+                list_components = [k for k in self._mixture_components]
+                all_sigma_specified = True
+                for k in list_components:
+                    if k not in keys:
+                        all_sigma_specified = False
+                        sigmas[k] = max(sigmas.values())
+                
+                if not all_sigma_specified:
+                    raise RuntimeError(
+                            'All variances must be specified to determine sensitivities.\n Please pass variance dictionary to rank_params_yao')        
         # k_aug is used to get the sensitivities. The full model is solved with dummy
         # parameters and variables at the initial values for the parameters
+        self.cloned_before_k_aug = self.model.clone()
         dsdp, idx_to_param = self.get_sensitivities_for_params(tee=True, sigmasq=sigmas)
 
         nvars = np.size(dsdp,0)
@@ -275,8 +299,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         i=0
         for k, p in self.model.P.items():
             if p.is_fixed():
-                continue
-            
+                continue            
             for row in range(len(dsdp)):
                 dsdp_scaled[row][i] = dsdp[row][i]*param_scaling[k]/meas_scaling
             i += 1
@@ -322,15 +345,13 @@ class EstimabilityAnalyzer(ParameterEstimator):
                 paramhere = ordered_params[x]
                 kcol = dsdp[:,ordered_params[x]].T
                 recol= kcol.reshape((nvars,1))
-
                 if x >= 1:
                     X = np.append(X,np.zeros([len(X),1]),1)
-
                 for n in range(nvars):
                     X[n][x] = recol[n][0]
-
             # Use Ordinary Least Squares to use X to predict Z
             # try is here to catch any error resulting from a singular matrix
+            # perhaps not the most elegant way of checking for this
             try:
                 A = X.T.dot(X)
                 B= np.linalg.inv(A)
@@ -338,7 +359,6 @@ class EstimabilityAnalyzer(ParameterEstimator):
                 D=X.dot(C)
                 Z = dsdp.T
                 Zbar=D.dot(Z.T)
-
                 #Get residuals of prediction
                 Res = Z.T - Zbar
             except:
@@ -371,7 +391,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
             self.param_ranks[(iter_count+2)]=idx_to_param[next_est[0]]
             iter_count += 1
             
-            print("======================PARAMETER RANKED======================")
+            #print("======================PARAMETER RANKED======================")
             if len(self.param_ranks) == nparams - 1:
                 print("All parameters have been ranked")
                 break
@@ -384,8 +404,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
             if p.is_fixed():
                 print(v, end='\t')
                 print("is fixed")
-                continue
-            
+                continue            
             if v in self.param_ranks.values():
                 continue
             else:
@@ -417,3 +436,231 @@ class EstimabilityAnalyzer(ParameterEstimator):
             count += 1
 
         return self.ordered_params
+
+    def run_analyzer(self, method = None, parameter_rankings = None, meas_scaling = None, variances = None):
+        """This function performs the estimability analysis. The user selects the method to be used. 
+        The default will be selected based on the type of data selected. For now, only the method of 
+        Wu, McLean, Harris, and McAuley (2011) using the means squared error is used. Other estimability 
+        analysis tools will be added in time. The parameter rankings need to be included as well and 
+        this can be done using various methods, however for now, only the Yao (2003) method is used.
+
+        Args:
+        ----------
+        method: string
+            The estimability method to be used. Default is Wu, et al (2011) for concentrations. Others 
+            to be added
+    
+        parameter_rankings: list
+            A list containing the parameter rankings in order from most estimable to least estimable. 
+            Can be obtained using one of Kipet's parameter ranking functions.
+            
+        meas_scaling: scalar 
+            value showing the certainty of the measurement obtained from the device manufacturer or
+             general knowledge of process. Same as used in the parameter ranking algorithm.
+        
+        variances: dict
+            variances are required, as needed by the parameter estimator.
+        
+        returns: list
+            list of parameters that should remain in the parameter estimation, while all other 
+            parameters should be fixed.
+        """
+        if method == None:
+            method = "Wu"
+            print("The method to be used is that of Wu, et al. 2011")
+        elif method != "Wu":
+            print("The only supported method for estimability analysis is that of Wu, et al., 2011, currently")
+        else:
+            method = "Wu"
+            
+        if parameter_rankings == None:
+            raise RuntimeError('The parameter rankings need to be provided in order to run the estimability analysis chosen')
+            
+        elif parameter_rankings != None:
+            if type(parameter_rankings) is not list:
+                raise RuntimeError('The parameter_rankings must be type dict')   
+                
+        for v,k in six.iteritems(self.model.P): 
+            if v in parameter_rankings:
+                continue
+            else:
+                print("Warning, %s is not included in the parameter rankings algorithm" % v)
+                
+        for v in parameter_rankings:
+            if v not in self.model.P:
+                raise RuntimeError("parameter %s is not in the model! Either remove the parameter from the list or add it to the model" % v)
+        
+        if meas_scaling == None:
+            meas_scaling = 0.001
+            print("WARNING: No scaling for measurments provided by user, so uncertainties based on measurements will be set to 0.01")
+        elif meas_scaling != None:
+            if isinstance(meas_scaling, int) or isinstance(meas_scaling, float):
+                pass
+            else:
+                raise RuntimeError('The meas_scaling must be type int')
+                
+        if variances == None:
+            variances ={}
+            print("WARNING: No variances provided by user, so variances are assumed to be 1.")
+            # sigmas need to be specified
+            for p in self.model.P:
+                variances[p] = 1
+                print("automated sigmas", variances)
+            variances["device"] = 1
+        elif variances != None:
+            if type(variances) is not dict:
+                raise RuntimeError('The sigmas must be type dict')
+        
+        if method == "Wu":
+            estimable_params = self.wu_estimability(parameter_rankings, meas_scaling, variances)
+            return estimable_params
+        else:
+            raise RuntimeError("the estimability method must be 'Wu' as this is the only supported method as of now")
+
+    def wu_estimability(self, parameter_rankings = None, meas_scaling = None, sigmas = None):
+        """This function performs the estimability analysis of Wu, McLean, Harris, and McAuley (2011) 
+        using the means squared error. 
+
+        Args:
+        ----------
+        parameter_rankings: list
+            A list containing the parameter rankings in order from most estimable to least estimable. 
+            Can be obtained using one of Kipet's parameter ranking functions.
+            
+        meas_scaling: int
+            measurement scaling as used to scale the sensitivity matrix during param ranking
+        
+        sigmas: dict
+            dictionary containing all the variances as required by the parameter estimator
+        
+        Returns:
+        -----------
+            list of parameters that should remain in the parameter estimation, while all other parameters should be fixed.
+        """
+        
+        J = dict()
+        params_estimated = list()
+        cloned_full_model = dict()
+        cloned_pestim = dict()
+        results = dict()
+        # For now, instead of using Levenberg-Marquardt least squares, we will use Kipet to perform the estimation
+        # of every model. Here we generate each of the simplified models.
+        # first we clone the main model so that we work with the full model at every iteration
+        count = 1
+        for p in parameter_rankings:
+            cloned_full_model[count] = self.cloned_before_k_aug.clone()
+            count += 1
+        count = 1
+        # Then we go create each simplified model, fixing remaining variables
+        for p in parameter_rankings:
+            params_estimated.append(p)            
+            #print("performing parameter estimation for: ", params_estimated)
+            for v,k in six.iteritems(cloned_full_model[count].P):
+                if v in params_estimated:
+                    continue
+                else:
+                    #print("fixing the parameters for:",v,k)
+                    #fix parameters not in simplified model
+                    ub = value(cloned_full_model[count].P[v])
+                    lb = ub
+                    cloned_full_model[count].P[v].setlb(lb)
+                    cloned_full_model[count].P[v].setub(ub)
+            # We then solve the Parameter estimaion problem for the SM
+            options = dict()            
+            cloned_pestim[count] = ParameterEstimator(cloned_full_model[count])
+            results[count] = cloned_pestim[count].run_opt('ipopt',
+                                        tee=False,
+                                        solver_opts = options,
+                                        variances=sigmas
+                                        )
+            #for v,k in six.iteritems(results[count].P):                
+                #print(v,k)
+            # Then compute the scaled residuals to obtain the Jk in the Wu et al paper   
+            J [count] = self._compute_scaled_residuals(results[count], meas_scaling)
+            count += 1            
+        #print(J)
+        count = count - 1
+        # Since the estimability procedure suggested by Wu will always skip the last
+        # parameter, we should check whether all parameters can be estimated
+        # For now this is done by checking that the final parameter does not provide a massive decrease
+        # the residuals
+        low_MSE = J[1]
+        listMSE = list()
+        for k in J:
+            listMSE.append(J[k]) 
+            if J[k] <= low_MSE:
+                low_MSE = J[k]
+            else:
+                continue
+        if J[count] == low_MSE:
+            print("Lowest MSE is given by the lowest ranked parameter, therefore the full model should suffice")
+            listMSE.sort()
+            print("list of ordered mean squared errors of each :")
+            print(listMSE)
+            if listMSE[0]*10 <= listMSE[1]:
+                print("all parameters are estimable! No need to reduce the model")
+                return parameter_rankings
+
+        # Now we move the the final steps of the algorithm where we compute critical ratio
+        # and the corrected critical ratio
+        # first we need the total number of responses
+        N = 0
+        for c in self._sublist_components:
+            for t in self._meas_times:
+                N += 1 
+                
+        crit_rat = dict()
+        cor_crit_rat = dict()
+        for k in J:
+            if k == count:
+                break
+            crit_rat[k] = (J[k] - J[count])/(count - k)
+            crit_rat_Kub = max(crit_rat[k]-1,crit_rat[k]*(2/(count - k + 2)))
+            cor_crit_rat[k] = (count - k)/N * (crit_rat_Kub - 1)
+        
+        #Finally we select the value of k with the lowest corrected critical value
+        params_to_select = min(cor_crit_rat, key = lambda x: cor_crit_rat.get(x) )
+        print("The number of estimable parameters is:", params_to_select)
+        print("optimization should be run wih the following parameters as variables and all others fixed")
+        estimable_params = list()
+        count=1
+        for p in parameter_rankings:
+            print(p)
+            estimable_params.append(p)
+            if count >= params_to_select:
+                break
+            count += 1
+        return estimable_params
+    
+    def _compute_scaled_residuals(self, model, meas_scaling = None):
+        """
+        Computes the square of residuals between the optimal solution (Z) and the concentration data (C)
+        
+        Args:
+            model (pyomo results object): solved pyomo model results object
+            meas_scaling (dict): parameter scaling, defined in Wu, needs to be the same as used to rank 
+                    parameters (scale sensitivity matrix)
+
+        returns:
+            value of sum of squared scaled residuals
+        This method is not intended to be used by users directly
+        """        
+        nt = self._n_meas_times
+        nc = self._n_actual
+        self.residuals = dict()
+        count_c = 0
+        for c in self._sublist_components:
+            count_t = 0
+            for t in self._meas_times:
+                a = model.C[c][t]
+                b = model.Z[c][t]
+                r = ((a - b) ** 2)
+                self.residuals[t, c] = r
+                count_t += 1
+            count_c += 1
+        E = 0           
+        for c in self._sublist_components:
+            for t in self._meas_times:                
+                E += self.residuals[t, c] / (meas_scaling ** 2)
+                
+        return E

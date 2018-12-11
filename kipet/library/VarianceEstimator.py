@@ -132,7 +132,11 @@ class VarianceEstimator(Optimizer):
             warnings.warn("Overriden by non_absorbing")
             list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
             self._sublist_components = list_components
-
+        
+        if hasattr(self.model, 'known_absorbance'):
+            warnings.warn("Overriden by species with known absorbance")
+            list_components = [k for k in self._mixture_components if k not in self._known_absorbance]
+            self._sublist_components = list_components
 #############################
         """inputs section""" # additional section for inputs from trajectory and fixed inputs, CS
         self.fixedtraj = fixedtraj
@@ -209,6 +213,10 @@ class VarianceEstimator(Optimizer):
                     if hasattr(self.model, 'non_absorbing'):
                         if k in self.model.non_absorbing:
                             self.model.S[l, k].value = 0.0
+                            
+                    if hasattr(self.model, 'known_absorbance'):
+                        if k in self.model.known_absorbance:
+                            self.model.S[l, k].value = self.model.known_absorbance_data[k][l]
         #start looping
         #print("{: >11} {: >20} {: >16} {: >16}".format('Iter','|Zi-Zi+1|','|Ci-Ci+1|','|Si-Si+1|'))
         print("{: >11} {: >20}".format('Iter', '|Zi-Zi+1|'))
@@ -380,7 +388,7 @@ class VarianceEstimator(Optimizer):
         tee = kwds.pop('tee', False)
         profile_time = kwds.pop('profile_time', False)
         
-        # asume this values were computed in beforehand
+        # assume this values were computed in beforehand
         for t in self._meas_times:
             for k in self._sublist_components:
                 if hasattr(self.model, 'non_absorbing'):
@@ -542,6 +550,9 @@ class VarianceEstimator(Optimizer):
                 if hasattr(self.model, 'non_absorbing'):
                     if c in self.model.non_absorbing:
                         self.model.S[l, c].set_value(0.0)
+                if hasattr(self.model, 'known_absorbance'):
+                    if c in self.model.known_absorbance:
+                        self.model.S[l, c].set_value(self.model.known_absorbance_data[c][l])
 
         return res.success
 
@@ -838,6 +849,11 @@ class VarianceEstimator(Optimizer):
                             # print("non_zero 772")
                             self.S_model.S[l, k].set_value(0.0)
                             self.S_model.S[l, k].fix()
+                if hasattr(self.model, 'known_absorbance'):
+                    if k in self.model.known_absorbance:
+                        if self.model.S[l, k].value != self.model.known_absorbance_data[k][l]:
+                            self.model.S[l, k].set_value(self.model.known_absorbance_data[k][l])
+                            self.S_model.S[l, k].fix()
 
     def _solve_S(self, solver, **kwds):
         """Solves formulation 23 from Weifengs procedure with ipopt
@@ -865,7 +881,12 @@ class VarianceEstimator(Optimizer):
                             # print("non_zero 800")
                             self.S_model.S[l, c].set_value(0.0)
                             self.S_model.S[l, c].fix()
-        
+                            
+                if hasattr(self.model, 'known_absorbance'):
+                    if c in self.model.known_absorbance:
+                        if self.model.S[l, c].value != self.model.known_absorbance_data[c][l]:
+                            self.model.S[l, c].set_value(self.model.known_absorbance_data[c][l])
+                            self.S_model.S[l, c].fix()
         obj = 0.0
         # asumes base model has been solved already for Z
         for t in self._meas_times:
@@ -902,7 +923,12 @@ class VarianceEstimator(Optimizer):
                             # print("non_zero 837")
                             self.model.S[l, c].set_value(0.0)
                             self.model.S[l, c].fix()
-
+                if hasattr(self.model, 'known_absorbance'):
+                    if k in self.model.known_absorbance:
+                        if self.model.S[l, c].value != self.model.known_absorbance_data[c][l]:
+                            self.model.S[l, c].set_value(self.model.known_absorbance_data[c][l])
+                            self.S_model.S[l, c].fix()
+                            
     def _build_c_model(self):
         """Builds s_model to solve formulation 25 with ipopt
 

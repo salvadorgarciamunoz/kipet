@@ -397,6 +397,23 @@ def generate_random_absorbance_data(wl_span,component_peaks,component_widths=Non
 
     return generate_absorbance_data(wl_span,parameters_dict)
 
+def add_noise_to_signal(signal, size):
+    """
+    Adds a random normally distributed noise to a clean signal. Used mostly in Kipet
+    To noise absorbances or concentration profiles obtained from simulations. All
+    values that are negative after the noise is added are set to zero
+    Args:
+        signal (data): the Z or S matrix to have noise added to it
+        size (scalar): sigma (or size of distribution)
+    Returns:
+        pandas dataframe
+    """
+    clean_sig = signal    
+    noise = np.random.normal(0,size,clean_sig.shape)
+    sig = clean_sig+noise    
+    df= pd.DataFrame(data=sig)
+    df[df<0]=0
+    return df
 #=============================================================================
 #---------------------------PRE-PROCESSING TOOLS------------------------
 #=============================================================================
