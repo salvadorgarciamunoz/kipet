@@ -949,26 +949,27 @@ class ParameterEstimator(Optimizer):
                 for i in self.inputs_sub[k]:
                     # print(self.inputs_sub[k])
                     # print(i)
-                    if self.fixedtraj==True:
-                        for j in self.yfixtraj.keys():
-                            for l in self.yfixtraj[j]:
-                                if i==l:
-                                    # print('herel:fixedy', l)
-                                    if not isinstance(self.yfixtraj[j], list):
-                                        print("wrong type for yfixtraj {}".format(type(self.yfixtraj[j])))
-                                    reft = trajectories[(k, i)]
-                                    self.fix_from_trajectory(k, i, reft)
-                    if self.fixedy==True:
-                        for j in self.yfix.keys():
-                            for l in self.yfix[j]:
-                                if i==l:
-                                    # print('herel:fixedy',l)
-                                    if not isinstance(self.yfix[j], list):
-                                        print("wrong type for yfix {}".format(type(self.yfix[j])))
-                                    for key in self.model.time.value:
-                                        vark=getattr(self.model,k)
-                                        vark[key, i].set_value(key)
-                                        vark[key, i].fix()# since these are inputs we need to fix this
+                    if self.fixedtraj==True or self.fixedy==True:
+                        if self.fixedtraj==True:
+                            for j in self.yfixtraj.keys():
+                                for l in self.yfixtraj[j]:
+                                    if i==l:
+                                        # print('herel:fixedy', l)
+                                        if not isinstance(self.yfixtraj[j], list):
+                                            print("wrong type for yfixtraj {}".format(type(self.yfixtraj[j])))
+                                        reft = trajectories[(k, i)]
+                                        self.fix_from_trajectory(k, i, reft)
+                        if self.fixedy==True:
+                            for j in self.yfix.keys():
+                                for l in self.yfix[j]:
+                                    if i==l:
+                                        # print('herel:fixedy',l)
+                                        if not isinstance(self.yfix[j], list):
+                                            print("wrong type for yfix {}".format(type(self.yfix[j])))
+                                        for key in self.model.time.value:
+                                            vark=getattr(self.model,k)
+                                            vark[key, i].set_value(key)
+                                            vark[key, i].fix()# since these are inputs we need to fix this
                     else:
                         print("A trajectory or fixed input is missing for {}\n".format((k, i)))
         """/end inputs section"""
