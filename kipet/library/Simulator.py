@@ -62,8 +62,14 @@ class Simulator(object):
         self._n_algebraics = len(self._algebraics)
         self._n_complementary_states = len(self._complementary_states)
         self._non_absorbing = None
+        self._known_absorbance = None
+        self._known_absorbance_data = None
+        
         if hasattr(self.model, 'non_absorbing'):
             self._non_absorbing = [name for name in self.model.non_absorbing]
+        if hasattr(self.model, 'known_absorbance'):
+            self._known_absorbance = [name for name in self.model.known_absorbance]
+            
         if not self._mixture_components:
             raise RuntimeError('The model does not have any mixture components.\
             For simulation add mixture components')

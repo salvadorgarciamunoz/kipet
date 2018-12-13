@@ -119,13 +119,12 @@ if __name__ == "__main__":
     # dont push bounds i am giving you a good guess
     options = dict()
     #options['nlp_scaling_method'] = 'user-scaling'
-    options['mu_init'] = 1e-6
-    options['bound_push'] =1e-6
-    results_pyomo = p_estimator.run_opt('ipopt_sens',
+    #options['mu_init'] = 1e-6
+    #options['bound_push'] =1e-6
+    results_pyomo = p_estimator.run_opt('ipopt',
                                         tee=True,
                                         solver_opts=options,
-                                        variances=sigmas,
-                                        covariance=True)
+                                        variances=sigmas)
     print("The estimated parameters are:")
     for k, v in six.iteritems(results_pyomo.P):
         print(k, v)
