@@ -83,7 +83,7 @@ if __name__ == "__main__":
         r.append(m.Y[t, '2'] - m.Y[t,'k2T'] * m.Z[t, 'B'])
         Tr = 303.15
         # add temperature dependence via Arrhenius law
-        r.append(m.Y[t, 'k2T'] - m.P['k2Tr'] * exp(m.P['E'](1 / m.Y[t, 'Temp'] - 1 / Tr)))
+        r.append(m.Y[t, 'k2T'] - m.P['k2Tr'] * exp(m.P['E']*(1 / m.Y[t, 'Temp'] - 1 / Tr)))
         return r
     
     builder.set_algebraics_rule(rule_algebraics)
