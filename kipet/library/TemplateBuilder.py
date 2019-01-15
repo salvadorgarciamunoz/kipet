@@ -998,4 +998,3 @@ class TemplateBuilder(object):
             for l in lambdas:
                 S[l, component].set_value(self._known_absorbance_data[component][l])
                 S[l, component].fix()
-        print("we got here again")
