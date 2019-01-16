@@ -64,6 +64,9 @@ class ParameterEstimator(Optimizer):
 
             with_d_vars (bool,optional): flag to the optimizer whether to add
             variables and constraints for D_bar(i,j)
+            
+            subset_lambdas (array_like,optional): Set of wavelengths to used in 
+            the optimization problem (not yet fully implemented). Default all wavelengths.
 
         Returns:
             None
@@ -74,7 +77,11 @@ class ParameterEstimator(Optimizer):
         weights = kwds.pop('weights', [1.0, 1.0])
         covariance = kwds.pop('covariance', False)
         species_list = kwds.pop('subset_components', None)
-
+        set_A = kwds.pop('subset_lambdas', list())
+        
+        if not set_A:
+            set_A = self._meas_lambdas
+        
         list_components = []
         if species_list is None:
             list_components = [k for k in self._mixture_components]
@@ -84,6 +91,7 @@ class ParameterEstimator(Optimizer):
                     list_components.append(k)
                 else:
                     warnings.warn("Ignored {} since is not a mixture component of the model".format(k))
+                    
         if not self._spectra_given:
             raise NotImplementedError("Extended model requires spectral data model.D[ti,lj]")
 
@@ -1040,6 +1048,38 @@ class ParameterEstimator(Optimizer):
         else:
             return results
 
+        
+    def run_param_est_with_subset_lambdas(self, m, subset = None):
+        """ Performs the parameter estimation with a specific subset of wavelengths.
+            At the moment, this is performed as a totally new Pyomo model, based on the 
+            original estimation. Initialization strategies for this will be needed.
+                    
+                Args:
+                    m (pyomo model): Pyomo model of the builder class
+                    subset(list): list of selected wavelengths
+        
+                Returns:
+                    lack of fit (int): percentage lack of fit
+        
+        """ 
+        if not isinstance(subset, list):
+            raise RuntimeError("subset must be of type list!")
+            
+        #should check whether the list contains wavelengths or not     
+        #m.model.D.pprint()
+        #print(type(m.D))
+        print(subset)
+        if self._meas_times:
+            print(type(self._meas_times))
+
+        new_D = pd.DataFrame(np.nan,index=self._meas_times, columns = subset)
+        print(new_D)
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                if l in subset:
+                    print(t,l)
+                    new_D.at[t,l] = self.model.D[t,l]
+        print(new_D)            
     #=============================================================================
     #--------------------------- DIAGNOSTIC TOOLS ------------------------
     #=============================================================================
@@ -1117,8 +1157,6 @@ class ParameterEstimator(Optimizer):
     
         """        
         nt = self._n_meas_times
-        nc = self._n_actual
-        nw = self._n_meas_lambdas
         
         cov_d_l = dict()
         #calculating the covariance dl with ck
@@ -1165,6 +1203,7 @@ class ParameterEstimator(Optimizer):
 
         return cor_l
 
+    
 def split_sipopt_string(output_string):
     start_hess = output_string.find('DenseSymMatrix')
     ipopt_string = output_string[:start_hess]
@@ -1212,6 +1251,24 @@ def read_reduce_hessian(hessian_string, n_vars):
                     hessian[row, col] = float(value)
                     hessian[col, row] = float(value)
     return hessian
+
+
+def read_reduce_hessian_k_aug(hessian_string, n_vars):
+    hessian = np.zeros((n_vars, n_vars))
+    for i, line in enumerate(hessian_string.split('\n')):
+        if i > 0:  # ignores header
+            if line not in ['', ' ', '\t']:
+                hess_line = line.split(']=')
+                if len(hess_line) == 2:
+                    value = float(hess_line[1])
+                    column_line = hess_line[0].split(',')
+                    col = int(column_line[1])
+                    row_line = column_line[0].split('[')
+                    row = int(row_line[1])
+                    hessian[row, col] = float(value)
+                    hessian[col, row] = float(value)
+    return hessian
+
 
 #######################additional for inputs###CS
 def t_ij(time_set, i, j):
@@ -1265,18 +1322,41 @@ def fe_cp(time_set, feedtime):
     return fe, cp
 ################################################
 
-def read_reduce_hessian_k_aug(hessian_string, n_vars):
-    hessian = np.zeros((n_vars, n_vars))
-    for i, line in enumerate(hessian_string.split('\n')):
-        if i > 0:  # ignores header
-            if line not in ['', ' ', '\t']:
-                hess_line = line.split(']=')
-                if len(hess_line) == 2:
-                    value = float(hess_line[1])
-                    column_line = hess_line[0].split(',')
-                    col = int(column_line[1])
-                    row_line = column_line[0].split('[')
-                    row = int(row_line[1])
-                    hessian[row, col] = float(value)
-                    hessian[col, row] = float(value)
-    return hessian
+def wavelength_subset_selection(correlations = None, n = None):
+    """ identifies the subset of wavelengths that needs to be chosen, based
+    on the minimum correlation value set by the user (or from the automated 
+    lack of fit minimization procedure)
+     
+        Args:
+            correlations (dict): dictionary obtained from the wavelength_correlation
+                    function, containing every wavelength from the original set and
+                    their correlations to the concentration profile.
+                   
+            n (int): a value between 0 - 1 that slects the minimum amount
+                    correlation between the wavelength and the concentrations.
+    
+        Returns:
+            dictionary of correlations with wavelength
+    
+    """      
+    if not isinstance(correlations, dict):
+        raise RuntimeError("correlations must be of type dict()! Use wavelength_correlation function first!")
+        
+    #should check whether the dictionary contains all wavelengths or not
+    if not isinstance(n, float):
+        raise RuntimeError("n must be of type int!")
+    elif n > 1 or n < 0:
+        raise RuntimeError("n must be a number between 0 and 1")             
+       
+    subset_dict = dict()
+    for l in six.iterkeys(correlations):
+        if correlations[l] >= n:
+            subset_dict[l] = correlations[l]
+    return subset_dict
+
+#=============================================================================
+#----------- PARAMETER ESTIMATION WITH WAVELENGTH SELECTION ------------------
+#=============================================================================
+ 
+                
+    
