@@ -171,15 +171,13 @@ if __name__ == "__main__":
         plt.ylabel("Correlation between species and wavelength")
         plt.title("Correlation of species and wavelength")
         plt.show()
-        
+    '''        
     subset = wavelength_subset_selection(correlations = correlations, n = 0.7)
     print(subset)
     listssub = sorted(subset.items())
     keys, vals = zip(*listssub)
     print(keys,vals)
-    
-    
-    
+        
     results_pyomo = p_estimator.run_opt('ipopt',
                                       tee=True,
                                       solver_opts = options,
@@ -216,8 +214,8 @@ if __name__ == "__main__":
         plt.ylabel("Correlation between species and wavelength")
         plt.title("Correlation of species and wavelength")
         plt.show()
-
-    new_subs = wavelength_subset_selection(correlations = correlations, n = 0.4)
+    '''
+    new_subs = wavelength_subset_selection(correlations = correlations, n = 0.085)
     lists1 = sorted(new_subs.items())
     x1, y1 = zip(*lists1)
     x = list(x1)

@@ -5,7 +5,8 @@ from __future__ import division
 from pyomo.environ import *
 from pyomo.dae import *
 from kipet.library.Optimizer import *
-#from pyomo.core.base.expr import Expr_if
+from kipet.library.TemplateBuilder import *
+import matplotlib.pyplot as plt
 from pyomo import *
 import numpy as np
 import six
@@ -1066,20 +1067,26 @@ class ParameterEstimator(Optimizer):
             raise RuntimeError("subset must be of type list!")
             
         #should check whether the list contains wavelengths or not     
-        #m.model.D.pprint()
-        #print(type(m.D))
-        print(subset)
-        if self._meas_times:
-            print(type(self._meas_times))
 
         new_D = pd.DataFrame(np.nan,index=self._meas_times, columns = subset)
-        print(new_D)
         for t in self._meas_times:
             for l in self._meas_lambdas:
                 if l in subset:
-                    print(t,l)
                     new_D.at[t,l] = self.model.D[t,l]
-        print(new_D)            
+        print(new_D)   
+        #Now that we have a new DataFrame, we need to build the entire problem from this
+        #An entire new ParameterEstimation problem should be set up, on the outside of 
+        #this function and class structure, from the model already developed by the user. 
+        new_template, nfe,ncp = construct_model_from_reduced_set(m, new_D)
+        #need to put in an optional running of the variance estimator for the new 
+        #parameter estiamtion run, or just use the previous full model run to initialize... 
+        
+        run_param_est(new_template,nfe,ncp)
+        
+        
+        
+
+         
     #=============================================================================
     #--------------------------- DIAGNOSTIC TOOLS ------------------------
     #=============================================================================
@@ -1357,6 +1364,97 @@ def wavelength_subset_selection(correlations = None, n = None):
 #=============================================================================
 #----------- PARAMETER ESTIMATION WITH WAVELENGTH SELECTION ------------------
 #=============================================================================
- 
-                
+
+def construct_model_from_reduced_set(m, D):
+    """ constructs the new pyomo model based on the selected wavelengths.
+     
+        Args:
+            m (pyomo model): The original Pyomo model based on the full dataset.
+                   
+            D (dataframe): the new, reduced dataset with only the selected wavelengths.
+    
+        Returns:
+            m2(TemplateBuilder): new Pyomo model from TemplateBuilder, ready for
+                    parameter estimation
+    
+    """ 
+    # Checks for whether m is a pyomo model
+    
+    # Checks for whether D is a Dataframe
+
+    builder = TemplateBuilder()
+    #for k in m.
+    components = {'A':1e-3,'B':0,'C':0}
+    builder.add_mixture_component(components)
+    builder.add_parameter('k1', init=1.0, bounds=(0.0,5.0)) 
+    #There is also the option of providing initial values: Just add init=... as additional argument as above.
+    builder.add_parameter('k2', init = 0.2265221, bounds=(0.0,1.0))
+    builder.add_spectral_data(D)
+
+    # define explicit system of ODEs
+    def rule_odes(m,t):
+        exprs = dict()
+        exprs['A'] = -m.P['k1']*m.Z[t,'A']
+        exprs['B'] = m.P['k1']*m.Z[t,'A']-m.P['k2']*m.Z[t,'B']
+        exprs['C'] = m.P['k2']*m.Z[t,'B']
+        return exprs
+    
+    builder.set_odes_rule(rule_odes)
+    opt_model = builder.create_pyomo_model(0.0,10.0)
+    nfe = 60
+    ncp = 3
+    
+    return opt_model, nfe, ncp
+    
+def run_param_est(opt_model, nfe, ncp):
+    """ Runs the parameter estimator for the selected subset
+     
+        Args:
+            opt_model (pyomo model): The model that we wish to run the 
+                   
+            D (dataframe): the new, reduced dataset with only the selected wavelengths.
+    
+        Returns:
+            m2(TemplateBuilder): new Pyomo model from TemplateBuilder, ready for
+                    parameter estimation
+    
+    """ 
+    p_estimator = ParameterEstimator(opt_model)
+    p_estimator.apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
+    options = dict()
+    #options['nlp_scaling_method'] = 'user-scaling'
+    sigmas ={'A': 1.0886560342000165e-10, 'B': 1.6455221285096038e-10, 'C': 9.627397840912648e-11, 'device': 3.288867076317355e-06}
+    # finally we run the optimization
+    results_pyomo = p_estimator.run_opt('ipopt',
+                                      tee=True,
+                                      solver_opts = options,
+                                      variances=sigmas)
+        # And display the results
+    print("The estimated parameters are:")
+    for k,v in six.iteritems(results_pyomo.P):
+        print(k, v)
+        
+    # display results
+    results_pyomo.C.plot.line(legend=True)
+    plt.xlabel("time (s)")
+    plt.ylabel("Concentration (mol/L)")
+    plt.title("Concentration Profile")
+
+    results_pyomo.S.plot.line(legend=True)
+    plt.xlabel("Wavelength (cm)")
+    plt.ylabel("Absorbance (L/(mol cm))")
+    plt.title("Absorbance  Profile")
+    
+    plt.show()
+    
+    lof = p_estimator.lack_of_fit()
+    correlations = p_estimator.wavelength_correlation()
+    
+    lists1 = sorted(correlations.items())
+    x1, y1 = zip(*lists1)
+    plt.plot(x1,y1)   
+    plt.xlabel("Wavelength (cm)")
+    plt.ylabel("Correlation between species and wavelength")
+    plt.title("Correlation of species and wavelength")
+    plt.show()
     
