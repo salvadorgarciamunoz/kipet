@@ -5,7 +5,8 @@ from __future__ import division
 from pyomo.environ import *
 from pyomo.dae import *
 from kipet.library.Optimizer import *
-from pyomo.core.base.expr import Expr_if
+#from pyomo.core.base.expr import Expr_if
+from pyomo import *
 import numpy as np
 import six
 import copy
@@ -1039,6 +1040,130 @@ class ParameterEstimator(Optimizer):
         else:
             return results
 
+    #=============================================================================
+    #--------------------------- DIAGNOSTIC TOOLS ------------------------
+    #=============================================================================
+        
+    def lack_of_fit(self):
+        """ Runs basic post-processing lack of fit analysis
+        
+            Args:
+                None
+    
+            Returns:
+                lack of fit (int): percentage lack of fit
+    
+        """        
+        nt = self._n_meas_times
+        nc = self._n_actual
+        nw = self._n_meas_lambdas
+        
+        D_model = np.zeros((nt,nw))
+        C = np.zeros((nt,nc))
+        S = np.zeros((nw,nc))
+        
+        c_count = -1
+        t_count = 0
+        for c in self._sublist_components:
+            c_count += 1
+            t_count = 0
+            for t in self._meas_times:
+                C[t_count,c_count] = self.model.C[t,c].value                
+                t_count += 1
+                
+        c_count = -1
+        l_count = 0
+        for c in self._sublist_components:
+            c_count += 1
+            l_count = 0
+            for l in self._meas_lambdas:
+                S[l_count,c_count] = self.model.S[l,c].value
+                l_count += 1
+                
+        D_model = C.dot(S.T)
+        
+        sum_e = 0
+        sum_d = 0
+        t_count = -1
+        l_count = 0 
+        
+        for t in self._meas_times:
+            t_count += 1
+            l_count = 0
+            for l in self._meas_lambdas:
+                sum_e += (D_model[t_count,l_count] - self.model.D[t,l])**2
+                l_count += 1
+         
+        t_count = -1
+        l_count = 0
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                sum_d += (self.model.D[t,l])**2
+        
+        lof = ((sum_e/sum_d)**0.5) * 100
+        
+        print("The lack of fit is ", lof, " %")
+        return lof
+
+    def wavelength_correlation(self):
+        """ determines the degree of correlation between the individual wavelengths and 
+        the and the concentrations. 
+        
+            Args:
+                None
+    
+            Returns:
+                dictionary of correlations with wavelength
+    
+        """        
+        nt = self._n_meas_times
+        nc = self._n_actual
+        nw = self._n_meas_lambdas
+        
+        cov_d_l = dict()
+        #calculating the covariance dl with ck
+        for c in self._sublist_components:
+            for l in self._meas_lambdas:
+                mean_d = (sum(self.model.D[t,l] for t in self._meas_times)/nt)
+                mean_c = (sum(self.model.C[t,c].value for t in self._meas_times)/nt)
+                cov_d_l[l,c] = 0
+                for t in self._meas_times:
+                    cov_d_l[l,c] += (self.model.D[t,l] - mean_d)*(self.model.C[t,c].value - mean_c)
+        
+                cov_d_l[l,c] = cov_d_l[l,c]/(nt-1)
+        
+        #calculating the standard devs for dl and ck over time  
+        s_dl = dict()
+        
+        for l in self._meas_lambdas:
+            s_dl[l] = 0
+            mean_d = (sum(self.model.D[t,l] for t in self._meas_times)/nt)
+            error = 0
+            for t in self._meas_times:
+                error += (self.model.D[t,l] - mean_d)**2
+            s_dl[l] = (error/(nt-1))**0.5
+        
+        s_ck = dict()
+        
+        for c in self._sublist_components:
+            s_ck[c] = 0
+            mean_c = (sum(self.model.C[t,c].value for t in self._meas_times)/nt)
+            error = 0
+            for t in self._meas_times:
+                error += (self.model.C[t,c].value - mean_c)**2
+            s_ck[c] = (error/(nt-1))**0.5
+        
+        cor_lc = dict()
+        
+        for c in self._sublist_components:
+            for l in self._meas_lambdas:
+                cor_lc[l,c] = cov_d_l[l,c]/(s_ck[c]*s_dl[l])
+        
+        cor_l = dict()
+        for l in self._meas_lambdas:
+            cor_l[l]=max(cor_lc[l,c] for c in self._sublist_components)
+
+        return cor_l
 
 def split_sipopt_string(output_string):
     start_hess = output_string.find('DenseSymMatrix')
