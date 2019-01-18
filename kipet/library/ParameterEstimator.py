@@ -1047,46 +1047,44 @@ class ParameterEstimator(Optimizer):
         if self._estimability == True:
             return self.hessian, results
         else:
-            return results
-
+            return results        
         
-    def run_param_est_with_subset_lambdas(self, m, subset = None):
+    def run_param_est_with_subset_lambdas(self, m, builder_clone, end_time, subset = None):
         """ Performs the parameter estimation with a specific subset of wavelengths.
             At the moment, this is performed as a totally new Pyomo model, based on the 
             original estimation. Initialization strategies for this will be needed.
-                    
+                        
                 Args:
                     m (pyomo model): Pyomo model of the builder class
+                    builder_clone (TemplateBuidler): Template builder class of complete model
+                                without the data added yet
+                    end_time (int): the end time for the data and simulation
                     subset(list): list of selected wavelengths
-        
+            
                 Returns:
-                    lack of fit (int): percentage lack of fit
-        
+                    *****final model results.
+            
         """ 
         if not isinstance(subset, list):
             raise RuntimeError("subset must be of type list!")
-            
-        #should check whether the list contains wavelengths or not     
-
+                
+        #should check whether the list contains wavelengths or not 
+        
+        #This is the filter for creating the new data subset
         new_D = pd.DataFrame(np.nan,index=self._meas_times, columns = subset)
         for t in self._meas_times:
             for l in self._meas_lambdas:
                 if l in subset:
                     new_D.at[t,l] = self.model.D[t,l]
-        print(new_D)   
+        #print(new_D)   
         #Now that we have a new DataFrame, we need to build the entire problem from this
         #An entire new ParameterEstimation problem should be set up, on the outside of 
         #this function and class structure, from the model already developed by the user. 
-        new_template, nfe,ncp = construct_model_from_reduced_set(m, new_D)
+        new_template, nfe, ncp = construct_model_from_reduced_set(m, builder_clone,end_time, new_D)
         #need to put in an optional running of the variance estimator for the new 
         #parameter estiamtion run, or just use the previous full model run to initialize... 
-        
-        run_param_est(new_template,nfe,ncp)
-        
-        
-        
-
-         
+            
+        run_param_est(new_template,nfe,ncp)        
     #=============================================================================
     #--------------------------- DIAGNOSTIC TOOLS ------------------------
     #=============================================================================
@@ -1365,12 +1363,16 @@ def wavelength_subset_selection(correlations = None, n = None):
 #----------- PARAMETER ESTIMATION WITH WAVELENGTH SELECTION ------------------
 #=============================================================================
 
-def construct_model_from_reduced_set(m, D):
+
+
+def construct_model_from_reduced_set(m, builder_clone, end_time, D):
     """ constructs the new pyomo model based on the selected wavelengths.
      
         Args:
             m (pyomo model): The original Pyomo model based on the full dataset.
-                   
+            builder_clone (TemplateBuidler): Template builder class of complete model
+                            without the data added yet 
+            end_time (int): the end time for the data and simulation
             D (dataframe): the new, reduced dataset with only the selected wavelengths.
     
         Returns:
@@ -1382,25 +1384,11 @@ def construct_model_from_reduced_set(m, D):
     
     # Checks for whether D is a Dataframe
 
-    builder = TemplateBuilder()
-    #for k in m.
-    components = {'A':1e-3,'B':0,'C':0}
-    builder.add_mixture_component(components)
-    builder.add_parameter('k1', init=1.0, bounds=(0.0,5.0)) 
-    #There is also the option of providing initial values: Just add init=... as additional argument as above.
-    builder.add_parameter('k2', init = 0.2265221, bounds=(0.0,1.0))
-    builder.add_spectral_data(D)
-
-    # define explicit system of ODEs
-    def rule_odes(m,t):
-        exprs = dict()
-        exprs['A'] = -m.P['k1']*m.Z[t,'A']
-        exprs['B'] = m.P['k1']*m.Z[t,'A']-m.P['k2']*m.Z[t,'B']
-        exprs['C'] = m.P['k2']*m.Z[t,'B']
-        return exprs
+    builder_clone.add_spectral_data(D)
+    opt_model = builder_clone.create_pyomo_model(0.0,end_time)
     
-    builder.set_odes_rule(rule_odes)
-    opt_model = builder.create_pyomo_model(0.0,10.0)
+    # ***** need to think about where these come from
+    # AND the sigmas
     nfe = 60
     ncp = 3
     
@@ -1422,7 +1410,8 @@ def run_param_est(opt_model, nfe, ncp):
     p_estimator = ParameterEstimator(opt_model)
     p_estimator.apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
     options = dict()
-    #options['nlp_scaling_method'] = 'user-scaling'
+    
+    # where will these come from?!
     sigmas ={'A': 1.0886560342000165e-10, 'B': 1.6455221285096038e-10, 'C': 9.627397840912648e-11, 'device': 3.288867076317355e-06}
     # finally we run the optimization
     results_pyomo = p_estimator.run_opt('ipopt',

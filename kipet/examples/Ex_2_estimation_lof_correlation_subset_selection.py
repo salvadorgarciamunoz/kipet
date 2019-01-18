@@ -57,7 +57,7 @@ if __name__ == "__main__":
     builder.add_parameter('k1', init=4.0, bounds=(0.0,5.0)) 
     #There is also the option of providing initial values: Just add init=... as additional argument as above.
     builder.add_parameter('k2',bounds=(0.0,1.0))
-    builder.add_spectral_data(D_frame)
+    
 
     # define explicit system of ODEs
     def rule_odes(m,t):
@@ -68,7 +68,12 @@ if __name__ == "__main__":
         return exprs
     
     builder.set_odes_rule(rule_odes)
-    opt_model = builder.create_pyomo_model(0.0,10.0)
+    # Notice that to use the wavelength subset optimization we need to use make a copy of the builder
+    # before we add the spectral data matrix
+    builder_before_data = builder
+    builder.add_spectral_data(D_frame)
+    end_time = 10
+    opt_model = builder.create_pyomo_model(0.0,end_time)
     
     #=========================================================================
     #USER INPUT SECTION - VARIANCE ESTIMATION 
@@ -219,4 +224,4 @@ if __name__ == "__main__":
     lists1 = sorted(new_subs.items())
     x1, y1 = zip(*lists1)
     x = list(x1)
-    p_estimator.run_param_est_with_subset_lambdas(opt_model, x) 
+    p_estimator.run_param_est_with_subset_lambdas(opt_model, builder_before_data, end_time, x) 
