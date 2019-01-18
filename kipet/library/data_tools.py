@@ -300,7 +300,7 @@ def plot_spectral_data(dataFrame,dimension='2D'):
 #--------------------------- DIAGNOSTIC TOOLS ------------------------
 #=============================================================================
         
-def basic_pca(dataFrame,n=None):
+def basic_pca(dataFrame,n=None,with_plots=False):
     """ Runs basic component analysis based on SVD
     
         Args:
@@ -308,11 +308,14 @@ def basic_pca(dataFrame,n=None):
             
             n (int): number of largest singular-values
             to plot
+            
+            with_plots (boolean): argument for files with plots due to testing
 
         Returns:
             None
 
-    """    
+    """
+            
     times = np.array(dataFrame.index)
     lambdas = np.array(dataFrame.columns)
     D = np.array(dataFrame)
@@ -331,27 +334,29 @@ def basic_pca(dataFrame,n=None):
     u_shape = U.shape
     #print("u_shape[0]",u_shape[0])
     n_l_vector = n if u_shape[0]>=n else u_shape[0]
-    for i in range(n_l_vector):
-        plt.plot(times,U[:,i])
-    plt.xlabel("time")
-    plt.ylabel("Components U[:,i]")
-    plt.show()
-    
     n_singular = n if len(s)>=n else len(s)
     idxs = range(n_singular)
     vals = [s[i] for i in idxs]
-    plt.semilogy(idxs,vals,'o')
-    plt.xlabel("i")
-    plt.ylabel("singular values")
-    plt.show()
-    
     v_shape = V.shape
     n_r_vector = n if v_shape[0]>=n else v_shape[0]
-    for i in range(n_r_vector):
-        plt.plot(lambdas,V[i,:])
-    plt.xlabel("wavelength")
-    plt.ylabel("Components V[i,:]")
-    plt.show
+    
+    if with_plots:
+        for i in range(n_l_vector):
+            plt.plot(times,U[:,i])
+        plt.xlabel("time")
+        plt.ylabel("Components U[:,i]")
+        plt.show()
+        
+        plt.semilogy(idxs,vals,'o')
+        plt.xlabel("i")
+        plt.ylabel("singular values")
+        plt.show()
+        
+        for i in range(n_r_vector):
+            plt.plot(lambdas,V[i,:])
+        plt.xlabel("wavelength")
+        plt.ylabel("Components V[i,:]")
+        plt.show
      
 #=============================================================================
 #---------------------------PROBLEM GENERATION TOOLS------------------------
