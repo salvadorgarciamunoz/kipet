@@ -220,8 +220,10 @@ if __name__ == "__main__":
         plt.title("Correlation of species and wavelength")
         plt.show()
     '''
-    new_subs = wavelength_subset_selection(correlations = correlations, n = 0.085)
-    lists1 = sorted(new_subs.items())
-    x1, y1 = zip(*lists1)
-    x = list(x1)
-    p_estimator.run_param_est_with_subset_lambdas(opt_model, builder_before_data, end_time, x) 
+    #new_subs = wavelength_subset_selection(correlations = correlations, n = 0.085)
+    #lists1 = sorted(new_subs.items())
+    #x1, y1 = zip(*lists1)
+    #x = list(x1)
+    #p_estimator.run_param_est_with_subset_lambdas(opt_model, builder_before_data, end_time, x) 
+    
+    p_estimator.run_lof_min(builder_before_data, end_time, correlations, lof)

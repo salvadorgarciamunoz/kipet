@@ -1084,7 +1084,88 @@ class ParameterEstimator(Optimizer):
         #need to put in an optional running of the variance estimator for the new 
         #parameter estiamtion run, or just use the previous full model run to initialize... 
             
-        run_param_est(new_template,nfe,ncp)        
+        results, lof = run_param_est(new_template,nfe,ncp) 
+        
+    def run_lof_min(self, builder_before_data, end_time, correlations, lof_full_model):
+        """ Runs the lack of fit minimization problem used in the Michael's Reaction paper
+        from Chen et al. (submitted). To use this function, the full parameter estimation
+        problem should be solved first and the correlations for wavelngths from this optimization
+        need to be supplied to the function as an option.
+                        
+                Args:
+                    builder_before_data (TemplateBuilder): Template builder class of complete model
+                                without the data added yet
+                    end_time (int): the end time for the data and simulation
+
+                    correlations (dict): dictionary containing the wavelengths and their correlations
+                                to the concentration profiles
+                    lof_full_model(int): the value of the lack of fit of the full model (with all wavelengths)
+            
+                Returns:
+                    *****final model results.
+            
+        """ 
+        #firstly we will run the initial search from at increments of 20 % for the correlations
+        # we already have lof(0) so we want 10,30,50,70, 90.
+        count = 0
+        filt = 0.1
+        initial_solutions = list()
+        initial_solutions.append((0, lof_full_model,'original full model solution'))
+        while filt < 1:
+            new_subs = wavelength_subset_selection(correlations = correlations, n = filt)
+            lists1 = sorted(new_subs.items())
+            x1, y1 = zip(*lists1)
+            x = list(x1)            
+            m=0
+            
+            new_D = pd.DataFrame(np.nan,index=self._meas_times, columns = new_subs)
+            for t in self._meas_times:
+                for l in self._meas_lambdas:
+                    if l in new_subs:
+                        new_D.at[t,l] = self.model.D[t,l]
+            
+            opt_model, nfe, ncp = construct_model_from_reduced_set(m, builder_before_data, end_time, new_D)
+            #Now that we have a new DataFrame, we need to build the entire problem from this
+            #An entire new ParameterEstimation problem should be set up, on the outside of 
+            #this function and class structure, from the model already developed by the user. 
+            new_template, nfe, ncp = construct_model_from_reduced_set(m, builder_before_data,end_time, new_D)
+            #need to put in an optional running of the variance estimator for the new 
+            #parameter estiamtion run, or just use the previous full model run to initialize... 
+            
+            results, lof = run_param_est(new_template,nfe,ncp) 
+            initial_solutions.append((filt, lof, results))
+            filt += 0.2
+            count += 1
+            
+        print(initial_solutions)
+        print(initial_solutions[0])
+        print(initial_solutions[1])
+        # Now that we have a rough idea of the lof for each level of filtering we can select the
+        # region we wish to explore with the fibonnaci search and assuming that we have unimodal 
+        # distribution
+        #sorted_dict = sorted(initial_solutions.items(), key=itemgetter(1))
+        #print(sorted_dict, type(sorted_dict))
+        best_sol = 500
+        best_sol_neighbours = 0
+        count = 1
+        for k in initial_solutions:
+            print(k)
+            print(k[0])
+            print(k[1])
+            print(k[2])
+            if k[1] <= best_sol:
+                best_sol = k
+                #what if the initial solution gives best lof? then this will fail
+                if initial_solutions[(count + 1)][1] >=  initial_solutions[(count - 1)][1]:
+                    best_sol_neighbours = initial_solutions[(count -1)]
+                else:
+                    best_sol_neighbours = initial_solutions[(count + 1)]
+            count += 1
+        
+        print("best sol:", best_sol)
+        print("best sol neighbour:", best_sol_neighbours)
+                    
+        
     #=============================================================================
     #--------------------------- DIAGNOSTIC TOOLS ------------------------
     #=============================================================================
@@ -1446,4 +1527,5 @@ def run_param_est(opt_model, nfe, ncp):
     plt.ylabel("Correlation between species and wavelength")
     plt.title("Correlation of species and wavelength")
     plt.show()
+    return results_pyomo, lof
     
