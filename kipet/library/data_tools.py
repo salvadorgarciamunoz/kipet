@@ -356,7 +356,7 @@ def basic_pca(dataFrame,n=None,with_plots=False):
             plt.plot(lambdas,V[i,:])
         plt.xlabel("wavelength")
         plt.ylabel("Components V[i,:]")
-        plt.show
+        plt.show()
      
 #=============================================================================
 #---------------------------PROBLEM GENERATION TOOLS------------------------
