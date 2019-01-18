@@ -68,4 +68,4 @@ if __name__ == "__main__":
     builder.set_odes_rule(rule_odes)
     opt_model = builder.create_pyomo_model(0.0,10.0)
     
-    basic_pca(D_frame, n = 3)
+    basic_pca(D_frame, n = 3, with_plots=True)
