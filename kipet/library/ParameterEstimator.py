@@ -1049,25 +1049,31 @@ class ParameterEstimator(Optimizer):
         else:
             return results        
         
-    def run_param_est_with_subset_lambdas(self, m, builder_clone, end_time, subset = None):
+    def run_param_est_with_subset_lambdas(self, builder_clone, end_time, subset, nfe, ncp, sigmas):
         """ Performs the parameter estimation with a specific subset of wavelengths.
             At the moment, this is performed as a totally new Pyomo model, based on the 
             original estimation. Initialization strategies for this will be needed.
                         
                 Args:
-                    m (pyomo model): Pyomo model of the builder class
                     builder_clone (TemplateBuidler): Template builder class of complete model
                                 without the data added yet
                     end_time (int): the end time for the data and simulation
                     subset(list): list of selected wavelengths
+                    nfe (int): number of finite elements
+                    ncp (int): number of collocation points
+                    sigmas(dict): dictionary containing the variances, as used in the ParameterEstimator class
             
                 Returns:
-                    *****final model results.
+                    results (Pyomo model solved): The solved pyomo model
             
         """ 
-        if not isinstance(subset, list):
-            raise RuntimeError("subset must be of type list!")
-                
+        if not isinstance(subset, (list, dict)):
+            raise RuntimeError("subset must be of type list or dict!")
+             
+        if isinstance(subset, dict):
+            lists1 = sorted(subset.items())
+            x1, y1 = zip(*lists1)
+            subset = list(x1)
         #should check whether the list contains wavelengths or not 
         
         #This is the filter for creating the new data subset
@@ -1080,13 +1086,15 @@ class ParameterEstimator(Optimizer):
         #Now that we have a new DataFrame, we need to build the entire problem from this
         #An entire new ParameterEstimation problem should be set up, on the outside of 
         #this function and class structure, from the model already developed by the user. 
-        new_template, nfe, ncp = construct_model_from_reduced_set(m, builder_clone,end_time, new_D)
+        new_template = construct_model_from_reduced_set(builder_clone,end_time, new_D)
         #need to put in an optional running of the variance estimator for the new 
         #parameter estiamtion run, or just use the previous full model run to initialize... 
             
-        results, lof = run_param_est(new_template,nfe,ncp) 
+        results, lof = run_param_est(new_template, nfe, ncp, sigmas) 
         
-    def run_lof_min(self, builder_before_data, end_time, correlations, lof_full_model):
+        return results
+        
+    def run_lof_analysis(self, builder_before_data, end_time, correlations, lof_full_model, nfe, ncp, sigmas, step_size = 0.2, search_range = (0, 1)):
         """ Runs the lack of fit minimization problem used in the Michael's Reaction paper
         from Chen et al. (submitted). To use this function, the full parameter estimation
         problem should be solved first and the correlations for wavelngths from this optimization
@@ -1105,18 +1113,35 @@ class ParameterEstimator(Optimizer):
                     *****final model results.
             
         """ 
+        if not isinstance(step_size, float):
+            raise RuntimeError("step_size must be a float between 0 and 1")
+        elif step_size >= 1 or step_size <= 0:
+            return RuntimeError("step_size must be a float between 0 and 1")
+        
+        if not isinstance(search_range, tuple):
+            raise RuntimeError("search range must be a tuple")
+        elif search_range [0] < 0 or search_range [0] > 1 and not (isinstance(search_range, float) or isinstance(search_range, int)):
+            raise RuntimeError("search range lower value must be between 0 and 1 and must be type float")
+        elif search_range [1] < 0 or search_range [1] > 1 and not  (isinstance(search_range, float) or isinstance(search_range, int)):
+            raise RuntimeError("search range upper value must be between 0 and 1 and must be type float")
+        elif search_range [1] <= search_range [0]:
+            raise RuntimeError("search_range[1] must be bigger than search_range[0]!")
         #firstly we will run the initial search from at increments of 20 % for the correlations
         # we already have lof(0) so we want 10,30,50,70, 90.
         count = 0
-        filt = 0.1
+        filt = 0.0
         initial_solutions = list()
-        initial_solutions.append((0, lof_full_model,'original full model solution'))
-        while filt < 1:
+        initial_solutions.append((0, lof_full_model))
+        while filt < search_range[1]:
+            filt += step_size
+            if filt > search_range[1]:
+                break
+            elif filt == 1:
+                break
             new_subs = wavelength_subset_selection(correlations = correlations, n = filt)
             lists1 = sorted(new_subs.items())
             x1, y1 = zip(*lists1)
             x = list(x1)            
-            m=0
             
             new_D = pd.DataFrame(np.nan,index=self._meas_times, columns = new_subs)
             for t in self._meas_times:
@@ -1124,48 +1149,24 @@ class ParameterEstimator(Optimizer):
                     if l in new_subs:
                         new_D.at[t,l] = self.model.D[t,l]
             
-            opt_model, nfe, ncp = construct_model_from_reduced_set(m, builder_before_data, end_time, new_D)
-            #Now that we have a new DataFrame, we need to build the entire problem from this
-            #An entire new ParameterEstimation problem should be set up, on the outside of 
-            #this function and class structure, from the model already developed by the user. 
-            new_template, nfe, ncp = construct_model_from_reduced_set(m, builder_before_data,end_time, new_D)
-            #need to put in an optional running of the variance estimator for the new 
-            #parameter estiamtion run, or just use the previous full model run to initialize... 
+            #opt_model, nfe, ncp = construct_model_from_reduced_set(builder_before_data, end_time, new_D)
+            # Now that we have a new DataFrame, we need to build the entire problem from this
+            # An entire new ParameterEstimation problem should be set up, on the outside of 
+            # this function and class structure, from the model already developed by the user. 
+            new_template = construct_model_from_reduced_set(builder_before_data,end_time, new_D)
+            # need to put in an optional running of the variance estimator for the new 
+            # parameter estimation run, or just use the previous full model run to initialize...             
+            results, lof = run_param_est(new_template, nfe, ncp, sigmas) 
+            initial_solutions.append((filt, lof))
             
-            results, lof = run_param_est(new_template,nfe,ncp) 
-            initial_solutions.append((filt, lof, results))
-            filt += 0.2
-            count += 1
-            
-        print(initial_solutions)
-        print(initial_solutions[0])
-        print(initial_solutions[1])
-        # Now that we have a rough idea of the lof for each level of filtering we can select the
-        # region we wish to explore with the fibonnaci search and assuming that we have unimodal 
-        # distribution
-        #sorted_dict = sorted(initial_solutions.items(), key=itemgetter(1))
-        #print(sorted_dict, type(sorted_dict))
-        best_sol = 500
-        best_sol_neighbours = 0
-        count = 1
-        for k in initial_solutions:
-            print(k)
-            print(k[0])
-            print(k[1])
-            print(k[2])
-            if k[1] <= best_sol:
-                best_sol = k
-                #what if the initial solution gives best lof? then this will fail
-                if initial_solutions[(count + 1)][1] >=  initial_solutions[(count - 1)][1]:
-                    best_sol_neighbours = initial_solutions[(count -1)]
-                else:
-                    best_sol_neighbours = initial_solutions[(count + 1)]
             count += 1
         
-        print("best sol:", best_sol)
-        print("best sol neighbour:", best_sol_neighbours)
-                    
-        
+        count = 0
+        for x in initial_solutions:
+            print("When wavelengths of less than ", x[0], "correlation are removed")
+            print("The lack of fit is: ", x[1])
+        #print(initial_solutions)
+                            
     #=============================================================================
     #--------------------------- DIAGNOSTIC TOOLS ------------------------
     #=============================================================================
@@ -1444,88 +1445,60 @@ def wavelength_subset_selection(correlations = None, n = None):
 #----------- PARAMETER ESTIMATION WITH WAVELENGTH SELECTION ------------------
 #=============================================================================
 
-
-
-def construct_model_from_reduced_set(m, builder_clone, end_time, D):
+def construct_model_from_reduced_set(builder_clone, end_time, D):
     """ constructs the new pyomo model based on the selected wavelengths.
      
         Args:
-            m (pyomo model): The original Pyomo model based on the full dataset.
-            builder_clone (TemplateBuidler): Template builder class of complete model
+            builder_clone (TemplateBuilder): Template builder class of complete model
                             without the data added yet 
             end_time (int): the end time for the data and simulation
             D (dataframe): the new, reduced dataset with only the selected wavelengths.
     
         Returns:
-            m2(TemplateBuilder): new Pyomo model from TemplateBuilder, ready for
+            opt_mode(TemplateBuilder): new Pyomo model from TemplateBuilder, ready for
                     parameter estimation
     
     """ 
-    # Checks for whether m is a pyomo model
+
+    if not isinstance(builder_clone, TemplateBuilder):
+        raise RuntimeError('builder_clone needs to be of type TemplateBuilder')
     
-    # Checks for whether D is a Dataframe
+    if not isinstance(D, pd.DataFrame):
+        raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
+        
+    if not isinstance(end_time, int):
+        raise RuntimeError('nfe needs to be type int. Number of finite elements must be defined')
 
     builder_clone.add_spectral_data(D)
     opt_model = builder_clone.create_pyomo_model(0.0,end_time)
     
-    # ***** need to think about where these come from
-    # AND the sigmas
-    nfe = 60
-    ncp = 3
+    return opt_model
     
-    return opt_model, nfe, ncp
-    
-def run_param_est(opt_model, nfe, ncp):
+def run_param_est(opt_model, nfe, ncp, sigmas):
     """ Runs the parameter estimator for the selected subset
      
         Args:
             opt_model (pyomo model): The model that we wish to run the 
-                   
-            D (dataframe): the new, reduced dataset with only the selected wavelengths.
-    
+            nfe (int): number of finite elements
+            ncp (int): number of collocation points
+            sigmas(dict): dictionary containing the variances, as used in the ParameterEstimator class
+            
         Returns:
-            m2(TemplateBuilder): new Pyomo model from TemplateBuilder, ready for
-                    parameter estimation
+            results_pyomo (results of optimization): Parameter Estimation results
+            lof (float): lack of fit results
     
     """ 
+    
     p_estimator = ParameterEstimator(opt_model)
     p_estimator.apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
     options = dict()
     
-    # where will these come from?!
-    sigmas ={'A': 1.0886560342000165e-10, 'B': 1.6455221285096038e-10, 'C': 9.627397840912648e-11, 'device': 3.288867076317355e-06}
-    # finally we run the optimization
+    # These may not always solve, so we need to come up with a decent initialization strategy here
     results_pyomo = p_estimator.run_opt('ipopt',
-                                      tee=True,
+                                      tee=False,
                                       solver_opts = options,
                                       variances=sigmas)
-        # And display the results
-    print("The estimated parameters are:")
-    for k,v in six.iteritems(results_pyomo.P):
-        print(k, v)
-        
-    # display results
-    results_pyomo.C.plot.line(legend=True)
-    plt.xlabel("time (s)")
-    plt.ylabel("Concentration (mol/L)")
-    plt.title("Concentration Profile")
-
-    results_pyomo.S.plot.line(legend=True)
-    plt.xlabel("Wavelength (cm)")
-    plt.ylabel("Absorbance (L/(mol cm))")
-    plt.title("Absorbance  Profile")
-    
-    plt.show()
-    
     lof = p_estimator.lack_of_fit()
-    correlations = p_estimator.wavelength_correlation()
-    
-    lists1 = sorted(correlations.items())
-    x1, y1 = zip(*lists1)
-    plt.plot(x1,y1)   
-    plt.xlabel("Wavelength (cm)")
-    plt.ylabel("Correlation between species and wavelength")
-    plt.title("Correlation of species and wavelength")
-    plt.show()
+
     return results_pyomo, lof
     
