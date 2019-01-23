@@ -108,7 +108,7 @@ def write_concentration_data_to_txt(filename,dataframe):
 
 
 def read_concentration_data_from_txt(filename):
-    """ Reads txt with concnetration data
+    """ Reads txt with concentration data
     
         Args:
             filename (str): name of input file

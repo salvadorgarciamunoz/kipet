@@ -5,7 +5,8 @@ from __future__ import division
 from pyomo.environ import *
 from pyomo.dae import *
 from kipet.library.Optimizer import *
-#from pyomo.core.base.expr import Expr_if
+from kipet.library.TemplateBuilder import *
+import matplotlib.pyplot as plt
 from pyomo import *
 import numpy as np
 import six
@@ -64,6 +65,9 @@ class ParameterEstimator(Optimizer):
 
             with_d_vars (bool,optional): flag to the optimizer whether to add
             variables and constraints for D_bar(i,j)
+            
+            subset_lambdas (array_like,optional): Set of wavelengths to used in 
+            the optimization problem (not yet fully implemented). Default all wavelengths.
 
         Returns:
             None
@@ -74,7 +78,11 @@ class ParameterEstimator(Optimizer):
         weights = kwds.pop('weights', [1.0, 1.0])
         covariance = kwds.pop('covariance', False)
         species_list = kwds.pop('subset_components', None)
-
+        set_A = kwds.pop('subset_lambdas', list())
+        
+        if not set_A:
+            set_A = self._meas_lambdas
+        
         list_components = []
         if species_list is None:
             list_components = [k for k in self._mixture_components]
@@ -84,6 +92,7 @@ class ParameterEstimator(Optimizer):
                     list_components.append(k)
                 else:
                     warnings.warn("Ignored {} since is not a mixture component of the model".format(k))
+                    
         if not self._spectra_given:
             raise NotImplementedError("Extended model requires spectral data model.D[ti,lj]")
 
@@ -1038,8 +1047,126 @@ class ParameterEstimator(Optimizer):
         if self._estimability == True:
             return self.hessian, results
         else:
-            return results
+            return results        
+        
+    def run_param_est_with_subset_lambdas(self, builder_clone, end_time, subset, nfe, ncp, sigmas):
+        """ Performs the parameter estimation with a specific subset of wavelengths.
+            At the moment, this is performed as a totally new Pyomo model, based on the 
+            original estimation. Initialization strategies for this will be needed.
+                        
+                Args:
+                    builder_clone (TemplateBuidler): Template builder class of complete model
+                                without the data added yet
+                    end_time (float): the end time for the data and simulation
+                    subset(list): list of selected wavelengths
+                    nfe (int): number of finite elements
+                    ncp (int): number of collocation points
+                    sigmas(dict): dictionary containing the variances, as used in the ParameterEstimator class
+            
+                Returns:
+                    results (Pyomo model solved): The solved pyomo model
+            
+        """ 
+        if not isinstance(subset, (list, dict)):
+            raise RuntimeError("subset must be of type list or dict!")
+             
+        if isinstance(subset, dict):
+            lists1 = sorted(subset.items())
+            x1, y1 = zip(*lists1)
+            subset = list(x1)
+        #should check whether the list contains wavelengths or not 
+        
+        #This is the filter for creating the new data subset
+        new_D = pd.DataFrame(np.nan,index=self._meas_times, columns = subset)
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                if l in subset:
+                    new_D.at[t,l] = self.model.D[t,l]
+        #print(new_D)   
+        #Now that we have a new DataFrame, we need to build the entire problem from this
+        #An entire new ParameterEstimation problem should be set up, on the outside of 
+        #this function and class structure, from the model already developed by the user. 
+        new_template = construct_model_from_reduced_set(builder_clone,end_time, new_D)
+        #need to put in an optional running of the variance estimator for the new 
+        #parameter estiamtion run, or just use the previous full model run to initialize... 
+            
+        results, lof = run_param_est(new_template, nfe, ncp, sigmas) 
+        
+        return results
+        
+    def run_lof_analysis(self, builder_before_data, end_time, correlations, lof_full_model, nfe, ncp, sigmas, step_size = 0.2, search_range = (0, 1)):
+        """ Runs the lack of fit minimization problem used in the Michael's Reaction paper
+        from Chen et al. (submitted). To use this function, the full parameter estimation
+        problem should be solved first and the correlations for wavelngths from this optimization
+        need to be supplied to the function as an option.
+                        
+                Args:
+                    builder_before_data (TemplateBuilder): Template builder class of complete model
+                                without the data added yet
+                    end_time (int): the end time for the data and simulation
 
+                    correlations (dict): dictionary containing the wavelengths and their correlations
+                                to the concentration profiles
+                    lof_full_model(int): the value of the lack of fit of the full model (with all wavelengths)
+            
+                Returns:
+                    *****final model results.
+            
+        """ 
+        if not isinstance(step_size, float):
+            raise RuntimeError("step_size must be a float between 0 and 1")
+        elif step_size >= 1 or step_size <= 0:
+            return RuntimeError("step_size must be a float between 0 and 1")
+        
+        if not isinstance(search_range, tuple):
+            raise RuntimeError("search range must be a tuple")
+        elif search_range [0] < 0 or search_range [0] > 1 and not (isinstance(search_range, float) or isinstance(search_range, int)):
+            raise RuntimeError("search range lower value must be between 0 and 1 and must be type float")
+        elif search_range [1] < 0 or search_range [1] > 1 and not  (isinstance(search_range, float) or isinstance(search_range, int)):
+            raise RuntimeError("search range upper value must be between 0 and 1 and must be type float")
+        elif search_range [1] <= search_range [0]:
+            raise RuntimeError("search_range[1] must be bigger than search_range[0]!")
+        #firstly we will run the initial search from at increments of 20 % for the correlations
+        # we already have lof(0) so we want 10,30,50,70, 90.
+        count = 0
+        filt = 0.0
+        initial_solutions = list()
+        initial_solutions.append((0, lof_full_model))
+        while filt < search_range[1]:
+            filt += step_size
+            if filt > search_range[1]:
+                break
+            elif filt == 1:
+                break
+            new_subs = wavelength_subset_selection(correlations = correlations, n = filt)
+            lists1 = sorted(new_subs.items())
+            x1, y1 = zip(*lists1)
+            x = list(x1)            
+            
+            new_D = pd.DataFrame(np.nan,index=self._meas_times, columns = new_subs)
+            for t in self._meas_times:
+                for l in self._meas_lambdas:
+                    if l in new_subs:
+                        new_D.at[t,l] = self.model.D[t,l]
+            
+            #opt_model, nfe, ncp = construct_model_from_reduced_set(builder_before_data, end_time, new_D)
+            # Now that we have a new DataFrame, we need to build the entire problem from this
+            # An entire new ParameterEstimation problem should be set up, on the outside of 
+            # this function and class structure, from the model already developed by the user. 
+            new_template = construct_model_from_reduced_set(builder_before_data,end_time, new_D)
+            # need to put in an optional running of the variance estimator for the new 
+            # parameter estimation run, or just use the previous full model run to initialize...             
+            results, lof = run_param_est(new_template, nfe, ncp, sigmas) 
+            initial_solutions.append((filt, lof))
+            
+            count += 1
+        
+        count = 0
+        for x in initial_solutions:
+            print("When wavelengths of less than ", x[0], "correlation are removed")
+            print("The lack of fit is: ", x[1])
+        #print(initial_solutions)
+                            
     #=============================================================================
     #--------------------------- DIAGNOSTIC TOOLS ------------------------
     #=============================================================================
@@ -1117,8 +1244,6 @@ class ParameterEstimator(Optimizer):
     
         """        
         nt = self._n_meas_times
-        nc = self._n_actual
-        nw = self._n_meas_lambdas
         
         cov_d_l = dict()
         #calculating the covariance dl with ck
@@ -1165,6 +1290,7 @@ class ParameterEstimator(Optimizer):
 
         return cor_l
 
+    
 def split_sipopt_string(output_string):
     start_hess = output_string.find('DenseSymMatrix')
     ipopt_string = output_string[:start_hess]
@@ -1212,6 +1338,24 @@ def read_reduce_hessian(hessian_string, n_vars):
                     hessian[row, col] = float(value)
                     hessian[col, row] = float(value)
     return hessian
+
+
+def read_reduce_hessian_k_aug(hessian_string, n_vars):
+    hessian = np.zeros((n_vars, n_vars))
+    for i, line in enumerate(hessian_string.split('\n')):
+        if i > 0:  # ignores header
+            if line not in ['', ' ', '\t']:
+                hess_line = line.split(']=')
+                if len(hess_line) == 2:
+                    value = float(hess_line[1])
+                    column_line = hess_line[0].split(',')
+                    col = int(column_line[1])
+                    row_line = column_line[0].split('[')
+                    row = int(row_line[1])
+                    hessian[row, col] = float(value)
+                    hessian[col, row] = float(value)
+    return hessian
+
 
 #######################additional for inputs###CS
 def t_ij(time_set, i, j):
@@ -1265,18 +1409,96 @@ def fe_cp(time_set, feedtime):
     return fe, cp
 ################################################
 
-def read_reduce_hessian_k_aug(hessian_string, n_vars):
-    hessian = np.zeros((n_vars, n_vars))
-    for i, line in enumerate(hessian_string.split('\n')):
-        if i > 0:  # ignores header
-            if line not in ['', ' ', '\t']:
-                hess_line = line.split(']=')
-                if len(hess_line) == 2:
-                    value = float(hess_line[1])
-                    column_line = hess_line[0].split(',')
-                    col = int(column_line[1])
-                    row_line = column_line[0].split('[')
-                    row = int(row_line[1])
-                    hessian[row, col] = float(value)
-                    hessian[col, row] = float(value)
-    return hessian
+def wavelength_subset_selection(correlations = None, n = None):
+    """ identifies the subset of wavelengths that needs to be chosen, based
+    on the minimum correlation value set by the user (or from the automated 
+    lack of fit minimization procedure)
+     
+        Args:
+            correlations (dict): dictionary obtained from the wavelength_correlation
+                    function, containing every wavelength from the original set and
+                    their correlations to the concentration profile.
+                   
+            n (int): a value between 0 - 1 that slects the minimum amount
+                    correlation between the wavelength and the concentrations.
+    
+        Returns:
+            dictionary of correlations with wavelength
+    
+    """      
+    if not isinstance(correlations, dict):
+        raise RuntimeError("correlations must be of type dict()! Use wavelength_correlation function first!")
+        
+    #should check whether the dictionary contains all wavelengths or not
+    if not isinstance(n, float):
+        raise RuntimeError("n must be of type int!")
+    elif n > 1 or n < 0:
+        raise RuntimeError("n must be a number between 0 and 1")             
+       
+    subset_dict = dict()
+    for l in six.iterkeys(correlations):
+        if correlations[l] >= n:
+            subset_dict[l] = correlations[l]
+    return subset_dict
+
+#=============================================================================
+#----------- PARAMETER ESTIMATION WITH WAVELENGTH SELECTION ------------------
+#=============================================================================
+
+def construct_model_from_reduced_set(builder_clone, end_time, D):
+    """ constructs the new pyomo model based on the selected wavelengths.
+     
+        Args:
+            builder_clone (TemplateBuilder): Template builder class of complete model
+                            without the data added yet 
+            end_time (int): the end time for the data and simulation
+            D (dataframe): the new, reduced dataset with only the selected wavelengths.
+    
+        Returns:
+            opt_mode(TemplateBuilder): new Pyomo model from TemplateBuilder, ready for
+                    parameter estimation
+    
+    """ 
+
+    if not isinstance(builder_clone, TemplateBuilder):
+        raise RuntimeError('builder_clone needs to be of type TemplateBuilder')
+    
+    if not isinstance(D, pd.DataFrame):
+        raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
+        
+    if not isinstance(end_time, int):
+        raise RuntimeError('nfe needs to be type int. Number of finite elements must be defined')
+
+    builder_clone.add_spectral_data(D)
+    opt_model = builder_clone.create_pyomo_model(0.0,end_time)
+    
+    return opt_model
+    
+def run_param_est(opt_model, nfe, ncp, sigmas):
+    """ Runs the parameter estimator for the selected subset
+     
+        Args:
+            opt_model (pyomo model): The model that we wish to run the 
+            nfe (int): number of finite elements
+            ncp (int): number of collocation points
+            sigmas(dict): dictionary containing the variances, as used in the ParameterEstimator class
+            
+        Returns:
+            results_pyomo (results of optimization): Parameter Estimation results
+            lof (float): lack of fit results
+    
+    """ 
+    
+    p_estimator = ParameterEstimator(opt_model)
+    p_estimator.apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
+    options = dict()
+    
+    # These may not always solve, so we need to come up with a decent initialization strategy here
+    results_pyomo = p_estimator.run_opt('ipopt',
+                                      tee=False,
+                                      solver_opts = options,
+                                      variances=sigmas)
+    lof = p_estimator.lack_of_fit()
+
+    return results_pyomo, lof
+    
