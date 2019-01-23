@@ -1057,7 +1057,7 @@ class ParameterEstimator(Optimizer):
                 Args:
                     builder_clone (TemplateBuidler): Template builder class of complete model
                                 without the data added yet
-                    end_time (int): the end time for the data and simulation
+                    end_time (float): the end time for the data and simulation
                     subset(list): list of selected wavelengths
                     nfe (int): number of finite elements
                     ncp (int): number of collocation points
