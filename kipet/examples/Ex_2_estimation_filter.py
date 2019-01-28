@@ -47,7 +47,7 @@ if __name__ == "__main__":
             inspect.currentframe() ) ) ), 'data_sets'))
     filename =  os.path.join(dataDirectory,'Dij.txt')
     D_frame = read_spectral_data_from_txt(filename)
-    fD_frame = savitzky_golay(dataFrame = D_frame, window_size = 15, orderPoly = 5)
+    fD_frame = savitzky_golay(dataFrame = D_frame, window_size = 15, orderPoly = 3)
     # Then we build dae block for as described in the section 4.2.1. Note the addition
     # of the data using .add_spectral_data
     #################################################################################    

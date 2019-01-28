@@ -38,8 +38,7 @@ if __name__ == "__main__":
     #=========================================================================
     #USER INPUT SECTION - REQUIRED MODEL BUILDING ACTIONS
     #=========================================================================
-       
-    
+           
     # Load spectral data from the relevant file location. As described in section 4.3.1
     #################################################################################
     dataDirectory = os.path.abspath(
@@ -47,18 +46,18 @@ if __name__ == "__main__":
             inspect.currentframe() ) ) ), 'data_sets'))
     filename =  os.path.join(dataDirectory,'Dij.txt')
     D_frame = read_spectral_data_from_txt(filename)
-    sD_frame = snv(dataFrame = D_frame)
-    fD_frame = savitzky_golay(dataFrame = sD_frame, window_size = 15, orderPoly = 9)
+
     # Then we build dae block for as described in the section 4.2.1. Note the addition
     # of the data using .add_spectral_data
     #################################################################################    
     builder = TemplateBuilder()    
     components = {'A':1e-3,'B':0,'C':0}
     builder.add_mixture_component(components)
-    builder.add_parameter('k1',init = 1, bounds=(0.2,4.0))
-    builder.add_parameter('k2',init = 0.2, bounds=(0.05,1.0))
-    builder.add_spectral_data(fD_frame)
-
+    
+    builder.add_parameter('k1', init=4.0, bounds=(0.0,5.0)) 
+    #There is also the option of providing initial values: Just add init=... as additional argument as above.
+    builder.add_parameter('k2',bounds=(0.0,1.0))
+    
     # define explicit system of ODEs
     def rule_odes(m,t):
         exprs = dict()
@@ -68,7 +67,13 @@ if __name__ == "__main__":
         return exprs
     
     builder.set_odes_rule(rule_odes)
-    opt_model = builder.create_pyomo_model(0.0,10.0)
+    # Notice that to use the wavelength subset optimization we need to use make a copy of the builder
+    # before we add the spectral data matrix
+    builder_before_data = builder
+    
+    builder.add_spectral_data(D_frame)
+    end_time = 10
+    opt_model = builder.create_pyomo_model(0.0,end_time)
     
     #=========================================================================
     #USER INPUT SECTION - VARIANCE ESTIMATION 
@@ -76,8 +81,11 @@ if __name__ == "__main__":
     # For this problem we have an input D matrix that has some noise in it
     # We can therefore use the variance estimator described in the Overview section
     # of the documentation and Section 4.3.3
+    nfe = 60
+    ncp = 3
+    
     v_estimator = VarianceEstimator(opt_model)
-    v_estimator.apply_discretization('dae.collocation',nfe=50,ncp=3,scheme='LAGRANGE-RADAU')
+    v_estimator.apply_discretization('dae.collocation', nfe = nfe, ncp = ncp, scheme = 'LAGRANGE-RADAU')
     
     # It is often requried for larger problems to give the solver some direct instructions
     # These must be given in the form of a dictionary
@@ -92,7 +100,7 @@ if __name__ == "__main__":
     # prediction for large noisey data sets.
     A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if (i % 4 == 0)]
     
-    # Finally we run the variance estimatator using the arguments shown in Seciton 4.3.3
+    # Finally we run the variance estimator using the arguments shown in Section 4.3.3
     results_variances = v_estimator.run_opt('ipopt',
                                             tee=True,
                                             solver_options=options,
@@ -107,20 +115,19 @@ if __name__ == "__main__":
 
     # and the sigmas for the parameter estimation step are now known and fixed
     sigmas = results_variances.sigma_sq
-    
-    
+        
     #=========================================================================
     # USER INPUT SECTION - PARAMETER ESTIMATION 
     #=========================================================================
-    # In order to run the paramter estimation we create a pyomo model as described in section 4.3.4
-    opt_model = builder.create_pyomo_model(0.0,10.0)
+    # In order to run the parameter estimation we create a pyomo model as described in section 4.3.4
+    opt_model = builder.create_pyomo_model(0.0,end_time)
 
     # and define our parameter estimation problem and discretization strategy
     p_estimator = ParameterEstimator(opt_model)
-    p_estimator.apply_discretization('dae.collocation',nfe=50,ncp=3,scheme='LAGRANGE-RADAU')
+    p_estimator.apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
     
     # Certain problems may require initializations and scaling and these can be provided from the 
-    # varininace estimation step. This is optional.
+    # variance estimation step. This is optional.
     p_estimator.initialize_from_trajectory('Z',results_variances.Z)
     p_estimator.initialize_from_trajectory('S',results_variances.S)
     p_estimator.initialize_from_trajectory('C',results_variances.C)
@@ -148,16 +155,7 @@ if __name__ == "__main__":
         
     # display results
     if with_plots:
-        plot_spectral_data(D_frame,dimension='3D')
-        plot_spectral_data(sD_frame,dimension='3D')
-        plot_spectral_data(fD_frame,dimension='3D')
-            
         results_pyomo.C.plot.line(legend=True)
-        plt.xlabel("time (s)")
-        plt.ylabel("Concentration (mol/L)")
-        plt.title("Concentration Profile")
-
-        results_pyomo.Z.plot.line(legend=True)
         plt.xlabel("time (s)")
         plt.ylabel("Concentration (mol/L)")
         plt.title("Concentration Profile")
@@ -168,5 +166,70 @@ if __name__ == "__main__":
         plt.title("Absorbance  Profile")
     
         plt.show()
-    
 
+    #=========================================================================
+    # USER INPUT SECTION - LACK OF FIT and WAVELENGTH SELECTION
+    #=========================================================================
+    # After solving the full parameter estimation problem above, it is also possible in KIPET
+    # to assess the lack of fit (i.e. the amount of mismatch between the data and the model)
+    # We do this by calling the following on our ParameterEstimator class
+    lof = p_estimator.lack_of_fit()
+    
+    # This will provide us with the overall lack of fit as a percentage
+    # It is also possible to determine the amount of correlation that each specific wavelength 
+    # has with the concentration profiles. This is done through the wavelength_correlation function
+    correlations = p_estimator.wavelength_correlation()
+    
+    # This outputs a dictionary containing the correlations with the wavelengths.
+    # NOTE that in order to graph these, the dictionary (which is unordered) needs to be split
+    # and ordered into lists.
+    if with_plots:
+        lists1 = sorted(correlations.items())
+        x1, y1 = zip(*lists1)
+        plt.plot(x1,y1)   
+        plt.xlabel("Wavelength (cm)")
+        plt.ylabel("Correlation between species and wavelength")
+        plt.title("Correlation of species and wavelength")
+        plt.show()      
+    
+    # Now that we have the correlations for the wavelengths and the full, reference model, we may want to assess
+    # how removing certain wavelengths may improve the fit of our model. To do this, we can run the lof analysis
+    # where the problem is solved with different subsets of data. These subsets are filtered so that only the 
+    # wavelengths with high correlation remain. The default settings perform the estimation for 0.2, 0.4, 0.6, and 
+    # 0.8. This means that only wavelengths with correlation above these numbers are considered in the parameter 
+    # estimation
+    p_estimator.run_lof_analysis(builder_before_data, end_time, correlations, lof, nfe, ncp, sigmas)   
+    
+    #From this output we can assess which wavelengths, more or less, should be removed in order to obtain the best fit
+    # Due to the issues with memory of performing so many optimizations, these models are not stored.
+    
+    # If the user wishes to search in a particular area of the lof, it is possible to set the step size and range of search
+    p_estimator.run_lof_analysis(builder_before_data, end_time, correlations, lof, nfe, ncp, sigmas, step_size = 0.01, search_range = (0, 0.12))
+    
+    # From this output, it is possible to determine where, in particular, the best fit is obtained
+    # We can now run the parameter estimation based on a particular wavelength correlation filter.
+    # We do this by first obtaining a new data matrix with fewer wavelengths included:
+    
+    new_subs = wavelength_subset_selection(correlations = correlations, n = 0.095)
+
+    # And finally we can run the new parameter estimator with the subset inputted
+    results_pyomo = p_estimator.run_param_est_with_subset_lambdas(builder_before_data, end_time, new_subs, nfe, ncp, sigmas)
+
+    # And display the results
+    print("The estimated parameters are:")
+    for k,v in six.iteritems(results_pyomo.P):
+        print(k, v)
+        
+    # display results
+    if with_plots:
+        results_pyomo.C.plot.line(legend=True)
+        plt.xlabel("time (s)")
+        plt.ylabel("Concentration (mol/L)")
+        plt.title("Concentration Profile")
+
+        results_pyomo.S.plot.line(legend=True)
+        plt.xlabel("Wavelength (cm)")
+        plt.ylabel("Absorbance (L/(mol cm))")
+        plt.title("Absorbance  Profile")
+    
+        plt.show()

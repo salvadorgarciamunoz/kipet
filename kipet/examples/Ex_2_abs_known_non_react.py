@@ -129,7 +129,7 @@ if __name__ == "__main__":
     # prediction for large noisey data sets.
     A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if (i % 7 == 0)]
 
-    # Finally we run the variance estimatator using the arguments shown in Seciton 4.3.3
+    # Finally we run the variance estimatator using the arguments shown in Section 4.3.3
     results_variances = v_estimator.run_opt('ipopt',
                                             tee=True,
                                             solver_options=options,
@@ -161,7 +161,7 @@ if __name__ == "__main__":
     #=========================================================================
     # USER INPUT SECTION - PARAMETER ESTIMATION 
     #=========================================================================
-    # In order to run the paramter estimation we create a pyomo model as described in section 4.3.4
+    # In order to run the parameter estimation we create a pyomo model as described in section 4.3.4
     opt_model = builder.create_pyomo_model(0.0,10.0)
     builder.set_known_absorbing_species(opt_model, known_abs, S_frame) 
     # and define our parameter estimation problem and discretization strategy
