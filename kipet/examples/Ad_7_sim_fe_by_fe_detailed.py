@@ -5,7 +5,7 @@
 #  Kipet: Kinetic parameter estimation toolkit
 #  Copyright (c) 2016 Eli Lilly.
 #  _________________________________________________________________________
-
+# This example is a fe-by-fe simulation of the Michael's Reaction
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
