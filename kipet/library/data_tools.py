@@ -501,7 +501,13 @@ def savitzky_golay(dataFrame, window_size, orderPoly, orderDeriv=0):
         y = np.concatenate((firstvals, row, lastvals))
         new_row = np.convolve( m, y, mode='valid')
         no_noise[t]=new_row
-
+        
+    if orderDeriv == 0:
+        for t in range(len(dataFrame.index)):
+            for l in range(len(dataFrame.columns)):
+                if no_noise[t,l] < 0:
+                    no_noise[t,l] = 0
+    
     data_frame = pd.DataFrame(data=no_noise,
                               columns = dataFrame.columns,
                               index=dataFrame.index)

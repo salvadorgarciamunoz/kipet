@@ -125,7 +125,7 @@ if __name__ == "__main__":
     mod = sim.model.clone()
     
     # defines the discrete points wanted in the concentration profile
-    sim.apply_discretization('dae.collocation', nfe=5, ncp=3, scheme='LAGRANGE-RADAU')
+    sim.apply_discretization('dae.collocation', nfe=50, ncp=3, scheme='LAGRANGE-RADAU')
 
     #: we now need to explicitly tell the initial conditions and parameter values
     param_name = "P"
