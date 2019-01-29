@@ -101,7 +101,7 @@ if __name__ == "__main__":
      
     # create instance of simulator
     simulator = PyomoSimulator(sim_model)
-    simulator.apply_discretization('dae.collocation',nfe=8,ncp=3,scheme='LAGRANGE-RADAU')
+    simulator.apply_discretization('dae.collocation',nfe=20,ncp=3,scheme='LAGRANGE-RADAU')
     
     # simulate with fixed variances
     sigmas = {'device':1e-8,
@@ -136,7 +136,7 @@ if __name__ == "__main__":
     #################################################################################
   
     v_estimator = VarianceEstimator(opt_model)
-    v_estimator.apply_discretization('dae.collocation',nfe=8,ncp=3,scheme='LAGRANGE-RADAU')
+    v_estimator.apply_discretization('dae.collocation',nfe=20,ncp=3,scheme='LAGRANGE-RADAU')
     
     v_estimator.initialize_from_trajectory('Z',results_sim.Z)
     v_estimator.initialize_from_trajectory('S',results_sim.S)
@@ -160,7 +160,7 @@ if __name__ == "__main__":
     opt_model = builder.create_pyomo_model(0.0,50.0)
     builder.set_non_absorbing_species(opt_model, non_abs)
     p_estimator = ParameterEstimator(opt_model)
-    p_estimator.apply_discretization('dae.collocation',nfe=8,ncp=3,scheme='LAGRANGE-RADAU')
+    p_estimator.apply_discretization('dae.collocation',nfe=20,ncp=3,scheme='LAGRANGE-RADAU')
     
     p_estimator.initialize_from_trajectory('Z',results_variances.Z)
     p_estimator.initialize_from_trajectory('S',results_variances.S)

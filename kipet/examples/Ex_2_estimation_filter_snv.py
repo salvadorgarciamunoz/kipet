@@ -48,15 +48,15 @@ if __name__ == "__main__":
     filename =  os.path.join(dataDirectory,'Dij.txt')
     D_frame = read_spectral_data_from_txt(filename)
     sD_frame = snv(dataFrame = D_frame)
-    fD_frame = savitzky_golay(dataFrame = sD_frame, window_size = 15, orderPoly = 2)
+    fD_frame = savitzky_golay(dataFrame = sD_frame, window_size = 15, orderPoly = 9)
     # Then we build dae block for as described in the section 4.2.1. Note the addition
     # of the data using .add_spectral_data
     #################################################################################    
     builder = TemplateBuilder()    
     components = {'A':1e-3,'B':0,'C':0}
     builder.add_mixture_component(components)
-    builder.add_parameter('k1',bounds=(0.0,5.0))
-    builder.add_parameter('k2',bounds=(0.0,1.0))
+    builder.add_parameter('k1',init = 1, bounds=(0.2,4.0))
+    builder.add_parameter('k2',init = 0.2, bounds=(0.05,1.0))
     builder.add_spectral_data(fD_frame)
 
     # define explicit system of ODEs
@@ -77,7 +77,7 @@ if __name__ == "__main__":
     # We can therefore use the variance estimator described in the Overview section
     # of the documentation and Section 4.3.3
     v_estimator = VarianceEstimator(opt_model)
-    v_estimator.apply_discretization('dae.collocation',nfe=60,ncp=1,scheme='LAGRANGE-RADAU')
+    v_estimator.apply_discretization('dae.collocation',nfe=50,ncp=3,scheme='LAGRANGE-RADAU')
     
     # It is often requried for larger problems to give the solver some direct instructions
     # These must be given in the form of a dictionary

@@ -60,16 +60,13 @@ if __name__ == "__main__":
     fixed_traj = read_absorption_data_from_txt(traj)
     C = read_absorption_data_from_txt(conc)
     
-
     meas_times=sorted(C.index)
-    print(meas_times)
+    #print(meas_times)
     # How many measurement times are there
     nfe_x = len(meas_times)
-    print(nfe_x)
+    #print(nfe_x)
     # create template model 
     builder = TemplateBuilder()    
-
-
 
     # components
     components = dict()
