@@ -15,7 +15,7 @@ URL = 'https://github.com/salvadorgarciamunoz/kipet'
 setuptools_kwargs = {
     'zip_safe': False,
     'install_requires': ['six',
-                         'pyomo<=5.4.3',
+                         'pyomo>=5.5',
                          'coverage',
                          'numpy',
                          'scipy',
