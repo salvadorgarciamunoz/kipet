@@ -5,7 +5,7 @@ from __future__ import division
 from pyomo.environ import *
 from pyomo.dae import *
 from kipet.library.ParameterEstimator import *
-from pyomo.core.base.expr import Expr_if
+from pyomo import *
 from scipy.optimize import least_squares
 import matplotlib.pyplot as plt
 import numpy as np

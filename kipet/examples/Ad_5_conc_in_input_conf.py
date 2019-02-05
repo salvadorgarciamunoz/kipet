@@ -144,7 +144,7 @@ if __name__ == "__main__":
 
     # finally we run the optimization
     
-    results_pyomo = p_estimator.run_opt('ipopt_sens',
+    results_pyomo = p_estimator.run_opt('k_aug',
                                         tee=True,
                                         solver_opts=options,
                                         variances=sigmas,

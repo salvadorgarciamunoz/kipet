@@ -243,20 +243,20 @@ class ParameterEstimator(Optimizer):
                 try:
                     var_loc[v]
                 except:
-                    print(v, "is an error")
+                    #print(v, "is an error")
                     var_loc[v] = 0
-                    print(v, "is thus set to ", var_loc[v])
-                    print(var_loc[v])
+                    #print(v, "is thus set to ", var_loc[v])
+                    #print(var_loc[v])
 
             vlocsize = len(var_loc)
-            print("var_loc size, ", vlocsize)
+            #print("var_loc size, ", vlocsize)
             unordered_hessian = np.loadtxt('result_red_hess.txt')
             if os.path.exists('result_red_hess.txt'):
                 os.remove('result_red_hess.txt')
             # hessian = read_reduce_hessian_k_aug(hessian_output, n_vars)
             # hessian =hessian_output
             # print(hessian)
-            print(unordered_hessian.size, "unordered hessian size")
+            #print(unordered_hessian.size, "unordered hessian size")
             hessian = self._order_k_aug_hessian(unordered_hessian, var_loc)
             if self._estimability == True:
                 self.hessian = hessian
@@ -440,10 +440,10 @@ class ParameterEstimator(Optimizer):
                 try:
                     var_loc[v]
                 except:
-                    print(v, "is an error")
+                    #print(v, "is an error")
                     var_loc[v] = 0
-                    print(v, "is thus set to ", var_loc[v])
-                    print(var_loc[v])
+                    #print(v, "is thus set to ", var_loc[v])
+                    #print(var_loc[v])
 
             vlocsize = len(var_loc)
             print("var_loc size, ", vlocsize)
@@ -841,7 +841,7 @@ class ParameterEstimator(Optimizer):
                                         idx = (curr_time,) + knew
                                         con[idx].deactivate()
                                         e = con[idx].expr.clone()
-                                        e._args[0]._args[1] = vdummy
+                                        e.args[0].args[1] = vdummy
                                         con[idx].set_value(e)
                                         conlist.add(con[idx].expr)
                     kn = kn + 1
@@ -862,8 +862,14 @@ class ParameterEstimator(Optimizer):
         for vi in six.itervalues(self._idx_to_variable):
             j = 0
             for vj in six.itervalues(self._idx_to_variable):
-                h = unordered_hessian[(var_loc[vi]), (var_loc[vj])]
-                hessian[i, j] = h
+                if n_vars ==1:
+                    print("var_loc[vi]",var_loc[vi])
+                    print(unordered_hessian)
+                    h = unordered_hessian
+                    hessian[i, j] = h
+                else:
+                    h = unordered_hessian[(var_loc[vi]), (var_loc[vj])]
+                    hessian[i, j] = h
                 j += 1
             i += 1
         print(hessian.size, "hessian size")
