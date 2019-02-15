@@ -34,13 +34,13 @@ class ParameterEstimator(Optimizer):
         self._n_actual = self._n_components
         
         if hasattr(self.model, 'non_absorbing'):
-            warnings.warn("Overriden by non_absorbing")
+            warnings.warn("Overridden by non_absorbing")
             list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
             self._sublist_components = list_components
             self._n_actual = len(self._sublist_components)
             
         if hasattr(self.model, 'known_absorbance'):
-            warnings.warn("Overriden by known_absorbance")
+            warnings.warn("Overridden by known_absorbance")
             list_components = [k for k in self._mixture_components if k not in self._known_absorbance]
             self._sublist_components = list_components
             self._n_actual = len(self._sublist_components)
@@ -68,17 +68,20 @@ class ParameterEstimator(Optimizer):
             
             subset_lambdas (array_like,optional): Set of wavelengths to used in 
             the optimization problem (not yet fully implemented). Default all wavelengths.
+            
+            datasets (dictionary, optional): dictionary containing other datasets for the same problem
 
         Returns:
             None
         """
 
         tee = kwds.pop('tee', False)
-        with_d_vars = kwds.pop('with_d_vars', False)
+        with_d_vars = kwds.pop('with_d_vars', True)
         weights = kwds.pop('weights', [1.0, 1.0])
         covariance = kwds.pop('covariance', False)
         species_list = kwds.pop('subset_components', None)
         set_A = kwds.pop('subset_lambdas', list())
+        datasets = kwds.pop('datasets', None)
         
         if not set_A:
             set_A = self._meas_lambdas
@@ -128,7 +131,6 @@ class ParameterEstimator(Optimizer):
             m.D_bar_constraint = Constraint(m.meas_times,
                                             m.meas_lambdas,
                                             rule=rule_D_bar)
-
         # estimation
         def rule_objective(m):
             expr = 0
@@ -775,7 +777,7 @@ class ParameterEstimator(Optimizer):
         for i in range(0, len(fe_list)):  # test whether integer elements
             self.jump_constraints(i)
 
-    ###########################
+
     def jump_constraints(self, fe):
         # type: (int) -> None
         """ Take the current state of variables of the initializing model at fe and load it into the tgt_model
@@ -784,11 +786,11 @@ class ParameterEstimator(Optimizer):
         Args:
             fe (int): The current finite element to be patched (tgt_model).
         """
-        ###########################
+
         if not isinstance(fe, int):
             raise Exception  # wrong type
         ttgt = getattr(self.model, self.time_set)
-        ##############################
+
         # Inclusion of discrete jumps: (CS)
         if self.jump:
             kn = 0
@@ -804,10 +806,8 @@ class ParameterEstimator(Optimizer):
                         raise Exception("Error: Check feed time points in set feed_times and in jump_times again.\n"
                                         "They do not match.\n"
                                         "Jump_time is not included in feed_times.")
-                    # print('jump_el, el:',self.jump_fe, fe)
+
                     if fe == self.jump_fe + 1:
-                        # print("jump_constraints!")
-                        #################################
                         for v in self.disc_jump_v_dict.keys():
                             if not isinstance(v, str):
                                 print("v is not str")
@@ -846,7 +846,6 @@ class ParameterEstimator(Optimizer):
                                         conlist.add(con[idx].expr)
                     kn = kn + 1
 
-####################################################################
 
     def _order_k_aug_hessian(self, unordered_hessian, var_loc):
         """
@@ -874,6 +873,7 @@ class ParameterEstimator(Optimizer):
             i += 1
         print(hessian.size, "hessian size")
         return hessian
+
 
     def run_opt(self, solver, **kwds):
 
@@ -949,6 +949,7 @@ class ParameterEstimator(Optimizer):
         if estimability == True:
             self._estimability = True
             # solver_opts['dsdp_mode'] = ""
+        
         active_objectives = [o for o in self.model.component_map(Objective, active=True)]
 
         """inputs section""" # additional section for inputs from trajectory and fixed inputs, CS
@@ -964,7 +965,6 @@ class ParameterEstimator(Optimizer):
                     # raise Exception
                 for i in self.inputs_sub[k]:
                     # print(self.inputs_sub[k])
-                    # print(i)
                     if self.fixedtraj==True or self.fixedy==True:
                         if self.fixedtraj==True:
                             for j in self.yfixtraj.keys():
@@ -1008,18 +1008,22 @@ class ParameterEstimator(Optimizer):
                 raise Exception("Error: Check feed time points in set feed_times and in jump_times again.\n"
                             "There are more time points in feed_times than jump_times provided.")
             self.load_discrete_jump()
-
+        
+        
         if active_objectives:
             print(
                 "WARNING: The model has an active objective. Running optimization with models objective.\n"
                 " To solve optimization with default objective (Weifengs) deactivate all objectives in the model.")
             solver_results = opt.solve(self.model, tee=tee)
+            
         elif self._spectra_given:
             self._solve_extended_model(variances, opt,
                                        tee=tee,
                                        covariance=covariance,
                                        with_d_vars=with_d_vars,
+                                       datasets = datasets,
                                        **kwds)
+            
         elif self._concentration_given:
             self._solve_model_given_c(variances, opt,
                                       tee=tee,
@@ -1054,7 +1058,11 @@ class ParameterEstimator(Optimizer):
             return self.hessian, results
         else:
             return results        
-        
+
+    #=============================================================================
+    #------------------------- WAVELENGTH SELECTION TOOLS ------------------------
+    #=============================================================================
+         
     def run_param_est_with_subset_lambdas(self, builder_clone, end_time, subset, nfe, ncp, sigmas):
         """ Performs the parameter estimation with a specific subset of wavelengths.
             At the moment, this is performed as a totally new Pyomo model, based on the 
@@ -1363,7 +1371,7 @@ def read_reduce_hessian_k_aug(hessian_string, n_vars):
     return hessian
 
 
-#######################additional for inputs###CS
+#  additional for inputs (CS)
 def t_ij(time_set, i, j):
     # type: (ContinuousSet, int, int) -> float
     """Return the corresponding time(continuous set) based on the i-th finite element and j-th collocation point
@@ -1507,4 +1515,3 @@ def run_param_est(opt_model, nfe, ncp, sigmas):
     lof = p_estimator.lack_of_fit()
 
     return results_pyomo, lof
-    

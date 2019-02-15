@@ -1,4 +1,3 @@
-# from kipet.model.TemplateBuilder import *
 import pandas as pd
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d
@@ -629,3 +628,43 @@ def msc(dataFrame, reference_spectra=None):
                               columns = dataFrame.columns,
                               index=dataFrame.index)
     return data_frame
+
+def decrease_wavelengths(original_dataset, A_set = 2, specific_subset = None):
+    '''
+    Takes in the original, full dataset and removes specific wavelengths, or only keeps every
+    multipl of A_set. Returns a new, smaller dataset that should be easier to solve
+    
+    Args:
+        original_dataset (DataFrame):   the data to be processed
+        A_set (float, optional):  optional user-provided multiple of wavelengths to keep. i.e. if
+                                    3, every third value is kept. Default is 2.
+        specific_subset (list or dict, optional): If the user already knows which wavelengths they would like to
+                                    remove, then a list containing these can be included.
+        
+    Returns:
+        DataFrame with the smaller dataset
+    
+    '''
+    if specific_subset != None:
+        if not isinstance(specific_subset, (list, dict)):
+            raise RuntimeError("subset must be of type list or dict!")
+             
+        if isinstance(specific_subset, dict):
+            lists1 = sorted(specific_subset.items())
+            x1, y1 = zip(*lists1)
+            specific_subset = list(x1)
+            
+        new_D = pd.DataFrame(np.nan,index=original_dataset.index, columns = specific_subset)
+        for t in original_dataset.index:
+            for l in original_dataset.columns.values:
+                if l in subset:
+                    new_D.at[t,l] = self.model.D[t,l]           
+    else:
+        count=0
+        for l in original_dataset.columns.values:
+            remcount = count%A_set
+            if remcount==0:
+                original_dataset.drop(columns=[l],axis = 1)
+            count+=1
+        new_D = original_dataset[original_dataset.columns[::A_set]]     
+    return new_D

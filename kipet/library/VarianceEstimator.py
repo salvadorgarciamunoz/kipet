@@ -197,7 +197,7 @@ class VarianceEstimator(Optimizer):
 
         # solves formulation 18
         if init_C is None:
-            self._solve_initalization(solver, subset_lambdas=A, tee=tee)
+            self._solve_initalization(solver, subset_lambdas=A, solver_opts=solver_opts, tee=tee)
         else:
             for t in self._meas_times:
                 for k in self._mixture_components:
@@ -351,6 +351,7 @@ class VarianceEstimator(Optimizer):
 
         for key, val in solver_opts.items():
             opt.options[key]=val
+            
         solver_results = opt.solve(self.model,
                                    tee=tee,
                                    report_timing=profile_time)

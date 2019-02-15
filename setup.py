@@ -16,7 +16,7 @@ setuptools_kwargs = {
     'zip_safe': False,
     'install_requires': ['six',
                          'pyomo>=5.5',
-                         'coverage',
+                         'matplotlib',
                          'numpy',
                          'scipy',
                          'pandas'],
