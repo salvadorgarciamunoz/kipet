@@ -90,7 +90,8 @@ class TemplateBuilder(object):
         self._feed_times = set() #For inclusion of discrete feeds CS
         self._is_D_deriv = False
         self._is_C_deriv = False
-        
+        self._multiple_experiments = False
+        self._number_of_datasets = None
 
         components = kwargs.pop('concentrations', dict())
         if isinstance(components, dict):
@@ -193,10 +194,10 @@ class TemplateBuilder(object):
         """Add a component (reactive or product) to the model.
 
         This method will keep track of the number of components in the model
-        It will hel creating the Z,C and S variables. 
+        It will help in creating the Z,C and S variables. 
 
         Note:
-            This method tries to mimic a template implmenetation. Depending 
+            This method tries to mimic a template implementation. Depending 
             on the argument type it will behave differently.
 
         Args:
@@ -239,7 +240,7 @@ class TemplateBuilder(object):
         """Add spectral data 
 
         Args:
-            data (DataFrame): DataFrame with measurement times as 
+            data (DataFrame or dictionary of Dataframes): DataFrame with measurement times as 
                               indices and wavelengths as columns. 
 
         Returns:
@@ -264,20 +265,65 @@ class TemplateBuilder(object):
                 count+=1
             ###########################################
             self._spectral_data = dfall
-        else:
-            raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
-        
-        D = np.array(dfall)
+            self._number_of_datasets = 1
+            
+            D = np.array(dfall)
 
-        for t in range(len(dfall.index)):
-            for l in range(len(dfall.columns)):
-                if D[t,l] >= 0:
-                    pass
-                else:
-                    self._is_D_deriv = True
-        if self._is_D_deriv == True:
-            print("Warning! Since D-matrix contains negative values Kipet is assuming a derivative of D has been inputted")
-        
+            for t in range(len(dfall.index)):
+                for l in range(len(dfall.columns)):
+                    if D[t,l] >= 0:
+                        pass
+                    else:
+                        self._is_D_deriv = True
+            if self._is_D_deriv == True:
+                print("Warning! Since D-matrix contains negative values Kipet is assuming a derivative of D has been inputted")
+
+        elif isinstance(data, dict):
+            self._multiple_experiments = True
+            count = 0
+            for key, val in data.items():
+                if not isinstance(key, str):
+                    raise RuntimeError('The key for the dictionary must be a str')
+                if not isinstance(val, pd.DataFrame):
+                    raise RuntimeError('The value in the dictionary must be the experimental dataset as a pandas DataFrame')
+                count+=1
+            
+            self._number_of_datasets = count
+            dfall = dict()
+            for key, val in data.items():
+                df = pd.DataFrame(index=self._feed_times, columns=val.columns)
+                for t in self._feed_times:
+                    if t not in data.index:
+                        df.loc[t] = [0.0 for n in range(len(val.columns))]
+                dfexp=val.append(df)
+                dfexp.sort_index(inplace=True)
+                dfexp.index=dfexp.index.to_series().apply(lambda x: np.round(x, 6)) #time from data rounded to 6 digits
+                ##############Filter out NaN###############
+                count=0
+                for j in dfexp.index:
+                    if count>=1 and count<len(dfexp.index):
+                        if dfexp.index[count]==dfexp.index[count-1]:
+                            dfexp=dfexp.dropna()
+                    count+=1
+                ###########################################
+                dfall [key] = dfexp
+            self._spectral_data = dfall
+            
+            for key, val in data.items():
+                D = np.array(val)
+                for t in range(len(val.index)):
+                    for l in range(len(val.columns)):
+                        if D[t,l] >= 0:
+                            pass
+                        else:
+                            self._is_D_deriv = True
+            if self._is_D_deriv == True:
+                print("Warning! Since D-matrix contains negative values Kipet is assuming a derivative of D has been inputted")
+                        
+        else:
+            raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame or add data as dict')
+
+ 
     def add_concentration_data(self, data):
         """Add concentration data 
 
@@ -549,10 +595,18 @@ class TemplateBuilder(object):
             raise RuntimeError('Either add absorption data or spectral data but not both')
 
         if self._spectral_data is not None:
-            list_times = list_times.union(set(self._spectral_data.index))
-            list_lambdas = list(self._spectral_data.columns)
-            m_times = sorted(list_times)
-            m_lambdas = sorted(list_lambdas)
+            if self._multiple_experiments == False:
+                list_times = list_times.union(set(self._spectral_data.index))
+                list_lambdas = list(self._spectral_data.columns)
+                m_times = sorted(list_times)
+                m_lambdas = sorted(list_lambdas)
+            else:
+                for key, val in self._spectral_data.items():                    
+                    list_times = list_times.union(set(self._spectral_data[key].index))
+                    list_lambdas = list(self._spectral_data[key].columns)
+                    
+                m_times = sorted(list_times)
+                m_lambdas = sorted(list_lambdas)
 
         if self._absorption_data is not None:
             if not self._meas_times:
@@ -710,7 +764,11 @@ class TemplateBuilder(object):
             s_data_dict = dict()
             for t in pyomo_model.meas_times:
                 for l in pyomo_model.meas_lambdas:
+                    if self._multiple_experiments == False:
                         s_data_dict[t, l] = float(self._spectral_data[l][t])
+                    else:
+                        for key, val in self._spectral_data.items():
+                            s_data_dict[t, l] = float(val[l][t])
 
             pyomo_model.D = Param(pyomo_model.meas_times,
                                   pyomo_model.meas_lambdas,

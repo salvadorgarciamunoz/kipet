@@ -924,6 +924,8 @@ class ParameterEstimator(Optimizer):
         jump_times = kwds.pop("jump_times", None)
         feed_times = kwds.pop("feed_times", None)
 
+        datasets = kwds.pop("datasets", None)
+
         self.solver = solver
         
         if not self.model.time.get_discretization_info():

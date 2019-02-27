@@ -15,6 +15,7 @@ import six
 import copy
 import re
 import os
+from pyomo.opt import ProblemFormat
 
 __author__ = 'Michael Short'  #: February 2019
 
@@ -34,6 +35,7 @@ class MultipleExperimentsEstimator():
     def __init__(self,datasets):
         super(MultipleExperimentsEstimator, self).__init__()
         self.block_models = dict()
+        self._idx_to_variable = dict()
         
         if datasets != None:
             if isinstance(datasets, dict):
@@ -61,61 +63,251 @@ class MultipleExperimentsEstimator():
         self.opt_model = dict()
         
         self.initialization_model = dict()
-
-
-    def build_individual_blocks(self, m, exp):
-        """This function forms the rule for the construction of the individual blocks 
-        for multiple experiments, referenced in run_parameter_estimation. This function 
-        is not meant to be used by users directly.
-        
-        Args:
-            m (pyomo Concrete model): the concrete model that we are adding the block to
-            exp (list): a list containing the experiments
-            
-        Returns:
-            Pyomo model: Pyomo model inside the block
-            
+        self._sublist_components = list()
+        #This will change if we give concentration data
+        self._spectra_given = True
+        self._n_meas_times = 0
+        self._n_meas_lambdas = 0
+        self._n_actual = 0
+        self._n_params = 0
+          
+    def _define_reduce_hess_order_mult(self):
+        """This function is used to link the variables to the columns in the reduced
+           hessian for multiple experiments.         
         """
-        #WITH_D_VARS
-        with_d_vars= True
+        self.model.red_hessian = Suffix(direction=Suffix.IMPORT_EXPORT)
+        count_vars = 1
+
+        for i in self.experiments:
+            if not self._spectra_given:
+                pass
+            else:
+                for t in self.model.experiment[i].meas_times:
+                    for c in self._sublist_components:
+                        v = self.model.experiment[i].C[t, c]
+                        self._idx_to_variable[count_vars] = v
+                        self.model.red_hessian[v] = count_vars
+                        count_vars += 1
+
+            if not self._spectra_given:
+                pass
+    
+            else:
+                for l in self.model.experiment[i].meas_lambdas:
+                    for c in self._sublist_components:
+                        v = self.model.experiment[i].S[l, c]
+                        self._idx_to_variable[count_vars] = v
+                        self.model.red_hessian[v] = count_vars
+                        count_vars += 1
+    # This here is tricky
+            for v in six.itervalues(self.model.experiment[i].P):
+                if v.is_fixed():
+                    print(v, end='\t')
+                    print("is fixed")
+                    continue
+                self._idx_to_variable[count_vars] = v
+                self.model.red_hessian[v] = count_vars
+                count_vars += 1
+
+    def _order_k_aug_hessian(self, unordered_hessian, var_loc):
+        """
+        not meant to be used directly by users. Takes in the inverse of the reduced hessian
+        outputted by k_aug and uses the rh_name to find the locations of the variables and then
+        re-orders the hessian to be in a format where the other functions are able to compute the
+        confidence intervals in a way similar to that utilized by sIpopt.
+        """
+        vlocsize = len(var_loc)
+        n_vars = len(self._idx_to_variable)
+        hessian = np.zeros((n_vars, n_vars))
+        i = 0
+        for vi in six.itervalues(self._idx_to_variable):
+            j = 0
+            for vj in six.itervalues(self._idx_to_variable):
+                if n_vars ==1:
+                    print("var_loc[vi]",var_loc[vi])
+                    print(unordered_hessian)
+                    h = unordered_hessian
+                    hessian[i, j] = h
+                else:
+                    h = unordered_hessian[(var_loc[vi]), (var_loc[vj])]
+                    hessian[i, j] = h
+                j += 1
+            i += 1
+        print(hessian.size, "hessian size")
+        return hessian
+           
+    def _compute_covariance(self, hessian, variances):
         
-        m = self.initialization_model[exp]
-        if with_d_vars:
-            m.D_bar = Var(m.meas_times,
-                          m.meas_lambdas)
-
-            def rule_D_bar(m, t, l):
-                return m.D_bar[t, l] == sum(m.C[t, k] * m.S[l, k] for k in m._sublist_components)
-
-            m.D_bar_constraint = Constraint(m.meas_times,
-                                            m.meas_lambdas,
-                                            rule=rule_D_bar)
+        nt = 0
+        for i in self.experiments:
+            for t in self.model.experiment[i].meas_times:
+                nt+=1
+                
+        self._n_meas_times = n
         
-        m.error = Var(bounds = (0, None))
-
-        def rule_objective(m):
-            expr = 0
-            for t in m.meas_times:
-                for l in m.meas_lambdas:
-                    if with_d_vars:
-                        expr += (m.D[t, l] - m.D_bar[t, l]) ** 2 / (self.variances[exp]['device'])
-                    else:
-                        D_bar = sum(m.C[t, k] * m.S[l, k] for k in list_components)
-                        expr += (m.D[t, l] - D_bar) ** 2 / (self.variances[exp]['device'])
-
-            expr *= weights[0]
-            second_term = 0.0
-            for t in m.meas_times:
-                second_term += sum((m.C[t, k] - m.Z[t, k]) ** 2 / self.variances[exp][k] for k in list_components)
-
-            expr += weights[1] * second_term
-            return m.error == expr
-
-        m.obj_const = Constraint(rule=rule_objective)
+        nw = 0
+        for i in self.experiments:
+            for t in self.model.experiment[i].meas_lamdas:
+                nw+=1
+                
+        self._n_meas_lambdas = nw
         
-        return m
-            
-                    
+        nc = len(self._sublist_components)
+                
+        self._n_actual = nc
+        
+        nparams = 0
+        for i in self.experiments:
+            for v in self.model.experiment[i].P:
+                if v.is_fixed():  #: Skip the fixed ones
+                    print(str(v) + '\has been skipped for covariance calculations')
+                    continue
+                nparams += 1
+        # nparams = len(self.model.P)
+        self._n_params = nparams
+        
+        nd = nw * nt
+        ntheta = nc * (nw + nt) + nparams
+
+        print("Computing H matrix\n shape ({},{})".format(nparams, ntheta))
+        all_H = hessian
+        H = all_H[-nparams:, :]
+        # H = hessian
+        print("Computing B matrix\n shape ({},{})".format(ntheta, nd))
+        self._compute_B_matrix(variances)
+        B = self.B_matrix
+        print("Computing Vd matrix\n shape ({},{})".format(nd, nd))
+        self._compute_Vd_matrix(variances)
+        Vd = self.Vd_matrix
+
+        R = B.T.dot(H.T)
+        A = Vd.dot(R)
+        L = H.dot(B)
+        Vtheta = A.T.dot(L.T)
+        V_theta = Vtheta.T
+
+        V_param = V_theta
+        variances_p = np.diag(V_param)
+        print('\nConfidence intervals:')
+        i = 0
+        
+        for k, p in self.model.experiment[i].P.items():
+            if p.is_fixed():
+                continue
+            print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
+            i += 1
+        return 1
+
+    def _compute_B_matrix(self, variances, **kwds):
+        """Builds B matrix for calculation of covariances
+
+           This method is not intended to be used by users directly
+
+        Args:
+            variances (dict): variances
+
+        Returns:
+            None
+        """
+
+        nt = self._n_meas_times
+        nw = self._n_meas_lambdas
+        nc = self._n_actual
+        nparams = self._n_params
+
+        # nparams = len(self.model.P)
+        # this changes depending on the order of the suffixes passed to sipopt
+        nd = nw * nt
+        ntheta = nc * (nw + nt) + nparams
+        self.B_matrix = np.zeros((ntheta, nw * nt))
+        for x in self.experiments:
+            for i, t in enumerate(self.model.experiment[x].meas_times):
+                for j, l in enumerate(self.model.experiment[x].meas_lambdas):
+                    for k, c in enumerate(self._sublist_components):
+                        # r_idx1 = k*nt+i
+                        r_idx1 = i * nc + k
+                        r_idx2 = j * nc + k + nc * nt
+                        # r_idx2 = j * nc + k + nc * nw
+                        # c_idx = i+j*nt
+                        c_idx = i * nw + j
+                        # print(j, k, r_idx2)
+                        self.B_matrix[r_idx1, c_idx] = -2 * self.experiment[x].model.S[l, c].value / variances['device']
+                        # try:
+                        self.B_matrix[r_idx2, c_idx] = -2 * self.experiment[x].model.C[t, c].value / variances['device']
+                        # except IndexError:
+                        #     pass
+        # sys.exit()
+
+    def _compute_Vd_matrix(self, variances, **kwds):
+        """Builds d covariance matrix
+
+           This method is not intended to be used by users directly
+
+        Args:
+            variances (dict): variances
+
+        Returns:
+            None
+        """
+
+        # add check for model already solved
+        row = []
+        col = []
+        data = []
+        nt = self._n_meas_times
+        nw = self._n_meas_lambdas
+        nc = self._n_actual
+        """
+        for i,t in enumerate(self.model.meas_times):
+            for j,l in enumerate(self.model.meas_lambdas):
+                for q,tt in enumerate(self.model.meas_times):
+                    for p,ll in enumerate(self.model.meas_lambdas):
+                        if i==q and j!=p:
+                            val = sum(variances[c]*self.model.S[l,c].value*self.model.S[ll,c].value for c in self.model.mixture_components)
+                            row.append(i*nw+j)
+                            col.append(q*nw+p)
+                            data.append(val)
+                        if i==q and j==p:
+                            val = sum(variances[c]*self.model.S[l,c].value**2 for c in self.model.mixture_components)+variances['device']
+                            row.append(i*nw+j)
+                            col.append(q*nw+p)
+                            data.append(val)
+        """
+        s_array = np.zeros(nw * nc)
+        v_array = np.zeros(nc)
+        for k, c in enumerate(self._sublist_components):
+            v_array[k] = variances[c]
+
+        for x in self.experiments:
+            for j, l in enumerate(self.model.experiment[x].meas_lambdas):
+                for k, c in enumerate(self._sublist_components):
+                    s_array[j * nc + k] = self.experiment[x].model.S[l, c].value
+
+        row = []
+        col = []
+        data = []
+        nd = nt * nw
+        # Vd_dense = np.zeros((nd,nd))
+        v_device = variances['device']
+        for i in range(nt):
+            for j in range(nw):
+                val = sum(v_array[k] * s_array[j * nc + k] ** 2 for k in range(nc)) + v_device
+                row.append(i * nw + j)
+                col.append(i * nw + j)
+                data.append(val)
+                # Vd_dense[i*nw+j,i*nw+j] = val
+                for p in range(nw):
+                    if j != p:
+                        val = sum(v_array[k] * s_array[j * nc + k] * s_array[p * nc + k] for k in range(nc))
+                        row.append(i * nw + j)
+                        col.append(i * nw + p)
+                        data.append(val)
+                        # Vd_dense[i*nw+j,i*nw+p] = val
+
+        self.Vd_matrix = scipy.sparse.coo_matrix((data, (row, col)),
+                                                 shape=(nd, nd)).tocsr()
+        # self.Vd_matrix = Vd_dense
+         
     def run_variance_estimation(self, builder, **kwds):
         """Solves the Variance Estimation procedure described in Chen et al 2016. Here, we call the VarianceEstimator
             seperately on each dataset in order to not only get the model noise and the 
@@ -285,6 +477,7 @@ class MultipleExperimentsEstimator():
         """
         #Require the same arguments as the VarianceEstimator as these will be applied in the same
         #function, just for each individual dataset
+        
         solver = kwds.pop('solver', str)
         solver_opts = kwds.pop('solver_opts', dict())
         tee = kwds.pop('tee', False)
@@ -314,6 +507,14 @@ class MultipleExperimentsEstimator():
 
         species_list = kwds.pop('subset_components', None)
         
+        covariance = kwds.pop('covariance', False)
+        
+        if covariance:
+            if solver != 'ipopt_sens' and solver != 'k_aug':
+                raise RuntimeError('To get covariance matrix the solver needs to be ipopt_sens or k_aug')
+            if solver == 'ipopt_sens':
+                raise RuntimeError('To get covariance matrix for multiple experiments, the solver needs to be k_aug')
+        
         if not isinstance(start_time, dict):
             raise RuntimeError("Must provide start_times as dict with each experiment")
         else:
@@ -334,21 +535,38 @@ class MultipleExperimentsEstimator():
         
         p_est_dict = dict()
         results_pest = dict()
+
+        list_components = [k for k in builder._component_names]
+        self._sublist_components = list_components
         
         if bool(sigma_sq) == False:
-            sigma_sq = self.variances
+            if bool(self.variances) == True: 
+                sigma_sq = self.variances
+            else:
+                raise RuntimeError('Need to add variances in order to run parameter estimation')
         else:
-            all_sigma_specified = True
-            keys = sigma_sq.keys()
-            for k in list_components:
-                if k not in keys:
-                    all_sigma_specified = False
-                    sigma_sq[k] = max(sigma_sq.values())
-    
-            if not 'device' in sigma_sq.keys():
-                all_sigma_specified = False
-                sigma_sq['device'] = 1.0
+            for key, val in sigma_sq.items():
 
+                if key not in self.experiments:
+                    raise RuntimeError("The keys for sigma_sq need to be the same as the experimental datasets")
+                    
+                all_sigma_specified = True
+                keys = sigma_sq[key].keys()
+                expsigma = sigma_sq[key]
+                
+                for k in list_components:
+                    if k not in keys:
+                        all_sigma_specified = False
+                        expsigma[k] = max(expsigma.values())
+        
+                if not 'device' in val.keys():
+                    all_sigma_specified = False
+                    expsigma['device'] = 1.0
+                
+                
+        if self._variance_solved == False:
+            self.variances = sigma_sq
+            
         print("SOLVING PARAMETER ESTIMATION FOR INDIVIDUAL DATASETS - For initialization")
         
         ind_p_est = dict()
@@ -369,7 +587,7 @@ class MultipleExperimentsEstimator():
                 ind_p_est[l].scale_variables_from_trajectory('C',self.variance_results[l].C)
                 
                 results_pest[l] = ind_p_est[l].run_opt('ipopt',
-                                                     tee=tee,
+                                                      tee=tee,
                                                       solver_opts = solver_opts,
                                                       variances = self.variances[l])
                 
@@ -386,12 +604,12 @@ class MultipleExperimentsEstimator():
                 self.builder[l].add_spectral_data(self.datasets[l])
                 self.opt_model[l] = self.builder[l].create_pyomo_model(start_time[l],end_time[l])
                 ind_p_est[l] = ParameterEstimator(self.opt_model[l])
-                #ind_p_est[l].apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
+                ind_p_est[l].apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
                 
                 results_pest[l] = ind_p_est[l].run_opt('ipopt',
                                                      tee=tee,
                                                       solver_opts = solver_opts,
-                                                      variances = self.variances)
+                                                      variances = sigma_sq[l])
 
                 self.initialization_model[l] = ind_p_est[l]
                 print("The estimated parameters are:")
@@ -495,14 +713,113 @@ class MultipleExperimentsEstimator():
                         
                 return m.experiment[exp].P[param] == m.experiment[prev_exp].P[param]
             
-        # For the number of parameters we need a constraint for each one that links
-        # not sure if this index is the best way to go... Should be self.experiments
         m.parameter_linking = Constraint(self.experiments, list_params_across_blocks, rule = param_linking_rule)
         
         m.obj = Objective(sense = minimize, expr=sum(b.error for b in m.experiment[:]))
+
+
+
+        if covariance and solver == 'k_aug':
+
+            solver_opts['compute_inv'] = ''
+            
+            self.model = m
+            self._define_reduce_hess_order_mult()
+            
+            m.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
+            m.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
+            m.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+            m.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
+            m.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
+
+            m.dof_v = Suffix(direction=Suffix.EXPORT)  #: SUFFIX FOR K_AUG
+            m.rh_name = Suffix(direction=Suffix.IMPORT)  #: SUFFIX FOR K_AUG AS WELL
+
+            count_vars = 1
+            for i in self.experiments:
+                print("ARE WE HERE?")
+                print(i)
+                if not self._spectra_given:
+                    pass
+                else:
+                    for t in m.experiment[i].meas_times:
+                        for c in self._sublist_components:
+                            m.experiment[i].C[t, c].set_suffix_value(m.dof_v, count_vars)
+    
+                            count_vars += 1
+    
+                if not self._spectra_given:
+                    pass
+                else:
+                    for l in m.experiment[i].meas_lambdas:
+                        for c in self._sublist_components:
+                            m.experiment[i].S[l, c].set_suffix_value(m.dof_v, count_vars)
+                            count_vars += 1
+    
+                for v in six.itervalues(self.model.experiment[i].P):
+                    if v.is_fixed():
+                        continue
+                    m.experiment[i].P.set_suffix_value(m.dof_v, count_vars)
+                    count_vars += 1
+            
+            print("count_vars:", count_vars)
+            self._tmpfile = "k_aug_hess"
+            ip = SolverFactory('ipopt')
+            with open("ipopt.opt", "w") as f:
+                f.write("print_info_string yes")
+                f.close()
+                
+            m.write(filename="ip.nl", format=ProblemFormat.nl)
+            solver_results = ip.solve(m, tee=True, 
+                                      #options = solver_opts,
+                                      logfile=self._tmpfile,
+                                      report_timing=True)
+            
+            m.write(filename="ka.nl", format=ProblemFormat.nl)
+            k_aug = SolverFactory('k_aug')
+            # k_aug.options["compute_inv"] = ""
+            m.ipopt_zL_in.update(m.ipopt_zL_out)  #: be sure that the multipliers got updated!
+            m.ipopt_zU_in.update(m.ipopt_zU_out)
+            # m.write(filename="mynl.nl", format=ProblemFormat.nl)
+            k_aug.solve(m, tee=True)
+            print("Done solving building reduce hessian")
+
+            if not all_sigma_specified:
+                raise RuntimeError(
+                    'All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
+
+            n_vars = len(self._idx_to_variable)
+            print("n_vars", n_vars)
+            # m.rh_name.pprint()
+            var_loc = m.rh_name
+            for v in six.itervalues(self._idx_to_variable):
+                try:
+                    var_loc[v]
+                except:
+                    #print(v, "is an error")
+                    var_loc[v] = 0
+                    #print(v, "is thus set to ", var_loc[v])
+                    #print(var_loc[v])
+
+            vlocsize = len(var_loc)
+            #print("var_loc size, ", vlocsize)
+            unordered_hessian = np.loadtxt('result_red_hess.txt')
+            if os.path.exists('result_red_hess.txt'):
+                os.remove('result_red_hess.txt')
+            # hessian = read_reduce_hessian_k_aug(hessian_output, n_vars)
+            # hessian =hessian_output
+            # print(hessian)
+            #print(unordered_hessian.size, "unordered hessian size")
+            hessian = self._order_k_aug_hessian(unordered_hessian, var_loc)
+            #if self._estimability == True:
+            #    self.hessian = hessian
+            self._compute_covariance(hessian, sigma_sq)
+            
+        else:
+            optimizer = SolverFactory(solver)  
+            solver_results = optimizer.solve(m, options = solver_opts,tee=tee)
         
-        optimizer = SolverFactory(solver)  
-        solver_results = optimizer.solve(m, options = solver_opts,tee=tee) 
+         
         
         #for i in m.experiment:
         #    m.experiment[i].P.pprint()
