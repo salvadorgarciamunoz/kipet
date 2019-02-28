@@ -30,8 +30,7 @@ if __name__ == "__main__":
     #=========================================================================
     #USER INPUT SECTION - REQUIRED MODEL BUILDING ACTIONS
     #=========================================================================
-       
-    
+           
     # Load spectral data from the relevant file location. As described in section 4.3.1
     #################################################################################
     dataDirectory = os.path.abspath(
@@ -82,11 +81,11 @@ if __name__ == "__main__":
     # define the uncertainty surrounding each of the parameters
     # This is used for scaling the variables (i.e. 0.01 means that we are sure that the initial 
     # value ofthat parameter is within 1 % of the real value)
-    param_uncertainties = {'k1':0.09,'k2':0.01,'k3':0.02,'k4':0.01}
+    param_uncertainties = {'k1':0.09,'k2':0.01,'k3':0.02,'k4':0.5}
     # sigmas, as before, represent the variances in regard to component
     sigmas = {'A':1e-10,'B':1e-10,'C':1e-11, 'D':1e-11,'E':1e-11,'device':3e-9}
     # measurement scaling
-    meas_uncertainty = 0.01
+    meas_uncertainty = 0.05
     # The rank_params_yao function ranks parameters from most estimable to least estimable 
     # using the method of Yao (2003). Notice the required arguments. Returns a dictionary of rankings.
     listparams = e_analyzer.rank_params_yao(meas_scaling = meas_uncertainty, param_scaling = param_uncertainties, sigmas =sigmas)

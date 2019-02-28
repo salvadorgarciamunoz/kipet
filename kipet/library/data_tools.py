@@ -6,6 +6,9 @@ import numpy as np
 import matplotlib as cm
 import six
 
+#=============================================================================
+#-----------------------DATA READING AND WRITING TOOLS------------------------
+#=============================================================================
 
 def write_spectral_data_to_csv(filename,dataframe):
     """ Write spectral data Dij to csv file.
@@ -105,7 +108,7 @@ def write_concentration_data_to_txt(filename,dataframe):
 
 
 def read_concentration_data_from_txt(filename):
-    """ Reads txt with concnetration data
+    """ Reads txt with concentration data
     
         Args:
             filename (str): name of input file
@@ -293,52 +296,73 @@ def plot_spectral_data(dataFrame,dimension='2D'):
         plt.figure()
         plt.plot(dataFrame)
 
-
-def basic_pca(dataFrame,n=4):
+#=============================================================================
+#--------------------------- DIAGNOSTIC TOOLS ------------------------
+#=============================================================================
+        
+def basic_pca(dataFrame,n=None,with_plots=False):
     """ Runs basic component analysis based on SVD
     
         Args:
             dataFrame (DataFrame): spectral data
             
-            n (int, optional): number of largest singular-values
+            n (int): number of largest singular-values
             to plot
+            
+            with_plots (boolean): argument for files with plots due to testing
 
         Returns:
             None
 
     """
+            
     times = np.array(dataFrame.index)
     lambdas = np.array(dataFrame.columns)
     D = np.array(dataFrame)
+    #print("D shape: ", D.shape)
     U, s, V = np.linalg.svd(D, full_matrices=True)
-    plt.subplot(1,2,1)
+    #print("U shape: ", U.shape)
+    #print("s shape: ", s.shape)
+    #print("V shape: ", V.shape)
+    #print("sigma/singular values", s)
+    if n == None:
+        print("WARNING: since no number of components is specified, all components are printed")
+        print("It is advised to select the number of components for n")
+        n_shape = s.shape
+        n = n_shape[0]
+        
     u_shape = U.shape
+    #print("u_shape[0]",u_shape[0])
     n_l_vector = n if u_shape[0]>=n else u_shape[0]
-    for i in range(n_l_vector):
-        plt.plot(times,U[:,i])
-    plt.xlabel("time")
-    plt.ylabel("Components U[:,i]")
-
-    plt.subplot(1,2,2)
     n_singular = n if len(s)>=n else len(s)
     idxs = range(n_singular)
     vals = [s[i] for i in idxs]
-    plt.semilogy(idxs,vals,'o')
-    plt.xlabel("i")
-    plt.ylabel("singular values")
-    """
-    plt.subplot(1,3,3)
     v_shape = V.shape
     n_r_vector = n if v_shape[0]>=n else v_shape[0]
-    for i in range(n_r_vector):
-        plt.plot(lambdas,V[i,:])
-    plt.xlabel("wavelength")
-    plt.ylabel("Components V[i,:]")
-    """
-        
-
     
-def gausian_single_peak(wl,alpha,beta,gamma):
+    if with_plots:
+        for i in range(n_l_vector):
+            plt.plot(times,U[:,i])
+        plt.xlabel("time")
+        plt.ylabel("Components U[:,i]")
+        plt.show()
+        
+        plt.semilogy(idxs,vals,'o')
+        plt.xlabel("i")
+        plt.ylabel("singular values")
+        plt.show()
+        
+        for i in range(n_r_vector):
+            plt.plot(lambdas,V[i,:])
+        plt.xlabel("wavelength")
+        plt.ylabel("Components V[i,:]")
+        plt.show()
+     
+#=============================================================================
+#---------------------------PROBLEM GENERATION TOOLS------------------------
+#============================================================================= 
+    
+def gaussian_single_peak(wl,alpha,beta,gamma):
     """
     helper function to generate absorption data based on 
     lorentzian parameters
@@ -350,7 +374,7 @@ def absorbance(wl,alphas,betas,gammas):
     helper function to generate absorption data based on 
     lorentzian parameters
     """
-    return sum(gausian_single_peak(wl,alphas[i],betas[i],gammas[i]) for i in range(len(alphas)))
+    return sum(gaussian_single_peak(wl,alphas[i],betas[i],gammas[i]) for i in range(len(alphas)))
 
 def generate_absorbance_data(wl_span,parameters_dict):
     """
@@ -414,6 +438,7 @@ def add_noise_to_signal(signal, size):
     df= pd.DataFrame(data=sig)
     df[df<0]=0
     return df
+
 #=============================================================================
 #---------------------------PRE-PROCESSING TOOLS------------------------
 #=============================================================================
@@ -476,7 +501,13 @@ def savitzky_golay(dataFrame, window_size, orderPoly, orderDeriv=0):
         y = np.concatenate((firstvals, row, lastvals))
         new_row = np.convolve( m, y, mode='valid')
         no_noise[t]=new_row
-
+        
+    if orderDeriv == 0:
+        for t in range(len(dataFrame.index)):
+            for l in range(len(dataFrame.columns)):
+                if no_noise[t,l] < 0:
+                    no_noise[t,l] = 0
+    
     data_frame = pd.DataFrame(data=no_noise,
                               columns = dataFrame.columns,
                               index=dataFrame.index)

@@ -92,7 +92,7 @@ if __name__ == "__main__":
     #options['mu_strategy'] = 'adaptive'
     options['mu_init'] = 1e-6
     options['bound_push'] =1e-6
-    results_pyomo = p_estimator.run_opt('ipopt_sens',
+    results_pyomo = p_estimator.run_opt('k_aug',
                                         tee=True,
                                         solver_opts = options,
                                         variances=sigmas,

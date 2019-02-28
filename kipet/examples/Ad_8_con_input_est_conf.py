@@ -83,7 +83,7 @@ if __name__ == "__main__":
               'B':1.11297e-5,
               'C':1.07905e-5}
     
-    results_pyomo = optimizer.run_opt('ipopt_sens',
+    results_pyomo = optimizer.run_opt('k_aug',
                                       variances=sigmas,
                                       tee=True,
                                       solver_opts = solver_options,

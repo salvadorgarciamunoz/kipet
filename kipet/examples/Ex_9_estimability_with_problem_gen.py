@@ -242,3 +242,4 @@ if __name__ == "__main__":
         plt.xlabel("time (s)")
         plt.ylabel("Concentration (mol/L)")
         plt.title("Concentration Profile")
+        plt.show()

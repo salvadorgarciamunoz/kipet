@@ -1,4 +1,3 @@
-
 #  _________________________________________________________________________
 #
 #  Kipet: Kinetic parameter estimation toolkit
@@ -33,13 +32,11 @@ if __name__ == "__main__":
     if len(sys.argv)==2:
         if int(sys.argv[1]):
             with_plots = False
- 
-        
+         
     #=========================================================================
     #USER INPUT SECTION - REQUIRED MODEL BUILDING ACTIONS
     #=========================================================================
-       
-    
+           
     # Load spectral data from the relevant file location. As described in section 4.3.1
     #################################################################################
     dataDirectory = os.path.abspath(
@@ -55,8 +52,8 @@ if __name__ == "__main__":
     builder = TemplateBuilder()    
     components = {'A':1e-3,'B':0,'C':0}
     builder.add_mixture_component(components)
-    builder.add_parameter('k1',bounds=(0.0,5.0))
-    builder.add_parameter('k2',bounds=(0.0,1.0))
+    builder.add_parameter('k1',init = 1.0, bounds=(0.0,5.0))
+    builder.add_parameter('k2',init = 0.2, bounds=(0.0,1.0))
     builder.add_spectral_data(fD_frame)
 
     # define explicit system of ODEs
@@ -107,8 +104,7 @@ if __name__ == "__main__":
 
     # and the sigmas for the parameter estimation step are now known and fixed
     sigmas = results_variances.sigma_sq
-    
-    
+       
     #=========================================================================
     # USER INPUT SECTION - PARAMETER ESTIMATION 
     #=========================================================================
@@ -149,7 +145,7 @@ if __name__ == "__main__":
     # display results
     if with_plots:
         plot_spectral_data(D_frame,dimension='3D')
-        plot_spectral_data(sD_frame,dimension='3D')
+        #plot_spectral_data(sD_frame,dimension='3D')
         plot_spectral_data(fD_frame,dimension='3D')
             
         results_pyomo.C.plot.line(legend=True)
