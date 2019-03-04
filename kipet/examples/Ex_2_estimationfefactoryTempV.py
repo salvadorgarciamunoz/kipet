@@ -201,7 +201,7 @@ if __name__ == "__main__":
     #Now introduce parameters as non fixed
     model.del_component(params)
     builder.add_parameter('k1',bounds=(0.0,5.0))
-    builder.add_parameter('k2Tr',0.2265)
+    builder.add_parameter('k2Tr',bounds=(0.0,10.0))#0.2265)
     builder.add_parameter('E',2.)
     model = builder.create_pyomo_model(0, 10)
     v_estimator = VarianceEstimator(model)
@@ -277,7 +277,7 @@ if __name__ == "__main__":
     #Now introduce parameters as non fixed
     model.del_component(params)
     builder.add_parameter('k1',bounds=(0.0,5.0))
-    builder.add_parameter('k2Tr',0.2265)
+    builder.add_parameter('k2Tr', bounds=(0.0, 10.0))
     builder.add_parameter('E',2.)
     
     model =builder.create_pyomo_model(0.0,10)
@@ -295,7 +295,7 @@ if __name__ == "__main__":
     options = dict()
 
     # finally we run the optimization
-    results_pyomo = p_estimator.run_opt('ipopt_sens',
+    results_pyomo = p_estimator.run_opt('k_aug',
                                         tee=True,
                                         solver_opts=options,
                                         variances=sigmas,
