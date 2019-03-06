@@ -200,8 +200,8 @@ if __name__ == "__main__":
     model=builder.create_pyomo_model(0.0,10.0)
     #Now introduce parameters as non fixed
     model.del_component(params)
-    builder.add_parameter('k1',bounds=(0.0,5.0))
-    builder.add_parameter('k2Tr',0.2265)
+    builder.add_parameter('k1',init=1.0,bounds=(0.0,10.0))
+    builder.add_parameter('k2Tr',init=0.2265,bounds=(0.0, 10.0))
     builder.add_parameter('E',2.)
     model = builder.create_pyomo_model(0, 10)
     v_estimator = VarianceEstimator(model)
@@ -241,25 +241,25 @@ if __name__ == "__main__":
 
     if with_plots:
         # display concentration results
-        results.C.plot.line(legend=True)
+        results_variances.C.plot.line(legend=True)
         plt.xlabel("time (s)")
         plt.ylabel("Concentration (mol/L)")
         plt.title("Concentration Profile with Noise")
 
-        results.Z.plot.line(legend=True)
+        results_variances.Z.plot.line(legend=True)
         plt.xlabel("time (s)")
         plt.ylabel("Concentration (mol/L)")
         plt.title("Concentration Profile Without Noise")
         plt.show()
         #results.Y[0].plot.line()
-        results.Y['1'].plot.line(legend=True)
-        results.Y['2'].plot.line(legend=True)
+        results_variances.Y['1'].plot.line(legend=True)
+        results_variances.Y['2'].plot.line(legend=True)
         plt.xlabel("time (s)")
         plt.ylabel("rxn rates (mol/L*s)")
         plt.title("Rates of rxn")
         plt.show()
         
-        results.X.plot.line(legend=True)
+        results_variances.X.plot.line(legend=True)
         plt.xlabel("time (s)")
         plt.ylabel("Volume (L)")
         plt.title("total volume")
@@ -276,8 +276,8 @@ if __name__ == "__main__":
     model =builder.create_pyomo_model(0.0,10)
     #Now introduce parameters as non fixed
     model.del_component(params)
-    builder.add_parameter('k1',bounds=(0.0,5.0))
-    builder.add_parameter('k2Tr',0.2265)
+    builder.add_parameter('k1',init=1.0,bounds=(0.0,10.0))
+    builder.add_parameter('k2Tr',init=0.2265,bounds=(0.0, 10.0))
     builder.add_parameter('E',2.)
     
     model =builder.create_pyomo_model(0.0,10)
@@ -295,7 +295,7 @@ if __name__ == "__main__":
     options = dict()
 
     # finally we run the optimization
-    results_pyomo = p_estimator.run_opt('ipopt_sens',
+    results_pyomo = p_estimator.run_opt('k_aug',
                                         tee=True,
                                         solver_opts=options,
                                         variances=sigmas,
@@ -332,7 +332,7 @@ if __name__ == "__main__":
         plt.show()
         
         results_pyomo.Y['1'].plot.line(legend=True)
-        results.Y['2'].plot.line(legend=True)
+        results_pyomo.Y['2'].plot.line(legend=True)
         plt.xlabel("time (s)")
         plt.ylabel("rxn rates (mol/L*s)")
         plt.title("Rates of rxn")

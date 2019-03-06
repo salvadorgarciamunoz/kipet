@@ -13,7 +13,8 @@ import six
 import copy
 import re
 import os
-
+from pyomo.core.expr import current as EXPR
+from pyomo.core.expr.numvalue import NumericConstant
 
 class ParameterEstimator(Optimizer):
     """Optimizer for parameter estimation.
@@ -791,6 +792,7 @@ class ParameterEstimator(Optimizer):
         ##############################
         # Inclusion of discrete jumps: (CS)
         if self.jump:
+            vs = ReplacementVisitor()  #: trick to replace variables
             kn = 0
             for ki in self.jump_times_dict.keys():
                 if not isinstance(ki, str):
@@ -822,15 +824,19 @@ class ParameterEstimator(Optimizer):
                                     self.model.add_component(v + "_dummy_eq_" + str(kn), ConstraintList())
                                     conlist = getattr(self.model, v + "_dummy_eq_" + str(kn))
                                     varname = v + "_dummy_" + str(kn)
-                                    self.model.add_component(varname, Var())
+                                    self.model.add_component(varname, Var([0]))  #: this is now indexed [0]
                                     vdummy = getattr(self.model, varname)
+                                    vs.change_replacement(vdummy[0])   #: who is replacing.
+                                    # self.model.add_component(varname, Var())
+                                    # vdummy = getattr(self.model, varname)
                                     jump_delta = vkeydict[k]
                                     self.model.add_component(v + '_jumpdelta' + str(kn),
                                                              Param(initialize=jump_delta))
                                     jump_param = getattr(self.model, v + '_jumpdelta' + str(kn))
                                     if not isinstance(k, tuple):
                                         k = (k,)
-                                    exprjump = vdummy - var[(self.jump_time,) + k] == jump_param
+                                    exprjump = vdummy[0] - var[(self.jump_time,) + k] == jump_param  #: this cha
+                                    # exprjump = vdummy - var[(self.jump_time,) + k] == jump_param
                                     self.model.add_component("jumpdelta_expr" + str(kn), Constraint(expr=exprjump))
                                     for kcp in range(1, self.ncp + 1):
                                         curr_time = t_ij(ttgt, self.jump_fe + 1, kcp)
@@ -840,9 +846,14 @@ class ParameterEstimator(Optimizer):
                                             knew = k
                                         idx = (curr_time,) + knew
                                         con[idx].deactivate()
-                                        e = con[idx].expr.clone()
-                                        e.args[0].args[1] = vdummy
-                                        con[idx].set_value(e)
+                                        e = con[idx].expr
+                                        suspect_var = e.args[0].args[1].args[0].args[0].args[1]  #: seems that
+                                        # e = con[idx].expr.clone()
+                                        # e.args[0].args[1] = vdummy
+                                        # con[idx].set_value(e)
+                                        vs.change_suspect(id(suspect_var))  #: who to replace
+                                        e_new = vs.dfs_postorder_stack(e)  #: replace
+                                        con[idx].set_value(e_new)
                                         conlist.add(con[idx].expr)
                     kn = kn + 1
 
@@ -1413,6 +1424,39 @@ def fe_cp(time_set, feedtime):
             break
         j += 1
     return fe, cp
+
+#: This class can replace variables from an expression
+class ReplacementVisitor(EXPR.ExpressionReplacementVisitor):
+    def __init__(self):
+        super(ReplacementVisitor, self).__init__()
+        self._replacement = None
+        self._suspect = None
+
+    def change_suspect(self, suspect_):
+        self._suspect = suspect_
+
+    def change_replacement(self, replacement_):
+        self._replacement = replacement_
+
+    def visiting_potential_leaf(self, node):
+        #
+        # Clone leaf nodes in the expression tree
+        #
+        if node.__class__ in native_numeric_types:
+            return True, node
+
+        if node.__class__ is NumericConstant:
+            return True, node
+
+
+        if node.is_variable_type():
+            if id(node) == self._suspect:
+                d = self._replacement
+                return True, d
+            else:
+                return True, node
+
+        return False, None
 ################################################
 
 def wavelength_subset_selection(correlations = None, n = None):
