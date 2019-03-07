@@ -63,7 +63,7 @@ class MultipleExperimentsEstimator():
         self.opt_model = dict()
         
         self.initialization_model = dict()
-        self._sublist_components = list()
+        self._sublist_components = dict()
         #This will change if we give concentration data
         self._spectra_given = True
         self._n_meas_times = 0
@@ -83,7 +83,7 @@ class MultipleExperimentsEstimator():
                 pass
             else:
                 for t in self.model.experiment[i].meas_times:
-                    for c in self._sublist_components:
+                    for c in self._sublist_components[i]:
                         v = self.model.experiment[i].C[t, c]
                         self._idx_to_variable[count_vars] = v
                         self.model.red_hessian[v] = count_vars
@@ -94,7 +94,7 @@ class MultipleExperimentsEstimator():
     
             else:
                 for l in self.model.experiment[i].meas_lambdas:
-                    for c in self._sublist_components:
+                    for c in self._sublist_components[i]:
                         v = self.model.experiment[i].S[l, c]
                         self._idx_to_variable[count_vars] = v
                         self.model.red_hessian[v] = count_vars
@@ -223,7 +223,7 @@ class MultipleExperimentsEstimator():
         for x in self.experiments:
             for i, t in enumerate(self.model.experiment[x].meas_times):
                 for j, l in enumerate(self.model.experiment[x].meas_lambdas):
-                    for k, c in enumerate(self._sublist_components):
+                    for k, c in enumerate(self._sublist_components[x]):
                         # r_idx1 = k*nt+i
                         r_idx1 = i * nc + k
                         r_idx2 = j * nc + k + nc * nt
@@ -280,7 +280,7 @@ class MultipleExperimentsEstimator():
 
         for x in self.experiments:
             for j, l in enumerate(self.model.experiment[x].meas_lambdas):
-                for k, c in enumerate(self._sublist_components):
+                for k, c in enumerate(self._sublist_components[x]):
                     s_array[j * nc + k] = self.experiment[x].model.S[l, c].value
 
         row = []
@@ -400,10 +400,35 @@ class MultipleExperimentsEstimator():
             for key, val in end_time.items():
                 if key not in self.experiments:
                     raise RuntimeError("The keys for end_time need to be the same as the experimental datasets")
-        self.end_time = end_time 
-        #This will need to change if we have different models for each experiment
-        if not isinstance(builder, TemplateBuilder):
-            raise RuntimeError('builder needs to be type TemplateBuilder')
+        self.end_time = end_time
+        
+        #This is to make sure that for either cases of 1 model for all experiments or different models, 
+        #we ensure we have the correct builders
+        
+        if isinstance(builder, dict):
+            for key, val in builder.items():
+                if key not in self.experiments:
+                    raise RuntimeError("The keys for builder need to be the same as the experimental datasets")   
+                    
+                if not isinstance(val, TemplateBuilder):
+                    raise RuntimeError('builder needs to be type TemplateBuilder')
+                    
+        elif isinstance(builder, TemplateBuilder):
+            builder_dict = {}
+            for item in self.experiments:
+                builder_dict[item] = builder
+            
+            builder = builder_dict
+            
+        else:
+            raise RuntimeError("builder added needs to be a dictionary of TemplateBuilders or a TemplateBuilder")
+            
+        #if isinstance(builder, TemplateBuilder):
+        #    builder_dict = {}
+        #    for item in self.experiments:
+        #        builder_dict[item] = builder
+            
+        #    builder = builder_dict
         
         if solver == '':
             solver = 'ipopt'
@@ -414,7 +439,7 @@ class MultipleExperimentsEstimator():
         print("SOLVING VARIANCE ESTIMATION FOR INDIVIDUAL DATASETS")
         for l in self.experiments:
             print("solving for dataset ", l)
-            self.builder[l] = builder
+            self.builder[l] = builder[l]
             self.builder[l].add_spectral_data(self.datasets[l])
             self.opt_model[l] = self.builder[l].create_pyomo_model(start_time[l],end_time[l])
             
@@ -529,14 +554,31 @@ class MultipleExperimentsEstimator():
                 if key not in self.experiments:
                     raise RuntimeError("The keys for end_time need to be the same as the experimental datasets")
          
-        #This will need to change if we have different models for each experiment
-        if not isinstance(builder, TemplateBuilder):
-            raise RuntimeError('builder needs to be type TemplateBuilder')
-        
+            
+        if isinstance(builder, dict):
+            for key, val in builder.items():
+                if key not in self.experiments:
+                    raise RuntimeError("The keys for builder need to be the same as the experimental datasets")   
+                    
+                if not isinstance(val, TemplateBuilder):
+                    raise RuntimeError('builder needs to be type TemplateBuilder')
+                    
+        elif isinstance(builder, TemplateBuilder):
+            builder_dict = {}
+            for item in self.experiments:
+                builder_dict[item] = builder
+            
+            builder = builder_dict
+            
+        else:
+            raise RuntimeError('builder needs to be type dictionary of TemplateBuilder or TemplateBuilder')
+            
         p_est_dict = dict()
         results_pest = dict()
 
-        list_components = [k for k in builder._component_names]
+        list_components = {}
+        for k in self.experiments:            
+            list_components[k] = [k for k in builder[k]._component_names]
         self._sublist_components = list_components
         
         if bool(sigma_sq) == False:
@@ -600,7 +642,7 @@ class MultipleExperimentsEstimator():
 
             else:
                 #we do not have inits
-                self.builder[l]=builder
+                self.builder[l]=builder[l]
                 self.builder[l].add_spectral_data(self.datasets[l])
                 self.opt_model[l] = self.builder[l].create_pyomo_model(start_time[l],end_time[l])
                 ind_p_est[l] = ParameterEstimator(self.opt_model[l])
@@ -721,7 +763,7 @@ class MultipleExperimentsEstimator():
 
         if covariance and solver == 'k_aug':
 
-            solver_opts['compute_inv'] = ''
+            #solver_opts['compute_inv'] = ''
             
             self.model = m
             self._define_reduce_hess_order_mult()
@@ -729,6 +771,7 @@ class MultipleExperimentsEstimator():
             m.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
             m.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
             m.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+
             m.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
             m.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
 
@@ -743,7 +786,7 @@ class MultipleExperimentsEstimator():
                     pass
                 else:
                     for t in m.experiment[i].meas_times:
-                        for c in self._sublist_components:
+                        for c in self._sublist_components[i]:
                             m.experiment[i].C[t, c].set_suffix_value(m.dof_v, count_vars)
     
                             count_vars += 1
@@ -752,7 +795,7 @@ class MultipleExperimentsEstimator():
                     pass
                 else:
                     for l in m.experiment[i].meas_lambdas:
-                        for c in self._sublist_components:
+                        for c in self._sublist_components[i]:
                             m.experiment[i].S[l, c].set_suffix_value(m.dof_v, count_vars)
                             count_vars += 1
     
@@ -771,7 +814,7 @@ class MultipleExperimentsEstimator():
                 
             m.write(filename="ip.nl", format=ProblemFormat.nl)
             solver_results = ip.solve(m, tee=True, 
-                                      #options = solver_opts,
+                                      options = solver_opts,
                                       logfile=self._tmpfile,
                                       report_timing=True)
             
@@ -816,7 +859,7 @@ class MultipleExperimentsEstimator():
             self._compute_covariance(hessian, sigma_sq)
             
         else:
-            optimizer = SolverFactory(solver)  
+            optimizer = SolverFactory('ipopt')  
             solver_results = optimizer.solve(m, options = solver_opts,tee=tee)
         
          
