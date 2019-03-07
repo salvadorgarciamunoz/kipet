@@ -1,4 +1,3 @@
-
 #  _________________________________________________________________________
 #
 #  Kipet: Kinetic parameter estimation toolkit
@@ -34,12 +33,10 @@ if __name__ == "__main__":
         if int(sys.argv[1]):
             with_plots = False
  
-        
     #=========================================================================
     #USER INPUT SECTION - REQUIRED MODEL BUILDING ACTIONS
     #=========================================================================
        
-    
     # Load spectral data from the relevant file location. As described in section 4.3.1
     #################################################################################
     dataDirectory = os.path.abspath(
