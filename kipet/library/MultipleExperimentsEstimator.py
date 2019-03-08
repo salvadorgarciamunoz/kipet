@@ -613,6 +613,8 @@ class MultipleExperimentsEstimator():
         
         ind_p_est = dict()
         list_params_across_blocks = list()
+        all_params = list()
+        global_params = list()
         for l in self.experiments:
             print("solving for dataset ", l)
             if self._variance_solved == True:
@@ -634,12 +636,21 @@ class MultipleExperimentsEstimator():
                                                       variances = self.variances[l])
                 
                 self.initialization_model[l] = ind_p_est[l]
+                
                 print("The estimated parameters are:")
                 for k,v in six.iteritems(results_pest[l].P):
                     print(k, v)
+                    if k not in all_params:
+                        all_params.append(k)
+                    else:
+                        global_params.append(k)
+                    
                     if k not in list_params_across_blocks:
                         list_params_across_blocks.append(k)
-
+                
+                print("all_params:" , all_params)
+                print("global_params:", global_params)
+            
             else:
                 #we do not have inits
                 self.builder[l]=builder[l]
@@ -654,11 +665,24 @@ class MultipleExperimentsEstimator():
                                                       variances = sigma_sq[l])
 
                 self.initialization_model[l] = ind_p_est[l]
+                
                 print("The estimated parameters are:")
                 for k,v in six.iteritems(results_pest[l].P):
                     print(k, v)
+                    if k not in all_params:
+                        all_params.append(k)
+                    else:
+                        if k not in global_params:
+                            global_params.append(k)
+                        else:
+                            pass
+                    if k not in list_params_across_blocks:
+                        list_params_across_blocks.append(k)
+                
+                print("all_params:" , all_params)
+                print("global_params:", global_params)
                 # I want to build a list of the parameters here that we will use to link the models later on
-                    
+                
         #Now that we have all our datasets solved individually we can build our blocks and use
         #these solutions to initialize
         m = ConcreteModel()
@@ -743,17 +767,28 @@ class MultipleExperimentsEstimator():
             m.map_exp_to_count[count] = i
             if count == 0:
                 m.first_exp = i
-            count+=1
-  
+            count += 1
+        print("map", m.map_exp_to_count)
         def param_linking_rule(m, exp, param):
+            print(exp,param)
+            prev_exp = None
             if exp == m.first_exp:
+                print("the exp first")
+                print(exp)
                 return Constraint.Skip
             else:
                 for key, val in m.map_exp_to_count.items():
+                    print(key,val)
                     if val == exp:
                         prev_exp = m.map_exp_to_count[key-1]
-                        
-                return m.experiment[exp].P[param] == m.experiment[prev_exp].P[param]
+                print('prev_exp', prev_exp)
+                if param in global_params and prev_exp != None:
+                    print("this constraint is written:")
+                    print(m.experiment[exp].P[param],"=", m.experiment[prev_exp].P[param])
+                    return m.experiment[exp].P[param] == m.experiment[prev_exp].P[param]
+                    
+                else:
+                    return Constraint.Skip
             
         m.parameter_linking = Constraint(self.experiments, list_params_across_blocks, rule = param_linking_rule)
         
