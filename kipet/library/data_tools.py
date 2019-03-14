@@ -157,18 +157,37 @@ def read_concentration_data_from_csv(filename):
     data.columns = [n for n in data.columns]
     return data    
 
-def read_spectral_data_from_csv(filename):
+def read_spectral_data_from_csv(filename, instrument = False):
     """ Reads csv with spectral data
     
         Args:
             filename (str): name of input file
-         
+            instrument (bool): if data is direct from instrument
+
         Returns:
             DataFrame
 
     """
+
     data = pd.read_csv(filename,index_col=0)
-    data.columns = [float(n) for n in data.columns]
+    if instrument:
+        #this means we probably have a date/timestamp on the columns
+        data = pd.read_csv(filename,index_col=0, parse_dates = True)
+        data = data.T
+        for n in data.index:
+            h,m,s = n.split(':')
+            sec = (float(h)*60+float(m))*60+float(s)
+            data.rename(index={n:sec}, inplace=True)
+        data.index = [float(n) for n in data.index]
+    else:
+        data.columns = [float(n) for n in data.columns]
+
+    #If we have negative values then this makes them equal to zero
+    for t in (data.index):
+        for l in data.columns:
+            if data.loc[t,l] < 0:
+                data.loc[t,l] = 0.0
+
     return data
 
 def read_absorption_data_from_csv(filename):
