@@ -70,6 +70,9 @@ class MultipleExperimentsEstimator():
         self._n_meas_lambdas = 0
         self._n_actual = 0
         self._n_params = 0
+        
+        self._spectra_given = True
+        self._concentration_given = False
           
     def _define_reduce_hess_order_mult(self):
         """This function is used to link the variables to the columns in the reduced
@@ -494,6 +497,8 @@ class MultipleExperimentsEstimator():
             (Weifeng paper). Default all wavelengths.
             
             sigma_sq (dict): variances
+            
+            spectra_problem (bool): tells whether we have spectral data or concentration data (False if not specified)
 
         Returns:
 
@@ -533,6 +538,8 @@ class MultipleExperimentsEstimator():
         species_list = kwds.pop('subset_components', None)
         
         covariance = kwds.pop('covariance', False)
+        
+        spectra_problem = kwds.pop('spectra_problem', True)
         
         if covariance:
             if solver != 'ipopt_sens' and solver != 'k_aug':
@@ -617,7 +624,7 @@ class MultipleExperimentsEstimator():
         global_params = list()
         for l in self.experiments:
             print("solving for dataset ", l)
-            if self._variance_solved == True:
+            if self._variance_solved == True and spectra_problem:
                 #then we already have inits
                 ind_p_est[l] = ParameterEstimator(self.opt_model[l])
                 #ind_p_est[l].apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
@@ -653,18 +660,37 @@ class MultipleExperimentsEstimator():
             
             else:
                 #we do not have inits
-                self.builder[l]=builder[l]
-                self.builder[l].add_spectral_data(self.datasets[l])
-                self.opt_model[l] = self.builder[l].create_pyomo_model(start_time[l],end_time[l])
-                ind_p_est[l] = ParameterEstimator(self.opt_model[l])
-                ind_p_est[l].apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
+                if spectra_problem == True:
+                    self._spectra_given = True
+                    self.builder[l]=builder[l]
+                    self.builder[l].add_spectral_data(self.datasets[l])
+                    self.opt_model[l] = self.builder[l].create_pyomo_model(start_time[l],end_time[l])
+                    ind_p_est[l] = ParameterEstimator(self.opt_model[l])
+                    ind_p_est[l].apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
+                    
+                    results_pest[l] = ind_p_est[l].run_opt('ipopt',
+                                                         tee=tee,
+                                                          solver_opts = solver_opts,
+                                                          variances = sigma_sq[l])
+    
+                    self.initialization_model[l] = ind_p_est[l]
                 
-                results_pest[l] = ind_p_est[l].run_opt('ipopt',
-                                                     tee=tee,
-                                                      solver_opts = solver_opts,
-                                                      variances = sigma_sq[l])
-
-                self.initialization_model[l] = ind_p_est[l]
+                elif spectra_problem == False:
+                    self._spectra_given = False
+                    self._concentration_given = True
+                    self.builder[l]=builder[l]
+                    self.builder[l].add_concentration_data(self.datasets[l])
+                    self.opt_model[l] = self.builder[l].create_pyomo_model(start_time[l],end_time[l])
+                    ind_p_est[l] = ParameterEstimator(self.opt_model[l])
+                    ind_p_est[l].apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
+                    
+                    results_pest[l] = ind_p_est[l].run_opt('ipopt',
+                                                         tee=tee,
+                                                          solver_opts = solver_opts,
+                                                          variances = sigma_sq[l])
+    
+    
+                    self.initialization_model[l] = ind_p_est[l]                    
                 
                 print("The estimated parameters are:")
                 for k,v in six.iteritems(results_pest[l].P):
@@ -720,7 +746,7 @@ class MultipleExperimentsEstimator():
             with_d_vars= True
             
             m = self.initialization_model[exp].model
-            if with_d_vars:
+            if with_d_vars and self._spectra_given:
                 m.D_bar = Var(m.meas_times,
                               m.meas_lambdas)
     
@@ -732,29 +758,38 @@ class MultipleExperimentsEstimator():
                                                 rule=rule_D_bar)
                 
             m.error = Var(bounds = (0, None))
-
-            def rule_objective(m):
-                expr = 0
-                for t in m.meas_times:
-                    for l in m.meas_lambdas:
-                        if with_d_vars:
-                            expr += (m.D[t, l] - m.D_bar[t, l]) ** 2 / (self.variances[exp]['device'])
-                        else:
-                            D_bar = sum(m.C[t, k] * m.S[l, k] for k in list_components)
-                            expr += (m.D[t, l] - D_bar) ** 2 / (self.variances[exp]['device'])
-                
-                #If we require weights then we would add them back in here
-                #expr *= weights[0]
-                second_term = 0.0
-                for t in m.meas_times:
-                    second_term += sum((m.C[t, k] - m.Z[t, k]) ** 2 / self.variances[exp][k] for k in list_components)
-    
-                #expr += weights[1] * second_term
-                expr += second_term
-                return m.error == expr
-    
-            m.obj_const = Constraint(rule=rule_objective)
             
+            if self._spectra_given:
+                def rule_objective(m):
+                    expr = 0
+                    for t in m.meas_times:
+                        for l in m.meas_lambdas:
+                            if with_d_vars:
+                                expr += (m.D[t, l] - m.D_bar[t, l]) ** 2 / (self.variances[exp]['device'])
+                            else:
+                                D_bar = sum(m.C[t, k] * m.S[l, k] for k in list_components)
+                                expr += (m.D[t, l] - D_bar) ** 2 / (self.variances[exp]['device'])
+                    
+                    #If we require weights then we would add them back in here
+                    #expr *= weights[0]
+                    second_term = 0.0
+                    for t in m.meas_times:
+                        second_term += sum((m.C[t, k] - m.Z[t, k]) ** 2 / self.variances[exp][k] for k in list_components)
+        
+                    #expr += weights[1] * second_term
+                    expr += second_term
+                    return m.error == expr
+        
+                m.obj_const = Constraint(rule=rule_objective)
+            elif self._concentration_given:
+                def rule_objective(m):
+                    obj = 0
+                    for t in m.meas_times:
+                        obj += sum((m.C[t, k] - m.Z[t, k]) ** 2 / self.variances[exp][k] for k in list_components)
+        
+                    return m.error == obj
+        
+                m.obj_const = Constraint(rule=rule_objective)
             return m  
         
         m.experiment = Block(self.experiments, rule = build_individual_blocks)
@@ -794,9 +829,7 @@ class MultipleExperimentsEstimator():
         
         m.obj = Objective(sense = minimize, expr=sum(b.error for b in m.experiment[:]))
 
-
-
-        if covariance and solver == 'k_aug':
+        if covariance and solver == 'k_aug' and self._spectra_given:
 
             #solver_opts['compute_inv'] = ''
             
@@ -815,8 +848,6 @@ class MultipleExperimentsEstimator():
 
             count_vars = 1
             for i in self.experiments:
-                print("ARE WE HERE?")
-                print(i)
                 if not self._spectra_given:
                     pass
                 else:
@@ -893,12 +924,21 @@ class MultipleExperimentsEstimator():
             #    self.hessian = hessian
             self._compute_covariance(hessian, sigma_sq)
             
-        else:
+        elif self._spectra_given:
             optimizer = SolverFactory('ipopt')  
+            
+            options1=dict()
+            options1['linear_solver'] = 'ma77'
+    
+            options1['mu_init']=1e-6
+            options1['mu_strategy']='adaptive'
+            #options1['ma27_ignore_singularity'] = 'yes'
+            #options1['bound_push']=1e-6
+            solver_results = optimizer.solve(m, options = options1,tee=tee)
+            
+        elif self._concentration_given:
+            optimizer = SolverFactory('ipopt')
             solver_results = optimizer.solve(m, options = solver_opts,tee=tee)
-        
-         
-        
         #for i in m.experiment:
         #    m.experiment[i].P.pprint()
             

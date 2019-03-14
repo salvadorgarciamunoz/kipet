@@ -244,7 +244,7 @@ class VarianceEstimator(Optimizer):
             rb = ResultsObject()
             rb.load_from_pyomo_model(self.model, to_load=['Z', 'C', 'S', 'Y'])
             
-            self._solve_Z(solver)
+            self._solve_Z(solver, solver_opts = solver_opts)
 
             if lsq_ipopt:
                 self._solve_S(solver)
