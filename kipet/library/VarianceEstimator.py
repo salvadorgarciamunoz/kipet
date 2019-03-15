@@ -197,6 +197,7 @@ class VarianceEstimator(Optimizer):
 
         # solves formulation 18
         if init_C is None:
+            print(solver_opts)
             self._solve_initalization(solver, subset_lambdas=A, solver_opts=solver_opts, tee=tee)
         else:
             for t in self._meas_times:
@@ -353,7 +354,7 @@ class VarianceEstimator(Optimizer):
             opt.options[key]=val
             
         solver_results = opt.solve(self.model,
-                                   tee=tee,
+                                   tee=tee, 
                                    report_timing=profile_time)
 
         for t in self._meas_times:

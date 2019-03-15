@@ -64,8 +64,7 @@ class MultipleExperimentsEstimator():
         
         self.initialization_model = dict()
         self._sublist_components = dict()
-        #This will change if we give concentration data
-        self._spectra_given = True
+
         self._n_meas_times = 0
         self._n_meas_lambdas = 0
         self._n_actual = 0
@@ -76,7 +75,9 @@ class MultipleExperimentsEstimator():
           
     def _define_reduce_hess_order_mult(self):
         """This function is used to link the variables to the columns in the reduced
-           hessian for multiple experiments.         
+           hessian for multiple experiments.   
+           
+           Currently this is not functional
         """
         self.model.red_hessian = Suffix(direction=Suffix.IMPORT_EXPORT)
         count_vars = 1
@@ -118,6 +119,8 @@ class MultipleExperimentsEstimator():
         outputted by k_aug and uses the rh_name to find the locations of the variables and then
         re-orders the hessian to be in a format where the other functions are able to compute the
         confidence intervals in a way similar to that utilized by sIpopt.
+        
+        Currently not functional
         """
         vlocsize = len(var_loc)
         n_vars = len(self._idx_to_variable)
@@ -425,13 +428,6 @@ class MultipleExperimentsEstimator():
             
         else:
             raise RuntimeError("builder added needs to be a dictionary of TemplateBuilders or a TemplateBuilder")
-            
-        #if isinstance(builder, TemplateBuilder):
-        #    builder_dict = {}
-        #    for item in self.experiments:
-        #        builder_dict[item] = builder
-            
-        #    builder = builder_dict
         
         if solver == '':
             solver = 'ipopt'
@@ -450,9 +446,10 @@ class MultipleExperimentsEstimator():
             v_est_dict[l].apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
             results_variances[l] = v_est_dict[l].run_opt(solver,
                                             tee=tee,
-                                            solver_options=solver_opts,
+                                            solver_opts=solver_opts,
                                             max_iter=max_iter,
-                                            tol=tol)
+                                            tol=tol,
+                                            subset_lambdas = A)
             print("\nThe estimated variances are:\n")
             for k,v in six.iteritems(results_variances[l].sigma_sq):
                 print(k, v)
@@ -632,7 +629,8 @@ class MultipleExperimentsEstimator():
                 ind_p_est[l].initialize_from_trajectory('Z',self.variance_results[l].Z)
                 ind_p_est[l].initialize_from_trajectory('S',self.variance_results[l].S)
                 ind_p_est[l].initialize_from_trajectory('C',self.variance_results[l].C)
-            
+                #NOTICE here that we may need to add X and Y variables and DZdt vars here depending on the situtation
+                #This needs to be done based on their existence.
                 ind_p_est[l].scale_variables_from_trajectory('Z',self.variance_results[l].Z)
                 ind_p_est[l].scale_variables_from_trajectory('S',self.variance_results[l].S)
                 ind_p_est[l].scale_variables_from_trajectory('C',self.variance_results[l].C)
@@ -803,21 +801,18 @@ class MultipleExperimentsEstimator():
             if count == 0:
                 m.first_exp = i
             count += 1
-        print("map", m.map_exp_to_count)
         def param_linking_rule(m, exp, param):
-            print(exp,param)
             prev_exp = None
             if exp == m.first_exp:
-                print("the exp first")
-                print(exp)
+
                 return Constraint.Skip
             else:
                 for key, val in m.map_exp_to_count.items():
                     print(key,val)
                     if val == exp:
                         prev_exp = m.map_exp_to_count[key-1]
-                print('prev_exp', prev_exp)
                 if param in global_params and prev_exp != None:
+                    #This here is to check that the correct linking constraints are constructed
                     print("this constraint is written:")
                     print(m.experiment[exp].P[param],"=", m.experiment[prev_exp].P[param])
                     return m.experiment[exp].P[param] == m.experiment[prev_exp].P[param]
@@ -927,20 +922,19 @@ class MultipleExperimentsEstimator():
         elif self._spectra_given:
             optimizer = SolverFactory('ipopt')  
             
-            options1=dict()
-            options1['linear_solver'] = 'ma77'
+            #THESE OPTIONS ARE FOR CASES WHEN YOU NEED TO DIRECTLY ADD IN OPTIONS FOR INDIVIDUAL SOLVES
+            #options1=dict()
+            #options1['linear_solver'] = 'ma57'
     
-            options1['mu_init']=1e-6
-            options1['mu_strategy']='adaptive'
+            #options1['mu_init']=1e-6
+            #options1['mu_strategy']='adaptive'
             #options1['ma27_ignore_singularity'] = 'yes'
             #options1['bound_push']=1e-6
-            solver_results = optimizer.solve(m, options = options1,tee=tee)
+            solver_results = optimizer.solve(m, options = solver_opts,tee=tee)
             
         elif self._concentration_given:
             optimizer = SolverFactory('ipopt')
             solver_results = optimizer.solve(m, options = solver_opts,tee=tee)
-        #for i in m.experiment:
-        #    m.experiment[i].P.pprint()
             
         solver_results = dict()   
         
