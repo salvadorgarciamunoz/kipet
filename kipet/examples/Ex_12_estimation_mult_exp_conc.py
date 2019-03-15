@@ -38,7 +38,7 @@ if __name__ == "__main__":
     #USER INPUT SECTION - REQUIRED MODEL BUILDING ACTIONS
     #=========================================================================
        
-    # Load spectral data from the relevant file location. As described in section 4.3.1
+    # Load concentration data from the relevant file location. As described in section 4.3.1
     #################################################################################
     dataDirectory = os.path.abspath(
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
@@ -46,14 +46,6 @@ if __name__ == "__main__":
     filename =  os.path.join(dataDirectory,'Ex_1_C_data.txt')
     C_frame1 = read_concentration_data_from_txt(filename)
     C_frame2 = add_noise_to_signal(C_frame1, 0.0001)
-
-    #This function can be used to remove a certain number of wavelengths from data
-    # in this case only every 2nd wavelength is included
-    #D_frame1 = decrease_wavelengths(D_frame1,A_set = 2)
-    
-    #Here we add noise to datasets in order to make our data differenct between experiments
-    #D_frame2 = add_noise_to_signal(D_frame2, 0.0001)
-    #D_frame3 = add_noise_to_signal(D_frame2, 0.0004)
 
     #################################################################################    
     builder = TemplateBuilder()    
@@ -65,10 +57,9 @@ if __name__ == "__main__":
     
     # If you have multiple experiments, you need to add your experimental datasets to a dictionary:
     datasets = {'Exp1': C_frame1, 'Exp2': C_frame2}
-                #, 'Exp3': D_frame3}
-    # Additionally, we do not add the spectral data to the TemplateBuilder, rather supplying the 
-    # TemplateBuilder before data is added as an argument into the function
-
+    #Notice that we do not add the data to the model as we did in the past, rather we pass this as 
+    #an argument into the function later on.
+    
     # define explicit system of ODEs
     def rule_odes(m,t):
         exprs = dict()
@@ -78,7 +69,9 @@ if __name__ == "__main__":
         return exprs
     
     builder.set_odes_rule(rule_odes)
-    #opt_model = builder.create_pyomo_model(,10.0)
+
+    #Define our start and end times for the experiment, as we had done in the past, now related to
+    #the dataset names
     start_time = {'Exp1':0.0, 'Exp2':0.0}
     end_time = {'Exp1':10.0, 'Exp2':10.0}
     
@@ -96,17 +89,6 @@ if __name__ == "__main__":
     nfe = 60
     ncp = 3
 
-    # Now we run the variance estimation on the problem. This is done differently to the
-    # single experiment estimation as we now have to solve for variances in each dataset
-    # separately these are automatically patched into the main model when parameter estimation is run
-    #results_variances = pest.run_variance_estimation(solver = 'ipopt', 
-    #                                                 tee=False,
-    #                                                 nfe=nfe,
-    #                                                 ncp=ncp, 
-    #                                                 solver_opts = options,
-    #                                                 start_time=start_time, 
-    #                                                 end_time=end_time, 
-    #                                                 builder = builder)
     sigmas = {'A':1e-10,'B':1e-10,'C':1e-10}
     
     variances = {'Exp1':sigmas, 'Exp2':sigmas}
@@ -127,14 +109,10 @@ if __name__ == "__main__":
     # results for each block. Since we know that all parameters are shared, we only need to print
     # the parameters from one experiment, however for the plots, they could differ between experiments
     print("The estimated parameters are:")
-    #for k,v in six.iteritems(results_pest['Exp1'].P):
-    #    print(k, v)
+
     for k,v in results_pest.items():
         print(results_pest[k].P)
-        #print(type(results_pest[k].P))
-        #print(k,v)
-        #for k,v in results_pest[k].P.items():
-        #    print(k,v)
+
     
     if with_plots:
         for k,v in results_pest.items():
