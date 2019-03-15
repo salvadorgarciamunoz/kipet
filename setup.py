@@ -19,7 +19,8 @@ setuptools_kwargs = {
                          'coverage',
                          'numpy',
                          'scipy',
-                         'pandas'],
+                         'pandas',
+                         'matplotlib'],
     'scripts': [],
     'include_package_data': True
 }

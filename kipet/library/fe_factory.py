@@ -9,6 +9,8 @@ from pyomo import *
 from os import getcwd, remove
 import sys
 import six
+from pyomo.core.expr import current as EXPR
+from pyomo.core.expr.numvalue import NumericConstant
 
 
 __author__ = 'David M Thierry'  #: April 2018
@@ -85,7 +87,7 @@ class fe_initialize(object):
 
         tgt_cts = getattr(self.tgt, self.time_set)
         self.ncp = tgt_cts.get_discretization_info()['ncp']
-        
+
         fe_l = tgt_cts.get_finite_elements()
         self.fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
         self.nfe = len(self.fe_list)  #: Create a list with the step-size
@@ -351,7 +353,7 @@ class fe_initialize(object):
         #         i.setlb(0)
         #for i in self.mod.Z.itervalues():
             #i.setlb(0)
-
+        self.ip.options["print_level"] = 1  #: change this on demand
         self.ip.options["OF_start_with_resto"] = 'no'
         self.ip.options['bound_push'] = 1e-02
         sol = self.ip.solve(self.mod, tee=True, symbolic_solver_labels=True)
@@ -386,16 +388,16 @@ class fe_initialize(object):
             print("fe {} - status: optimal".format(fe))
         self.patch(fe)
         self.cycle_ics(fe)
-        
+
     #Inclusion of discrete jumps: (CS)
     def load_discrete_jump(self, var_dic, jump_times, feed_times):
-        """Method is used to define and load the places where discrete jumps are located, e.g. 
+        """Method is used to define and load the places where discrete jumps are located, e.g.
         dosing points or external inputs.
         Args:
             var_dic (dict): dictionary containing which variables are inputted and by how much
             jump_times (dict): dict containing the times that each variable is inputted
             feed_times (list): list of additional time points needed for inputs
-        
+
         Returns:
             None
         """
@@ -420,7 +422,7 @@ class fe_initialize(object):
         https://github.com/dthierry/cappresse/blob/pyomodae-david/nmpc_mhe/aux/utils.py
         fe_cp function!
         """
-        
+
         #For checking whether jump happens in right element:
         #print('*'* 20)
         #print("Current Finite element [cycle_ics]{}".format(curr_fe)) #comment out these lines?
@@ -428,7 +430,7 @@ class fe_initialize(object):
 
         ts = getattr(self.mod, self.time_set)
         t_last = t_ij(ts, 0, self.ncp)
-        
+
         #Inclusion of discrete jumps: (CS)
         ttgt = getattr(self.tgt, self.time_set)
 
@@ -502,6 +504,7 @@ class fe_initialize(object):
         ##############################
         #Inclusion of discrete jumps: (CS)
         if self.jump:
+            vs = ReplacementVisitor()  #: trick to replace variables
             kn=0
             for ki in self.jump_times_dict.keys():
                 if not isinstance(ki, str):
@@ -531,14 +534,15 @@ class fe_initialize(object):
                                     self.tgt.add_component(v + "_dummy_eq_" + str(kn), ConstraintList())
                                     conlist = getattr(self.tgt, v + "_dummy_eq_" + str(kn))
                                     varname = v + "_dummy_" + str(kn)
-                                    self.tgt.add_component(varname, Var())
+                                    self.tgt.add_component(varname, Var([0]))  #: this is now indexed [0]
                                     vdummy = getattr(self.tgt, varname)
+                                    vs.change_replacement(vdummy[0])   #: who is replacing.
                                     jump_delta = vkeydict[k]
                                     self.tgt.add_component(v + '_jumpdelta' + str(kn), Param(initialize=jump_delta))
                                     jump_param  = getattr(self.tgt, v + '_jumpdelta' + str(kn))
                                     if not isinstance(k, tuple):
                                         k = (k,)
-                                    exprjump = vdummy - var[(self.jump_time,)+k] == jump_param
+                                    exprjump = vdummy[0] - var[(self.jump_time,)+k] == jump_param  #: this changed
                                     self.tgt.add_component("jumpdelta_expr"+str(kn), Constraint(expr=exprjump))
                                     for kcp in range(1,self.ncp+1):
                                         curr_time = t_ij(ttgt,self.jump_fe+1,kcp)
@@ -548,9 +552,11 @@ class fe_initialize(object):
                                             knew = k
                                         idx = (curr_time,) +  knew
                                         con[idx].deactivate()
-                                        e=con[idx].expr.clone()
-                                        e.args[0].args[1]=vdummy
-                                        con[idx].set_value(e)
+                                        e=con[idx].expr
+                                        suspect_var = e.args[0].args[1].args[0].args[0].args[1]  #: seems that this is the correct variable
+                                        vs.change_suspect(id(suspect_var))  #: who to replace
+                                        e_new = vs.dfs_postorder_stack(e)  #: replace
+                                        con[idx].set_value(e_new)
                                         conlist.add(con[idx].expr)
                     kn=kn+1
             #########################################
@@ -752,3 +758,38 @@ def fe_cp(time_set, feedtime):
             break
         j += 1
     return fe, cp
+
+
+#: This class can replace variables from an expression
+class ReplacementVisitor(EXPR.ExpressionReplacementVisitor):
+    def __init__(self):
+        super(ReplacementVisitor, self).__init__()
+        self._replacement = None
+        self._suspect = None
+
+    def change_suspect(self, suspect_):
+        self._suspect = suspect_
+
+    def change_replacement(self, replacement_):
+        self._replacement = replacement_
+
+    def visiting_potential_leaf(self, node):
+        #
+        # Clone leaf nodes in the expression tree
+        #
+        if node.__class__ in native_numeric_types:
+            return True, node
+
+        if node.__class__ is NumericConstant:
+            return True, node
+
+
+        if node.is_variable_type():
+            if id(node) == self._suspect:
+                d = self._replacement
+                return True, d
+            else:
+                return True, node
+
+        return False, None
+
