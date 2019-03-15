@@ -8,7 +8,7 @@ import scipy
 # need to move this two functions to utils
 def find_nearest(array,value):
     idx = np.searchsorted(array, value, side="left")
-    if idx == len(array) or math.fabs(value - array[idx-1]) < math.fabs(value - array[idx]):
+    if idx == len(array) or idx==len(array)-1 or math.fabs(value - array[idx-1]) < math.fabs(value - array[idx]):
         return idx-1
     else:
         return idx
@@ -21,7 +21,7 @@ def interpolate_from_trayectory(t,trajectory):
     times_traj = np.array(trajectory.index)
     last_time_idx = len(times_traj)-1
     idx_near = find_nearest(times_traj,t)
-    if idx_near==0 or idx_near==last_time_idx:
+    if idx_near==last_time_idx:
         t_found = times_traj[idx_near]
         return trajectory[t_found]
     else:
