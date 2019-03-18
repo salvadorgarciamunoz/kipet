@@ -183,15 +183,10 @@ if __name__ == "__main__":
     # results for each block. Since we know that all parameters are shared, we only need to print
     # the parameters from one experiment, however for the plots, they could differ between experiments
     print("The estimated parameters are:")
-    #for k,v in six.iteritems(results_pest['Exp1'].P):
-    #    print(k, v)
+
     for k,v in results_pest.items():
         print(results_pest[k].P)
-        #print(type(results_pest[k].P))
-        #print(k,v)
-        #for k,v in results_pest[k].P.items():
-        #    print(k,v)
-    
+   
     if with_plots:
         for k,v in results_pest.items():
 
