@@ -44,7 +44,7 @@ if __name__ == "__main__":
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
             inspect.currentframe() ) ) ), 'data_sets'))
     filename1 =  os.path.join(dataDirectory,'Dij_exp1.txt')
-    filename2 = os.path.join(dataDirectory,'Dij_exp2.txt')
+    filename2 = os.path.join(dataDirectory,'Dij_exp3_reduced.txt')
     D_frame1 = read_spectral_data_from_txt(filename1)
     D_frame2 = read_spectral_data_from_txt(filename2)
 
@@ -53,8 +53,10 @@ if __name__ == "__main__":
     D_frame1 = decrease_wavelengths(D_frame1,A_set = 2)
     
     #Here we add noise to datasets in order to make our data differenct between experiments
-    D_frame2 = add_noise_to_signal(D_frame2, 0.0001)
-    D_frame3 = add_noise_to_signal(D_frame2, 0.0004)
+    D_frame2 = add_noise_to_signal(D_frame2, 0.00001)
+    
+    D_frame2 = decrease_wavelengths(D_frame2,A_set = 2)
+    #D_frame3 = add_noise_to_signal(D_frame2, 0.0004)
 
     #################################################################################    
     builder = TemplateBuilder()    
@@ -65,7 +67,8 @@ if __name__ == "__main__":
     builder.add_parameter('k2',init = 0.224, bounds=(0.0,10))
     
     # If you have multiple experiments, you need to add your experimental datasets to a dictionary:
-    datasets = {'Exp1': D_frame1, 'Exp2': D_frame2, 'Exp3': D_frame3}
+    datasets = {'Exp1': D_frame1, 'Exp2': D_frame2}
+    #, 'Exp3': D_frame3}
     # Additionally, we do not add the spectral data to the TemplateBuilder, rather supplying the 
     # TemplateBuilder before data is added as an argument into the function
     
@@ -79,11 +82,13 @@ if __name__ == "__main__":
     
     builder.set_odes_rule(rule_odes)
     #opt_model = builder.create_pyomo_model(,10.0)
-    start_time = {'Exp1':0.0, 'Exp2':0.0, 'Exp3':0.0}
-    end_time = {'Exp1':10.0, 'Exp2':10.0, 'Exp3':10.0}
+    start_time = {'Exp1':0.0, 'Exp2':0.0}
+    #, 'Exp3':0.0}
+    end_time = {'Exp1':10.0, 'Exp2':9.0}
+    #, 'Exp3':10.0}
     
     options = dict()
-    options['linear_solver'] = 'ma57'
+    options['linear_solver'] = 'ma27'
     #options['mu_init']=1e-6
     
     # ============================================================================
@@ -99,25 +104,33 @@ if __name__ == "__main__":
     # Now we run the variance estimation on the problem. This is done differently to the
     # single experiment estimation as we now have to solve for variances in each dataset
     # separately these are automatically patched into the main model when parameter estimation is run
-    results_variances = pest.run_variance_estimation(solver = 'ipopt', 
-                                                     tee=False,
-                                                     nfe=nfe,
-                                                     ncp=ncp, 
-                                                     solver_opts = options,
-                                                     start_time=start_time, 
-                                                     end_time=end_time, 
-                                                     builder = builder)
+    #results_variances = pest.run_variance_estimation(solver = 'ipopt', 
+    #                                                 tee=False,
+    #                                                 nfe=nfe,
+    #                                                 ncp=ncp, 
+    #                                                 solver_opts = options,
+    #                                                 start_time=start_time, 
+    #                                                 end_time=end_time, 
+    #                                                 builder = builder)
     
     # Finally we run the parameter estimation. This solves each dataset separately first and then
     # links the models and solves it simultaneously
-    results_pest = pest.run_parameter_estimation(solver = 'ipopt', 
-                                                        tee=True,
+    sigmas = {'A':1e-10,'B':1e-10,'C':1e-10,'device':1e-6}
+    
+    variances = {'Exp1':sigmas, 'Exp2':sigmas}
+                 #, 'Exp3':sigmas}
+    
+    results_pest = pest.run_parameter_estimation(builder = builder,
+                                                         #solver = 'k_aug', 
+                                                         tee=True,
                                                          nfe=nfe,
                                                          ncp=ncp,
+                                                         sigma_sq = variances,
                                                          solver_opts = options,
+                                                         #covariance = True,
                                                          start_time=start_time, 
-                                                         end_time=end_time, 
-                                                         builder = builder)
+                                                         end_time=end_time)                                                          
+                                                         
     
     # Note here, that with the multiple datasets, we are returning a dictionary cotaining the 
     # results for each block. Since we know that all parameters are shared, we only need to print
@@ -127,10 +140,6 @@ if __name__ == "__main__":
     #    print(k, v)
     for k,v in results_pest.items():
         print(results_pest[k].P)
-        #print(type(results_pest[k].P))
-        #print(k,v)
-        #for k,v in results_pest[k].P.items():
-        #    print(k,v)
     
     if with_plots:
         for k,v in results_pest.items():

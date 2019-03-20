@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 from distutils.core import Extension
 
 DISTNAME = 'kipet'
-VERSION = '1.0.92'
+VERSION = '1.0.94'
 PACKAGES = find_packages()
 EXTENSIONS = []
 DESCRIPTION = 'Package for kinetic parameter estimation based on spectral or concentration data'
