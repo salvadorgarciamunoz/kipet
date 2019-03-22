@@ -34,7 +34,7 @@ if __name__ == "__main__":
     if len(sys.argv)==2:
         if int(sys.argv[1]):
             with_plots = False
-        
+
     #=========================================================================
     #USER INPUT SECTION - REQUIRED MODEL BUILDING ACTIONS
     #=========================================================================
@@ -188,12 +188,21 @@ if __name__ == "__main__":
         plt.ylabel("rxn rates (mol/L*s)")
         plt.title("Rates of rxn")
         plt.show()
-        
+
         results.X.plot.line(legend=True)
         plt.xlabel("time (s)")
         plt.ylabel("Volume (L)")
         plt.title("total volume")
         plt.show()
+
+        results.Y['Temp'].plot.line(legend=True)
+        plt.xlabel("time (s)")
+        plt.ylabel("Temperature (K)")
+        plt.title("Temperature")
+        plt.show()
+    #print(results.Y['Temp'])
+  #  sys.exit()
+
     #=========================================================================
     #USER INPUT SECTION - Variance Estimation
     #========================================================================
@@ -258,13 +267,24 @@ if __name__ == "__main__":
         plt.ylabel("rxn rates (mol/L*s)")
         plt.title("Rates of rxn")
         plt.show()
-        
+
+        results_variances.Y['Temp'].plot.line(legend=True)
+        plt.xlabel("time (s)")
+        plt.ylabel("Temperature (K)")
+        plt.title("Temperature")
+        # plt.show()
+
+        results_variances.S.plot.line(legend=True)
+        plt.xlabel("Wavelength (cm)")
+        plt.ylabel("Absorbance (L/(mol cm))")
+        plt.title("Absorbance  Profile")
+
         results_variances.X.plot.line(legend=True)
         plt.xlabel("time (s)")
         plt.ylabel("Volume (L)")
         plt.title("total volume")
         plt.show()
-
+    # sys.exit()
     #=========================================================================
     #USER INPUT SECTION - Parameter Estimation
     #========================================================================
@@ -276,9 +296,9 @@ if __name__ == "__main__":
     model =builder.create_pyomo_model(0.0,10)
     #Now introduce parameters as non fixed
     model.del_component(params)
-    builder.add_parameter('k1',init=1.0,bounds=(0.0,10.0))
-    builder.add_parameter('k2Tr',init=0.2265,bounds=(0.0, 10.0))
-    builder.add_parameter('E',2.)
+    builder.add_parameter('k1',0.0055)
+    builder.add_parameter('k2Tr',init=0.2265,bounds=(0.0, None))
+    builder.add_parameter('E',1655.3)
     
     model =builder.create_pyomo_model(0.0,10)
     p_estimator = ParameterEstimator(model)
@@ -330,7 +350,7 @@ if __name__ == "__main__":
         plt.ylabel("Concentration (mol/L)")
         plt.title("Concentration Profile Without Noise")
         plt.show()
-        
+
         results_pyomo.Y['1'].plot.line(legend=True)
         results_pyomo.Y['2'].plot.line(legend=True)
         plt.xlabel("time (s)")
@@ -338,11 +358,17 @@ if __name__ == "__main__":
         plt.title("Rates of rxn")
         plt.show()
 
+        results.Y['Temp'].plot.line(legend=True)
+        plt.xlabel("time (s)")
+        plt.ylabel("Temperature (K)")
+        plt.title("Temperature")
+        plt.show()
+
         results_pyomo.S.plot.line(legend=True)
         plt.xlabel("Wavelength (cm)")
         plt.ylabel("Absorbance (L/(mol cm))")
         plt.title("Absorbance  Profile")
-    
+
         results_pyomo.X.plot.line(legend=True)
         plt.xlabel("time (s)")
         plt.ylabel("Volume (L)")
