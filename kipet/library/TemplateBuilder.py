@@ -73,6 +73,7 @@ class TemplateBuilder(object):
         self._parameters = dict()
         self._parameters_init = dict() #added for parameter initial guess CS
         self._parameters_bounds = dict()
+        self._y_bounds = dict() #added for additional optional bounds CS
         self._init_conditions = dict()
         self._spectral_data = None
         self._concentration_data = None
@@ -80,7 +81,7 @@ class TemplateBuilder(object):
         self._odes = None
         self._meas_times = set()
         self._complementary_states = set()
-        self._algebraics = set()
+        self._algebraics = dict()
         self._algebraic_constraints = None
         self._known_absorbance = None
         self._is_known_abs_set = False
@@ -118,9 +119,19 @@ class TemplateBuilder(object):
         else:
             raise RuntimeError('Extra states must be an dictionary state_name:init_condition')
 
-        algebraics = kwargs.pop('algebraics', set())
-        for y in algebraics:
-            self._algebraics.add(y)
+        algebraics = kwargs.pop('algebraics', dict())
+        if isinstance(algebraics, dict):
+            for k, v in algebraics.items():
+                self._algebraics.add(k)
+        elif isinstance(algebraics, set()):
+            for k in algebraics:
+                self._algebraics.add(k)
+        elif isinstance(algebraics, list):
+            for k in algebraics:
+                self._algebraics[k]=None
+
+        else:
+            raise RuntimeError('concentrations must be an dictionary component_name:init_condition')
 
     def add_parameter(self, *args, **kwds):
         """Add a kinetic parameter(s) to the model.
@@ -128,7 +139,7 @@ class TemplateBuilder(object):
         Note:
             Plan to change this method add parameters as PYOMO variables
             
-            This method tries to mimic a template implmenetation. Depending 
+            This method tries to mimic a template implementation. Depending
             on the argument type it will behave differently
 
         Args:
@@ -414,7 +425,7 @@ class TemplateBuilder(object):
             print(len(args))
             raise RuntimeError('Complementary state data not supported. Try str, float')
 
-    def add_algebraic_variable(self, *args):
+    def add_algebraic_variable(self, *args, **kwds):
         """Add an algebraic variable to the model
             
             This method tries to mimic a template implmenetation. Depending 
@@ -423,20 +434,31 @@ class TemplateBuilder(object):
         Args:
             param1 (str): Variable name. Creates a variable parameter  
             
-            param1 (list): Variable names. Creates a list of variable parameters  
+            param1 (list): Variable names. Creates a list of variable parameters
 
         Returns:
             None
 
         """
-        name = args[0]
-        if isinstance(name, six.string_types):
-            self._algebraics.add(name)
-        elif isinstance(name, list) or isinstance(name, set):
-            for y in name:
-                self._algebraics.add(y)
-        else:
-            raise RuntimeError('To add an algebraic please pass name')
+
+        bounds = kwds.pop('bounds', None)
+
+        if len(args) == 1:
+            name = args[0]
+            if isinstance(name, six.string_types):
+                self._algebraics[name] = None
+                if bounds is not None:
+                    self._y_bounds[name] = bounds
+            elif isinstance(name, list) or isinstance(name, set):
+                if bounds is not None:
+                    if len(bounds) != len(name):
+                        raise RuntimeError('the list of bounds must be equal to the list of parameters')
+                for i,n in enumerate(name):
+                    self._algebraics[n] = None
+                    if bounds is not None:
+                        self._y_bounds[n] = bounds[i]
+            else:
+                raise RuntimeError('To add an algebraic please pass name')
 
     def set_odes_rule(self, rule):
         """Set the ode expressions.
@@ -538,7 +560,7 @@ class TemplateBuilder(object):
         pyomo_model.complementary_states = Set(initialize=self._complementary_states)
         pyomo_model.states = pyomo_model.mixture_components | pyomo_model.complementary_states
 
-        pyomo_model.algebraics = Set(initialize=self._algebraics)
+        pyomo_model.algebraics = Set(initialize=self._algebraics.keys())
 
         list_times = self._meas_times
         m_times = sorted(list_times)
@@ -669,12 +691,20 @@ class TemplateBuilder(object):
             if t == pyomo_model.start_time.value:
                 pyomo_model.X[t, s].value = self._init_conditions[s]
 
+
         pyomo_model.dXdt = DerivativeVar(pyomo_model.X,
                                          wrt=pyomo_model.time)
-
         pyomo_model.Y = Var(pyomo_model.time,
                             pyomo_model.algebraics,
                             initialize=1.0)
+
+        #Add optional bounds for algebraic variables (CS):
+        for t in pyomo_model.time:
+            for k, v in self._y_bounds.items():
+                lb = v[0]
+                ub = v[1]
+                pyomo_model.Y[t, k].setlb(lb)
+                pyomo_model.Y[t, k].setub(ub)
 
         if self._absorption_data is not None:
             s_dict = dict()
