@@ -69,7 +69,12 @@ class Simulator(object):
             self._non_absorbing = [name for name in self.model.non_absorbing]
         if hasattr(self.model, 'known_absorbance'):
             self._known_absorbance = [name for name in self.model.known_absorbance]
-            
+        #added for removing nonabs ones from first term in objective CS:
+        if hasattr(self.model, 'abs_components'):
+            self._abs_components = [name for name in
+                                    self.model.abs_components]  # added for removing nonabs ones from first term in objective CS
+            self._nabs_components = len(self._abs_components)
+        ####
         if not self._mixture_components:
             raise RuntimeError('The model does not have any mixture components.\
             For simulation add mixture components')
@@ -86,16 +91,29 @@ class Simulator(object):
     def compute_D_given_SC(self,results,sigma_d=0):
         # this requires results to have S and C computed already
         d_results = []
-        for i,t in enumerate(self._meas_times):
-            for j,l in enumerate(self._meas_lambdas):
-                suma = 0.0
-                for w,k in enumerate(self._mixture_components):
-                    C =  results.C[k][t]  
-                    S = results.S[k][l]
-                    suma+= C*S
-                if sigma_d:
-                    suma+= np.random.normal(0.0,sigma_d)
-                d_results.append(suma)
+
+        if hasattr(self, '_abs_components'): #added for removing non_abs ones from first term in obj CS
+            for i, t in enumerate(self._meas_times):
+                for j, l in enumerate(self._meas_lambdas):
+                    suma = 0.0
+                    for w, k in enumerate(self._abs_components):
+                        Cs = results.C[k][t] #just the absorbing ones
+                        Ss = results.S[k][l]
+                        suma += Cs * Ss
+                    if sigma_d:
+                        suma += np.random.normal(0.0, sigma_d)
+                    d_results.append(suma)
+        else:
+            for i,t in enumerate(self._meas_times):
+                for j,l in enumerate(self._meas_lambdas):
+                    suma = 0.0
+                    for w,k in enumerate(self._mixture_components):
+                        C =  results.C[k][t]
+                        S = results.S[k][l]
+                        suma+= C*S
+                    if sigma_d:
+                        suma+= np.random.normal(0.0,sigma_d)
+                    d_results.append(suma)
                     
         d_array = np.array(d_results).reshape((self._n_meas_times,self._n_meas_lambdas))
         results.D = pd.DataFrame(data=d_array,

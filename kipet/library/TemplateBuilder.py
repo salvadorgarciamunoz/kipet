@@ -85,6 +85,7 @@ class TemplateBuilder(object):
         self._algebraic_constraints = None
         self._known_absorbance = None
         self._is_known_abs_set = False
+        self._warmstart = False #add for warmstart CS
         self._known_absorbance_data = None
         self._non_absorbing = None
         self._is_non_abs_set = False
@@ -666,7 +667,7 @@ class TemplateBuilder(object):
             c_bounds = (None, None)
         else:
             c_bounds = (0.0, None)  
-            
+
         pyomo_model.C = Var(pyomo_model.meas_times,
                             pyomo_model.mixture_components,
                             bounds=c_bounds,
@@ -718,16 +719,6 @@ class TemplateBuilder(object):
             s_bounds = (None, None)
         else:
             s_bounds = (0.0, None)
-            
-        pyomo_model.S = Var(pyomo_model.meas_lambdas,
-                            pyomo_model.mixture_components,
-                            bounds=s_bounds,
-                            initialize=s_dict)
-
-        if self._absorption_data is not None:
-            for l in pyomo_model.meas_lambdas:
-                for k in pyomo_model.mixture_components:
-                    pyomo_model.S[l, k].fixed = True
 
         # Fixes parameters that were given numeric values
         for p, v in self._parameters.items():
@@ -794,9 +785,24 @@ class TemplateBuilder(object):
             pyomo_model.algebraic_consts = Constraint(pyomo_model.time,
                                                       range(n_alg_eqns),
                                                       rule=rule_algebraics)
+
         if self._is_non_abs_set:  #: in case of a second call after non_absorbing has been declared
             self.set_non_absorbing_species(pyomo_model, self._non_absorbing, check=False)
-            
+            pyomo_model.S=Var(pyomo_model.meas_lambdas,
+                            pyomo_model.abs_components,
+                            bounds=s_bounds,
+                            initialize=s_dict)
+            # pyomo_model.del_component(pyomo_model.S)
+        else:
+            pyomo_model.S = Var(pyomo_model.meas_lambdas,
+                                pyomo_model.mixture_components,
+                                bounds=s_bounds,
+                                initialize=s_dict)
+
+        if self._absorption_data is not None:
+            for l in pyomo_model.meas_lambdas:
+                for k in pyomo_model.mixture_components:
+                    pyomo_model.S[l, k].fixed = True
         if self._is_known_abs_set:  #: in case of a second call after known_absorbing has been declared
             self.set_known_absorbing_species(pyomo_model, self._known_absorbance, self._known_absorbance_data, check=False)
             
@@ -961,6 +967,16 @@ class TemplateBuilder(object):
     def has_concentration_data(self):
         return self._concentration_data is not None
 
+    def optional_warmstart(self, model):
+        if hasattr(model, 'dual') and hasattr(model, 'ipopt_zL_out') and hasattr(model, 'ipopt_zU_out') and hasattr(model,'ipopt_zL_in') and hasattr(model, 'ipopt_zU_in'):
+            print('warmstart model components already set up before.')
+        else:
+            model.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
+            model.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
+            model.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+            model.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
+            model.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
+
     def set_non_absorbing_species(self, model, non_abs_list, check=True):
         # type: (ConcreteModel, list, bool) -> None
         """Sets the non absorbing component of the model.
@@ -981,21 +997,33 @@ class TemplateBuilder(object):
         self._non_absorbing = non_abs_list
         model.add_component('non_absorbing', Set(initialize=self._non_absorbing))
 
-        S = getattr(model, 'S')
         C = getattr(model, 'C')
         Z = getattr(model, 'Z')
+
         times = getattr(model, 'meas_times')
         lambdas = getattr(model, 'meas_lambdas')
-        for component in self._non_absorbing:
-            for l in lambdas:
-                S[l, component].set_value(0)
-                S[l, component].fix()
+        allcomps = getattr(model,'mixture_components')
 
         model.add_component('fixed_C', ConstraintList())
         new_con = getattr(model, 'fixed_C')
+
+        model.add_component('abs_components_names', Set())
+        abscompsnames=getattr(model,'abs_components_names')
+        abscompsnames=[name for name in set(sorted(set(allcomps) - set(self._non_absorbing)))]
+        model.add_component('abs_components',Set(initialize=abscompsnames))
+        abscomps=getattr(model,'abs_components')
+
+        model.add_component('Cs',Var(times, abscompsnames))
+        Cs=getattr(model, 'Cs')
+        model.add_component('matchCsC', ConstraintList())
+        matchCsC_con = getattr(model, 'matchCsC')
+        print(self._non_absorbing)
+        print(abscompsnames)
         for time in times:
             for component in self._non_absorbing:
                 new_con.add(C[time, component] == Z[time, component])
+            for componenta in abscomps:
+                    matchCsC_con.add(Cs[time, componenta] == C[time, componenta])
 
     def set_known_absorbing_species(self, model, known_abs_list, absorbance_data, check=True):
         # type: (ConcreteModel, list, dataframe, bool) -> None
