@@ -169,6 +169,7 @@ if __name__ == "__main__":
 
     # finally we run the optimization
     results_pyomo = p_estimator.run_opt('ipopt',
+                                        report_time = True,
                                       tee=True,
                                       solver_opts = options,
                                       variances=sigmas)

@@ -92,7 +92,7 @@ if __name__ == "__main__":
     # Finally we run the variance estimatator using the arguments shown in Seciton 4.3.3
     results_variances = v_estimator.run_opt('ipopt',
                                             tee=True,
-                                            solver_options=options,
+                                            solver_opts=options,
                                             tolerance=1e-5,
                                             max_iter=15,
                                             subset_lambdas=A_set)

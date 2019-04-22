@@ -8,6 +8,7 @@ from pyomo.opt import (ReaderFactory,
 from kipet.library.Optimizer import *
 from scipy.optimize import least_squares
 from scipy.sparse import coo_matrix
+#import pyutilib.subprocess
 import matplotlib.pylab as plt
 import subprocess
 import time
@@ -312,7 +313,7 @@ class VarianceEstimator(Optimizer):
             
         if report_time:
             end = time.time()
-        print("Total execution time in seconds for variance estimation:", end - start)
+            print("Total execution time in seconds for variance estimation:", end - start)
         
         return results
 

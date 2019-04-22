@@ -424,7 +424,7 @@ class TemplateBuilder(object):
             else:
                 raise RuntimeError('Complementary state data not supported. Try str, float')
         else:
-            print(len(args))
+            #print(len(args))
             raise RuntimeError('Complementary state data not supported. Try str, float')
 
     def add_algebraic_variable(self, *args, **kwds):
@@ -530,8 +530,7 @@ class TemplateBuilder(object):
         if not isinstance(bounds, tuple):
             raise RuntimeError('bounds needs to be a tuple') 
         
-        self._prof_bounds.append([var, comp, profile_range, bounds])
-        print(self._prof_bounds)        
+        self._prof_bounds.append([var, comp, profile_range, bounds])     
             
     def _validate_data(self, model, start_time, end_time):
         """Verify all inputs to the model make sense.
