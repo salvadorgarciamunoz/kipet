@@ -158,18 +158,40 @@ def read_concentration_data_from_csv(filename):
     data.columns = [n for n in data.columns]
     return data    
 
-def read_spectral_data_from_csv(filename):
+def read_spectral_data_from_csv(filename, instrument = False, negatives_to_zero = False):
     """ Reads csv with spectral data
     
         Args:
             filename (str): name of input file
-         
+            instrument (bool): if data is direct from instrument
+            negatives_to_zero (bool): if data contains negatives and baseline shift is not
+                                        done then this forces negative values to zero.
+
         Returns:
             DataFrame
 
     """
+
     data = pd.read_csv(filename,index_col=0)
-    data.columns = [float(n) for n in data.columns]
+    if instrument:
+        #this means we probably have a date/timestamp on the columns
+        data = pd.read_csv(filename,index_col=0, parse_dates = True)
+        data = data.T
+        for n in data.index:
+            h,m,s = n.split(':')
+            sec = (float(h)*60+float(m))*60+float(s)
+            data.rename(index={n:sec}, inplace=True)
+        data.index = [float(n) for n in data.index]
+    else:
+        data.columns = [float(n) for n in data.columns]
+
+    #If we have negative values then this makes them equal to zero
+    if negatives_to_zero:
+        for t in (data.index):
+            for l in data.columns:
+                if data.loc[t,l] < 0:
+                    data.loc[t,l] = 0.0
+
     return data
 
 def read_absorption_data_from_csv(filename):
@@ -629,3 +651,77 @@ def msc(dataFrame, reference_spectra=None):
                               columns = dataFrame.columns,
                               index=dataFrame.index)
     return data_frame
+
+def baseline_shift(dataFrame, shift=None):
+    """
+    Implementation of basic baseline shift. 2 modes are avaliable: 1. Automatic mode that requires no
+    user arguments. The method identifies the lowest value (NOTE THAT THIS ONLY WORKS IF LOWEST VALUE
+    IS NEGATIVE) and shifts the spectra up until this value is at zero. 2. Baseline shift provided by
+    user. User provides the number that is added to every wavelength value in the full spectral dataset.
+    
+    
+    Args:
+        dataFrame (DataFrame): the data to be processed (spectral data)
+        shift (float, optional): user-defined baseline shift
+        
+    Returns:
+        DataFrame containing pre-processed data
+    
+    References:
+
+    """
+    # data checks
+    if not isinstance(dataFrame, pd.DataFrame):
+        raise TypeError("data must be inputted as a pandas DataFrame, try using read_spectral_data_from_txt or similar function first")
+    print("Applying the baseline shift pre-processing") 
+    if shift == None:
+        shift = float(dataFrame.min().min())*(-1)
+    
+    print("shifting dataset by: ", shift)    
+    D = np.array(dataFrame)
+    for t in range(len(dataFrame.index)):
+        for l in range(len(dataFrame.columns)):
+            D[t,l] = D[t,l]+shift
+    
+    data_frame = pd.DataFrame(data=D, columns = dataFrame.columns, index = dataFrame.index)
+    return data_frame
+
+def decrease_wavelengths(original_dataset, A_set = 2, specific_subset = None):
+    '''
+    Takes in the original, full dataset and removes specific wavelengths, or only keeps every
+    multipl of A_set. Returns a new, smaller dataset that should be easier to solve
+    
+    Args:
+        original_dataset (DataFrame):   the data to be processed
+        A_set (float, optional):  optional user-provided multiple of wavelengths to keep. i.e. if
+                                    3, every third value is kept. Default is 2.
+        specific_subset (list or dict, optional): If the user already knows which wavelengths they would like to
+                                    remove, then a list containing these can be included.
+        
+    Returns:
+        DataFrame with the smaller dataset
+    
+    '''
+    if specific_subset != None:
+        if not isinstance(specific_subset, (list, dict)):
+            raise RuntimeError("subset must be of type list or dict!")
+             
+        if isinstance(specific_subset, dict):
+            lists1 = sorted(specific_subset.items())
+            x1, y1 = zip(*lists1)
+            specific_subset = list(x1)
+            
+        new_D = pd.DataFrame(np.nan,index=original_dataset.index, columns = specific_subset)
+        for t in original_dataset.index:
+            for l in original_dataset.columns.values:
+                if l in subset:
+                    new_D.at[t,l] = self.model.D[t,l]           
+    else:
+        count=0
+        for l in original_dataset.columns.values:
+            remcount = count%A_set
+            if remcount==0:
+                original_dataset.drop(columns=[l],axis = 1)
+            count+=1
+        new_D = original_dataset[original_dataset.columns[::A_set]]     
+    return new_D

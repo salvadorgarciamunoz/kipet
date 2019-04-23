@@ -13,6 +13,7 @@ import six
 import copy
 import re
 import os
+import time
 from pyomo.core.expr import current as EXPR
 from pyomo.core.expr.numvalue import NumericConstant
 
@@ -903,6 +904,8 @@ class ParameterEstimator(Optimizer):
 
             with_d_vars (bool,optional): flag to the optimizer whether to add
             variables and constraints for D_bar(i,j)
+            
+            report_time (bool, optional): flag as to whether to time the parameter estimation or not
 
             estimability (bool, optional): flag to tell the model whether it is
             being used by the estimability analysis and therefore will need to return the
@@ -920,7 +923,8 @@ class ParameterEstimator(Optimizer):
         covariance = kwds.pop('covariance', False)
 
         estimability = kwds.pop('estimability', False)
-
+        report_time = kwds.pop('report_time', False)
+        
         #additional arguments for inputs CS
         inputs = kwds.pop("inputs", None)
         inputs_sub = kwds.pop("inputs_sub", None)
@@ -939,7 +943,9 @@ class ParameterEstimator(Optimizer):
         
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
-
+        
+        if report_time:
+            start = time.time()
         # Look at the output in results
         opt = SolverFactory(self.solver)
 
@@ -1060,6 +1066,10 @@ class ParameterEstimator(Optimizer):
             param_vals[name] = self.model.P[name].value
 
         results.P = param_vals
+
+        if report_time:
+            end = time.time()
+            print("Total execution time in seconds for variance estimation:", end - start)
 
         if self._estimability == True:
             return self.hessian, results

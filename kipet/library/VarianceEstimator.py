@@ -41,7 +41,7 @@ class VarianceEstimator(Optimizer):
 
         if not self._spectra_given:
             raise NotImplementedError("Variance estimator requires spectral data in model as model.D[ti,lj]")
-
+        self._is_D_deriv = False
     def run_sim(self, solver, **kwds):
         raise NotImplementedError("VarianceEstimator object does not have run_sim method. Call run_opt")
 
@@ -73,9 +73,14 @@ class VarianceEstimator(Optimizer):
 
             init_C (DataFrame,optional): Dataframe with concentration data used to start Weifengs procedure.
 
+            report_time (bool, optional): True if variance estimation is timed. Default False
+            
+            fixed_device_variance (float, optional): If the device variance is known in advanced we can fix it here.
+                                                Only to be used in conjunction with lsq_ipopt = True.
+
         Returns:
 
-            None
+            Results from the optimization (pyomo model)
 
         """
 
@@ -88,6 +93,7 @@ class VarianceEstimator(Optimizer):
         A = kwds.pop('subset_lambdas', None)
         lsq_ipopt = kwds.pop('lsq_ipopt', False)
         init_C = kwds.pop('init_C', None)
+        report_time = kwds.pop('report_time', False)
 
         # additional arguments for inputs CS
         inputs = kwds.pop("inputs", None)
@@ -104,6 +110,8 @@ class VarianceEstimator(Optimizer):
         feed_times = kwds.pop("feed_times", None)
 
         species_list = kwds.pop('subset_components', None)
+        
+        fixed_device_var = kwds.pop('fixed_device_variance', None)
 
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
@@ -139,7 +147,8 @@ class VarianceEstimator(Optimizer):
             warnings.warn("Overriden by species with known absorbance")
             list_components = [k for k in self._mixture_components if k not in self._known_absorbance]
             self._sublist_components = list_components
-#############################
+        
+        #############################
         """inputs section""" # additional section for inputs from trajectory and fixed inputs, CS
         self.fixedtraj = fixedtraj
         self.fixedy = fixedy
@@ -195,11 +204,14 @@ class VarianceEstimator(Optimizer):
                 raise Exception("Error: Check feed time points in set feed_times and in jump_times again.\n"
                             "There are more time points in feed_times than jump_times provided.")
             self.load_discrete_jump()
-######################################################
+        ######################################################
 
+        if report_time:
+            start = time.time()
+            
         # solves formulation 18
         if init_C is None:
-            self._solve_initalization(solver, subset_lambdas=A, tee=tee)
+            self._solve_initalization(solver, subset_lambdas=A, solver_opts = solver_opts, tee=tee)
         else:
             for t in self._meas_times:
                 for k in self._mixture_components:
@@ -281,7 +293,7 @@ class VarianceEstimator(Optimizer):
 
         print('Iterative optimization converged. Estimating variances now')
         # compute variances
-        solved_variances = self._solve_variances(results)
+        solved_variances = self._solve_variances(results, fixed_dev_var = fixed_device_var)
         
         self.compute_D_given_SC(results)
         
@@ -299,6 +311,10 @@ class VarianceEstimator(Optimizer):
         if os.path.exists(self._tmp4):
             os.remove(self._tmp4)
             
+        if report_time:
+            end = time.time()
+            print("Total execution time in seconds for variance estimation:", end - start)
+        
         return results
 
     def _solve_initalization(self, solver, **kwds):
@@ -338,6 +354,18 @@ class VarianceEstimator(Optimizer):
                 sigmas_sq[k] = 0.0
 
         print("Solving Initialization Problem\n")
+        
+        # Need to check whether we have negative values in the D-matrix so that we do not have
+        #non-negativity on S
+
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                if self.model.D[t, l] >= 0:
+                    pass
+                else:
+                    self._is_D_deriv = True
+        if self._is_D_deriv == True:
+            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
 
         # the ones that are not in set_A are going to be stale and wont go to the optimizer
         
@@ -348,7 +376,7 @@ class VarianceEstimator(Optimizer):
                 D_bar = sum(self.model.Z[t, k]*self.model.S[l, k] for k in self._sublist_components)
                 obj+= (self.model.D[t, l] - D_bar)**2
         self.model.init_objective = Objective(expr=obj)
-
+        
         opt = SolverFactory(solver)
 
         for key, val in solver_opts.items():
@@ -690,23 +718,26 @@ class VarianceEstimator(Optimizer):
 
         return res.success
 
-    def _solve_variances(self, results):
+    def _solve_variances(self, results, fixed_dev_var = None):
         """Solves formulation 23 in weifengs paper (using scipy least_squares)
 
            This method is not intended to be used by users directly
 
         Args:
-            results (ResultsObject): Data obtained from Weifengs procedure 
+            results (ResultsObject): Data obtained from Weifengs procedure
+            fixed_device_var(float, optional): if we have device variance we input it here
 
         Returns:
             bool indicated if variances were estimated succesfully.
 
         """
+        
         nl = self._n_meas_lambdas
         nt = self._n_meas_times
         nc = len(self._sublist_components)
         A = np.ones((nl, nc+1))
         b = np.zeros((nl, 1))
+        variance_dict = dict()
 
         reciprocal_nt = 1.0/nt
         for i, l in enumerate(self._meas_lambdas):
@@ -717,48 +748,73 @@ class VarianceEstimator(Optimizer):
                     D_bar += results.S[k][l]*results.Z[k][t]
                 b[i] += (self.model.D[t, l]-D_bar)**2
             b[i] *= reciprocal_nt
+        if fixed_dev_var == None:
+            # try with a simple numpy without bounds first
+            res_lsq = np.linalg.lstsq(A, b, rcond=None)
+            all_nonnegative = True
+            n_vars = nc+1
 
-        # try with a simple numpy without bounds first
-        res_lsq = np.linalg.lstsq(A, b)
-        all_nonnegative = True
-        n_vars = nc+1
+            for i in range(n_vars):
+                if res_lsq[0][i] < 0.0:
+                    if res_lsq[0][i] < -1e-5:
+                        all_nonnegative=False
+                    else:
+                        res_lsq[0][i] = abs(res_lsq[0][i])
+                res_lsq[0][i]
+
+            if not all_nonnegative:
+                x0 = np.zeros(nc + 1) + 1e-2
+                bb = np.zeros(nl)
+                for i in range(nl):
+                    bb[i] = b[i]
+    
+                def F(x, M, rhs):
+                    return  rhs-M.dot(x)
+    
+                def JF(x, M, rhs):
+                    return -M
+                res_lsq = least_squares(F, x0, JF,
+                                        bounds=(0.0, np.inf),
+                                        verbose=2, args=(A, bb))
+                for i, k in enumerate(self._sublist_components):
+                    variance_dict[k] = res_lsq.x[i]
+                variance_dict['device'] = res_lsq.x[nc]
+                results.sigma_sq = variance_dict
+                return res_lsq.success
+    
+            else:
+                for i, k in enumerate(self._sublist_components):
+                    variance_dict[k] = res_lsq[0][i][0]    
+                variance_dict['device'] = res_lsq[0][nc][0]
+                results.sigma_sq = variance_dict
         
-        for i in range(n_vars):
-            if res_lsq[0][i] < 0.0:
-                if res_lsq[0][i] < -1e-5:
-                    all_nonnegative=False
-                else:
-                    res_lsq[0][i] = abs(res_lsq[0][i])
-            res_lsq[0][i]
-
-        variance_dict = dict()
-        if not all_nonnegative:
-            x0 = np.zeros(nc + 1) + 1e-2
-            bb = np.zeros(nl)
-            for i in range(nl):
-                bb[i] = b[i]
-
-            def F(x, M, rhs):
-                return  rhs-M.dot(x)
-
-            def JF(x, M, rhs):
-                return -M
-            res_lsq = least_squares(F, x0, JF,
-                                    bounds=(0.0, np.inf),
-                                    verbose=2, args=(A, bb))
-            for i, k in enumerate(self._sublist_components):
-                variance_dict[k] = res_lsq.x[i]
-            variance_dict['device'] = res_lsq.x[nc]
-            results.sigma_sq = variance_dict
-            return res_lsq.success
-
-        else:
+        if fixed_dev_var:
+            bp = np.zeros((nl, 1))
+            for i, l in enumerate(self._meas_lambdas):
+                bp[i] = b[i] - fixed_dev_var
+            Ap = np.zeros((nl,nc))
+            for i, l in enumerate(self._meas_lambdas):
+                for j, t in enumerate(self._meas_times):
+                    for w, k in enumerate(self._sublist_components):
+                        Ap[i, w] = results.S[k][l]**2
+                        
+            res_lsq = np.linalg.lstsq(Ap, bp, rcond=None)
+            all_nonnegative = True
+            n_vars = nc
+            for i in range(n_vars):
+                if res_lsq[0][i] < 0.0:
+                    if res_lsq[0][i] < -1e-5:
+                        all_nonnegative=False
+                    else:
+                        res_lsq[0][i] = abs(res_lsq[0][i])
+                res_lsq[0][i]
+            
             for i, k in enumerate(self._sublist_components):
                 variance_dict[k] = res_lsq[0][i][0]    
-            variance_dict['device'] = res_lsq[0][nc][0]
+            variance_dict['device'] = fixed_dev_var
             results.sigma_sq = variance_dict
-            
-            return 1
+
+        return 1
 
     def _build_scipy_lsq_arrays(self):
         """Creates arrays for scipy solvers
@@ -839,7 +895,13 @@ class VarianceEstimator(Optimizer):
 
         """
         self.S_model = ConcreteModel()
-        self.S_model.S = Var(self._meas_lambdas,
+        if self._is_D_deriv:
+            self.S_model.S = Var(self._meas_lambdas,
+                             self._sublist_components,
+                             bounds=(None, None),
+                             initialize=1.0)
+        else:
+            self.S_model.S = Var(self._meas_lambdas,
                              self._sublist_components,
                              bounds=(0.0, None),
                              initialize=1.0)
@@ -901,7 +963,6 @@ class VarianceEstimator(Optimizer):
                     
         self.S_model.objective = Objective(expr=obj)
 
-        
         if profile_time:
             print('-----------------Solve_S--------------------')
 
@@ -959,7 +1020,7 @@ class VarianceEstimator(Optimizer):
                 self.C_model.C[l, k].value = self.model.C[l, k].value
                 if hasattr(self.model, 'non_absorbing'):
                     self.C_model.C[l, k].fix()  #: this variable does not need to be part of the optimization
-
+        
     def _solve_C(self,solver,**kwds):
         """Solves formulation 23 from Weifengs procedure with ipopt
 
@@ -1005,7 +1066,7 @@ class VarianceEstimator(Optimizer):
         for t in self._meas_times:
             for c in self._sublist_components:
                 self.model.C[t, c].value = self.C_model.C[t, c].value  #: does not matter for non_abs
-#############################################################################
+        #############################################################################
     # additional for the use of model with inputs for variance estimation, CS
     def load_discrete_jump(self):
         self.jump = True

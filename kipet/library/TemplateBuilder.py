@@ -74,12 +74,14 @@ class TemplateBuilder(object):
         self._parameters_init = dict() #added for parameter initial guess CS
         self._parameters_bounds = dict()
         self._y_bounds = dict() #added for additional optional bounds CS
+        self._prof_bounds = list() #added for additional optional bounds MS
         self._init_conditions = dict()
         self._spectral_data = None
         self._concentration_data = None
         self._absorption_data = None
         self._odes = None
         self._meas_times = set()
+        self._m_lambdas = None
         self._complementary_states = set()
         self._algebraics = dict()
         self._algebraic_constraints = None
@@ -422,7 +424,7 @@ class TemplateBuilder(object):
             else:
                 raise RuntimeError('Complementary state data not supported. Try str, float')
         else:
-            print(len(args))
+            #print(len(args))
             raise RuntimeError('Complementary state data not supported. Try str, float')
 
     def add_algebraic_variable(self, *args, **kwds):
@@ -493,7 +495,43 @@ class TemplateBuilder(object):
         if len(inspector.args) != 2:
             raise RuntimeError('The rule should have two inputs')
         self._algebraic_constraints = rule
+        
+    def bound_profile(self, var, bounds, comp = None, profile_range = None):
+        """function that allows the user to bound a certain profile to some value
+        
+        Args:
+            var (pyomo variable object): the pyomo variable that we will bound  
+            comp (str, optional): The component that bound applies to
+            profile_range (tuple,optional): the range within the set to be bounded
+            bounds (tuple): the values to bound the profile to
 
+        Returns:
+            None
+
+        """
+        if not isinstance(var, str):
+            raise RuntimeError('var argument needs to be type string')
+
+        if var != 'S' and var != 'C':
+            raise RuntimeError('var argument needs to be either C, or S')
+        
+        if comp:
+            if not isinstance(comp, str):
+                raise RuntimeError('comp argument needs to be type string')
+            if comp not in self._component_names:
+                raise RuntimeError('comp needs to be one of the components')
+                
+        if profile_range:
+            if not isinstance(profile_range, tuple):
+                raise RuntimeError('profile_range needs to be a tuple')
+                if profile_range[0] > profile_range[1]:
+                    raise RuntimeError('profile_range[0] must be greater than profile_range[1]')
+                    
+        if not isinstance(bounds, tuple):
+            raise RuntimeError('bounds needs to be a tuple') 
+        
+        self._prof_bounds.append([var, comp, profile_range, bounds])     
+            
     def _validate_data(self, model, start_time, end_time):
         """Verify all inputs to the model make sense.
 
@@ -596,7 +634,7 @@ class TemplateBuilder(object):
             if m_times[-1] > end_time:
                 raise RuntimeError(
                     'Measurement time {0} not within ({1},{2})'.format(m_times[-1], start_time, end_time))
-
+        self._m_lambdas = m_lambdas
         #For inclusion of discrete feeds CS
         if self._feed_times is not None:
             list_feedtimes = list(self._feed_times)
@@ -615,7 +653,7 @@ class TemplateBuilder(object):
         pyomo_model.start_time = Param(initialize=start_time)
         pyomo_model.end_time = Param(initialize=end_time)
 
-        # Variables
+        # Variables             
         pyomo_model.Z = Var(pyomo_model.time,
                             pyomo_model.mixture_components,
                             # bounds=(0.0,None),
@@ -665,7 +703,7 @@ class TemplateBuilder(object):
         if self._is_C_deriv == True:
             c_bounds = (None, None)
         else:
-            c_bounds = (0.0, None)  
+            c_bounds = (0.0, None) 
             
         pyomo_model.C = Var(pyomo_model.meas_times,
                             pyomo_model.mixture_components,
@@ -681,7 +719,30 @@ class TemplateBuilder(object):
             for t, c in pyomo_model.C:
                 if t == pyomo_model.start_time.value:
                     pyomo_model.C[t, c].value = self._init_conditions[c]
+        
+        # This section provides bounds if user used bound_profile (MS)
+        for i in self._prof_bounds:            
+            if i[0] == 'C':
+                for t, c in pyomo_model.C:
+                    if i[1] == c:
+                        if i[2]:
+                            if t >= i[2][0] and t < i[2][1]:
+                                pyomo_model.C[t, c].setlb(i[3][0])
+                                pyomo_model.C[t, c].setub(i[3][1])
+                        else:
+                            pyomo_model.C[t, c].setlb(i[3][0])
+                            pyomo_model.C[t, c].setub(i[3][1])
                                 
+                    elif i[1] == None:
+                        if i[2]:
+                            if t >= i[2][0] and t < i[2][1]:
+                                pyomo_model.C[t, c].setlb(i[3][0])
+                                pyomo_model.C[t, c].setub(i[3][1])
+                        else:
+                            pyomo_model.C[t, c].setlb(i[3][0])
+                            pyomo_model.C[t, c].setub(i[3][1])
+                    
+
         pyomo_model.X = Var(pyomo_model.time,
                             pyomo_model.complementary_states,
                             initialize=1.0)
@@ -728,7 +789,29 @@ class TemplateBuilder(object):
             for l in pyomo_model.meas_lambdas:
                 for k in pyomo_model.mixture_components:
                     pyomo_model.S[l, k].fixed = True
-
+                    
+        # This section provides bounds if user used bound_profile (MS)
+        for i in self._prof_bounds:            
+            if i[0] == 'S':
+                for l, c in pyomo_model.S:
+                    if i[1] == c:
+                        if i[2]:
+                            if l >= i[2][0] and l < i[2][1]:
+                                pyomo_model.S[l, c].setlb(i[3][0])
+                                pyomo_model.S[l, c].setub(i[3][1])
+                        else:
+                            pyomo_model.S[l, c].setlb(i[3][0])
+                            pyomo_model.S[l, c].setub(i[3][1])
+                                
+                    elif i[1] == None:
+                        if i[2]:
+                            if l >= i[2][0] and l < i[2][1]:
+                                pyomo_model.S[l, c].setlb(i[3][0])
+                                pyomo_model.S[l, c].setub(i[3][1])
+                        else:
+                            pyomo_model.S[l, c].setlb(i[3][0])
+                            pyomo_model.S[l, c].setub(i[3][1])
+                        
         # Fixes parameters that were given numeric values
         for p, v in self._parameters.items():
             if v is not None:
