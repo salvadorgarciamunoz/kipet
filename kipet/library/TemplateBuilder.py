@@ -785,19 +785,20 @@ class TemplateBuilder(object):
             pyomo_model.algebraic_consts = Constraint(pyomo_model.time,
                                                       range(n_alg_eqns),
                                                       rule=rule_algebraics)
-
+        #######################
+        ###Distinguish between S with non_absorbing components and S with no non_absorbing components (non_absorbing components excluded from S) (CS):
         if self._is_non_abs_set:  #: in case of a second call after non_absorbing has been declared
             self.set_non_absorbing_species(pyomo_model, self._non_absorbing, check=False)
             pyomo_model.S=Var(pyomo_model.meas_lambdas,
                             pyomo_model.abs_components,
                             bounds=s_bounds,
                             initialize=s_dict)
-            # pyomo_model.del_component(pyomo_model.S)
         else:
             pyomo_model.S = Var(pyomo_model.meas_lambdas,
                                 pyomo_model.mixture_components,
                                 bounds=s_bounds,
                                 initialize=s_dict)
+        #######################
 
         if self._absorption_data is not None:
             for l in pyomo_model.meas_lambdas:
@@ -1001,14 +1002,14 @@ class TemplateBuilder(object):
         Z = getattr(model, 'Z')
 
         times = getattr(model, 'meas_times')
-        lambdas = getattr(model, 'meas_lambdas')
         allcomps = getattr(model,'mixture_components')
 
         model.add_component('fixed_C', ConstraintList())
         new_con = getattr(model, 'fixed_C')
 
+        #############################
+        #Exclude non absorbing species from S matrix and create subset Cs of C (CS):
         model.add_component('abs_components_names', Set())
-        abscompsnames=getattr(model,'abs_components_names')
         abscompsnames=[name for name in set(sorted(set(allcomps) - set(self._non_absorbing)))]
         model.add_component('abs_components',Set(initialize=abscompsnames))
         abscomps=getattr(model,'abs_components')
@@ -1017,13 +1018,13 @@ class TemplateBuilder(object):
         Cs=getattr(model, 'Cs')
         model.add_component('matchCsC', ConstraintList())
         matchCsC_con = getattr(model, 'matchCsC')
-        print(self._non_absorbing)
-        print(abscompsnames)
+
         for time in times:
             for component in self._non_absorbing:
                 new_con.add(C[time, component] == Z[time, component])
             for componenta in abscomps:
                     matchCsC_con.add(Cs[time, componenta] == C[time, componenta])
+        ##########################
 
     def set_known_absorbing_species(self, model, known_abs_list, absorbance_data, check=True):
         # type: (ConcreteModel, list, dataframe, bool) -> None

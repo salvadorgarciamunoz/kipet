@@ -210,6 +210,7 @@ class VarianceEstimator(Optimizer):
             S_frame = pd.DataFrame(data=s_array,
                                    columns=self._mixture_components,
                                    index=self._meas_lambdas)
+            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
             if hasattr(self, '_abs_components'):
                 for l in self._meas_lambdas:
                     for k in self._abs_components:
@@ -256,6 +257,7 @@ class VarianceEstimator(Optimizer):
         for it in range(max_iter):
             
             rb = ResultsObject()
+            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
             if hasattr(self, '_abs_components'):
                 rb.load_from_pyomo_model(self.model, to_load=['Z', 'C', 'Cs', 'S', 'Y'])
             else:
@@ -273,6 +275,7 @@ class VarianceEstimator(Optimizer):
             #pdb.set_trace()
             
             ra=ResultsObject()
+            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
             if hasattr(self, '_abs_components'):
                 ra.load_from_pyomo_model(self.model, to_load=['Z','C','Cs','S'])
             else:
@@ -293,6 +296,7 @@ class VarianceEstimator(Optimizer):
         results = ResultsObject()
         
         # retriving solutions to results object
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self, '_abs_components'):
             results.load_from_pyomo_model(self.model,
                                       to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
@@ -353,6 +357,7 @@ class VarianceEstimator(Optimizer):
             set_A = self._meas_lambdas
         
         keys = sigmas_sq.keys()
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self, '_abs_components'):
             for k in self._abs_components:
                 if k not in keys:
@@ -368,6 +373,7 @@ class VarianceEstimator(Optimizer):
         
         # build objective
         obj = 0.0
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self, '_abs_components'):
             for t in self._meas_times:
                 for l in set_A:
@@ -512,6 +518,7 @@ class VarianceEstimator(Optimizer):
             t0 = time.time()
 
         # assumes S has been computed in the model
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self, '_abs_components'):
             n = self._nabs_components
             for j, l in enumerate(self._meas_lambdas):
@@ -559,6 +566,7 @@ class VarianceEstimator(Optimizer):
 
         # solve
         if tee:
+            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
             if hasattr(self, '_abs_components'):
                 res = least_squares(F,self._s_array,JF,
                                     (0.0,np.inf),method,
@@ -584,6 +592,7 @@ class VarianceEstimator(Optimizer):
                                           self._n_meas_times,
                                           self._n_components))
         else:
+            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
             if hasattr(self, '_abs_components'):
                 f = StringIO()
                 with stdout_redirector(f):
@@ -624,6 +633,7 @@ class VarianceEstimator(Optimizer):
             print("Scipy.optimize.least_squares time={:.3f} seconds".format(t1-t0))
 
         # retrive solution to pyomo model
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self, '_abs_components'):
             for j, l in enumerate(self._meas_lambdas):
                 for k, c in enumerate(self._abs_components):
@@ -695,6 +705,7 @@ class VarianceEstimator(Optimizer):
             print('-----------------Solve_C--------------------')
             t0 = time.time()
         # assumes S have been computed in the model
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self,'_abs_components'):
             n = self._nabs_components
             for i,t in enumerate(self._meas_times):
@@ -743,6 +754,7 @@ class VarianceEstimator(Optimizer):
 
         # solve
         if tee:
+            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
             if hasattr(self, '_abs_components'):
                 res = least_squares(F, self._c_array, JF,
                                     (0.0, np.inf), method,
@@ -768,6 +780,7 @@ class VarianceEstimator(Optimizer):
                                           self._n_meas_times,
                                           self._n_components))
         else:
+            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
             if hasattr(self,'_abs_components'):
                 f = StringIO()
                 with stdout_redirector(f):
@@ -808,6 +821,7 @@ class VarianceEstimator(Optimizer):
             print("Scipy.optimize.least_squares time={:.3f} seconds".format(t1-t0))
 
         # retrive solution
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self, '_abs_components'):
             for j,t in enumerate(self._meas_times):
                 for k,c in enumerate(self._abs_components):
@@ -834,6 +848,7 @@ class VarianceEstimator(Optimizer):
         nl = self._n_meas_lambdas
         nt = self._n_meas_times
         b = np.zeros((nl, 1))
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self,'_abs_components'):
             nabs=len(self._abs_components)
             A = np.ones((nl, nabs + 1))
@@ -959,6 +974,7 @@ class VarianceEstimator(Optimizer):
         for i,t in enumerate(self._meas_times):
             for j,l in enumerate(self._meas_lambdas):
                 self._d_array[i,j] = self.model.D[t,l]
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self,'_abs_components'):
             self._s_array = np.ones(self._n_meas_lambdas * self._nabs_components)
             self._z_array = np.ones(self._n_meas_times * self._nabs_components)
@@ -1028,6 +1044,7 @@ class VarianceEstimator(Optimizer):
         """
 
         # initialization
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self, '_abs_components'):
             self.S_model = ConcreteModel()
             self.S_model.S = Var(self._meas_lambdas,
@@ -1086,6 +1103,7 @@ class VarianceEstimator(Optimizer):
         profile_time = kwds.pop('profile_time', False)
 
         # initialize
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self, '_abs_components'):
             for l in self._meas_lambdas:
                 for c in self._abs_components:
@@ -1120,6 +1138,7 @@ class VarianceEstimator(Optimizer):
                                 self.S_model.S[l, c].fix()
         obj = 0.0
         # asumes base model has been solved already for Z
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self, '_abs_components'):
             for t in self._meas_times:
                 for l in self._meas_lambdas:
@@ -1151,6 +1170,7 @@ class VarianceEstimator(Optimizer):
         self.S_model.del_component('objective')
         
         #update values in main model
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self,'_abs_components'):
             for l in self._meas_lambdas:
                 for c in self._abs_components:
@@ -1193,22 +1213,7 @@ class VarianceEstimator(Optimizer):
             None
 
         """
-        # if hasattr(self, '_abs_components'):
-        #     self.C_model = ConcreteModel()
-        #     self.C_model.Cs = Var(self._meas_times,
-        #                          self._abs_components,
-        #                          bounds=(0.0, None),
-        #                          initialize=1.0)
-        #
-        #     #add_warm_start_suffixes(self.C_model)
-        #     #self.C_model.scaling_factor = Suffix(direction=Suffix.EXPORT)
-        #
-        #     for l in self._meas_times:
-        #         for k in self._sublist_components:
-        #             self.C_model.Cs[l, k].value = self.model.Cs[l, k].value
-        #             # if hasattr(self.model, 'non_absorbing'):
-        #             #     self.C_model.C[l, k].fix()  #: this variable does not need to be part of the optimization
-        # else:
+
         self.C_model = ConcreteModel()
         self.C_model.C = Var(self._meas_times,
                              self._sublist_components,
@@ -1241,14 +1246,16 @@ class VarianceEstimator(Optimizer):
         profile_time = kwds.pop('profile_time', False)
         
         obj = 0.0
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS)
+        # equality constraint in TemplateBuilder makes Cs subset of C:
         if hasattr(self, '_abs_components'):
-            # asumes that s model has been solved first
+            # assumes that s model has been solved first
             for t in self._meas_times:
                 for l in self._meas_lambdas:
                     D_bar = sum(self.model.S[l, k].value*self.C_model.C[t, k] for k in self._abs_components)
                     obj += (self.model.D[t, l]-D_bar)**2
         else:
-            # asumes that s model has been solved first
+            # assumes that s model has been solved first
             for t in self._meas_times:
                 for l in self._meas_lambdas:
                     D_bar = sum(self.model.S[l, k].value*self.C_model.C[t, k] for k in self._sublist_components)
@@ -1273,6 +1280,7 @@ class VarianceEstimator(Optimizer):
         
 
         #updates values in main model
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self, '_abs_components'):
             for t in self._meas_times:
                 for c in self._abs_components:

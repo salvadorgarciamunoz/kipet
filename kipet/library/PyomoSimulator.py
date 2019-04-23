@@ -214,6 +214,7 @@ class PyomoSimulator(Simulator):
                             component))
                 else:
                     to_initialize.append(component)
+        #added due to new structure for non_abs species, Cs as subset of C (CS):
         if variable_name in ['Cs']:
             for component in columns:
                 if component not in self._mixture_components:
@@ -457,6 +458,8 @@ class PyomoSimulator(Simulator):
         results.C = pd.DataFrame(data=c_noise_array,
                                  columns=self._mixture_components,
                                  index=self._meas_times)
+
+        #added due to new structure for non_abs species, Cs as subset of C (CS):
         if hasattr(self, '_abs_components'):
             cs_noise_results=[]
             for i, t in enumerate(self._meas_times):
@@ -480,6 +483,7 @@ class PyomoSimulator(Simulator):
                                      columns=self._mixture_components,
                                      index=self._meas_times)
         s_results = []
+        # added due to new structure for non_abs species, non-absorbing species not included in S (CS):
         if hasattr(self, '_abs_components'):
             for l in self._meas_lambdas:
                 for k in self._abs_components:
@@ -495,12 +499,11 @@ class PyomoSimulator(Simulator):
         else:
             sigma_d = 0
         if s_results and c_noise_results:
+            # added due to new structure for non_abs species, Cs and S as above(CS):
             if hasattr(self,'_abs_components'):
                 for i, t in enumerate(self._meas_times):
                     for j, l in enumerate(self._meas_lambdas):
                         suma = 0.0
-                        # for w, k in enumerate(self._mixture_components):
-                        #     C= c_noise_results[i * self._n_components + w]
                         for w, k in enumerate(self._abs_components):
                             Cs = cs_noise_results[i * self._nabs_components + w]
                             S = s_results[j * self._nabs_components + w]
@@ -519,7 +522,7 @@ class PyomoSimulator(Simulator):
                         if sigma_d:
                             suma += np.random.normal(0.0, sigma_d)
                         d_results.append(suma)
-
+        # added due to new structure for non_abs species, non-absorbing species not included in S (CS):
         if hasattr(self, '_abs_components'):
             s_array = np.array(s_results).reshape((self._n_meas_lambdas, self._nabs_components))
             results.S = pd.DataFrame(data=s_array,

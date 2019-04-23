@@ -123,6 +123,7 @@ class ParameterEstimator(Optimizer):
         if with_d_vars:
             m.D_bar = Var(m.meas_times,
                           m.meas_lambdas)
+            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
             if hasattr(self, '_abs_components'):
                 def rule_D_bar(m, t, l):
                     return m.D_bar[t, l] == sum(m.Cs[t, k] * m.S[l, k] for k in self._abs_components)
@@ -142,6 +143,7 @@ class ParameterEstimator(Optimizer):
                     if with_d_vars:
                         expr += (m.D[t, l] - m.D_bar[t, l]) ** 2 / (sigma_sq['device'])
                     else:
+                        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
                         if hasattr(self, '_abs_components'):
                             D_bar = sum(m.Cs[t, k] * m.S[l, k] for k in self._abs_components)
                             expr += (m.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
@@ -517,6 +519,7 @@ class ParameterEstimator(Optimizer):
         if not self._spectra_given:
             pass
         else:
+            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
             if hasattr(self, '_abs_components'):  # added for removing non absorbing ones from first term in obj
                 for t in self._meas_times:
                     for c in self._abs_components:
@@ -536,6 +539,7 @@ class ParameterEstimator(Optimizer):
             pass
 
         else:
+            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
             if hasattr(self,'_abs_components'): #added for removing non absorbing ones from first term in obj
                 for l in self._meas_lambdas:
                     for c in self._abs_components:
@@ -564,8 +568,9 @@ class ParameterEstimator(Optimizer):
 
         nt = self._n_meas_times
         nw = self._n_meas_lambdas
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self, '_abs_components'):
-            nabs=self._nabs_components
+            nabs=self._nabs_components #number of absorbing components (CS)
             nparams = 0
             for v in six.itervalues(self.model.P):
                 if v.is_fixed():  #: Skip the fixed ones
@@ -607,7 +612,7 @@ class ParameterEstimator(Optimizer):
 
             nt = self._n_meas_times
             nw = self._n_meas_lambdas
-            nabs = self._nabs_components
+            nabs = self._nabs_components # #number of absorbing components (CS)
             nparams = 0
             for v in six.itervalues(self.model.P):
                 if v.is_fixed():  #: Skip the fixed ones ;)
@@ -773,6 +778,7 @@ class ParameterEstimator(Optimizer):
 
         # nparams = len(self.model.P)
         # this changes depending on the order of the suffixes passed to sipopt
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self,'_abs_components'):
             nabs=self._nabs_components
             nd = nw * nt
@@ -848,6 +854,7 @@ class ParameterEstimator(Optimizer):
                             col.append(q*nw+p)
                             data.append(val)
         """
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self,'_abs_components'):
             nabs=self._nabs_components
             s_array = np.zeros(nw * nabs)
@@ -1226,6 +1233,7 @@ class ParameterEstimator(Optimizer):
         if self._spectra_given:
             results.load_from_pyomo_model(self.model,
                                           to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
+            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
             if hasattr(self, '_abs_components'):
                 results.load_from_pyomo_model(self.model,
                                               to_load=['Cs'])
@@ -1387,12 +1395,13 @@ class ParameterEstimator(Optimizer):
         nt = self._n_meas_times
         nc = self._n_components #changed from n_actual
         nw = self._n_meas_lambdas
-        nabs = self._nabs_components #number of absorbing components CS
+        nabs = self._nabs_components #number of absorbing components (CS)
         
         D_model = np.zeros((nt,nw))
         
         c_count = -1
         t_count = 0
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self,'_abs_components'):
             Cs = np.zeros((nt, nabs))
             Ss = np.zeros((nw, nabs))
