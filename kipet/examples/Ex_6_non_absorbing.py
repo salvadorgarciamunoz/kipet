@@ -69,6 +69,7 @@ if __name__ == "__main__":
     #: non absorbing species.
     non_abs = ['C']
     builder.set_non_absorbing_species(opt_model, non_abs)
+    opt_model = builder.create_pyomo_model(0.0, 15.0)
     #################################################################################
     
     #=========================================================================
