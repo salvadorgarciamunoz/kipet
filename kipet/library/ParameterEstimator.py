@@ -1395,7 +1395,6 @@ class ParameterEstimator(Optimizer):
         nt = self._n_meas_times
         nc = self._n_components #changed from n_actual
         nw = self._n_meas_lambdas
-        nabs = self._nabs_components #number of absorbing components (CS)
         
         D_model = np.zeros((nt,nw))
         
@@ -1403,6 +1402,7 @@ class ParameterEstimator(Optimizer):
         t_count = 0
         # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self,'_abs_components'):
+            nabs = self._nabs_components #number of absorbing components (CS)
             Cs = np.zeros((nt, nabs))
             Ss = np.zeros((nw, nabs))
             for c in self._abs_components:

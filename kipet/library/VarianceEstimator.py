@@ -299,10 +299,10 @@ class VarianceEstimator(Optimizer):
         # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self, '_abs_components'):
             results.load_from_pyomo_model(self.model,
-                                      to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
+                                      to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y'])
         else:
             results.load_from_pyomo_model(self.model,
-                                          to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y'])
+                                          to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
         print('Iterative optimization converged. Estimating variances now')
         # compute variances
         solved_variances = self._solve_variances(results)
