@@ -71,27 +71,29 @@ class TemplateBuilder(object):
         """
         self._component_names = set()
         self._parameters = dict()
-        self._parameters_init = dict() #added for parameter initial guess CS
+        self._parameters_init = dict()  # added for parameter initial guess CS
         self._parameters_bounds = dict()
-        self._y_bounds = dict() #added for additional optional bounds CS
+        self._y_bounds = dict()  # added for additional optional bounds CS
+        self._prof_bounds = list()  # added for additional optional bounds MS
         self._init_conditions = dict()
         self._spectral_data = None
         self._concentration_data = None
         self._absorption_data = None
         self._odes = None
         self._meas_times = set()
+        self._m_lambdas = None
         self._complementary_states = set()
         self._algebraics = dict()
         self._algebraic_constraints = None
         self._known_absorbance = None
         self._is_known_abs_set = False
+        self._warmstart = False  # add for warmstart CS
         self._known_absorbance_data = None
         self._non_absorbing = None
         self._is_non_abs_set = False
-        self._feed_times = set() #For inclusion of discrete feeds CS
+        self._feed_times = set()  # For inclusion of discrete feeds CS
         self._is_D_deriv = False
         self._is_C_deriv = False
-        
 
         components = kwargs.pop('concentrations', dict())
         if isinstance(components, dict):
@@ -128,7 +130,7 @@ class TemplateBuilder(object):
                 self._algebraics.add(k)
         elif isinstance(algebraics, list):
             for k in algebraics:
-                self._algebraics[k]=None
+                self._algebraics[k] = None
 
         else:
             raise RuntimeError('concentrations must be an dictionary component_name:init_condition')
@@ -138,15 +140,15 @@ class TemplateBuilder(object):
 
         Note:
             Plan to change this method add parameters as PYOMO variables
-            
+
             This method tries to mimic a template implementation. Depending
             on the argument type it will behave differently
 
         Args:
-            param1 (str): Parameter name. Creates a variable parameter  
-            
-            param1 (list): Parameter names. Creates a list of variable parameters  
-            
+            param1 (str): Parameter name. Creates a variable parameter
+
+            param1 (list): Parameter names. Creates a list of variable parameters
+
             param1 (dict): Map parameter name(s) to value(s). Creates a fixed parameter(s)
 
         Returns:
@@ -204,16 +206,16 @@ class TemplateBuilder(object):
         """Add a component (reactive or product) to the model.
 
         This method will keep track of the number of components in the model
-        It will hel creating the Z,C and S variables. 
+        It will hel creating the Z,C and S variables.
 
         Note:
-            This method tries to mimic a template implmenetation. Depending 
+            This method tries to mimic a template implmenetation. Depending
             on the argument type it will behave differently.
 
         Args:
-            param1 (str): component name.   
+            param1 (str): component name.
 
-            param2 (float): initial concentration condition.   
+            param2 (float): initial concentration condition.
 
             param1 (dict): Map component name(s) to initial concentrations value(s).
 
@@ -247,54 +249,55 @@ class TemplateBuilder(object):
             raise RuntimeError('Mixture component data not supported. Try str, float')
 
     def add_spectral_data(self, data):
-        """Add spectral data 
+        """Add spectral data
 
         Args:
-            data (DataFrame): DataFrame with measurement times as 
-                              indices and wavelengths as columns. 
+            data (DataFrame): DataFrame with measurement times as
+                              indices and wavelengths as columns.
 
         Returns:
             None
 
         """
         if isinstance(data, pd.DataFrame):
-            #add zero rows for feed times that are not in original measurements in D-matrix (CS):
+            # add zero rows for feed times that are not in original measurements in D-matrix (CS):
             df = pd.DataFrame(index=self._feed_times, columns=data.columns)
             for t in self._feed_times:
-                if t not in data.index:#for points that are the same in original measurement times and feed times (CS)
+                if t not in data.index:  # for points that are the same in original measurement times and feed times (CS)
                     df.loc[t] = [0.0 for n in range(len(data.columns))]
-            dfall=data.append(df)
+            dfall = data.append(df)
             dfall.sort_index(inplace=True)
-            dfall.index=dfall.index.to_series().apply(lambda x: np.round(x, 6)) #time from data rounded to 6 digits
+            dfall.index = dfall.index.to_series().apply(lambda x: np.round(x, 6))  # time from data rounded to 6 digits
             ##############Filter out NaN############### points that are the same in original measurement times and feed times (CS)
-            count=0
+            count = 0
             for j in dfall.index:
-                if count>=1 and count<len(dfall.index):
-                    if dfall.index[count]==dfall.index[count-1]:
-                        dfall=dfall.dropna()
-                count+=1
+                if count >= 1 and count < len(dfall.index):
+                    if dfall.index[count] == dfall.index[count - 1]:
+                        dfall = dfall.dropna()
+                count += 1
             ###########################################
             self._spectral_data = dfall
         else:
             raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
-        
+
         D = np.array(dfall)
 
         for t in range(len(dfall.index)):
             for l in range(len(dfall.columns)):
-                if D[t,l] >= 0:
+                if D[t, l] >= 0:
                     pass
                 else:
                     self._is_D_deriv = True
         if self._is_D_deriv == True:
-            print("Warning! Since D-matrix contains negative values Kipet is assuming a derivative of D has been inputted")
-        
+            print(
+                "Warning! Since D-matrix contains negative values Kipet is assuming a derivative of D has been inputted")
+
     def add_concentration_data(self, data):
-        """Add concentration data 
+        """Add concentration data
 
         Args:
-            data (DataFrame): DataFrame with measurement times as 
-                              indices and concentrations as columns. 
+            data (DataFrame): DataFrame with measurement times as
+                              indices and concentrations as columns.
 
         Returns:
             None
@@ -303,18 +306,19 @@ class TemplateBuilder(object):
         if isinstance(data, pd.DataFrame):
             dfc = pd.DataFrame(index=self._feed_times, columns=data.columns)
             for t in self._feed_times:
-                if t not in data.index:#for points that are the same in original meas times and feed times
+                if t not in data.index:  # for points that are the same in original meas times and feed times
                     dfc.loc[t] = [0.0 for n in range(len(data.columns))]
-            dfallc=data.append(dfc)
+            dfallc = data.append(dfc)
             dfallc.sort_index(inplace=True)
-            dfallc.index=dfallc.index.to_series().apply(lambda x: np.round(x, 6)) #time from data rounded to 6 digits
+            dfallc.index = dfallc.index.to_series().apply(
+                lambda x: np.round(x, 6))  # time from data rounded to 6 digits
             ##############Filter out NaN###############
-            count=0
+            count = 0
             for j in dfallc.index:
-                if count>=1 and count<len(dfallc.index):
-                    if dfallc.index[count]==dfallc.index[count-1]:
-                        dfallc=dfallc.dropna()
-                count+=1
+                if count >= 1 and count < len(dfallc.index):
+                    if dfallc.index[count] == dfallc.index[count - 1]:
+                        dfallc = dfallc.dropna()
+                count += 1
             ###########################################
             self._concentration_data = dfallc
         else:
@@ -327,14 +331,15 @@ class TemplateBuilder(object):
                 else:
                     self._is_C_deriv = True
         if self._is_C_deriv == True:
-            print("Warning! Since C-matrix contains negative values Kipet is assuming a derivative of C has been inputted")
+            print(
+                "Warning! Since C-matrix contains negative values Kipet is assuming a derivative of C has been inputted")
 
     def add_absorption_data(self, data):
-        """Add absorption data 
+        """Add absorption data
 
         Args:
-            data (DataFrame): DataFrame with wavelengths as 
-                              indices and muxture components as columns. 
+            data (DataFrame): DataFrame with wavelengths as
+                              indices and muxture components as columns.
 
         Returns:
             None
@@ -345,53 +350,55 @@ class TemplateBuilder(object):
         else:
             raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
 
-    #For inclusion of discrete jumps
+    # For inclusion of discrete jumps
     def add_feed_times(self, times):
-        """Add measurement times to the model 
+        """Add measurement times to the model
 
         Args:
-            times (array_like): feeding points 
+            times (array_like): feeding points
 
         Returns:
             None
 
         """
         for t in times:
-            t = round(t, 6)  #for added ones when generating data otherwise too many digits due to different data types CS
+            t = round(t,
+                      6)  # for added ones when generating data otherwise too many digits due to different data types CS
             self._feed_times.add(t)
-            self._meas_times.add(t)#added here to avoid double addition CS
+            self._meas_times.add(t)  # added here to avoid double addition CS
 
-    #For inclusion of discrete jumps
+    # For inclusion of discrete jumps
     def add_measurement_times(self, times):
-        """Add measurement times to the model 
+        """Add measurement times to the model
 
         Args:
-            times (array_like): measurement points 
+            times (array_like): measurement points
 
         Returns:
             None
 
         """
         for t in times:
-            t = round(t, 6)  #for added ones when generating data otherwise too many digits due to different data types CS
+            t = round(t,
+                      6)  # for added ones when generating data otherwise too many digits due to different data types CS
             self._meas_times.add(t)
 
     def add_complementary_state_variable(self, *args):
         """Add an extra state variable to the model.
 
-        This method add new state variables to the model. Extra or complementary states because 
+        This method add new state variables to the model. Extra or complementary states because
         concentrations are also state variables
 
         Note:
-            This method tries to mimic a template implmenetation. Depending 
+            This method tries to mimic a template implmenetation. Depending
             on the argument type it will behave differently
 
             Planning on changing this method to add variables in a pyomo fashion
 
         Args:
-            param1 (str): variable name   
+            param1 (str): variable name
 
-            param2 (float): initial condition   
+            param2 (float): initial condition
 
             param1 (dict): Map component name(s) to initial condition value(s)
 
@@ -422,18 +429,18 @@ class TemplateBuilder(object):
             else:
                 raise RuntimeError('Complementary state data not supported. Try str, float')
         else:
-            print(len(args))
+            # print(len(args))
             raise RuntimeError('Complementary state data not supported. Try str, float')
 
     def add_algebraic_variable(self, *args, **kwds):
         """Add an algebraic variable to the model
-            
-            This method tries to mimic a template implmenetation. Depending 
+
+            This method tries to mimic a template implmenetation. Depending
             on the argument type it will behave differently
 
         Args:
-            param1 (str): Variable name. Creates a variable parameter  
-            
+            param1 (str): Variable name. Creates a variable parameter
+
             param1 (list): Variable names. Creates a list of variable parameters
 
         Returns:
@@ -453,7 +460,7 @@ class TemplateBuilder(object):
                 if bounds is not None:
                     if len(bounds) != len(name):
                         raise RuntimeError('the list of bounds must be equal to the list of parameters')
-                for i,n in enumerate(name):
+                for i, n in enumerate(name):
                     self._algebraics[n] = None
                     if bounds is not None:
                         self._y_bounds[n] = bounds[i]
@@ -464,9 +471,9 @@ class TemplateBuilder(object):
         """Set the ode expressions.
 
         Defines the ordinary differential equations that define the dynamics of the model
-        
+
         Args:
-            rule (function): Python function that returns a dictionary   
+            rule (function): Python function that returns a dictionary
 
         Returns:
             None
@@ -481,9 +488,9 @@ class TemplateBuilder(object):
         """Set the algebraic expressions.
 
         Defines the algebraic equations for the system
-        
+
         Args:
-            rule (function): Python function that returns a list of tuples   
+            rule (function): Python function that returns a list of tuples
 
         Returns:
             None
@@ -493,6 +500,42 @@ class TemplateBuilder(object):
         if len(inspector.args) != 2:
             raise RuntimeError('The rule should have two inputs')
         self._algebraic_constraints = rule
+
+    def bound_profile(self, var, bounds, comp=None, profile_range=None):
+        """function that allows the user to bound a certain profile to some value
+
+        Args:
+            var (pyomo variable object): the pyomo variable that we will bound
+            comp (str, optional): The component that bound applies to
+            profile_range (tuple,optional): the range within the set to be bounded
+            bounds (tuple): the values to bound the profile to
+
+        Returns:
+            None
+
+        """
+        if not isinstance(var, str):
+            raise RuntimeError('var argument needs to be type string')
+
+        if var != 'S' and var != 'C':
+            raise RuntimeError('var argument needs to be either C, or S')
+
+        if comp:
+            if not isinstance(comp, str):
+                raise RuntimeError('comp argument needs to be type string')
+            if comp not in self._component_names:
+                raise RuntimeError('comp needs to be one of the components')
+
+        if profile_range:
+            if not isinstance(profile_range, tuple):
+                raise RuntimeError('profile_range needs to be a tuple')
+                if profile_range[0] > profile_range[1]:
+                    raise RuntimeError('profile_range[0] must be greater than profile_range[1]')
+
+        if not isinstance(bounds, tuple):
+            raise RuntimeError('bounds needs to be a tuple')
+
+        self._prof_bounds.append([var, comp, profile_range, bounds])
 
     def _validate_data(self, model, start_time, end_time):
         """Verify all inputs to the model make sense.
@@ -564,8 +607,8 @@ class TemplateBuilder(object):
 
         list_times = self._meas_times
         m_times = sorted(list_times)
-        list_feedtimes = self._feed_times #For inclusion of discrete feeds CS
-        feed_times = sorted(list_feedtimes)#For inclusion of discrete feeds CS
+        list_feedtimes = self._feed_times  # For inclusion of discrete feeds CS
+        feed_times = sorted(list_feedtimes)  # For inclusion of discrete feeds CS
         m_lambdas = list()
         if self._spectral_data is not None and self._absorption_data is not None:
             raise RuntimeError('Either add absorption data or spectral data but not both')
@@ -583,27 +626,27 @@ class TemplateBuilder(object):
             list_lambdas = list(self._absorption_data.index)
             m_times = sorted(list_times)
             m_lambdas = sorted(list_lambdas)
-        
+
         if self._concentration_data is not None:
             list_times = list_times.union(set(self._concentration_data.index))
             list_concs = list(self._concentration_data.columns)
             m_times = sorted(list_times)
             m_concs = sorted(list_concs)
-        
+
         if m_times:
             if m_times[0] < start_time:
                 raise RuntimeError('Measurement time {0} not within ({1},{2})'.format(m_times[0], start_time, end_time))
             if m_times[-1] > end_time:
                 raise RuntimeError(
                     'Measurement time {0} not within ({1},{2})'.format(m_times[-1], start_time, end_time))
-
-        #For inclusion of discrete feeds CS
+        self._m_lambdas = m_lambdas
+        # For inclusion of discrete feeds CS
         if self._feed_times is not None:
             list_feedtimes = list(self._feed_times)
             feed_times = sorted(list_feedtimes)
 
         pyomo_model.meas_times = Set(initialize=m_times, ordered=True)
-        pyomo_model.feed_times = Set(initialize=feed_times, ordered=True) #For inclusion of discrete feeds CS
+        pyomo_model.feed_times = Set(initialize=feed_times, ordered=True)  # For inclusion of discrete feeds CS
         pyomo_model.meas_lambdas = Set(initialize=m_lambdas, ordered=True)
 
         pyomo_model.time = ContinuousSet(initialize=pyomo_model.meas_times,
@@ -620,21 +663,21 @@ class TemplateBuilder(object):
                             pyomo_model.mixture_components,
                             # bounds=(0.0,None),
                             initialize=1)
-        
+
         for t, s in pyomo_model.Z:
             if t == pyomo_model.start_time.value:
                 pyomo_model.Z[t, s].value = self._init_conditions[s]
-                #pyomo_model.Z[t, s].fixed = True
-            
+                # pyomo_model.Z[t, s].fixed = True
+
         pyomo_model.dZdt = DerivativeVar(pyomo_model.Z,
                                          wrt=pyomo_model.time)
 
         p_dict = dict()
-        for p,v in self._parameters.items():
+        for p, v in self._parameters.items():
             if v is not None:
                 p_dict[p] = v
 
-            #added for option of providing initial guesses CS:
+            # added for option of providing initial guesses CS:
             elif p in self._parameters_init.keys():
                 for p, l in self._parameters_init.items():
                     p_dict[p] = l
@@ -653,7 +696,7 @@ class TemplateBuilder(object):
             ub = v[1]
             pyomo_model.P[k].setlb(lb)
             pyomo_model.P[k].setub(ub)
-            
+
         if self._concentration_data is not None:
             c_dict = dict()
             for k in self._concentration_data.columns:
@@ -661,12 +704,12 @@ class TemplateBuilder(object):
                     c_dict[c, k] = float(self._concentration_data[k][c])
         else:
             c_dict = 1.0
-        
+
         if self._is_C_deriv == True:
             c_bounds = (None, None)
         else:
-            c_bounds = (0.0, None)  
-            
+            c_bounds = (0.0, None)
+
         pyomo_model.C = Var(pyomo_model.meas_times,
                             pyomo_model.mixture_components,
                             bounds=c_bounds,
@@ -676,12 +719,34 @@ class TemplateBuilder(object):
             for t in pyomo_model.meas_times:
                 for k in pyomo_model.mixture_components:
                     pyomo_model.C[t, k].fixed = True
-            
+
         else:
             for t, c in pyomo_model.C:
                 if t == pyomo_model.start_time.value:
                     pyomo_model.C[t, c].value = self._init_conditions[c]
-                                
+
+        # This section provides bounds if user used bound_profile (MS)
+        for i in self._prof_bounds:
+            if i[0] == 'C':
+                for t, c in pyomo_model.C:
+                    if i[1] == c:
+                        if i[2]:
+                            if t >= i[2][0] and t < i[2][1]:
+                                pyomo_model.C[t, c].setlb(i[3][0])
+                                pyomo_model.C[t, c].setub(i[3][1])
+                        else:
+                            pyomo_model.C[t, c].setlb(i[3][0])
+                            pyomo_model.C[t, c].setub(i[3][1])
+
+                    elif i[1] == None:
+                        if i[2]:
+                            if t >= i[2][0] and t < i[2][1]:
+                                pyomo_model.C[t, c].setlb(i[3][0])
+                                pyomo_model.C[t, c].setub(i[3][1])
+                        else:
+                            pyomo_model.C[t, c].setlb(i[3][0])
+                            pyomo_model.C[t, c].setub(i[3][1])
+
         pyomo_model.X = Var(pyomo_model.time,
                             pyomo_model.complementary_states,
                             initialize=1.0)
@@ -691,14 +756,13 @@ class TemplateBuilder(object):
             if t == pyomo_model.start_time.value:
                 pyomo_model.X[t, s].value = self._init_conditions[s]
 
-
         pyomo_model.dXdt = DerivativeVar(pyomo_model.X,
                                          wrt=pyomo_model.time)
         pyomo_model.Y = Var(pyomo_model.time,
                             pyomo_model.algebraics,
                             initialize=1.0)
 
-        #Add optional bounds for algebraic variables (CS):
+        # Add optional bounds for algebraic variables (CS):
         for t in pyomo_model.time:
             for k, v in self._y_bounds.items():
                 lb = v[0]
@@ -713,21 +777,11 @@ class TemplateBuilder(object):
                     s_dict[l, k] = float(self._absorption_data[k][l])
         else:
             s_dict = 1.0
-            
+
         if self._is_D_deriv == True:
             s_bounds = (None, None)
         else:
             s_bounds = (0.0, None)
-            
-        pyomo_model.S = Var(pyomo_model.meas_lambdas,
-                            pyomo_model.mixture_components,
-                            bounds=s_bounds,
-                            initialize=s_dict)
-
-        if self._absorption_data is not None:
-            for l in pyomo_model.meas_lambdas:
-                for k in pyomo_model.mixture_components:
-                    pyomo_model.S[l, k].fixed = True
 
         # Fixes parameters that were given numeric values
         for p, v in self._parameters.items():
@@ -740,7 +794,7 @@ class TemplateBuilder(object):
             s_data_dict = dict()
             for t in pyomo_model.meas_times:
                 for l in pyomo_model.meas_lambdas:
-                        s_data_dict[t, l] = float(self._spectral_data[l][t])
+                    s_data_dict[t, l] = float(self._spectral_data[l][t])
 
             pyomo_model.D = Param(pyomo_model.meas_times,
                                   pyomo_model.meas_lambdas,
@@ -778,7 +832,6 @@ class TemplateBuilder(object):
                         else:
                             return Constraint.Skip
 
-
             pyomo_model.odes = Constraint(pyomo_model.time,
                                           pyomo_model.states,
                                           rule=rule_odes)
@@ -794,12 +847,52 @@ class TemplateBuilder(object):
             pyomo_model.algebraic_consts = Constraint(pyomo_model.time,
                                                       range(n_alg_eqns),
                                                       rule=rule_algebraics)
+        #######################
+        ###Distinguish between S with non_absorbing components and S with no non_absorbing components (non_absorbing components excluded from S) (CS):
         if self._is_non_abs_set:  #: in case of a second call after non_absorbing has been declared
             self.set_non_absorbing_species(pyomo_model, self._non_absorbing, check=False)
-            
+            pyomo_model.S = Var(pyomo_model.meas_lambdas,
+                                pyomo_model.abs_components,
+                                bounds=s_bounds,
+                                initialize=s_dict)
+        else:
+            pyomo_model.S = Var(pyomo_model.meas_lambdas,
+                                pyomo_model.mixture_components,
+                                bounds=s_bounds,
+                                initialize=s_dict)
+        ######################
+
+        if self._absorption_data is not None:
+            for l in pyomo_model.meas_lambdas:
+                for k in pyomo_model.mixture_components:
+                    pyomo_model.S[l, k].fixed = True
+
+        # This section provides bounds if user used bound_profile (MS)
+        for i in self._prof_bounds:
+            if i[0] == 'S':
+                for l, c in pyomo_model.S:
+                    if i[1] == c:
+                        if i[2]:
+                            if l >= i[2][0] and l < i[2][1]:
+                                pyomo_model.S[l, c].setlb(i[3][0])
+                                pyomo_model.S[l, c].setub(i[3][1])
+                        else:
+                            pyomo_model.S[l, c].setlb(i[3][0])
+                            pyomo_model.S[l, c].setub(i[3][1])
+
+                    elif i[1] == None:
+                        if i[2]:
+                            if l >= i[2][0] and l < i[2][1]:
+                                pyomo_model.S[l, c].setlb(i[3][0])
+                                pyomo_model.S[l, c].setub(i[3][1])
+                        else:
+                            pyomo_model.S[l, c].setlb(i[3][0])
+                            pyomo_model.S[l, c].setub(i[3][1])
+
         if self._is_known_abs_set:  #: in case of a second call after known_absorbing has been declared
-            self.set_known_absorbing_species(pyomo_model, self._known_absorbance, self._known_absorbance_data, check=False)
-            
+            self.set_known_absorbing_species(pyomo_model, self._known_absorbance, self._known_absorbance_data,
+                                             check=False)
+
         return pyomo_model
 
     def create_casadi_model(self, start_time, end_time):
@@ -856,7 +949,7 @@ class TemplateBuilder(object):
             casadi_model.meas_times = m_times
             casadi_model.meas_lambdas = m_lambdas
 
-            # Variables                
+            # Variables
             casadi_model.Z = KipetCasadiStruct('Z', list(casadi_model.mixture_components), dummy_index=True)
             casadi_model.X = KipetCasadiStruct('X', list(casadi_model.complementary_states), dummy_index=True)
             casadi_model.Y = KipetCasadiStruct('Y', list(casadi_model.algebraics), dummy_index=True)
@@ -950,16 +1043,27 @@ class TemplateBuilder(object):
 
     @feed_times.setter
     def feed_times(self):
-        raise RuntimeError('Not supported') #added for feeding points CS
+        raise RuntimeError('Not supported')  # added for feeding points CS
 
     def has_spectral_data(self):
         return self._spectral_data is not None
 
     def has_adsorption_data(self):
         return self._absorption_data is not None
-    
+
     def has_concentration_data(self):
         return self._concentration_data is not None
+
+    def optional_warmstart(self, model):
+        if hasattr(model, 'dual') and hasattr(model, 'ipopt_zL_out') and hasattr(model, 'ipopt_zU_out') and hasattr(
+                model, 'ipopt_zL_in') and hasattr(model, 'ipopt_zU_in'):
+            print('warmstart model components already set up before.')
+        else:
+            model.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
+            model.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
+            model.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+            model.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
+            model.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
 
     def set_non_absorbing_species(self, model, non_abs_list, check=True):
         # type: (ConcreteModel, list, bool) -> None
@@ -981,21 +1085,33 @@ class TemplateBuilder(object):
         self._non_absorbing = non_abs_list
         model.add_component('non_absorbing', Set(initialize=self._non_absorbing))
 
-        S = getattr(model, 'S')
         C = getattr(model, 'C')
         Z = getattr(model, 'Z')
+
         times = getattr(model, 'meas_times')
-        lambdas = getattr(model, 'meas_lambdas')
-        for component in self._non_absorbing:
-            for l in lambdas:
-                S[l, component].set_value(0)
-                S[l, component].fix()
+        allcomps = getattr(model, 'mixture_components')
 
         model.add_component('fixed_C', ConstraintList())
         new_con = getattr(model, 'fixed_C')
+
+        #############################
+        # Exclude non absorbing species from S matrix and create subset Cs of C (CS):
+        model.add_component('abs_components_names', Set())
+        abscompsnames = [name for name in set(sorted(set(allcomps) - set(self._non_absorbing)))]
+        model.add_component('abs_components', Set(initialize=abscompsnames))
+        abscomps = getattr(model, 'abs_components')
+
+        model.add_component('Cs', Var(times, abscompsnames))
+        Cs = getattr(model, 'Cs')
+        model.add_component('matchCsC', ConstraintList())
+        matchCsC_con = getattr(model, 'matchCsC')
+
         for time in times:
             for component in self._non_absorbing:
                 new_con.add(C[time, component] == Z[time, component])
+            for componenta in abscomps:
+                matchCsC_con.add(Cs[time, componenta] == C[time, componenta])
+        ##########################
 
     def set_known_absorbing_species(self, model, known_abs_list, absorbance_data, check=True):
         # type: (ConcreteModel, list, dataframe, bool) -> None
