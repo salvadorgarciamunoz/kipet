@@ -880,7 +880,7 @@ class VarianceEstimator(Optimizer):
         nl = self._n_meas_lambdas
         nt = self._n_meas_times
         b = np.zeros((nl, 1))
-        A = np.ones((nl, nc+1))
+        #A = np.ones((nl, nc+1))
         b = np.zeros((nl, 1))
         variance_dict = dict()
 

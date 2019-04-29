@@ -96,7 +96,7 @@ if __name__ == "__main__":
         
     print("Simulation is done")
     
-    data = add_noise_to_signal(init.Z,0.05)
+    data = add_noise_to_signal(init.Z,0.02)
     if with_plots:
         
         data.plot.line(legend=True)
@@ -127,12 +127,18 @@ if __name__ == "__main__":
     builder.add_mixture_component('H',0.0)
     
     #Following this we add the kinetic parameters
-    builder.add_parameter('k1',bounds=(0.0,1))
-    builder.add_parameter('k2',bounds=(0.0,1))
-    builder.add_parameter('k3',bounds=(0.0,1))
-    builder.add_parameter('k4',bounds=(0.0,1))
-    builder.add_parameter('k5',bounds=(0.0,1))
-    builder.add_parameter('k6',bounds=(0.0,1))
+    #builder.add_parameter('k1',init=0.3,bounds=(0.0,1))
+    #builder.add_parameter('k2',init=0.1,bounds=(0.0,1))
+    #builder.add_parameter('k3',init=0.1,bounds=(0.0,1))
+    #builder.add_parameter('k4',init=0.4,bounds=(0.0,1))
+    #builder.add_parameter('k5',init=0.02,bounds=(0.0,1))
+    #builder.add_parameter('k6',init=0.5,bounds=(0.0,1))
+    builder.add_parameter('k1',init=0.2,bounds=(0.0,1))
+    builder.add_parameter('k2',init=0.2,bounds=(0.0,1))
+    builder.add_parameter('k3',init=0.05,bounds=(0.0,1))
+    builder.add_parameter('k4',init=0.5,bounds=(0.0,1))
+    builder.add_parameter('k5',init=0.032,bounds=(0.0,1))
+    builder.add_parameter('k6',init=0.45,bounds=(0.0,1))
     # define explicit system of ODEs
     def rule_odes(m,t):
         exprs = dict()
@@ -160,15 +166,15 @@ if __name__ == "__main__":
     # Here we use the estimability analysis tools
     e_analyzer = EstimabilityAnalyzer(opt_model)
     # Problem needs to be discretized first
-    e_analyzer.apply_discretization('dae.collocation',nfe=60,ncp=1,scheme='LAGRANGE-RADAU')
+    e_analyzer.apply_discretization('dae.collocation',nfe=50,ncp=3,scheme='LAGRANGE-RADAU')
     # define the uncertainty surrounding each of the parameters
     # This is used for scaling the variables (i.e. 0.01 means that we are sure that the initial 
     # value ofthat parameter is within 1 % of the real value)
-    param_uncertainties = {'k1':0.09,'k2':0.01,'k3':0.02,'k4':0.01, 'k5':0.5,'k6':0.8}
+    param_uncertainties = {'k1':0.8,'k2':1.2,'k3':0.8,'k4':0.4, 'k5':1,'k6':0.3}
     # sigmas, as before, represent the variances in regard to component
-    sigmas = {'A':1e-10,'B':1e-10,'C':1e-11, 'D':1e-11,'E':1e-11,'F':1e-11,'G':1e-11,'H':1e-11,'device':3e-9}
+    sigmas = {'A':1e-10,'B':1e-10,'C':1e-11, 'D':1e-11,'E':1e-11,'F':1e-11,'G':1e-11,'H':1e-11,'device':0.02}
     # measurement scaling
-    meas_uncertainty = 0.1
+    meas_uncertainty = 0.02
     # The rank_params_yao function ranks parameters from most estimable to least estimable 
     # using the method of Yao (2003). Notice the required arguments. Returns a dictionary of rankings.
     listparams = e_analyzer.rank_params_yao(meas_scaling = meas_uncertainty, param_scaling = param_uncertainties, sigmas =sigmas)
@@ -176,8 +182,11 @@ if __name__ == "__main__":
     # Now we can run the analyzer using the list of ranked parameters
     params_to_select = e_analyzer.run_analyzer(method = 'Wu', parameter_rankings = listparams,meas_scaling = meas_uncertainty, variances =sigmas)
     # We can then use this information to fix certain parameters and run the parameter estimation
-    print(params_to_select)
+    print("The parameters that can be estimated are:", params_to_select)
     
+    # We can now select these as variables and then fix the inestimable params
+    # So as the estimability analysis suggests, we should fix k5 and leave the 
+    # remaining parameters as variables
     #=========================================================================
     # USER INPUT SECTION - Parameter Estimation
     #=========================================================================
@@ -195,9 +204,9 @@ if __name__ == "__main__":
     #Following this we add the kinetic parameters
     builder.add_parameter('k1',bounds=(0.0,1))
     builder.add_parameter('k2',bounds=(0.0,1))
-    builder.add_parameter('k3',0.5)
-    builder.add_parameter('k4',0.5)
-    builder.add_parameter('k5',bounds=(0.0,1))
+    builder.add_parameter('k3',bounds=(0.0,1))
+    builder.add_parameter('k4',bounds=(0.0,1))
+    builder.add_parameter('k5',0.032)
     builder.add_parameter('k6',bounds=(0.0,1))
     # define explicit system of ODEs
     def rule_odes(m,t):
