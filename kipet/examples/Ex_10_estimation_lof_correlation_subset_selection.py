@@ -213,7 +213,7 @@ if __name__ == "__main__":
     new_subs = wavelength_subset_selection(correlations = correlations, n = 0.095)
 
     # And finally we can run the new parameter estimator with the subset inputted
-    results_pyomo = p_estimator.run_param_est_with_subset_lambdas(builder_before_data, end_time, new_subs, nfe, ncp, sigmas)
+    results_pyomo = p_estimator.run_param_est_with_subset_lambdas(builder_before_data, end_time, new_subs, nfe, ncp, sigmas, solver= 'k_aug')
 
     # And display the results
     print("The estimated parameters are:")
