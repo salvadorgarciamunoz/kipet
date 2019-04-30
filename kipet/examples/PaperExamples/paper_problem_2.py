@@ -127,12 +127,6 @@ if __name__ == "__main__":
     builder.add_mixture_component('H',0.0)
     
     #Following this we add the kinetic parameters
-    #builder.add_parameter('k1',init=0.3,bounds=(0.0,1))
-    #builder.add_parameter('k2',init=0.1,bounds=(0.0,1))
-    #builder.add_parameter('k3',init=0.1,bounds=(0.0,1))
-    #builder.add_parameter('k4',init=0.4,bounds=(0.0,1))
-    #builder.add_parameter('k5',init=0.02,bounds=(0.0,1))
-    #builder.add_parameter('k6',init=0.5,bounds=(0.0,1))
     builder.add_parameter('k1',init=0.2,bounds=(0.0,1))
     builder.add_parameter('k2',init=0.2,bounds=(0.0,1))
     builder.add_parameter('k3',init=0.05,bounds=(0.0,1))
@@ -206,6 +200,7 @@ if __name__ == "__main__":
     builder.add_parameter('k2',bounds=(0.0,1))
     builder.add_parameter('k3',bounds=(0.0,1))
     builder.add_parameter('k4',bounds=(0.0,1))
+    #Notice that we keep k5 at it's initial value (which we know is not the correct model value)
     builder.add_parameter('k5',0.032)
     builder.add_parameter('k6',bounds=(0.0,1))
     # define explicit system of ODEs
@@ -228,7 +223,7 @@ if __name__ == "__main__":
     opt_model = builder.create_pyomo_model(0.0,20.0) 
     p_estimator = ParameterEstimator(opt_model)
     p_estimator.apply_discretization('dae.collocation',nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
-    results_p = p_estimator.run_opt('k_aug',
+    results_p = p_estimator.run_opt('ipopt_sens',
                                     tee=True,
                                     variances=sigmas,
                                     covariance=True)
@@ -245,10 +240,11 @@ if __name__ == "__main__":
         plt.xlabel("time (s)")
         plt.ylabel("Concentration (mol/L)")
         plt.title("Concentration Profile")
-
+        plt.savefig('Ex2C.svg', format='svg', dpi=1200)
         results_p.Z.plot.line(legend=True)
 
         plt.xlabel("time (s)")
         plt.ylabel("Concentration (mol/L)")
         plt.title("Concentration Profile")
+        plt.savefig('Ex2Z.svg', format='svg', dpi=1200)
         plt.show()

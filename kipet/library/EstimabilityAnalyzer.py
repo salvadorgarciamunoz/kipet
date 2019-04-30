@@ -283,8 +283,9 @@ class EstimabilityAnalyzer(ParameterEstimator):
         # parameters and variables at the initial values for the parameters
         self.cloned_before_k_aug = self.model.clone()
         dsdp, idx_to_param = self.get_sensitivities_for_params(tee=True, sigmasq=sigmas)
-
+        #print("idx_to_param",idx_to_param )
         nvars = np.size(dsdp,0)
+        #print("nvars,", nvars)
         nparams = 0
         for v in six.itervalues(self.model.P):
             if v.is_fixed():
@@ -293,41 +294,51 @@ class EstimabilityAnalyzer(ParameterEstimator):
                 continue
             nparams += 1
 
-        dsdp_scaled = dsdp
+        dsdp_scaled = np.zeros_like(dsdp)
 
         # scale the sensitivities
         i=0
         for k, p in self.model.P.items():
             if p.is_fixed():
                 continue            
-            for row in range(len(dsdp)):
+            for row in range(len(dsdp)):                    
                 dsdp_scaled[row][i] = dsdp[row][i]*param_scaling[k]/meas_scaling
             i += 1
-
+        #print("idx_to_param",idx_to_param )
+        #print("dsdp_scaled:", dsdp_scaled)
         # euclidean norm for each column of Hessian relating parameters to outputs
         eucnorm = dict()
+        eucnorm_scaled = dict()
         count=0
         for i in range(nparams):
             total = 0
+            totalscaled=0
             for row in range(len(dsdp)):
-                total += dsdp[row][count]**2           
+                total += dsdp[row][count]**2 
+                totalscaled += dsdp_scaled[row][count]**2
             float(total)
-            total = np.asscalar(total)
+            total = np.asscalar(total)            
             sqr = (total)**(0.5)
             eucnorm[count]=sqr
+            
+            totals = np.asscalar(totalscaled)
+            sqrs = (totals)**(0.5)
+            eucnorm_scaled[count]=sqrs
             count+=1
+        #print("eucnormscaled",eucnorm_scaled)
         
         # sort the norms and link them to the relevant parameters
-        sorted_euc = sorted(eucnorm.values(), reverse=True)
+        sorted_euc = sorted(eucnorm_scaled.values(), reverse=True)
 
+        #print("sorted_euc,", sorted_euc)
         count=0
         ordered_params = dict()
         for p in idx_to_param:
             for t in idx_to_param:
-                if sorted_euc[p-1]==eucnorm[t-1]:
+                if sorted_euc[p-1]==eucnorm_scaled[t-1]:
                     ordered_params[count] = t-1
             count +=1
-        
+        #print("ordered_params", ordered_params)
         # set the first ranked parameter as the one with highest norm
         iter_count=0
         self.param_ranks[1] = idx_to_param[ordered_params[0]+1]
@@ -336,19 +347,40 @@ class EstimabilityAnalyzer(ParameterEstimator):
         next_est = dict()
         X= None
         kcol = None
+
         for i in range(nparams-1):
+
             if i==0:
                 X = np.zeros((nvars,1))
-            
+            else:
+                X = np.append(X,np.zeros([len(X),1]),1)
+            #print(X)
             # Form the appropriate matrix
             for x in range(i+1):
-                paramhere = ordered_params[x]
-                kcol = dsdp[:,ordered_params[x]].T
+                #print(self.param_ranks)
+                paramhere = self.param_ranks[(x+1)]
+                #print(paramhere)
+
+                for key, value in six.iteritems(self.param_ranks):
+                    for idx, val in six.iteritems(idx_to_param):
+                        if value ==paramhere:
+                            if value == val:
+                                #print(key, val, idx)
+                                which_col = (idx-1) 
+                                #print(which_col)
+                kcol = dsdp_scaled[:,which_col].T
                 recol= kcol.reshape((nvars,1))
-                if x >= 1:
-                    X = np.append(X,np.zeros([len(X),1]),1)
+                #print("x",x)
+                #if x >= 1:
+                #    X = np.append(X,np.zeros([len(X),1]),1)
+                #    print("why?")
+                #    print("X_before 2 loop",X)
                 for n in range(nvars):
                     X[n][x] = recol[n][0]
+                #print(x)
+                #print("X",X)
+                
+            #print("X_afterloop",X)
             # Use Ordinary Least Squares to use X to predict Z
             # try is here to catch any error resulting from a singular matrix
             # perhaps not the most elegant way of checking for this
@@ -381,15 +413,20 @@ class EstimabilityAnalyzer(ParameterEstimator):
             # Sort the residuals and ensure the params are correctly assigned
             sorted_magres = sorted(magres.values(), reverse=True)
             count2=0
+            #next_est = dict()
             for p in idx_to_param:
                 for t in idx_to_param:
                     if sorted_magres[p-1]==magres[t-1]:
+                        #print('p,t', p,t,count2)
                         next_est[count2] = t
+                        #print(next_est[count2])
                 count2 += 1
-
+            #print(sorted_magres)
+            #print("next_est", next_est)
             # Add next most estimable param to the ranking list  
             self.param_ranks[(iter_count+2)]=idx_to_param[next_est[0]]
             iter_count += 1
+            #print("parameter ranks!", self.param_ranks)
             
             #print("======================PARAMETER RANKED======================")
             if len(self.param_ranks) == nparams - 1:
@@ -417,7 +454,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
             print("Number ", i, "is ", self.param_ranks[i])
             count+=1
         
-        print("The unranked parameters are the follows: ")
+        print("The least estimable parameters are as follows: ")
         if len(self.unranked_params) == 0:
             print("All parameters ranked")
             
@@ -434,7 +471,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         for i in self.unranked_params:
             self.ordered_params.append(self.unranked_params[i])
             count += 1
-
+        
         return self.ordered_params
 
     def run_analyzer(self, method = None, parameter_rankings = None, meas_scaling = None, variances = None):
@@ -585,6 +622,8 @@ class EstimabilityAnalyzer(ParameterEstimator):
         # For now this is done by checking that the final parameter does not provide a massive decrease
         # the residuals
         low_MSE = J[1]
+        #print("J",J)
+        #print("low_MSE", low_MSE)
         listMSE = list()
         for k in J:
             listMSE.append(J[k]) 
@@ -592,6 +631,9 @@ class EstimabilityAnalyzer(ParameterEstimator):
                 low_MSE = J[k]
             else:
                 continue
+        #print(count)
+        #print(J[count])
+        #print(low_MSE)
         if J[count] == low_MSE:
             print("Lowest MSE is given by the lowest ranked parameter, therefore the full model should suffice")
             listMSE.sort()

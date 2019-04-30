@@ -1270,7 +1270,7 @@ class ParameterEstimator(Optimizer):
         else:
             return results        
         
-    def run_param_est_with_subset_lambdas(self, builder_clone, end_time, subset, nfe, ncp, sigmas):
+    def run_param_est_with_subset_lambdas(self, builder_clone, end_time, subset, nfe, ncp, sigmas, solver = 'ipopt', ):
         """ Performs the parameter estimation with a specific subset of wavelengths.
             At the moment, this is performed as a totally new Pyomo model, based on the 
             original estimation. Initialization strategies for this will be needed.
@@ -1311,7 +1311,7 @@ class ParameterEstimator(Optimizer):
         #need to put in an optional running of the variance estimator for the new 
         #parameter estiamtion run, or just use the previous full model run to initialize... 
             
-        results, lof = run_param_est(new_template, nfe, ncp, sigmas) 
+        results, lof = run_param_est(new_template, nfe, ncp, sigmas, solver = solver) 
         
         return results
         
@@ -1750,7 +1750,7 @@ def construct_model_from_reduced_set(builder_clone, end_time, D):
     
     return opt_model
     
-def run_param_est(opt_model, nfe, ncp, sigmas):
+def run_param_est(opt_model, nfe, ncp, sigmas, solver = 'ipopt'):
     """ Runs the parameter estimator for the selected subset
      
         Args:
@@ -1770,10 +1770,17 @@ def run_param_est(opt_model, nfe, ncp, sigmas):
     options = dict()
     
     # These may not always solve, so we need to come up with a decent initialization strategy here
-    results_pyomo = p_estimator.run_opt('ipopt',
+    if solver == 'ipopt':
+        results_pyomo = p_estimator.run_opt('ipopt',
                                       tee=False,
                                       solver_opts = options,
                                       variances=sigmas)
+    else:
+        results_pyomo = p_estimator.run_opt(solver,
+                                      tee=False,
+                                      solver_opts = options,
+                                      variances=sigmas,
+                                      covariance = True)
     lof = p_estimator.lack_of_fit()
 
     return results_pyomo, lof
