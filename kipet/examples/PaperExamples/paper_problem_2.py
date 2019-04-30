@@ -127,12 +127,6 @@ if __name__ == "__main__":
     builder.add_mixture_component('H',0.0)
     
     #Following this we add the kinetic parameters
-    #builder.add_parameter('k1',init=0.3,bounds=(0.0,1))
-    #builder.add_parameter('k2',init=0.1,bounds=(0.0,1))
-    #builder.add_parameter('k3',init=0.1,bounds=(0.0,1))
-    #builder.add_parameter('k4',init=0.4,bounds=(0.0,1))
-    #builder.add_parameter('k5',init=0.02,bounds=(0.0,1))
-    #builder.add_parameter('k6',init=0.5,bounds=(0.0,1))
     builder.add_parameter('k1',init=0.2,bounds=(0.0,1))
     builder.add_parameter('k2',init=0.2,bounds=(0.0,1))
     builder.add_parameter('k3',init=0.05,bounds=(0.0,1))
@@ -206,6 +200,7 @@ if __name__ == "__main__":
     builder.add_parameter('k2',bounds=(0.0,1))
     builder.add_parameter('k3',bounds=(0.0,1))
     builder.add_parameter('k4',bounds=(0.0,1))
+    #Notice that we keep k5 at it's initial value (which we know is not the correct model value)
     builder.add_parameter('k5',0.032)
     builder.add_parameter('k6',bounds=(0.0,1))
     # define explicit system of ODEs

@@ -43,7 +43,7 @@ if __name__ == "__main__":
     ###################################################################################
     dataDirectory = os.path.abspath(
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
-            inspect.currentframe() ) ) ), 'data_sets'))
+            inspect.currentframe() ) ) ), '..\data_sets'))
     filename =  os.path.join(dataDirectory,'Dij.txt')
     D_frame = read_spectral_data_from_txt(filename)
 
