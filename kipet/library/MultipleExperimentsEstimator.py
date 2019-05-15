@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 from __future__ import print_function
 from __future__ import division
 from pyomo.environ import *
@@ -128,57 +127,7 @@ class MultipleExperimentsEstimator():
                 #print("count_vars:", count_vars, "self._idx_to_variable[count_vars]")
                 self.model.red_hessian[v] = count_vars
                 count_vars += 1
-    '''            
-    def _define_reduce_hess_order_multfull(self):
-        """This function is used to link the variables to the columns in the reduced
-           hessian for multiple experiments.   
-           
-        """
-        self.model.red_hessian = Suffix(direction=Suffix.IMPORT_EXPORT)
-        count_vars = 1
-
-        for i in self.experiments:
-            if not self._spectra_given:
-                pass
-            else:
-                for t in self.model.experiment[i].meas_times:
-                    for c in self._sublist_components[i]:
-                        v = self.model.experiment[i].C[t, c]
-                        self._idx_to_variable[count_vars] = v
-                        self.model.red_hessian[v] = count_vars
-                        count_vars += 1
-                        
-            print("count after C exp",i, count_vars) 
             
-            print("count after C",i, count_vars) 
-        
-        for i in self.experiments:
-            if not self._spectra_given:
-                pass
-            
-            else:
-                for l in self.model.experiment[i].meas_lambdas:
-                    for c in self._sublist_components[i]:
-                        v = self.model.experiment[i].S[l, c]
-                        self._idx_to_variable[count_vars] = v
-                        self.model.red_hessian[v] = count_vars
-                        count_vars += 1
-            print("count after S exp",i, count_vars) 
-            
-            print("count after S",i, count_vars) 
-    # This here is tricky
-        for i in self.experiments:
-            for k,v in six.iteritems(self.model.experiment[i].P):
-                print(k,v)
-                if v.is_fixed():
-                    print(v, end='\t')
-                    print("is fixed")
-                    continue
-                self._idx_to_variable[count_vars] = v
-                print("count_vars:", count_vars, "self._idx_to_variable[count_vars]")
-                self.model.red_hessian[v] = count_vars
-                count_vars += 1
-    '''            
     def _order_k_aug_hessian(self, unordered_hessian, var_loc):
         """
         not meant to be used directly by users. Takes in the inverse of the reduced hessian
@@ -404,43 +353,22 @@ class MultipleExperimentsEstimator():
         
         nd = nw * nt
         ntheta = 0
-        #nthetaExp = dict()
-        #nwdict = dict()
-        #ntdict = dict()
         exp_count = 0
         for i in self.experiments:
             if exp_count == 0:
                 ntheta += self.n_mark[exp_count] * (self.t_mark[exp_count] + self.l_mark[exp_count]) + self.p_mark[exp_count]
-                #nthetaExp[exp_count] = ntheta
-                #nwdict [exp_count] = self.l_mark[exp_count]
-                #ntdict [exp_count] = self.t_mark[exp_count]
             else:
                 ncompx = (self.n_mark[exp_count] - self.n_mark[exp_count - 1])
                 ntimex = (self.t_mark[exp_count] - self.t_mark[exp_count - 1] )
                 nwavex = (self.l_mark[exp_count] - self.l_mark[exp_count - 1])
                 nparmx = self.p_mark[exp_count] - self.p_mark[exp_count - 1]
-                #nwdict [exp_count] = nwavex
-                #ntdict [exp_count] = ntimex
-                #nthetaExp[exp_count] = ncompx * (ntimex+ nwavex) + nparmx
                 ntheta += ncompx * (ntimex+ nwavex) + nparmx
             exp_count += 1
-            #print("ntheta:", ntheta)
-        
-        #print(nthetaExp)
+
         #print(nwdict)
         #print(ntdict)
         #print(variances)
         self.B_matrix = np.zeros((ntheta, nw * nt))
-        
-        #matrixdict = dict()
-        #for p in range(exp_count):
-        #    print(p)
-        #    matrixdict[p] = np.zeros((nthetaExp[p], nwdict[p]*ntdict[p]))
-        #    print("Matrix dicts")
-        #    print(matrixdict[p].shape)
-        #    print(matrixdict[p].size)
-        
-
         
         # This part here is equivalent to the section underneath
         # I am not deleting it as it may still be useful as it is similar 
@@ -561,7 +489,7 @@ class MultipleExperimentsEstimator():
                     r_idx1 = ((i)* nc + (k))
                     r_idx2 = ((j) * nc + (k) + nc * nt)
                     c_idx = ((i) * nw + (j))
-                    #print("indices, ", r_idx1,r_idx2,c_idx,i,j,k,wave,time)
+                    print("indices, ", r_idx1,r_idx2,c_idx,i,j,k,wave,time,nc)
                     self.B_matrix[r_idx1, c_idx] = -2 * self.model.experiment[exp].S[wave, c].value / (self.variances[exp]['device'])
                         # try:
                     self.B_matrix[r_idx2, c_idx] = -2 * self.model.experiment[exp].C[time, c].value / (self.variances[exp]['device'])
@@ -885,7 +813,7 @@ class MultipleExperimentsEstimator():
                     
         if solver == 'ipopt_sens':
             self._tmpfile = "ipopt_hess"
-            solver_results = optimizer.solve(m, tee=False,
+            solver_results = optimizer.solve(m, tee=m.tee,
                                              logfile=self._tmpfile,
                                              report_timing=True)
 
@@ -959,7 +887,7 @@ class MultipleExperimentsEstimator():
                 f.close()
                 
             m.write(filename="ip.nl", format=ProblemFormat.nl)
-            solver_results = ip.solve(m, tee=True, 
+            solver_results = ip.solve(m, tee=m.tee, 
                                       options = solver_opts,
                                       logfile=self._tmpfile,
                                       report_timing=True)
@@ -1075,10 +1003,7 @@ class MultipleExperimentsEstimator():
             #    self._compute_covariance(hessian, sigma_sq)
 
         elif covariance and solver == 'k_aug':
-            solver_opts['compute_inv'] = ""
-            
-            for key, val in solver_opts.items():
-                opt.options[key] = val
+                
             m.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
             m.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
             m.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
@@ -1115,11 +1040,10 @@ class MultipleExperimentsEstimator():
             
             for i in self.experiments:
                 for k,v in six.iteritems(self.model.experiment[i].P):
-                    print(k,v)
-                    
+                    #print(k,v)                    
                     if k not in var_counted:
-                        print(count_vars)
-                        print(k,v)
+                        #print(count_vars)
+                        #print(k,v)
                         if v.is_fixed():  #: Skip the fixed ones
                             print(str(v) + '\has been skipped for covariance calculations')
                             continue
@@ -1135,11 +1059,12 @@ class MultipleExperimentsEstimator():
                                       report_timing=True)
             # m.P.pprint()
             k_aug = SolverFactory('k_aug')
-
+            k_aug.options['compute_inv'] = ""
             # k_aug.options["no_scale"] = ""
             m.ipopt_zL_in.update(m.ipopt_zL_out)  #: be sure that the multipliers got updated!
             m.ipopt_zU_in.update(m.ipopt_zU_out)
             # m.write(filename="mynl.nl", format=ProblemFormat.nl)
+            print("do we get here?")
             k_aug.solve(m, tee=True)
             print("Done solving building reduce hessian")
 
@@ -1562,10 +1487,10 @@ class MultipleExperimentsEstimator():
             solver_results = optimizer.solve(m, options = solver_opts,tee=tee)
         
         elif covariance and solver == 'k_aug' and self._concentration_given:   
-            self.solve_conc_full_problem(solver, covariance = covariance)
+            self.solve_conc_full_problem(solver, covariance = covariance, tee=tee)
             
         elif covariance and solver == 'ipopt_sens' and self._concentration_given:   
-            self.solve_conc_full_problem(solver, covariance = covariance)     
+            self.solve_conc_full_problem(solver, covariance = covariance, tee=tee)     
             
         elif self._concentration_given:
             #Working
