@@ -10,6 +10,7 @@ from pyomo import *
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+import math
 import scipy
 import six
 import copy
@@ -146,7 +147,7 @@ class MultipleExperimentsEstimator():
             for vj in six.itervalues(self._idx_to_variable):
                 if n_vars ==1:
                     print("var_loc[vi]",var_loc[vi])
-                    print(unordered_hessian)
+                    #print(unordered_hessian)
                     h = unordered_hessian
                     hessian[i, j] = h
                 else:
@@ -207,13 +208,16 @@ class MultipleExperimentsEstimator():
         exp_count = 0
         
         for i in self.experiments:
+            
             if exp_count == 0:
+                print(self.n_mark[exp_count],self.t_mark[exp_count], self.l_mark[exp_count], self.p_mark[exp_count])
                 ntheta += self.n_mark[exp_count] * (self.t_mark[exp_count] + self.l_mark[exp_count]) + self.p_mark[exp_count]
             else:
                 ncompx = (self.n_mark[exp_count]-self.n_mark[exp_count - 1])
                 ntimex = (self.t_mark[exp_count] - self.t_mark[exp_count - 1] )
                 nwavex = (self.l_mark[exp_count] - self.l_mark[exp_count - 1])
                 nparmx = self.p_mark[exp_count] - self.p_mark[exp_count - 1]
+                print(ncompx,ntimex, nwavex, nparmx)
                 ntheta += ncompx * (ntimex+ nwavex) + nparmx
             exp_count += 1
             print("ntheta:", ntheta)
@@ -354,17 +358,22 @@ class MultipleExperimentsEstimator():
         nd = nw * nt
         ntheta = 0
         exp_count = 0
+        rindmark = 0
         for i in self.experiments:
             if exp_count == 0:
+                print(self.n_mark[exp_count],self.t_mark[exp_count], self.l_mark[exp_count], self.p_mark[exp_count])
                 ntheta += self.n_mark[exp_count] * (self.t_mark[exp_count] + self.l_mark[exp_count]) + self.p_mark[exp_count]
+                rindmark += self.n_mark[exp_count]*self.t_mark[exp_count]
             else:
-                ncompx = (self.n_mark[exp_count] - self.n_mark[exp_count - 1])
+                ncompx = (self.n_mark[exp_count]-self.n_mark[exp_count - 1])
                 ntimex = (self.t_mark[exp_count] - self.t_mark[exp_count - 1] )
                 nwavex = (self.l_mark[exp_count] - self.l_mark[exp_count - 1])
                 nparmx = self.p_mark[exp_count] - self.p_mark[exp_count - 1]
+                print(ncompx,ntimex, nwavex, nparmx)
+                rindmark += ncompx*ntimex
+                print("rindmark", rindmark)
                 ntheta += ncompx * (ntimex+ nwavex) + nparmx
             exp_count += 1
-
         #print(nwdict)
         #print(ntdict)
         #print(variances)
@@ -448,30 +457,44 @@ class MultipleExperimentsEstimator():
         exp_count = 0
 
         timeshift, waveshift = 0,0
+        nc_prev = 0
+        minusr1 = 0
+        r_idx1_old = int()
+        r_idx2_old = int()
         for i in range(nt):
             for j in range(nw):
                 #NEED TO PUT A WAY TO COUNT THE EXPERIMENTS BASED ON THE TOTAL NUMBERS HERE
+                if exp_count == 0:
+                    nc = self.n_mark[exp_count]
+                    nc_prev = nc
+                    
                 if i == self.t_mark[exp_count] and j == self.l_mark[exp_count]:
                     exp_count += 1
                     timeshift = i
                     waveshift = j
-                
-                if exp_count == 0:
-                            nc = self.n_mark[exp_count]
-                            #timeshift = self.t_mark[exp_count]
-                            #waveshift = self.l_mark[exp_count]
-                            
-                else: 
+                    nc_prev = nc
                     nc = (self.n_mark[exp_count] - self.n_mark[exp_count - 1])
+                    print("HERE IS THE EXP CHANGE")
+                
+                    #timeshift = self.t_mark[exp_count]
+                    #waveshift = self.l_mark[exp_count]
+                            
+                #elif exp_count != 0 and i == self.t_mark[exp_count] and j == self.l_mark[exp_count]:
+                    #nc_prev = nc
+                    #nc = (self.n_mark[exp_count] - self.n_mark[exp_count - 1])
                     #nt = (self.t_mark[exp_count] - self.t_mark[exp_count - 1] )
                     #nw = (self.l_mark[exp_count] - self.l_mark[exp_count - 1])
                 
                 for x, exp in enumerate(self.experiments):
-                        #print(x,exp)
-                        if x == exp_count:
-                            break
-                        else:
-                            pass
+                    #print(x,exp)
+                    if x == exp_count:
+                        break
+                    else:
+                        pass
+                        
+                if exp_count >= 1:
+                    minusr1 = nc - nc_prev
+                    #print(minusr1)
                 
                 for k, c in enumerate(self._sublist_components[exp]):
                     for ii, t in enumerate(self.model.experiment[exp].meas_times):
@@ -485,21 +508,39 @@ class MultipleExperimentsEstimator():
                             wave = l
                             break
                         else:
-                            pass    
-                    r_idx1 = ((i)* nc + (k))
-                    r_idx2 = ((j) * nc + (k) + nc * nt)
+                            pass 
+                        
+                    r_idx1 = ((i)* (nc) + (k))
+                    #r_idx1 = ((i)* (nc) + (k) - (minusr1*i))
+                    #r_idxwhat1 = ((i)* (4) + (k) )   
+                    #print(nc,nc_prev)
+                    
+                    #r_idx2 = ((j) * (nc) + (k) + (rindmark) - (minusr1*j))
+                    r_idx2 = ((j) * (nc) + (k) + (nc*nt))
+                    #r_idxwhat2 = ((j) * (4) + (k) + (rindmark-1) - (minusr1*j))
+                    #(nc_prev) * nt
                     c_idx = ((i) * nw + (j))
-                    print("indices, ", r_idx1,r_idx2,c_idx,i,j,k,wave,time,nc)
+                    #print("indices, ", r_idx1,r_idx2,c_idx,i,j,k,wave,time,nc,nc_prev,nt,nw)
                     self.B_matrix[r_idx1, c_idx] = -2 * self.model.experiment[exp].S[wave, c].value / (self.variances[exp]['device'])
-                        # try:
-                    self.B_matrix[r_idx2, c_idx] = -2 * self.model.experiment[exp].C[time, c].value / (self.variances[exp]['device'])
-            #print("indices, ", r_idx1,r_idx2,c_idx,i,j,k,wave,time)            
+                    try:
+                        self.B_matrix[r_idx2, c_idx] = -2 * self.model.experiment[exp].C[time, c].value / (self.variances[exp]['device'])
+                    except:
+                        #print("indices,**** ", r_idx1,r_idx2,c_idx,i,j,k,wave,time,nc,nt,nw) 
+                        df = pd.DataFrame(self.B_matrix)
+                        df.to_csv('failB.csv')
+                        sys.exit()
+            r_idx1_old = r_idx1
+            r_idx2_old = r_idx2
+            #print("indices, **", r_idx1,r_idx2,c_idx,i,j,k,wave,time,nc)
+                        
                     
         #print("indices, ", r_idx1,r_idx2,c_idx,i,j,k)        
         print("B matrix shape should be = ", ntheta, "X", nd)
         print("B matrix shape = ",self.B_matrix.shape)
         #print("B matrix size ",self.B_matrix.size)
-        #print(self.B_matrix)
+        print(self.B_matrix)
+        df = pd.DataFrame(self.B_matrix)
+        df.to_csv('leB.csv')
         
 
     def _compute_Vd_matrix(self, variances, **kwds):
@@ -521,12 +562,13 @@ class MultipleExperimentsEstimator():
         nt = self._n_meas_times
         nw = self._n_meas_lambdas
         nc = self._n_actual
+        print("self._n_actual", self._n_actual)
 
         v_array = np.zeros(nc)
                 
-        nc = nc/len(self.experiments)
-        nc = int(nc)
-
+        #nc = nc/len(self.experiments)
+        #nc = int(math.ceil(nc))
+        #print("how many components: " , nc)
         s_array = np.zeros(nw * nc)
         
         count = 0
@@ -557,7 +599,7 @@ class MultipleExperimentsEstimator():
                         nt = self.t_mark[exp_count]
                         nw = self.l_mark[exp_count]
                     else: 
-                        nc = (self.n_mark[exp_count] - self.n_mark[exp_count - 1])
+                        #nc = (self.n_mark[exp_count] - self.n_mark[exp_count - 1])
                         nt = (self.t_mark[exp_count] - self.t_mark[exp_count - 1] )
                         nw = (self.l_mark[exp_count] - self.l_mark[exp_count - 1])
 
@@ -615,9 +657,9 @@ class MultipleExperimentsEstimator():
         self.Vd_matrix = scipy.sparse.coo_matrix((data, (row, col)),
                                                  shape=(nd, nd)).tocsr()
         # self.Vd_matrix = Vd_dense
-        #print(self.Vd_matrix)
-        #df = pd.DataFrame(self.Vd_matrix)
-        #df.to_csv('leVd.csv')
+        print(self.Vd_matrix)
+        df = pd.DataFrame(self.Vd_matrix)
+        df.to_csv('leVd.csv')
         
     def _compute_residuals(self):
         """
@@ -788,14 +830,21 @@ class MultipleExperimentsEstimator():
         
         return results_variances
 
-    def solve_full_problem(self, solver):
+    def solve_full_problem(self, solver, **kwds):
         """Sets up the reduced hessian and all other calculations for the full problem solve
         Include the covariance calculations
         
         INCOMPLETE - NOT WORKING
         """
         #Check for whether solver is sipopt or kaug
-        solver_opts = dict()
+        
+        tee = kwds.pop('tee', False)
+        weights = kwds.pop('weights', [0.0, 1.0])
+        covariance = kwds.pop('covariance', False)
+        warmstart = kwds.pop('warmstart', False)
+        species_list = kwds.pop('subset_components', None)
+        solver_opts = kwds.pop('solver_opts', dict())
+        
         if solver != 'ipopt_sens' and solver != 'k_aug':
             raise RuntimeError('To get covariance matrix the solver needs to be ipopt_sens or k_aug')
         if solver == 'ipopt_sens':
@@ -827,7 +876,7 @@ class MultipleExperimentsEstimator():
             ipopt_output, hessian_output = split_sipopt_string(output_string)
             # print hessian_output
             print("build strings")
-            tee = True
+            #tee = True
             if tee == True:
                 print(ipopt_output)
 
@@ -839,7 +888,7 @@ class MultipleExperimentsEstimator():
             #print('n_vars', n_vars)
             hessian = read_reduce_hessian(hessian_output, n_vars)
             print(hessian.size, "hessian size")
-            # print(hessian.shape,"hessian shape")
+            print(hessian.shape,"hessian shape")
             # hessian = read_reduce_hessian2(hessian_output,n_vars)
             # print hessian
             self._compute_covariance(hessian, self.variances)
@@ -898,7 +947,7 @@ class MultipleExperimentsEstimator():
             m.ipopt_zL_in.update(m.ipopt_zL_out)  #: be sure that the multipliers got updated!
             m.ipopt_zU_in.update(m.ipopt_zU_out)
             # m.write(filename="mynl.nl", format=ProblemFormat.nl)
-            k_aug.solve(m, tee=True)
+            k_aug.solve(m, tee=False)
             print("Done solving building reduce hessian")
     
             if not all_sigma_specified:
@@ -955,7 +1004,7 @@ class MultipleExperimentsEstimator():
         species_list = kwds.pop('subset_components', None)
         solver_opts = kwds.pop('solver_opts', dict())
         
-        solver_opts = dict()
+        #solver_opts = dict()
         if solver != 'ipopt_sens' and solver != 'k_aug':
             raise RuntimeError('To get covariance matrix the solver needs to be ipopt_sens or k_aug')
         if solver == 'ipopt_sens':
@@ -963,7 +1012,7 @@ class MultipleExperimentsEstimator():
                 solver_opts['compute_red_hessian'] = 'yes'
         if solver == 'k_aug':
             solver_opts['compute_inv'] = ''
-
+        print(solver_opts)
         optimizer = SolverFactory(solver)
         for key, val in solver_opts.items():
             optimizer.options[key] = val
@@ -1054,7 +1103,7 @@ class MultipleExperimentsEstimator():
                     
             self._tmpfile = "k_aug_hess"
             ip = SolverFactory('ipopt')
-            solver_results = ip.solve(m, tee=False,
+            solver_results = ip.solve(m, tee=tee,
                                       logfile=self._tmpfile,
                                       report_timing=True)
             # m.P.pprint()
@@ -1065,7 +1114,7 @@ class MultipleExperimentsEstimator():
             m.ipopt_zU_in.update(m.ipopt_zU_out)
             # m.write(filename="mynl.nl", format=ProblemFormat.nl)
             print("do we get here?")
-            k_aug.solve(m, tee=True)
+            k_aug.solve(m, tee=False)
             print("Done solving building reduce hessian")
 
             if not all_sigma_specified:
@@ -1472,13 +1521,13 @@ class MultipleExperimentsEstimator():
         if covariance and solver == 'k_aug' and self._spectra_given:
             #Not yet working
             
-            self.solve_full_problem(solver)
+            self.solve_full_problem(solver, tee = tee, solver_opts = solver_opts)
             #solver_opts['compute_inv'] = ''
             
         elif covariance and solver == 'ipopt_sens' and self._spectra_given:
             #Not yet working
             
-            self.solve_full_problem( solver)
+            self.solve_full_problem(solver, tee = tee, solver_opts = solver_opts)
             #solver_opts['compute_inv'] = ''    
             
         elif self._spectra_given:
