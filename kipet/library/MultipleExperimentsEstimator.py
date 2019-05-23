@@ -86,7 +86,7 @@ class MultipleExperimentsEstimator():
         """This function is used to link the variables to the columns in the reduced
            hessian for multiple experiments.   
            
-           Currently this is not functional
+           Not meant to be used directly by users
         """
         self.model.red_hessian = Suffix(direction=Suffix.IMPORT_EXPORT)
         count_vars = 1
@@ -135,8 +135,6 @@ class MultipleExperimentsEstimator():
         outputted by k_aug and uses the rh_name to find the locations of the variables and then
         re-orders the hessian to be in a format where the other functions are able to compute the
         confidence intervals in a way similar to that utilized by sIpopt.
-        
-        Currently not functional
         """
         vlocsize = len(var_loc)
         n_vars = len(self._idx_to_variable)
@@ -374,9 +372,6 @@ class MultipleExperimentsEstimator():
                 print("rindmark", rindmark)
                 ntheta += ncompx * (ntimex+ nwavex) + nparmx
             exp_count += 1
-        #print(nwdict)
-        #print(ntdict)
-        #print(variances)
         self.B_matrix = np.zeros((ntheta, nw * nt))
         
         # This part here is equivalent to the section underneath
@@ -454,11 +449,14 @@ class MultipleExperimentsEstimator():
         print(self.B_matrix)
         # sys.exit()
         '''
+        # Note that this is messy and has a lot commented out for a reason. The commented parts
+        # are still potentially useful if we wish to increase robustness in the future. 
+        # Please do not remove.
         exp_count = 0
 
         timeshift, waveshift = 0,0
         nc_prev = 0
-        minusr1 = 0
+        #minusr1 = 0
         r_idx1_old = int()
         r_idx2_old = int()
         for i in range(nt):
@@ -492,8 +490,8 @@ class MultipleExperimentsEstimator():
                     else:
                         pass
                         
-                if exp_count >= 1:
-                    minusr1 = nc - nc_prev
+                #if exp_count >= 1:
+                    #minusr1 = nc - nc_prev
                     #print(minusr1)
                 
                 for k, c in enumerate(self._sublist_components[exp]):
@@ -509,7 +507,9 @@ class MultipleExperimentsEstimator():
                             break
                         else:
                             pass 
-                        
+                    
+                    # Apologies for the mess! It is here for a reason!
+                    
                     r_idx1 = ((i)* (nc) + (k))
                     #r_idx1 = ((i)* (nc) + (k) - (minusr1*i))
                     #r_idxwhat1 = ((i)* (4) + (k) )   
@@ -522,25 +522,24 @@ class MultipleExperimentsEstimator():
                     c_idx = ((i) * nw + (j))
                     #print("indices, ", r_idx1,r_idx2,c_idx,i,j,k,wave,time,nc,nc_prev,nt,nw)
                     self.B_matrix[r_idx1, c_idx] = -2 * self.model.experiment[exp].S[wave, c].value / (self.variances[exp]['device'])
-                    try:
-                        self.B_matrix[r_idx2, c_idx] = -2 * self.model.experiment[exp].C[time, c].value / (self.variances[exp]['device'])
-                    except:
+                    #try:
+                    self.B_matrix[r_idx2, c_idx] = -2 * self.model.experiment[exp].C[time, c].value / (self.variances[exp]['device'])
+                    #except:
                         #print("indices,**** ", r_idx1,r_idx2,c_idx,i,j,k,wave,time,nc,nt,nw) 
-                        df = pd.DataFrame(self.B_matrix)
-                        df.to_csv('failB.csv')
-                        sys.exit()
+                        #df = pd.DataFrame(self.B_matrix)
+                        #df.to_csv('failB.csv')
+                        #sys.exit()
             r_idx1_old = r_idx1
             r_idx2_old = r_idx2
             #print("indices, **", r_idx1,r_idx2,c_idx,i,j,k,wave,time,nc)
-                        
-                    
+                                            
         #print("indices, ", r_idx1,r_idx2,c_idx,i,j,k)        
-        print("B matrix shape should be = ", ntheta, "X", nd)
+        #print("B matrix shape should be = ", ntheta, "X", nd)
         print("B matrix shape = ",self.B_matrix.shape)
         #print("B matrix size ",self.B_matrix.size)
-        print(self.B_matrix)
-        df = pd.DataFrame(self.B_matrix)
-        df.to_csv('leB.csv')
+        #print(self.B_matrix)
+        #df = pd.DataFrame(self.B_matrix)
+        #df.to_csv('leB.csv')
         
 
     def _compute_Vd_matrix(self, variances, **kwds):
@@ -554,7 +553,6 @@ class MultipleExperimentsEstimator():
         Returns:
             None
         """
-
         # add check for model already solved
         row = []
         col = []
@@ -639,7 +637,6 @@ class MultipleExperimentsEstimator():
                 if i == self.t_mark[exp_count] and j == self.l_mark[exp_count]:
                     exp_count += 1
                     v_device_exp = v_device[exp_count]
-
                     
                 val = sum(v_array[k] * s_array[j * nc + k] ** 2 for k in range(nc)) + v_device_exp
                 row.append(i * nw + j)
@@ -657,9 +654,9 @@ class MultipleExperimentsEstimator():
         self.Vd_matrix = scipy.sparse.coo_matrix((data, (row, col)),
                                                  shape=(nd, nd)).tocsr()
         # self.Vd_matrix = Vd_dense
-        print(self.Vd_matrix)
-        df = pd.DataFrame(self.Vd_matrix)
-        df.to_csv('leVd.csv')
+        #print(self.Vd_matrix)
+        #df = pd.DataFrame(self.Vd_matrix)
+        #df.to_csv('leVd.csv')
         
     def _compute_residuals(self):
         """
@@ -831,12 +828,10 @@ class MultipleExperimentsEstimator():
         return results_variances
 
     def solve_full_problem(self, solver, **kwds):
-        """Sets up the reduced hessian and all other calculations for the full problem solve
-        Include the covariance calculations
-        
-        INCOMPLETE - NOT WORKING
+        """What is meant here is just that the confidence intervals are calculated and the model is solved.
+        Sets up the reduced hessian and all other calculations for the full problem solve.
+        This is not meant to be used directly by users.
         """
-        #Check for whether solver is sipopt or kaug
         
         tee = kwds.pop('tee', False)
         weights = kwds.pop('weights', [0.0, 1.0])
@@ -862,7 +857,7 @@ class MultipleExperimentsEstimator():
                     
         if solver == 'ipopt_sens':
             self._tmpfile = "ipopt_hess"
-            solver_results = optimizer.solve(m, tee=m.tee,
+            solver_results = optimizer.solve(m,
                                              logfile=self._tmpfile,
                                              report_timing=True)
 
@@ -874,15 +869,10 @@ class MultipleExperimentsEstimator():
                 os.remove(self._tmpfile)
             # output_string = f.getvalue()
             ipopt_output, hessian_output = split_sipopt_string(output_string)
-            # print hessian_output
+            #print hessian_output
             print("build strings")
-            #tee = True
             if tee == True:
                 print(ipopt_output)
-
-            #if not all_sigma_specified:
-            #    raise RuntimeError(
-            #        'All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
 
             n_vars = len(self._idx_to_variable)
             #print('n_vars', n_vars)
@@ -1268,8 +1258,7 @@ class MultipleExperimentsEstimator():
             
         else:
             raise RuntimeError('builder needs to be type dictionary of TemplateBuilder or TemplateBuilder')
-            
-        p_est_dict = dict()
+
         results_pest = dict()
 
         list_components = {}
@@ -1312,7 +1301,7 @@ class MultipleExperimentsEstimator():
         all_params = list()
         global_params = list()
         for l in self.experiments:
-            print("solving for dataset ", l)
+            print("Solving for DATASET ", l)
             if self._variance_solved == True and spectra_problem:
                 #then we already have inits
                 ind_p_est[l] = ParameterEstimator(self.opt_model[l])
@@ -1345,8 +1334,8 @@ class MultipleExperimentsEstimator():
                     if k not in list_params_across_blocks:
                         list_params_across_blocks.append(k)
                 
-                print("all_params:" , all_params)
-                print("global_params:", global_params)
+                #print("all_params:" , all_params)
+                #print("global_params:", global_params)
             
             else:
                 #we do not have inits
@@ -1395,10 +1384,9 @@ class MultipleExperimentsEstimator():
                     if k not in list_params_across_blocks:
                         list_params_across_blocks.append(k)
                 
-                print("all_params:" , all_params)
-                print("global_params:", global_params)
+                #print("all_params:" , all_params)
+                #print("global_params:", global_params)
                 self.global_params = global_params
-                # I want to build a list of the parameters here that we will use to link the models later on
                 
         #Now that we have all our datasets solved individually we can build our blocks and use
         #these solutions to initialize
@@ -1501,13 +1489,13 @@ class MultipleExperimentsEstimator():
                 return Constraint.Skip
             else:
                 for key, val in m.map_exp_to_count.items():
-                    print(key,val)
+                    #print(key,val)
                     if val == exp:
                         prev_exp = m.map_exp_to_count[key-1]
                 if param in global_params and prev_exp != None:
                     #This here is to check that the correct linking constraints are constructed
-                    print("this constraint is written:")
-                    print(m.experiment[exp].P[param],"=", m.experiment[prev_exp].P[param])
+                    #print("this constraint is written:")
+                    #print(m.experiment[exp].P[param],"=", m.experiment[prev_exp].P[param])
                     return m.experiment[exp].P[param] == m.experiment[prev_exp].P[param]
                     
                 else:
