@@ -119,7 +119,7 @@ class MultipleExperimentsEstimator():
 
         for i in self.experiments:
             for k,v in six.iteritems(self.model.experiment[i].P):
-                print(k,v)
+                #print(k,v)
                 if v.is_fixed():
                     print(v, end='\t')
                     print("is fixed")
@@ -322,9 +322,9 @@ class MultipleExperimentsEstimator():
         H = all_H[-nparams:, :]
 
         covariance_C = H
-        print(covariance_C,"covariance matrix")
+        #print(covariance_C,"covariance matrix")
         variances_p = np.diag(covariance_C)
-        print("Parameter variances: ", variances_p)
+        #print("Parameter variances: ", variances_p)
         print('\nConfidence intervals:')
         i = 0
         for exp in self.experiments:
@@ -1002,7 +1002,7 @@ class MultipleExperimentsEstimator():
                 solver_opts['compute_red_hessian'] = 'yes'
         if solver == 'k_aug':
             solver_opts['compute_inv'] = ''
-        print(solver_opts)
+        #print(solver_opts)
         optimizer = SolverFactory(solver)
         for key, val in solver_opts.items():
             optimizer.options[key] = val
@@ -1026,14 +1026,14 @@ class MultipleExperimentsEstimator():
 
             ipopt_output, hessian_output = split_sipopt_string1(output_string)
             #print (hessian_output)
-            print("build strings")
+            #print("build strings")
             if tee == True:
                 print(ipopt_output)
 
             n_vars = len(self._idx_to_variable)
 
             hessian = read_reduce_hessian(hessian_output, n_vars)
-            print(hessian.size, "hessian size")
+            #print(hessian.size, "hessian size")
             # hessian = read_reduce_hessian2(hessian_output,n_vars)
             sigma_sq = self.variances
             if self._concentration_given:
@@ -1103,7 +1103,7 @@ class MultipleExperimentsEstimator():
             m.ipopt_zL_in.update(m.ipopt_zL_out)  #: be sure that the multipliers got updated!
             m.ipopt_zU_in.update(m.ipopt_zU_out)
             # m.write(filename="mynl.nl", format=ProblemFormat.nl)
-            print("do we get here?")
+            #print("do we get here?")
             k_aug.solve(m, tee=False)
             print("Done solving building reduce hessian")
 
@@ -1325,7 +1325,7 @@ class MultipleExperimentsEstimator():
                 
                 print("The estimated parameters are:")
                 for k,v in six.iteritems(results_pest[l].P):
-                    print(k, v)
+                    #print(k, v)
                     if k not in all_params:
                         all_params.append(k)
                     else:
@@ -1383,7 +1383,7 @@ class MultipleExperimentsEstimator():
                             pass
                     if k not in list_params_across_blocks:
                         list_params_across_blocks.append(k)
-                
+
                 #print("all_params:" , all_params)
                 #print("global_params:", global_params)
                 self.global_params = global_params
