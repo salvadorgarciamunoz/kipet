@@ -4,15 +4,7 @@
 #  Copyright (c) 2016 Eli Lilly.
 #  _________________________________________________________________________
 
-# Sample Problem 
-# Estimation with unknow variancesof spectral data using pyomo discretization 
-#
-#		\frac{dZ_a}{dt} = -k_1*Z_a	                Z_a(0) = 1
-#		\frac{dZ_b}{dt} = k_1*Z_a - k_2*Z_b		Z_b(0) = 0
-#               \frac{dZ_c}{dt} = k_2*Z_b	                Z_c(0) = 0
-#               C_k(t_i) = Z_k(t_i) + w(t_i)    for all t_i in measurement points
-#               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
-#       Initial concentration 
+# Sample code showing how to estimate parameters from multiple datasets
 
 from __future__ import print_function
 from kipet.library.TemplateBuilder import *
@@ -56,7 +48,6 @@ if __name__ == "__main__":
     D_frame2 = add_noise_to_signal(D_frame2, 0.000000011)
     
     D_frame2 = decrease_wavelengths(D_frame2,A_set = 3)
-    #D_frame3 = add_noise_to_signal(D_frame2, 0.0004)
 
     #################################################################################    
     builder = TemplateBuilder()    
@@ -68,7 +59,7 @@ if __name__ == "__main__":
     
     # If you have multiple experiments, you need to add your experimental datasets to a dictionary:
     datasets = {'Exp1': D_frame1, 'Exp2': D_frame2}
-    #, 'Exp3': D_frame3}
+
     # Additionally, we do not add the spectral data to the TemplateBuilder, rather supplying the 
     # TemplateBuilder before data is added as an argument into the function
     
@@ -81,11 +72,11 @@ if __name__ == "__main__":
         return exprs
     
     builder.set_odes_rule(rule_odes)
-    #opt_model = builder.create_pyomo_model(,10.0)
+
+    # Note here that the times or sizes of wavelengths need not be the same
     start_time = {'Exp1':0.0, 'Exp2':0.0}
-    #, 'Exp3':0.0}
+
     end_time = {'Exp1':10.0, 'Exp2':9.0}
-    #, 'Exp3':10.0}
     
     options = dict()
     options['linear_solver'] = 'ma27'
@@ -123,8 +114,7 @@ if __name__ == "__main__":
     # results for each block. Since we know that all parameters are shared, we only need to print
     # the parameters from one experiment, however for the plots, they could differ between experiments
     print("The estimated parameters are:")
-    #for k,v in six.iteritems(results_pest['Exp1'].P):
-    #    print(k, v)
+
     for k,v in results_pest.items():
         print(results_pest[k].P)
     

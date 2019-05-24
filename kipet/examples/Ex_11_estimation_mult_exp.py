@@ -104,30 +104,24 @@ if __name__ == "__main__":
     # Now we run the variance estimation on the problem. This is done differently to the
     # single experiment estimation as we now have to solve for variances in each dataset
     # separately these are automatically patched into the main model when parameter estimation is run
-    #results_variances = pest.run_variance_estimation(solver = 'ipopt', 
-    #                                                 tee=False,
-    #                                                 nfe=nfe,
-    #                                                 ncp=ncp, 
-    #                                                 solver_opts = options,
-    #                                                 start_time=start_time, 
-    #                                                 end_time=end_time, 
-    #                                                 builder = builder)
+    results_variances = pest.run_variance_estimation(solver = 'ipopt', 
+                                                     tee=False,
+                                                     nfe=nfe,
+                                                     ncp=ncp, 
+                                                     solver_opts = options,
+                                                     start_time=start_time, 
+                                                     end_time=end_time, 
+                                                     builder = builder)
     
     # Finally we run the parameter estimation. This solves each dataset separately first and then
     # links the models and solves it simultaneously
-    sigmas = {'A':1e-10,'B':1e-10,'C':1e-10,'device':1e-6}
-    
-    variances = {'Exp1':sigmas, 'Exp2':sigmas}
-                 #, 'Exp3':sigmas}
     
     results_pest = pest.run_parameter_estimation(builder = builder,
-                                                         #solver = 'k_aug', 
                                                          tee=True,
                                                          nfe=nfe,
                                                          ncp=ncp,
-                                                         sigma_sq = variances,
+                                                         #sigma_sq = variances,
                                                          solver_opts = options,
-                                                         #covariance = True,
                                                          start_time=start_time, 
                                                          end_time=end_time)                                                          
                                                          

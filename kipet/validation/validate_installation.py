@@ -35,7 +35,7 @@ class TestExamples(unittest.TestCase):
 
     def _schedule(self, examples_dir):
         examples_tutorial_dir = os.path.join(examples_dir)
-        examples_tutorial=[f for f in os.listdir(examples_dir) if os.path.isfile(os.path.join(examples_tutorial_dir,f)) and (f=='Ex_2_with_SVD.py' or f=='Ex_2_estimation.py' or f=='Ex_2_estimation_conf.py' or f=='Ex_2_estimation_conf_k_aug.py' or f=='Ex_2_estimationfefactoryTempV.py' or f=='Ex_9_estimability_with_problem_gen.py')]
+        examples_tutorial=[f for f in os.listdir(examples_dir) if os.path.isfile(os.path.join(examples_tutorial_dir,f)) and (f=='Ex_2_with_SVD.py' or f=='Ex_2_estimation.py' or f=='Ex_2_estimation_conf.py' or f=='Ex_2_estimation_conf_k_aug.py' or f=='Ex_2_estimationfefactoryTempV.py' or f=='Ex_9_estimability_with_problem_gen.py' or f=='Ex_11_estimation_mult_exp.py')]
         
         #####################################
         ###Tutorial-Examples:##
@@ -83,6 +83,12 @@ class TestExamples(unittest.TestCase):
                 countpy = countpy + 1
                 flagpy=1
                 flagps=1
+
+            if flagpy!=0 and f=='Ex_11_estimation_mult_exp.py': 
+                print("running estimability:",f,"failed")
+                countpy = countpy + 1
+                flagpy=1
+                flagps=1
                 
             if flagpy==0 and f=='Ex_2_with_SVD.py': 
                 print("running SVD:",f,"passed")
@@ -101,6 +107,9 @@ class TestExamples(unittest.TestCase):
                 
             if flagpy==0 and f=='Ex_9_estimability_with_problem_gen.py': 
                 print("running estimability:",f,"passed")
+
+            if flagpy==0 and f=='Ex_11_estimation_mult_exp.py': 
+                print("running multiple experiments:",f,"passed")
             continue
         print(countpy,"of selected files in",examples_tutorial_dir,"failed")
         return {self.assertEqual(int(flagpy),0),self.assertEqual(int(flagps),0)}
