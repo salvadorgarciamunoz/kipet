@@ -554,7 +554,7 @@ class VarianceEstimator(Optimizer):
             n = self._nabs_components
             for j, l in enumerate(self._meas_lambdas):
                 for k, c in enumerate(self._abs_components):
-                    if self.model.S[l, c].value < 0.0:  #: only less thant zero for non-absorbing
+                    if self.model.S[l, c].value < 0.0 and self._is_D_deriv == False:  #: only less thant zero for non-absorbing
                         self._s_array[j * n + k] = 1e-2
                     else:
                         self._s_array[j * n + k] = self.model.S[l, c].value
@@ -566,7 +566,7 @@ class VarianceEstimator(Optimizer):
             n = self._n_components
             for j, l in enumerate(self._meas_lambdas):
                 for k, c in enumerate(self._mixture_components):
-                    if self.model.S[l, c].value < 0.0:  #: only less thant zero for non-absorbing
+                    if self.model.S[l, c].value < 0.0 and self._is_D_deriv == False:  #: only less thant zero for non-absorbing
                         self._s_array[j * n + k] = 1e-2
                     else:
                         self._s_array[j * n + k] = self.model.S[l, c].value
@@ -599,7 +599,8 @@ class VarianceEstimator(Optimizer):
         if tee:
             # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
             if hasattr(self, '_abs_components'):
-                res = least_squares(F,self._s_array,JF,
+                if self._is_D_deriv == False:
+                    res = least_squares(F,self._s_array,JF,
                                     (0.0,np.inf),method,
                                     ftol,xtol,gtol,
                                     x_scale,loss,f_scale,
@@ -610,9 +611,34 @@ class VarianceEstimator(Optimizer):
                                           self._n_meas_lambdas,
                                           self._n_meas_times,
                                           self._nabs_components))
+                else:
+                    res = least_squares(F,self._s_array,JF,
+                                    (-np.inf,np.inf),method,
+                                    ftol,xtol,gtol,
+                                    x_scale,loss,f_scale,
+                                    max_nfev=max_nfev,
+                                    verbose=verbose,
+                                    args=(self._z_array,
+                                          self._d_array,
+                                          self._n_meas_lambdas,
+                                          self._n_meas_times,
+                                          self._nabs_components))
             else:
-                res = least_squares(F,self._s_array,JF,
+                if self._is_D_deriv == False:
+                    res = least_squares(F,self._s_array,JF,
                                     (0.0,np.inf),method,
+                                    ftol,xtol,gtol,
+                                    x_scale,loss,f_scale,
+                                    max_nfev=max_nfev,
+                                    verbose=verbose,
+                                    args=(self._z_array,
+                                          self._d_array,
+                                          self._n_meas_lambdas,
+                                          self._n_meas_times,
+                                          self._n_components))
+                else:
+                    res = least_squares(F,self._s_array,JF,
+                                    (-np.inf,np.inf),method,
                                     ftol,xtol,gtol,
                                     x_scale,loss,f_scale,
                                     max_nfev=max_nfev,
@@ -626,8 +652,21 @@ class VarianceEstimator(Optimizer):
             if hasattr(self, '_abs_components'):
                 f = StringIO()
                 with stdout_redirector(f):
-                    res = least_squares(F,self._s_array,JF,
+                    if self._is_D_deriv == False: 
+                        res = least_squares(F,self._s_array,JF,
                                         (0.0,np.inf),method,
+                                        ftol,xtol,gtol,
+                                        x_scale,loss,f_scale,
+                                        max_nfev=max_nfev,
+                                        verbose=verbose,
+                                        args=(self._z_array,
+                                              self._d_array,
+                                              self._n_meas_lambdas,
+                                              self._n_meas_times,
+                                              self._nabs_components))
+                    else: 
+                        res = least_squares(F,self._s_array,JF,
+                                        (-np.inf,np.inf),method,
                                         ftol,xtol,gtol,
                                         x_scale,loss,f_scale,
                                         max_nfev=max_nfev,
@@ -643,8 +682,21 @@ class VarianceEstimator(Optimizer):
             else:
                 f = StringIO()
                 with stdout_redirector(f):
-                    res = least_squares(F, self._s_array, JF,
+                    if self._is_D_deriv == False: 
+                        res = least_squares(F, self._s_array, JF,
                                         (0.0, np.inf), method,
+                                        ftol, xtol, gtol,
+                                        x_scale, loss, f_scale,
+                                        max_nfev=max_nfev,
+                                        verbose=verbose,
+                                        args=(self._z_array,
+                                              self._d_array,
+                                              self._n_meas_lambdas,
+                                              self._n_meas_times,
+                                              self._n_components))
+                    else:
+                        res = least_squares(F, self._s_array, JF,
+                                        (-np.inf, np.inf), method,
                                         ftol, xtol, gtol,
                                         x_scale, loss, f_scale,
                                         max_nfev=max_nfev,
