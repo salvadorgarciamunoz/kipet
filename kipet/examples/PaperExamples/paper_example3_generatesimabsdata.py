@@ -83,7 +83,7 @@ def Lorentzian_parameters():
     params_g['gammas'] = [100.0, 30000.0, 100.0, 100.0]
 
 
-    return {'AH': params_d,'B':params_a,'C': params_c, 'BH+': params_b, 'A-': params_f, 'P':params_e, 'AC-': params_g}
+    return {'A': params_d,'B':params_a,'C': params_c, 'D': params_b, 'E': params_f, 'G':params_e, 'F': params_g}
 
 def frange(start, stop, step):
     return takewhile(lambda x: x< stop, count(start, step))
@@ -108,13 +108,13 @@ if __name__ == "__main__":
     
    # components
     components = dict()
-    components['AH'] = 0.395555
+    components['A'] = 0.395555
     components['B'] = 0.0351202
     components['C'] = 0.0
-    components['BH+'] = 0.0
-    components['A-'] = 0.0
-    components['AC-'] = 0.0
-    components['P'] = 0.0
+    components['D'] = 0.0
+    components['E'] = 0.0
+    components['F'] = 0.0
+    components['G'] = 0.0
 
     builder.add_mixture_component(components)
 
@@ -126,7 +126,7 @@ if __name__ == "__main__":
 
 
     params = dict()
-    params['k0'] = 49.7796
+    params['k0'] = 0.2545
     params['k1'] = 8.93156
     params['k2'] = 1.31765
     params['k3'] = 0.310870
@@ -142,21 +142,21 @@ if __name__ == "__main__":
 
     # stoichiometric coefficients
     gammas = dict()
-    gammas['AH'] = [-1, 0, 0, -1, 0]
+    gammas['A'] = [-1, 0, 0, -1, 0]
     gammas['B'] = [-1, 0, 0, 0, 1]
     gammas['C'] = [0, -1, 1, 0, 0]
-    gammas['BH+'] = [1, 0, 0, 0, -1]
-    gammas['A-'] = [1, -1, 1, 1, 0]
-    gammas['AC-'] = [0, 1, -1, -1, -1]
-    gammas['P'] = [0, 0, 0, 1, 1]
+    gammas['D'] = [1, 0, 0, 0, -1]
+    gammas['E'] = [1, -1, 1, 1, 0]
+    gammas['F'] = [0, 1, -1, -1, -1]
+    gammas['G'] = [0, 0, 0, 1, 1]
 
     def rule_algebraics(m, t):
         r = list()
-        r.append(m.Y[t, '0'] - m.P['k0'] * m.Z[t, 'AH'] * m.Z[t, 'B'])
-        r.append(m.Y[t, '1'] - m.P['k1'] * m.Z[t, 'A-'] * m.Z[t, 'C'])
-        r.append(m.Y[t, '2'] - m.P['k2'] * m.Z[t, 'AC-'])
-        r.append(m.Y[t, '3'] - m.P['k3'] * m.Z[t, 'AC-'] * m.Z[t, 'AH'])
-        r.append(m.Y[t, '4'] - m.P['k4'] * m.Z[t, 'AC-'] * m.Z[t, 'BH+'])
+        r.append(m.Y[t, '0'] - m.P['k0'] * m.Z[t, 'A'] * m.Z[t, 'B'])
+        r.append(m.Y[t, '1'] - m.P['k1'] * m.Z[t, 'E'] * m.Z[t, 'C'])
+        r.append(m.Y[t, '2'] - m.P['k2'] * m.Z[t, 'F'])
+        r.append(m.Y[t, '3'] - m.P['k3'] * m.Z[t, 'F'] * m.Z[t, 'A'])
+        r.append(m.Y[t, '4'] - m.P['k4'] * m.Z[t, 'F'] * m.Z[t, 'D'])
         
         return r
     #: there is no ae for Y[t,5] because step equn under rule_odes functions as the switch for the "C" equation
@@ -185,10 +185,10 @@ if __name__ == "__main__":
     feed_times=[101.035, 303.126]#, 400.
     builder.add_feed_times(feed_times)
 
-    model = builder.create_pyomo_model(0, 600)
+    model = builder.create_pyomo_model(0, 600.)
     
     builder.add_absorption_data(S_frame)
-    write_absorption_data_to_txt('Sij_FEcaseexample5.txt', S_frame)
+    write_absorption_data_to_txt('Sij_FEcaseexample5-2.txt', S_frame)
 
     model = builder.create_pyomo_model(0., 600.) 
 
@@ -223,10 +223,10 @@ if __name__ == "__main__":
     #to this function as an argument dictionary
     
     #New Inputs for discrete feeds
-    Z_step = {'AH': .03} #Which component and which amount is added
+    Z_step = {'A': .03} #Which component and which amount is added
     X_step = {'V': .01}
     jump_states = {'Z': Z_step, 'X': X_step}
-    jump_points1 = {'AH': 101.035}#Which component is added at which point in time
+    jump_points1 = {'A': 101.035}#Which component is added at which point in time
     jump_points2 = {'V': 303.126}
     jump_times = {'Z': jump_points1, 'X': jump_points2}
 
@@ -242,13 +242,13 @@ if __name__ == "__main__":
     #results_sim = sim.run_sim('ipopt',
                           #tee=True,
                           #solver_opts=options)
-    sigmas={'AH': 1e-10,
+    sigmas={'A': 1e-10,
             'B':1e-10,
     'C': 1e-10,
-    'BH+': 1e-10,
-    'A-':1e-10,
-    'AC-':1e-10,
-    'P':1e-10,
+    'D': 1e-10,
+    'E':1e-10,
+    'F':1e-10,
+    'G':1e-10,
     'device':1e-10}
 
     results_sim = sim.run_sim('ipopt',variances=sigmas,seed=123453256,
@@ -265,12 +265,12 @@ if __name__ == "__main__":
     dZ_Dataframe = pd.DataFrame(data=results_sim.dZdt)
 
     write_absorption_data_to_csv(
-        os.path.join(dataDirectory, 'FeCaseexamplewithoutTemp_S_data_input_noiselesspoints.csv'), S_Dataframe)
-    write_spectral_data_to_csv(os.path.join(dataDirectory, 'FeCaseexamplewithoutTemp_D_data_input_noiselesspoints.csv'), D_Dataframe)
-    write_concentration_data_to_csv(os.path.join(dataDirectory, 'FeCaseexamplewithoutTemp_C_data_input_noiselesspoints.csv'), C_Dataframe)
-    write_concentration_data_to_csv(os.path.join(dataDirectory, 'FeCaseexamplewithoutTemp_Z_data_input_noiselesspoints.csv'), Z_Dataframe)
+        os.path.join(dataDirectory, 'FeCaseexamplewithoutTemp_S_data_input_noiselesspoints2.csv'), S_Dataframe)
+    write_spectral_data_to_csv(os.path.join(dataDirectory, 'FeCaseexamplewithoutTemp_D_data_input_noiselesspoints2.csv'), D_Dataframe)
+    write_concentration_data_to_csv(os.path.join(dataDirectory, 'FeCaseexamplewithoutTemp_C_data_input_noiselesspoints2.csv'), C_Dataframe)
+    write_concentration_data_to_csv(os.path.join(dataDirectory, 'FeCaseexamplewithoutTemp_Z_data_input_noiselesspoints2.csv'), Z_Dataframe)
     write_concentration_data_to_csv(
-        os.path.join(dataDirectory, 'FeCaseexamplewithoutTemp_dZ_data_input_noiselesspoints.csv'), dZ_Dataframe)
+        os.path.join(dataDirectory, 'FeCaseexamplewithoutTemp_dZ_data_input_noiselesspoints2.csv'), dZ_Dataframe)
 
     if with_plots:
 
