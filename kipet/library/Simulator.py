@@ -17,7 +17,7 @@ def interpolate_linearly(x,x_tuple,y_tuple):
     m = (y_tuple[1]-y_tuple[0])/(x_tuple[1]-x_tuple[0])
     return y_tuple[0]+m*(x-x_tuple[0])
 
-def interpolate_from_trayectory(t,trajectory):
+def interpolate_from_trajectory(t,trajectory):
     times_traj = np.array(trajectory.index)
     last_time_idx = len(times_traj)-1
     idx_near = find_nearest(times_traj,t)

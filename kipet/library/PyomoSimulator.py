@@ -73,7 +73,7 @@ class PyomoSimulator(Simulator):
         sim_times = sorted(self._times)
         var = getattr(self.model, variable_name)
         for i, t in enumerate(sim_times):
-            value = interpolate_from_trayectory(t, single_traj)
+            value = interpolate_from_trajectory(t, single_traj)
             var[t, variable_index].fix(value)
 
     def unfix_time_dependent_variable(self, variable_name, variable_index):
@@ -273,7 +273,7 @@ class PyomoSimulator(Simulator):
         for component in to_initialize:
             single_trajectory = trajectories[component]
             for t in inner_set:
-                val = interpolate_from_trayectory(t, single_trajectory)
+                val = interpolate_from_trajectory(t, single_trajectory)
                 if not np.isnan(val):
                     var[t, component].value = val
 
