@@ -20,7 +20,7 @@ from pyomo.opt import ProblemFormat
 
 __author__ = 'Michael Short'  #: February 2019
 
-class MultipleExperimentsEstimator():
+class MultipleExperimentsEstimator(object):
     """This class is for Estimation of Variances and parameters when we have multiple experimental datasets.
     This class relies heavily on the Pyomo block class as we put each experimental class into its own block.
     This blocks are first run individually in order to find good initializations and then they are linked and
