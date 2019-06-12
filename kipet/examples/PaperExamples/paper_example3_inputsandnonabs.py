@@ -63,6 +63,7 @@ if __name__ == "__main__":
     builder.add_algebraic_variable(algebraics)
 
     params = dict()
+
     params['k0'] = 0.2545
     params['k1'] = 8.93156
     params['k2'] = 1.31765
@@ -128,6 +129,7 @@ if __name__ == "__main__":
     
     #Load data:
     dataDirectory = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe()))), 'data_sets'))
+
     filenameD =  os.path.join(dataDirectory,'FeCaseexamplewithoutTemp_D_data_input_noiselesspoints2.csv')
     D_frame = read_spectral_data_from_csv(filenameD)
     builder.add_spectral_data(D_frame)
@@ -190,6 +192,7 @@ if __name__ == "__main__":
     # =========================================================================
     # USER INPUT SECTION - Parameter Estimation
     # # ========================================================================
+
     sigmas={'A': 1e-10,
             'B':1e-10,
     'C': 1e-10,
@@ -201,6 +204,7 @@ if __name__ == "__main__":
     model = builder.create_pyomo_model(0., 600.)#0.51667
 
     model.del_component(params)
+
     builder.add_parameter('k0', init=0.9*0.2545,bounds=(0.0, 100.0))
     builder.add_parameter('k1', init=0.9*8.93156, bounds=(0.0,100.))
     builder.add_parameter('k2', init=0.9*1.31765,bounds=(0.0,100.))
