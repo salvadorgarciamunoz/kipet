@@ -1263,7 +1263,7 @@ class MultipleExperimentsEstimator(object):
 
         list_components = {}
         for k in self.experiments:            
-            list_components[k] = [k for k in builder[k]._component_names]
+            list_components[k] = [j for j in builder[k]._component_names]
         self._sublist_components = list_components
         
         if bool(sigma_sq) == False:
