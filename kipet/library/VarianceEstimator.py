@@ -16,6 +16,7 @@ import copy
 import sys
 import os
 import re
+import math
 from pyomo.core.expr import current as EXPR
 from pyomo.core.expr.numvalue import NumericConstant
 try:
@@ -47,13 +48,19 @@ class VarianceEstimator(Optimizer):
 
     def run_opt(self, solver, **kwds):
 
-        """Solves estimation following Weifengs procedure.
-           This method solved a sequence of optimization problems
-           to determine variances and initial guesses for parameter estimation.
+        """Solves estimation following either the original Chen etal (2016) procedure or via the 
+        maximum likelihood estimation with unknown covariance matrix. Chen's method solves a sequence 
+        of optimization problems to determine variances and initial guesses for parameter estimation.
+        The maximum likelihood estimation with unknown covariance matrix also solves a sequence of optimization
+        problems is a more robust and reliable method, albeit somputationally costly.
 
         Args:
 
             solver_opts (dict, optional): options passed to the nonlinear solver
+            
+            method (str, optional): default is "Chen", other options are "max_likelihood" and "iterative_method"
+            
+            initial_sigmas (dict, optional): Required for "iterative_method"
 
             tee (bool,optional): flag to tell the optimizer whether to stream output
             to the terminal or not
@@ -85,8 +92,10 @@ class VarianceEstimator(Optimizer):
         """
 
         solver_opts = kwds.pop('solver_opts', dict())
-        variances = kwds.pop('variances', dict())
+        sigma_sq = kwds.pop('variances', dict())
+        init_sigmas = kwds.pop('initial_sigmas', dict())
         tee = kwds.pop('tee', False)
+        method = kwds.pop('method', str())
         norm_order = kwds.pop('norm',np.inf)
         max_iter = kwds.pop('max_iter', 400)
         tol = kwds.pop('tolerance', 5.0e-5)
@@ -111,8 +120,18 @@ class VarianceEstimator(Optimizer):
 
         species_list = kwds.pop('subset_components', None)
         
+        # Modified variance estimation procedures arguments
         fixed_device_var = kwds.pop('fixed_device_variance', None)
-
+        device_range = kwds.pop('device_range', None)
+        num_points = kwds.pop('num_points', None)
+        
+        if method not in ['Chen', "max_likelihood", "iterative_method", "direct_sigmas"]:
+            method = 'Chen'
+            print("Method not set, so assumed that the Chen method is chosen")
+            
+        if method not in ['Chen', "max_likelihood", "iterative_method", "direct_sigmas"]:
+            raise RuntimeError("method must be either \"Chen\", \"max_likelihood\", \"direct_sigmas\" or \"iterative_method\"")
+        
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
 
@@ -208,135 +227,395 @@ class VarianceEstimator(Optimizer):
 
         if report_time:
             start = time.time()
-            
-        # solves formulation 18
-        if init_C is None:
-            self._solve_initalization(solver, subset_lambdas=A, solver_opts = solver_opts, tee=tee)
-        else:
-            for t in self._meas_times:
-                for k in self._mixture_components:
-                    self.model.C[t, k].value = init_C[k][t]
-                    self.model.Z[t, k].value = init_C[k][t]
-
-            s_array = self._solve_S_from_DC(init_C)
-            S_frame = pd.DataFrame(data=s_array,
-                                   columns=self._mixture_components,
-                                   index=self._meas_lambdas)
-            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-            if hasattr(self, '_abs_components'):
-                for l in self._meas_lambdas:
-                    for k in self._abs_components:
-                        self.model.S[l, k].value = S_frame[k][l]  # 1e-2
-                        #: Some of these are gonna be non-zero
-                        # if hasattr(self.model, 'non_absorbing'):
-                        #     if k in self.model.non_absorbing:
-                        #         self.model.S[l, k].value = 0.0
-
-                        if hasattr(self.model, 'known_absorbance'):
-                            if k in self.model.known_absorbance:
-                                self.model.S[l, k].value = self.model.known_absorbance_data[k][l]
+        if method == 'Chen':    
+            # solves formulation 18
+            if init_C is None:
+                self._solve_initalization(solver, subset_lambdas=A, solver_opts = solver_opts, tee=tee)
             else:
-                for l in self._meas_lambdas:
+                for t in self._meas_times:
                     for k in self._mixture_components:
-                        self.model.S[l, k].value = S_frame[k][l]  # 1e-2
-                        #: Some of these are gonna be non-zero
-                        # if hasattr(self.model, 'non_absorbing'):
-                        #     if k in self.model.non_absorbing:
-                        #         self.model.S[l, k].value = 0.0
-
-                        if hasattr(self.model, 'known_absorbance'):
-                            if k in self.model.known_absorbance:
-                                self.model.S[l, k].value = self.model.known_absorbance_data[k]
-
-        #start looping
-        #print("{: >11} {: >20} {: >16} {: >16}".format('Iter','|Zi-Zi+1|','|Ci-Ci+1|','|Si-Si+1|'))
-        print("{: >11} {: >20}".format('Iter', '|Zi-Zi+1|'))
-        logiterfile = "iterations.log"
-        if os.path.isfile(logiterfile):
-            os.remove(logiterfile)
-
-        # backup
-        if lsq_ipopt:
-            self._build_s_model()
-            self._build_c_model()
-        else:
-            if species_list is None:
-                self._build_scipy_lsq_arrays()
-            else:
-                lsq_ipopt = True
+                        self.model.C[t, k].value = init_C[k][t]
+                        self.model.Z[t, k].value = init_C[k][t]
+    
+                s_array = self._solve_S_from_DC(init_C)
+                S_frame = pd.DataFrame(data=s_array,
+                                       columns=self._mixture_components,
+                                       index=self._meas_lambdas)
+                # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+                if hasattr(self, '_abs_components'):
+                    for l in self._meas_lambdas:
+                        for k in self._abs_components:
+                            self.model.S[l, k].value = S_frame[k][l]  # 1e-2
+                            #: Some of these are gonna be non-zero
+                            # if hasattr(self.model, 'non_absorbing'):
+                            #     if k in self.model.non_absorbing:
+                            #         self.model.S[l, k].value = 0.0
+    
+                            if hasattr(self.model, 'known_absorbance'):
+                                if k in self.model.known_absorbance:
+                                    self.model.S[l, k].value = self.model.known_absorbance_data[k][l]
+                else:
+                    for l in self._meas_lambdas:
+                        for k in self._mixture_components:
+                            self.model.S[l, k].value = S_frame[k][l]  # 1e-2
+                            #: Some of these are gonna be non-zero
+                            # if hasattr(self.model, 'non_absorbing'):
+                            #     if k in self.model.non_absorbing:
+                            #         self.model.S[l, k].value = 0.0
+    
+                            if hasattr(self.model, 'known_absorbance'):
+                                if k in self.model.known_absorbance:
+                                    self.model.S[l, k].value = self.model.known_absorbance_data[k]
+    
+            #start looping
+            #print("{: >11} {: >20} {: >16} {: >16}".format('Iter','|Zi-Zi+1|','|Ci-Ci+1|','|Si-Si+1|'))
+            print("{: >11} {: >20}".format('Iter', '|Zi-Zi+1|'))
+            logiterfile = "iterations.log"
+            if os.path.isfile(logiterfile):
+                os.remove(logiterfile)
+    
+            # backup
+            if lsq_ipopt:
                 self._build_s_model()
                 self._build_c_model()
+            else:
+                if species_list is None:
+                    self._build_scipy_lsq_arrays()
+                else:
+                    lsq_ipopt = True
+                    self._build_s_model()
+                    self._build_c_model()
+                
+            for it in range(max_iter):
+                
+                rb = ResultsObject()
+                # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+                if hasattr(self, '_abs_components'):
+                    rb.load_from_pyomo_model(self.model, to_load=['Z', 'C', 'Cs', 'S', 'Y'])
+                else:
+                    rb.load_from_pyomo_model(self.model, to_load=['Z', 'C', 'S', 'Y'])
+                
+                self._solve_Z(solver)
+    
+                if lsq_ipopt:
+                    self._solve_S(solver)
+                    self._solve_C(solver)
+                else:
+                    solved_s = self._solve_s_scipy()
+                    solved_c = self._solve_c_scipy()
+                    
+                #pdb.set_trace()
+                
+                ra=ResultsObject()    
+                # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+                if hasattr(self, '_abs_components'):
+                    ra.load_from_pyomo_model(self.model, to_load=['Z','C','Cs','S'])
+                else:
+                    ra.load_from_pyomo_model(self.model, to_load=['Z', 'C', 'S'])
+                
+                r_diff = compute_diff_results(rb,ra)
+    
+                
+                Z_norm = r_diff.compute_var_norm('Z',norm_order)
+                #C_norm = r_diff.compute_var_norm('C',norm_order)
+                #S_norm = r_diff.compute_var_norm('S',norm_order)
+                if it>0:
+                    #print("{: >11} {: >20} {: >16} {: >16}".format(it,Z_norm,C_norm,S_norm))
+                    print("{: >11} {: >20}".format(it, Z_norm))
+                self._log_iterations(logiterfile, it)
+                if Z_norm<tol and it >= 1:
+                    break
+                    
+            results = ResultsObject()
             
-        for it in range(max_iter):
-            
-            rb = ResultsObject()
+            # retriving solutions to results object  
             # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
             if hasattr(self, '_abs_components'):
-                rb.load_from_pyomo_model(self.model, to_load=['Z', 'C', 'Cs', 'S', 'Y'])
+                results.load_from_pyomo_model(self.model,
+                                          to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y'])
             else:
-                rb.load_from_pyomo_model(self.model, to_load=['Z', 'C', 'S', 'Y'])
+                results.load_from_pyomo_model(self.model,
+                                              to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
+    
+            print('Iterative optimization converged. Estimating variances now')
+            # compute variances
+            solved_variances = self._solve_variances(results, fixed_dev_var = fixed_device_var)
             
-            self._solve_Z(solver)
+            self.compute_D_given_SC(results)
+            
+            param_vals = dict()
+            for name in self.model.parameter_names:
+                param_vals[name] = self.model.P[name].value
+    
+            results.P = param_vals
+    
+            # removes temporary files. This needs to be changes to work with pyutilib
+            if os.path.exists(self._tmp2):
+                os.remove(self._tmp2)
+            if os.path.exists(self._tmp3):
+                os.remove(self._tmp3)
+            if os.path.exists(self._tmp4):
+                os.remove(self._tmp4)
+        elif method == 'max_likelihood':
+            # First we initialize the problem by solving with our fixed variances
+            #self._solve_iterative_init(solver, variances = init_sigmas, solver_options = solver_opts, tee = tee)
+            # Solving the maximum likelihood variance estimation
+            sigma_sq['device'] = self._solve_max_likelihood_init(solver, subset_lambdas= A, solver_opts = solver_opts, tee=tee)
+            
+            self._solve_max_likelihood(solver, subset_lambdas= A, solver_opts = solver_opts, tee=tee)
+        elif method == 'direct_sigmas':            
+            print("Solving for sigmas assuming known device variances")
+            direct_or_it = "it"
+            if device_range:
+                if not isinstance(device_range, tuple):
+                    print("device_range is of type {}".format(type(device_range)))
+                    print("It should be a tuple")
+                    raise Exception
+                else:
+                    print("Device range means that we will solve iteratively for different delta values in that range")
+            if device_range and not num_points:
+                print("Need to specify the number of points that we wish to evaluate in the device range")
+            if not num_points:
+                pass
+            elif not isinstance(num_points, int):  
+                print("num_points needs to be an integer!")
+                raise Exception
+            if not device_range:
+                device_range = list() 
+            if not device_range and not num_points:
+                direct_or_it = "direct"
+                print("assessing for the value of delta provided")
+                if not fixed_device_var:
+                    print("If iterative method not selected then need to provide fixed device variance (delta**2)")
+                    raise Exception
+                else:
+                    if not isinstance(fixed_device_var, float):
+                        raise Exception("fixed device variance needs to be of type float")
+            print("attempt to solve directly for delta assuming no sigmas")
+            sigma_sq['device'] = self._solve_max_likelihood_init(solver, subset_lambdas= A, solver_opts = solver_opts, tee=tee)
+            print(sigma_sq['device'])
+            delta = sigma_sq['device']
+            
+            
+            
+            if direct_or_it in ["it"]:
+                print("Now that we know the maximum delta value, we can solve from there within a range")
+                device_range.append(delta*0.00001)
+                device_range.append(delta)
 
-            if lsq_ipopt:
-                self._solve_S(solver)
-                self._solve_C(solver)
-            else:
-                solved_s = self._solve_s_scipy()
-                solved_c = self._solve_c_scipy()
+                dist = abs((device_range[1] - device_range[0])/num_points)
                 
-            #pdb.set_trace()
-            
-            ra=ResultsObject()    
-            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-            if hasattr(self, '_abs_components'):
-                ra.load_from_pyomo_model(self.model, to_load=['Z','C','Cs','S'])
-            else:
-                ra.load_from_pyomo_model(self.model, to_load=['Z', 'C', 'S'])
-            
-            r_diff = compute_diff_results(rb,ra)
-
-            
-            Z_norm = r_diff.compute_var_norm('Z',norm_order)
-            #C_norm = r_diff.compute_var_norm('C',norm_order)
-            #S_norm = r_diff.compute_var_norm('S',norm_order)
-            if it>0:
-                #print("{: >11} {: >20} {: >16} {: >16}".format(it,Z_norm,C_norm,S_norm))
-                print("{: >11} {: >20}".format(it, Z_norm))
-            self._log_iterations(logiterfile, it)
-            if Z_norm<tol and it >= 1:
-                break
+                max_likelihood_vals = []
+                delta_vals = []
+                iteration_counter = []
+                delta = device_range[0]
+                residual_vals = []
+                #max_likelihood_val, sigma_vals, stop_it= self._solve_sigma_given_delta(solver, subset_lambdas= A, solver_opts = solver_opts, tee=tee,delta = delta)
+                count = 0
+                while delta < device_range[1]:
+                    print("0000000000000000000000000000000000000000000000000000000")
+                    print("000000000      ITERATION", count, "     0000000000000000")
+                    print("solving for this value of delta:", delta)
+                    print("0000000000000000000000000000000000000000000000000000000")
+                    max_likelihood_val, sigma_vals, stop_it= self._solve_sigma_given_delta(solver, subset_lambdas= A, solver_opts = solver_opts, tee=tee,delta = delta)
+                    if max_likelihood_val >= 5000:
+                        max_likelihood_vals.append(5000)
+                        delta_vals.append(log(delta))
+                        iteration_counter.append(count)
+                    else:
+                        max_likelihood_vals.append(max_likelihood_val)
+                        delta_vals.append(log(delta))
+                        iteration_counter.append(count)
+                        
+                    if max_likelihood_val != 0:
+                        sigma_vals['device'] = delta
+                        residuals = self._solve_param_est(solver, solver_opts = solver_opts, tee=tee, variances = sigma_vals)
+                        residual_vals.append(residuals)  
+                    else:
+                        residual_vals.append(0) 
+                    print("objective function,iteration, delta",max_likelihood_val, count, delta )
+                    delta = delta + dist
+                    count += 1
+                    
+                #delta = self._solve_max_likelihood_init(solver, variances = sigmas, subset_lambdas= A, solver_opts = solver_opts, tee=tee)
                 
-        results = ResultsObject()
+                plt.plot(iteration_counter, max_likelihood_vals)
+                plt.plot(iteration_counter, residuals)
+                plt.show() 
+                #sys.exit()
+                #delta = 1e-11
+                #sigmas = self._solve_phi_given_delta(solver, solver_opts = solver_opts, tee = tee, delta = delta)
+                results = ResultsObject()
+            
+                # retriving solutions to results object  
+                # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+                if hasattr(self, '_abs_components'):
+                    results.load_from_pyomo_model(self.model,
+                                              to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y'])
+                else:
+                    results.load_from_pyomo_model(self.model,
+                                                  to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
+                
+                param_vals = dict()
+                for name in self.model.parameter_names:
+                    param_vals[name] = self.model.P[name].value
         
-        # retriving solutions to results object  
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-        if hasattr(self, '_abs_components'):
-            results.load_from_pyomo_model(self.model,
-                                      to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y'])
+                results.P = param_vals
+                results.sigma_sq = sigma_vals
+                results.sigma_sq['device'] = delta
+            else:
+                max_likelihood_val, sigma_vals, stop_it= self._solve_sigma_given_delta(solver, subset_lambdas= A, solver_opts = solver_opts, tee=tee,delta = fixed_device_var)
+                # retriving solutions to results object  
+                # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+                results = ResultsObject()
+                if hasattr(self, '_abs_components'):
+                    results.load_from_pyomo_model(self.model,
+                                              to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y'])
+                else:
+                    results.load_from_pyomo_model(self.model,
+                                                  to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
+                
+                param_vals = dict()
+                for name in self.model.parameter_names:
+                    param_vals[name] = self.model.P[name].value
+        
+                results.P = param_vals
+                results.sigma_sq = sigma_vals
+                results.sigma_sq['device'] = delta
         else:
-            results.load_from_pyomo_model(self.model,
-                                          to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
+            print("Solving for variances using the iterative method")
+            all_sigma_specified = True
+            
+            keys = init_sigmas.keys()
+            for k in list_components:
+                if k not in keys:
+                    all_sigma_specified = False
+                    init_sigmas[k] = max(init_sigmas.values())
+    
+            if not 'device' in init_sigmas.keys():
+                all_sigma_specified = False
+                init_sigmas['device'] = 1.0
+            
+            # First we initialize the problem by solving with our fixed variances
+            #self._solve_iterative_init(solver, variances = init_sigmas, solver_options = solver_opts, tee = tee)
+            
+            # Then we get delta with fixed variances
+            #delta = self._solve_delta_given_sigma(solver, solver_opts = solver_opts, tee = tee, variances = init_sigmas)
+            delta = init_sigmas['device']
+            print(init_sigmas)
+            new_sigmas = init_sigmas
+            
+            for k in list_components:
+                new_sigmas[k] = new_sigmas[k]*100
+                
+            #This part gets a rough scale
+            residuals = dict()
+            sigmas_it = dict()
+            
+            for i in range(10):
+                print(i)
+                print(new_sigmas)
+                sigmas_it[i] = dict()
+                for k in list_components:
+                    sigmas_it[i][k] = new_sigmas[k]
+                sigmas_it[i]['device'] = delta
+                print(sigmas_it)
+                print(sigmas_it[i])
+                residuals[i] = self._solve_Psi_given_var(solver, solver_opts = solver_opts, tee = tee, variances = new_sigmas)
+                if i != 0:
+                    if residuals[i] >= residuals[i-1]*2:
+                        print("we have found the right scale of sigmas")
+                        break
+                for k in list_components:
+                    new_sigmas[k] = new_sigmas[k]/4
+            print(residuals)
+            print(sigmas_it)
+            residuals_2 = dict()
+            sigma_val_it = dict()
+            count=0
+            print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
+            # and then here we solve the parametric problem
+            for k in list_components:
+                print(k)
+                orig_val = sigmas_it[i-1][k]
+                sigmas_it[i-1][k] = sigmas_it[i-1][k]/20
+                
+                for j in range(22):
+                    print(sigmas_it[i-1])                    
+                    residuals_2[k,count] = self._solve_Psi_given_var(solver, solver_opts = solver_opts, tee = tee, variances = sigmas_it[i-1])
+                    print(residuals_2)
+                    print(j,count)
+                    if count != 0:
+                        if residuals_2[k,count] > residuals_2[k,count-1]:
+                            print("we have found the right scale of sigmas,", k)
+                            break
+                    if j==29:
+                        break
+                    else:
+                        sigma_val_it[k, count] = sigmas_it[i-1][k]
+                        sigmas_it[i-1][k] = sigmas_it[i-1][k]*1.4
+                    count+=1
+                    print(count,j, (count+j))
+                print("end of the search for sigma_sq", k)
+                sigmas_it[i-1][k] = orig_val
+                print(residuals_2)
+                count = 0
+            print(sigmas_it[i-1])
+            print(residuals_2)
+            print(sigma_val_it)
+            plot_dicta = dict()
+            plot_dictb = dict()
+            plot_dictc = dict()
+            for a,b in residuals_2.items():
+                print(a,b)
+                print(a[0],a[1])
+                print(sigma_val_it[a[0],a[1]])
+                if a[0] == 'A':
+                    plot_dicta[b] = sigma_val_it['A',a[1]]
+                elif a[0] == 'B':
+                    plot_dictb[b] = sigma_val_it['B',a[1]]   
+                elif a[0] == 'C':
+                    plot_dictc[b] = sigma_val_it['C',a[1]] 
+            
+            lists = sorted(plot_dicta.items()) # sorted by key, return a list of tuples
 
-        print('Iterative optimization converged. Estimating variances now')
-        # compute variances
-        solved_variances = self._solve_variances(results, fixed_dev_var = fixed_device_var)
-        
-        self.compute_D_given_SC(results)
-        
-        param_vals = dict()
-        for name in self.model.parameter_names:
-            param_vals[name] = self.model.P[name].value
+            x, y = zip(*lists) # unpack a list of pairs into two tuples
 
-        results.P = param_vals
+            plt.plot(y,x)
+            plt.show() 
+            lists = sorted(plot_dictb.items()) # sorted by key, return a list of tuples
 
-        # removes temporary files. This needs to be changes to work with pyutilib
-        if os.path.exists(self._tmp2):
-            os.remove(self._tmp2)
-        if os.path.exists(self._tmp3):
-            os.remove(self._tmp3)
-        if os.path.exists(self._tmp4):
-            os.remove(self._tmp4)
+            x, y = zip(*lists) # unpack a list of pairs into two tuples
+
+            plt.plot(y,x)
+            plt.show()
+            lists = sorted(plot_dictc.items()) # sorted by key, return a list of tuples
+
+            x, y = zip(*lists) # unpack a list of pairs into two tuples
+
+            plt.plot(y,x)
+            plt.show()
+            #This part then looks to find a better idea of which species should be 
+            
+            #sigmas = self._solve_phi_given_delta(solver, solver_opts = solver_opts, tee = tee, delta = delta)
+            #sigmas = self._solve_sigma_given_delta(solver, solver_opts = solver_opts, tee = tee, sigmas = init_sigmas)
+            #sys.exit()
+            results = ResultsObject()
+            
+            # retriving solutions to results object  
+            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+            if hasattr(self, '_abs_components'):
+                results.load_from_pyomo_model(self.model,
+                                          to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y'])
+            else:
+                results.load_from_pyomo_model(self.model,
+                                              to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
+            
+            param_vals = dict()
+            for name in self.model.parameter_names:
+                param_vals[name] = self.model.P[name].value
+    
+            results.P = param_vals
             
         if report_time:
             end = time.time()
@@ -433,7 +712,1303 @@ class VarianceEstimator(Optimizer):
                     self.model.C[t, k].value = self.model.Z[t, k].value
                 
         self.model.del_component('init_objective')
+
+    
+    def _solve_max_likelihood_init(self, solver, **kwds):
+        """Solves the maximum likelihood initialization with (C-Z) = 0 and delta as a variable
+
+           This method is not intended to be used by users directly
+
+        Args:
+            sigma_sq (dict): variances 
         
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
+            Default False
+        
+            subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
+            (Weifeng paper). Default all wavelengths.
+
+        Returns:
+
+            None
+
+        """   
+        solver_opts = kwds.pop('solver_opts', dict())
+        tee = kwds.pop('tee', True)
+        set_A = kwds.pop('subset_lambdas', list())
+        profile_time = kwds.pop('profile_time', False)
+        sigmas_sq = kwds.pop('variances', dict())
+
+        if not set_A:
+            set_A = self._meas_lambdas
+        
+        keys = sigmas_sq.keys()
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        if hasattr(self, '_abs_components'):
+            for k in self._abs_components:
+                if k not in keys:
+                    sigmas_sq[k] = 0.0
+        else:
+            for k in self._sublist_components:
+                if k not in keys:
+                    sigmas_sq[k] = 0.0
+
+        print("Solving Initialization Problem\n")
+        
+        # Need to check whether we have negative values in the D-matrix so that we do not have
+        #non-negativity on S
+
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                if self.model.D[t, l] >= 0:
+                    pass
+                else:
+                    self._is_D_deriv = True
+        if self._is_D_deriv == True:
+            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
+        '''   
+        def D_SZTranspose(m, t, l, set_A, countt, countl):
+            #print(m,t,l)
+            countt1 = 0
+            countl1 = 0
+            DSZ = dict()
+            for i in m._meas_times:
+                #print(i)
+                for j in set_A:
+                    #print(j)
+                    #Make sure this is ok for abs and non-abs
+                    D_bar = sum(m.model.Z[i, k] * m.model.S[j, k] for k in m._sublist_components)
+                    DSZ[j,i] = m.model.D[i, j] - D_bar
+                    countl1 += 1
+                countl1 = 0
+                countt1 += 1
+            #print(countl1,countt1,countt,countl,j,i,t,l)
+            DSZTel = DSZ[l, t]
+            return DSZTel
+        '''
+        self.DSZ = dict()
+        
+        def D_SZTranspose(m, t, l, set_A, countt, countl, absorb):
+            #print(m,t,l)
+            countt1 = 0
+            countl1 = 0
+            if absorb:
+                D_bar = sum(m.model.Z[t, k] * m.model.S[l, k] for k in m._sublist_components)
+            else:
+                D_bar = sum(m.model.Z[t, k] * m.model.S[l, k] for k in m._sublist_components)
+            self.DSZ[l,t] = m.model.D[t, l] - D_bar
+            countl1 += 1
+            countl1 = 0
+            countt1 += 1
+            #print(countl1,countt1,countt,countl,j,i,t,l)
+            DSZTel = self.DSZ[l, t]
+            return DSZTel
+        # build objective
+        
+        
+        obj = 0.0
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        countt = 0
+        countl = 0
+        ntp = len(self._meas_times)
+        if hasattr(self, '_abs_components'):
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self._abs_components)
+                    DSZTransp = D_SZTranspose(self, t, l,set_A, countt,countl, absorb = True)
+                    obj += (self.model.D[t, l] - D_bar)**2
+                    countl += 1
+                countt += 1
+        else:
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self._sublist_components)
+                    DSZTransp = D_SZTranspose(self, t, l, set_A, countt,countl, absorb = False)
+                    obj += (self.model.D[t, l] - D_bar)**2
+                    countl += 1
+                countt += 1                    
+        newobj = ntp/2*log(obj/ntp)            
+        self.model.init_objective = Objective(expr=newobj)
+        
+        opt = SolverFactory(solver)
+
+        for key, val in solver_opts.items():
+            opt.options[key]=val
+        solver_results = opt.solve(self.model,
+                                   tee=tee,
+                                   report_timing=profile_time)
+        
+        delta = (value(self.model.init_objective))
+        for k,v in six.iteritems(self.model.P):
+            print(k, v)
+            print(v.value)
+        
+        etaTeta = 0
+        if hasattr(self, '_abs_components'):
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(value(self.model.Z[t, k]) * value(self.model.S[l, k]) for k in self._abs_components)
+                    #DSZTransp = D_SZTranspose(self, t, l,set_A, countt,countl, absorb = True)
+                    etaTeta += (value(self.model.D[t, l])- D_bar)**2
+                    countl += 1
+                countt += 1
+        else:
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(value(self.model.Z[t, k]) * value(self.model.S[l, k]) for k in self._sublist_components)
+                    #DSZTransp = D_SZTranspose(self, t, l, set_A, countt,countl, absorb = False)
+                    etaTeta += (value(self.model.D[t, l]) - D_bar)**2
+                    countl += 1
+                countt += 1  
+        deltasq = etaTeta/ntp
+        print("the real deltasq?", deltasq)
+        for t in self._meas_times:
+            for k in self._mixture_components:
+                if k in sigmas_sq and sigmas_sq[k] > 0.0:
+                    self.model.C[t, k].value = np.random.normal(self.model.Z[t, k].value, sigmas_sq[k])
+                else:
+                    self.model.C[t, k].value = self.model.Z[t, k].value
+                
+        self.model.del_component('init_objective')
+        print("delta squared: ", delta**2)
+        
+        print(delta/ntp)
+        print((delta/ntp)**2)
+        return deltasq
+
+    def _solve_max_likelihood(self, solver, **kwds):
+        """Solves the maximum likelihood initialization with (C-Z) = 0 and delta as a variable
+
+           This method is not intended to be used by users directly
+
+        Args:
+            sigma_sq (dict): variances 
+        
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
+            Default False
+        
+            subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
+            (Weifeng paper). Default all wavelengths.
+
+        Returns:
+
+            None
+
+        """   
+        solver_opts = kwds.pop('solver_opts', dict())
+        tee = kwds.pop('tee', True)
+        set_A = kwds.pop('subset_lambdas', list())
+        profile_time = kwds.pop('profile_time', False)
+        sigmas_sq = kwds.pop('variances', dict())
+
+        if not set_A:
+            set_A = self._meas_lambdas
+        
+        keys = sigmas_sq.keys()
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        if hasattr(self, '_abs_components'):
+            for k in self._abs_components:
+                if k not in keys:
+                    sigmas_sq[k] = 0.0
+        else:
+            for k in self._sublist_components:
+                if k not in keys:
+                    sigmas_sq[k] = 0.0
+
+        print("Solving Initialization Problem\n")
+        
+        # Need to check whether we have negative values in the D-matrix so that we do not have
+        #non-negativity on S
+
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                if self.model.D[t, l] >= 0:
+                    pass
+                else:
+                    self._is_D_deriv = True
+        if self._is_D_deriv == True:
+            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
+        
+        # First we form the variables in the Lower triangular matrix for 
+            
+            
+            
+    def _solve_Psi_given_var(self, solver, **kwds):
+        """Solves the maximum likelihood initialization with (C-Z) = 0 and delta as a variable
+
+           This method is not intended to be used by users directly
+
+        Args:
+            sigma_sq (dict): variances 
+        
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
+            Default False
+        
+            subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
+            (Weifeng paper). Default all wavelengths.
+
+        Returns:
+
+            None
+
+        """   
+        solver_opts = kwds.pop('solver_opts', dict())
+        tee = kwds.pop('tee', True)
+        set_A = kwds.pop('subset_lambdas', list())
+        profile_time = kwds.pop('profile_time', False)
+        sigmas_sq = kwds.pop('variances', dict())
+
+        if not set_A:
+            set_A = self._meas_lambdas
+        
+        keys = sigmas_sq.keys()
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        if hasattr(self, '_abs_components'):
+            for k in self._abs_components:
+                if k not in keys:
+                    sigmas_sq[k] = 0.0
+        else:
+            for k in self._sublist_components:
+                if k not in keys:
+                    sigmas_sq[k] = 0.0
+
+        print("Solving delta from given sigmas\n")
+        
+        # Need to check whether we have negative values in the D-matrix so that we do not have
+        #non-negativity on S
+
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                if self.model.D[t, l] >= 0:
+                    pass
+                else:
+                    self._is_D_deriv = True
+        if self._is_D_deriv == True:
+            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
+
+        self.DSZ = dict()
+        self.CZtransp = dict()
+        
+        def D_SZTranspose(m, t, l, set_A, countt, countl, absorb):
+            if absorb:
+                D_bar = sum(m.model.C[t, k] * m.model.S[l, k] for k in self._abs_components)
+            else:
+                D_bar = sum(m.model.C[t, k] * m.model.S[l, k] for k in m._sublist_components)
+            self.DSZ[l,t] = m.model.D[t, l] - D_bar
+            DSZTel = self.DSZ[l, t]
+            return DSZTel
+        # build objective
+        def CZTranspose(m, t, k, set_A, countt, countl, absorb):
+            if absorb:
+                CZtransp = sum(m.model.C[t, k] - m.model.Z[t, k] for k in self._abs_components)
+            else:
+                CZtransp = sum(m.model.C[t, k] - m.model.Z[t, k] for k in m._sublist_components)
+            self.CZtransp[k,t] = CZtransp
+            CZT_el = self.CZtransp[k,t] 
+            return CZT_el        
+        
+        obj = 0.0
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        countt = 0
+        countl = 0
+        
+        if hasattr(self, '_abs_components'):
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._abs_components)
+                    DSZTransp = D_SZTranspose(self, t, l,set_A, countt,countl, absorb = True)
+                    obj += 0.5*(self.model.D[t, l] - D_bar)**2/sigmas_sq['device']
+                    countl += 1
+                countt += 1
+        else:
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._sublist_components)
+                    DSZTransp = D_SZTranspose(self, t, l, set_A, countt,countl, absorb = False)
+                    obj += 0.5*(self.model.D[t, l] - D_bar)**2/sigmas_sq['device']
+                    countl += 1
+                countt += 1                    
+        
+        for t in self._meas_times:
+            for k in self._sublist_components:
+                CZtransp = CZTranspose(self, t, k, set_A, countt,countl, absorb = False)
+                obj += 0.5*((self.model.C[t, k] - self.model.Z[t, k])**2)/sigmas_sq[k]
+                        
+        self.model.init_objective = Objective(expr=obj)
+        
+        opt = SolverFactory(solver)
+
+        for key, val in solver_opts.items():
+            opt.options[key]=val
+        solver_results = opt.solve(self.model,
+                                   tee=tee,
+                                   report_timing=profile_time)
+        residuals = (value(self.model.init_objective))
+        print(sigmas_sq['device'])
+        print(sigmas_sq)
+        print("residuals: ", residuals)
+        epsilonTepsilon = 0
+        for t in self._meas_times:
+            for k in self._sublist_components:
+                CZtransp = CZTranspose(self, t, k, set_A, countt,countl, absorb = False)
+                epsilonTepsilon += 0.5*((value(self.model.C[t, k]) - value(self.model.Z[t, k]))**2)/sigmas_sq[k]
+        etaTeta = 0
+        if hasattr(self, '_abs_components'):
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(value(self.model.C[t, k]) * value(self.model.S[l, k]) for k in self._abs_components)
+                    #DSZTransp = D_SZTranspose(self, t, l,set_A, countt,countl, absorb = True)
+                    etaTeta += 0.5*(value(self.model.D[t, l])- D_bar)**2/sigmas_sq['device']
+                    countl += 1
+                countt += 1
+        else:
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(value(self.model.C[t, k]) * value(self.model.S[l, k]) for k in self._sublist_components)
+                    #DSZTransp = D_SZTranspose(self, t, l, set_A, countt,countl, absorb = False)
+                    etaTeta += 0.5*(value(self.model.D[t, l]) - D_bar)**2/sigmas_sq['device']
+                    countl += 1
+                countt += 1 
+        print("D - CS: etaTeta :", etaTeta)
+        print("C-Z: epsilonTepsilon :", epsilonTepsilon)
+        #print(value(self.model.deltasq_inv))
+        #print(sqrt(1/value(self.model.deltasq_inv)))
+        for k,v in six.iteritems(self.model.P):
+            print(k, v)
+            print(v.value)
+        results = ResultsObject()
+            
+            # retriving solutions to results object  
+            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        if hasattr(self, '_abs_components'):
+            results.load_from_pyomo_model(self.model,
+                                          to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y'])
+        else:
+            results.load_from_pyomo_model(self.model,
+                                              to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])                
+        self.model.del_component('init_objective')
+        #self.model.del_component('init_objective')  
+        results.C.plot.line(legend=True)
+        plt.xlabel("time (s)")
+        plt.ylabel("Concentration (mol/L)")
+        plt.title("Concentration Profile")
+
+        results.S.plot.line(legend=True)
+        plt.xlabel("Wavelength (cm)")
+        plt.ylabel("Absorbance (L/(mol cm))")
+        plt.title("Absorbance  Profile")
+        results.Z.plot.line(legend=True)
+        plt.xlabel("time (s)")
+        plt.ylabel("Concentration (mol/L)")
+        plt.title("Concentration Profile")
+   
+        plt.show() 
+        return residuals
+    
+    def _solve_param_est(self, solver, **kwds):
+        """Solves the maximum likelihood initialization with (C-Z) = 0 and delta as a variable
+
+           This method is not intended to be used by users directly
+
+        Args:
+            sigma_sq (dict): variances 
+        
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
+            Default False
+        
+            subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
+            (Weifeng paper). Default all wavelengths.
+
+        Returns:
+
+            None
+
+        """   
+        solver_opts = kwds.pop('solver_opts', dict())
+        tee = kwds.pop('tee', True)
+        set_A = kwds.pop('subset_lambdas', list())
+        profile_time = kwds.pop('profile_time', False)
+        sigmas_sq = kwds.pop('variances', dict())
+
+        if not set_A:
+            set_A = self._meas_lambdas
+        
+        keys = sigmas_sq.keys()
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        if hasattr(self, '_abs_components'):
+            for k in self._abs_components:
+                if k not in keys:
+                    sigmas_sq[k] = 0.0
+        else:
+            for k in self._sublist_components:
+                if k not in keys:
+                    sigmas_sq[k] = 0.0
+
+        print("Solving pramaeter estimation problem")
+        
+        # Need to check whether we have negative values in the D-matrix so that we do not have
+        #non-negativity on S
+
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                if self.model.D[t, l] >= 0:
+                    pass
+                else:
+                    self._is_D_deriv = True
+        if self._is_D_deriv == True:
+            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
+
+    
+        
+        obj = 0.0
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        countt = 0
+        countl = 0
+        
+        if hasattr(self, '_abs_components'):
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._abs_components)
+                    obj += (self.model.D[t, l] - D_bar)**2/sigmas_sq['device']
+                    countl += 1
+                countt += 1
+        else:
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._sublist_components)
+                    obj += (self.model.D[t, l] - D_bar)**2/sigmas_sq['device']
+                    countl += 1
+                countt += 1                    
+        
+        for t in self._meas_times:
+            for k in self._sublist_components:
+                obj += ((self.model.C[t, k] - self.model.Z[t, k])**2)/sigmas_sq[k]
+                        
+        self.model.init_objective = Objective(expr=obj)
+        
+        opt = SolverFactory(solver)
+
+        for key, val in solver_opts.items():
+            opt.options[key]=val
+        solver_results = opt.solve(self.model,
+                                   tee=tee,
+                                   report_timing=profile_time)
+        
+        residuals = (value(self.model.init_objective))
+        print("residuals: ", residuals)
+
+
+        for k,v in six.iteritems(self.model.P):
+            print(k, v)
+            print(v.value)
+        results = ResultsObject()
+            
+            # retriving solutions to results object  
+            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        if hasattr(self, '_abs_components'):
+            results.load_from_pyomo_model(self.model,
+                                          to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y'])
+        else:
+            results.load_from_pyomo_model(self.model,
+                                              to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])                
+        self.model.del_component('init_objective')
+        #self.model.del_component('init_objective')  
+        '''
+        results.C.plot.line(legend=True)
+        plt.xlabel("time (s)")
+        plt.ylabel("Concentration (mol/L)")
+        plt.title("Concentration Profile")
+
+        results.S.plot.line(legend=True)
+        plt.xlabel("Wavelength (cm)")
+        plt.ylabel("Absorbance (L/(mol cm))")
+        plt.title("Absorbance  Profile")
+        results.Z.plot.line(legend=True)
+        plt.xlabel("time (s)")
+        plt.ylabel("Concentration (mol/L)")
+        plt.title("Concentration Profile")
+   
+        plt.show() 
+        '''
+        return residuals
+    
+    def _solve_delta_given_sigma(self, solver, **kwds):
+        """Solves the maximum likelihood initialization with (C-Z) = 0 and delta as a variable
+
+           This method is not intended to be used by users directly
+
+        Args:
+            sigma_sq (dict): variances 
+        
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
+            Default False
+        
+            subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
+            (Weifeng paper). Default all wavelengths.
+
+        Returns:
+
+            None
+
+        """   
+        solver_opts = kwds.pop('solver_opts', dict())
+        tee = kwds.pop('tee', True)
+        set_A = kwds.pop('subset_lambdas', list())
+        profile_time = kwds.pop('profile_time', False)
+        sigmas_sq = kwds.pop('variances', dict())
+
+        if not set_A:
+            set_A = self._meas_lambdas
+        
+        keys = sigmas_sq.keys()
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        if hasattr(self, '_abs_components'):
+            for k in self._abs_components:
+                if k not in keys:
+                    sigmas_sq[k] = 0.0
+        else:
+            for k in self._sublist_components:
+                if k not in keys:
+                    sigmas_sq[k] = 0.0
+
+        print("Solving delta from given sigmas\n")
+        
+        # Need to check whether we have negative values in the D-matrix so that we do not have
+        #non-negativity on S
+
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                if self.model.D[t, l] >= 0:
+                    pass
+                else:
+                    self._is_D_deriv = True
+        if self._is_D_deriv == True:
+            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
+
+        self.DSZ = dict()
+        self.CZtransp = dict()
+        
+        def D_SZTranspose(m, t, l, set_A, countt, countl, absorb):
+            if absorb:
+                D_bar = sum(m.model.C[t, k] * m.model.S[l, k] for k in self._abs_components)
+            else:
+                D_bar = sum(m.model.C[t, k] * m.model.S[l, k] for k in m._sublist_components)
+            self.DSZ[l,t] = m.model.D[t, l] - D_bar
+            DSZTel = self.DSZ[l, t]
+            return DSZTel
+        # build objective
+        def CZTranspose(m, t, k, set_A, countt, countl, absorb):
+            if absorb:
+                CZtransp = sum(m.model.C[t, k] - m.model.Z[t, k] for k in self._abs_components)
+            else:
+                CZtransp = sum(m.model.C[t, k] - m.model.Z[t, k] for k in m._sublist_components)
+            self.CZtransp[k,t] = CZtransp
+            CZT_el = self.CZtransp[k,t] 
+            return CZT_el        
+        
+        obj = 0.0
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        countt = 0
+        countl = 0
+        self.model.deltasq_inv = Var(within = NonNegativeReals)
+        if hasattr(self, '_abs_components'):
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._abs_components)
+                    DSZTransp = D_SZTranspose(self, t, l,set_A, countt,countl, absorb = True)
+                    obj += self.model.deltasq_inv*0.5*(self.model.D[t, l] - D_bar)*DSZTransp
+                    countl += 1
+                countt += 1
+        else:
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._sublist_components)
+                    DSZTransp = D_SZTranspose(self, t, l, set_A, countt,countl, absorb = False)
+                    obj += self.model.deltasq_inv*0.5*(self.model.D[t, l] - D_bar)*DSZTransp
+                    countl += 1
+                countt += 1                    
+        
+        for t in self._meas_times:
+            for k in self._sublist_components:
+                CZtransp = CZTranspose(self, t, k, set_A, countt,countl, absorb = False)
+                obj += 0.5*((self.model.C[t, k] - self.model.Z[t, k])*CZtransp)/sigmas_sq[k]
+                        
+        self.model.init_objective = Objective(expr=obj)
+        
+        opt = SolverFactory(solver)
+
+        for key, val in solver_opts.items():
+            opt.options[key]=val
+        solver_results = opt.solve(self.model,
+                                   tee=tee,
+                                   report_timing=profile_time)
+        residuals = (value(self.model.init_objective))
+        
+        print("residuals: ", residuals)
+        print(value(self.model.deltasq_inv))
+        print(sqrt(1/value(self.model.deltasq_inv)))
+        for k,v in six.iteritems(self.model.P):
+            print(k, v)
+            print(v.value)
+                
+        self.model.del_component('init_objective')
+        #self.model.del_component('init_objective')        
+        return 1/value(self.model.deltasq_inv)
+    
+    def _solve_sigma_given_delta(self, solver, **kwds):
+        """Solves the maximum likelihood initialization with (C-Z) = 0 and delta as a variable
+
+           This method is not intended to be used by users directly
+
+        Args:
+            sigma_sq (dict): variances 
+        
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
+            Default False
+        
+            subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
+            (Weifeng paper). Default all wavelengths.
+
+        Returns:
+
+            None
+
+        """   
+        solver_opts = kwds.pop('solver_opts', dict())
+        tee = kwds.pop('tee', True)
+        set_A = kwds.pop('subset_lambdas', list())
+        profile_time = kwds.pop('profile_time', False)
+        sigmas_sq = kwds.pop('variances', dict())
+        delta = kwds.pop('delta', dict())
+        #sigmas = kwds.pop('sigmas', dict())
+
+        if not set_A:
+            print("subset lambdas not selected. Solving full problem.")
+            set_A = self._meas_lambdas
+        
+        keys = sigmas_sq.keys()
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        if hasattr(self, '_abs_components'):
+            for k in self._abs_components:
+                if k not in keys:
+                    sigmas_sq[k] = 0.0
+        else:
+            for k in self._sublist_components:
+                if k not in keys:
+                    sigmas_sq[k] = 0.0
+
+        print("Solving sigmas from the given delta\n")
+        
+        # Need to check whether we have negative values in the D-matrix so that we do not have
+        #non-negativity on S
+
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                if self.model.D[t, l] >= 0:
+                    pass
+                else:
+                    self._is_D_deriv = True
+        if self._is_D_deriv == True:
+            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
+        ntp = len(self._meas_times) 
+        self.DSZ = dict()
+        self.CZtransp = dict()
+        
+        def D_SZTranspose(m, t, l, set_A, countt, countl, absorb):
+            if absorb:
+                D_bar = sum(m.model.C[t, k] * m.model.S[l, k] for k in self._abs_components)
+            else:
+                D_bar = sum(m.model.C[t, k] * m.model.S[l, k] for k in m._sublist_components)
+            self.DSZ[l,t] = m.model.D[t, l] - D_bar
+            DSZTel = self.DSZ[l, t]
+            return DSZTel
+        # build objective
+        def CZTranspose(m, t, k, set_A, countt, countl, absorb):
+            if absorb:
+                CZtransp = sum(m.model.C[t, k] - m.model.Z[t, k] for k in self._abs_components)
+            else:
+                CZtransp = sum(m.model.C[t, k] - m.model.Z[t, k] for k in m._sublist_components)
+            self.CZtransp[k,t] = CZtransp
+            CZT_el = self.CZtransp[k,t] 
+            return CZT_el        
+        m = self.model.clone()
+        obj = 0.0
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        countt = 0
+        countl = 0
+        #sigma_magnitude = 1000
+        #self.model.sigmas = Var(self.model.mixture_components, initialize = 0.3, bounds = (0.00001,1))
+        #def sigm_ratio(m):
+        #    return sum(m.sigmas[k] for k in self._sublist_components) == 1
+            
+        #self.model.sigma_ratio = Constraint(rule=sigm_ratio)    
+        if hasattr(self, '_abs_components'):
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._abs_components)
+                    DSZTransp = D_SZTranspose(self, t, l,set_A, countt,countl, absorb = True)
+                    obj += 1/(2*delta)*(self.model.D[t, l] - D_bar)**2
+                    countl += 1
+                countt += 1
+        else:
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._sublist_components)
+                    DSZTransp = D_SZTranspose(self, t, l, set_A, countt,countl, absorb = False)
+                    obj += 1/(2*delta)*(self.model.D[t, l] - D_bar)**2
+                    countl += 1
+                countt += 1 
+        inlog = 0  
+        self.model.eps = Param(initialize = 1e-8)                 
+        variancesdict = dict()
+        for k in self._sublist_components:
+            variancesdict[k] = 0
+        for t in self._meas_times:
+            for k in self._sublist_components:
+                CZtransp = CZTranspose(self, t, k, set_A, countt,countl, absorb = False)
+                #obj += ((self.model.C[t, k] - self.model.Z[t, k])**2)
+                inlog += ((self.model.C[t, k] - self.model.Z[t, k])**2)
+                
+        obj += (ntp/2)*log((inlog/ntp)+self.model.eps)
+
+                        
+        self.model.init_objective = Objective(expr=obj)
+        
+        opt = SolverFactory(solver)
+
+        for key, val in solver_opts.items():
+            opt.options[key]=val
+        try:
+            solver_results = opt.solve(self.model,
+                                   tee=tee,
+                                   report_timing=profile_time)
+            residuals = (value(self.model.init_objective))
+        
+        
+            print("objective function: ", residuals)
+            CZobj = 0
+            CZobj1 = 0
+            for t in self._meas_times:
+                for k in self._sublist_components:
+                    #CZtransp = CZTranspose(self, t, k, set_A, countt,countl, absorb = False)
+                    CZobj += ((value(self.model.C[t, k]) - value(self.model.Z[t, k]))**2)
+                    CZobj1 += ((value(self.model.C[t, k]) - value(self.model.Z[t, k]))**2)
+                    variancesdict[k] += 1/ntp*((value(self.model.C[t, k]) - value(self.model.Z[t, k]))**2)
+            DCSobj = 0        
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(value(self.model.C[t, k]) * value(self.model.S[l, k]) for k in self._sublist_components)
+                    DSZTransp = D_SZTranspose(self, t, l, set_A, countt,countl, absorb = False)
+                    DCSobj += 1/(2*delta)*(value(self.model.D[t, l]) - D_bar)**2              
+            
+            print("printing C-Z residuals without log",(CZobj))
+            print("printing D-CS residuals (1/(2*delta)*(sum(D-CS))**2)",DCSobj)
+            print("printing C-Z residuals with log",ntp/2*log(CZobj1/ntp))
+            for k in self._sublist_components:
+                print(k, variancesdict[k])
+        
+            for k,v in six.iteritems(self.model.P):
+                print(k, v)
+                print(v.value)
+             
+               
+            res = 0
+            for t in self._meas_times:
+                for k in self._sublist_components:
+                    #CZtransp = CZTranspose(self, t, k, set_A, countt,countl, absorb = False)
+                    res += (value(self.model.C[t, k]) - value(self.model.Z[t, k]))**2
+            max_likelihood_value = 0.5*ntp*log((res))
+            pes = 0
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(value(self.model.C[t, k]) * value(self.model.S[l, k]) for k in self._sublist_components)
+                    pes += (value(self.model.D[t, l]) - D_bar)**2  
+            pes = pes/(2*delta)
+            max_likelihood_value1 = max_likelihood_value + pes
+            #print('max_likelihood_value eta only',max_likelihood_value)
+            #print('max_likelihood_value with epsilon no log',max_likelihood_value1)
+            pes = 0
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(value(self.model.C[t, k]) * value(self.model.S[l, k]) for k in self._sublist_components)
+                    pes += (value(self.model.D[t, l]) - D_bar)**2  
+            pes = 0.5*ntp*log((pes))
+            max_likelihood_value2 = max_likelihood_value + pes
+            #print('max_likelihood_value with log',max_likelihood_value2)
+            stop_it = False
+        except:
+            print("no value found")
+            max_likelihood_value2 = 0
+            max_likelihood_value1 = 0
+            variancesdict = None
+            residuals = 0
+            stop_it = True
+            self.model = m
+        self.model.del_component('init_objective')
+        self.model.del_component('eps')
+        #self.model.del_component('sigm_ratio')        
+        #return residuals, variancesdict, stop_it
+        return residuals, variancesdict, stop_it
+
+    def _solve_sigma_given_delta_ratiovariable(self, solver, **kwds):
+        """Solves the maximum likelihood initialization with (C-Z) = 0 and delta as a variable
+
+           This method is not intended to be used by users directly
+
+        Args:
+            sigma_sq (dict): variances 
+        
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
+            Default False
+        
+            subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
+            (Weifeng paper). Default all wavelengths.
+
+        Returns:
+
+            None
+
+        """   
+        solver_opts = kwds.pop('solver_opts', dict())
+        tee = kwds.pop('tee', True)
+        set_A = kwds.pop('subset_lambdas', list())
+        profile_time = kwds.pop('profile_time', False)
+        sigmas_sq = kwds.pop('variances', dict())
+        delta = kwds.pop('delta', dict())
+        sigmas = kwds.pop('delta', dict())
+
+        if not set_A:
+            set_A = self._meas_lambdas
+        
+        keys = sigmas_sq.keys()
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        if hasattr(self, '_abs_components'):
+            for k in self._abs_components:
+                if k not in keys:
+                    sigmas_sq[k] = 0.0
+        else:
+            for k in self._sublist_components:
+                if k not in keys:
+                    sigmas_sq[k] = 0.0
+
+        print("Solving sigmas from the given delta\n")
+        
+        # Need to check whether we have negative values in the D-matrix so that we do not have
+        #non-negativity on S
+
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                if self.model.D[t, l] >= 0:
+                    pass
+                else:
+                    self._is_D_deriv = True
+        if self._is_D_deriv == True:
+            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
+
+        self.DSZ = dict()
+        self.CZtransp = dict()
+        
+        def D_SZTranspose(m, t, l, set_A, countt, countl, absorb):
+            if absorb:
+                D_bar = sum(m.model.C[t, k] * m.model.S[l, k] for k in self._abs_components)
+            else:
+                D_bar = sum(m.model.C[t, k] * m.model.S[l, k] for k in m._sublist_components)
+            self.DSZ[l,t] = m.model.D[t, l] - D_bar
+            DSZTel = self.DSZ[l, t]
+            return DSZTel
+        # build objective
+        def CZTranspose(m, t, k, set_A, countt, countl, absorb):
+            if absorb:
+                CZtransp = sum(m.model.C[t, k] - m.model.Z[t, k] for k in self._abs_components)
+            else:
+                CZtransp = sum(m.model.C[t, k] - m.model.Z[t, k] for k in m._sublist_components)
+            self.CZtransp[k,t] = CZtransp
+            CZT_el = self.CZtransp[k,t] 
+            return CZT_el        
+        
+        obj = 0.0
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        countt = 0
+        countl = 0
+        sigma_magnitude = 1000
+        self.model.sigmas = Var(self.model.mixture_components, initialize = 0.3, bounds = (0.00001,1))
+        def sigm_ratio(m):
+            return sum(m.sigmas[k] for k in self._sublist_components) == 1
+            
+        self.model.sigma_ratio = Constraint(rule=sigm_ratio)    
+        if hasattr(self, '_abs_components'):
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._abs_components)
+                    DSZTransp = D_SZTranspose(self, t, l,set_A, countt,countl, absorb = True)
+                    obj += 1/(2*1)*(self.model.D[t, l] - D_bar)**2
+                    countl += 1
+                countt += 1
+        else:
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._sublist_components)
+                    DSZTransp = D_SZTranspose(self, t, l, set_A, countt,countl, absorb = False)
+                    obj += 1/(2*1)*(self.model.D[t, l] - D_bar)**2
+                    countl += 1
+                countt += 1                    
+        
+        for t in self._meas_times:
+            for k in self._sublist_components:
+                CZtransp = CZTranspose(self, t, k, set_A, countt,countl, absorb = False)
+                obj += 0.5*((self.model.C[t, k] - self.model.Z[t, k])**2)*self.model.sigmas[k]*sigma_magnitude
+                        
+        self.model.init_objective = Objective(expr=obj)
+        
+        opt = SolverFactory(solver)
+
+        for key, val in solver_opts.items():
+            opt.options[key]=val
+        solver_results = opt.solve(self.model,
+                                   tee=tee,
+                                   report_timing=profile_time)
+        residuals = (value(self.model.init_objective))
+        
+        print("residuals: ", residuals)
+        print(self.model.sigmas)
+        for k in self._sublist_components:
+            print(k, value(self.model.sigmas[k]))
+            print(1/(sigma_magnitude*value(self.model.sigmas[k])))
+            sigmas_sq[k] = 1/(sigma_magnitude*value(self.model.sigmas[k]))
+        for k,v in six.iteritems(self.model.P):
+            print(k, v)
+            print(v.value)
+                
+        self.model.del_component('init_objective')
+        self.model.del_component('sigm_ratio')        
+        return sigmas_sq
+
+    def _solve_phi_given_delta(self, solver, **kwds):
+        """Solves the maximum likelihood initialization with (C-Z) = 0 and delta as a variable
+
+           This method is not intended to be used by users directly
+
+        Args:
+            sigma_sq (dict): variances 
+        
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
+            Default False
+        
+            subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
+            (Weifeng paper). Default all wavelengths.
+
+        Returns:
+
+            None
+
+        """   
+        solver_opts = kwds.pop('solver_opts', dict())
+        tee = kwds.pop('tee', True)
+        set_A = kwds.pop('subset_lambdas', list())
+        profile_time = kwds.pop('profile_time', False)
+        sigmas_sq = kwds.pop('variances', dict())
+        delta = kwds.pop('delta', float())
+
+        if not set_A:
+            set_A = self._meas_lambdas
+        
+        keys = sigmas_sq.keys()
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        if hasattr(self, '_abs_components'):
+            for k in self._abs_components:
+                if k not in keys:
+                    sigmas_sq[k] = 0.0
+        else:
+            for k in self._sublist_components:
+                if k not in keys:
+                    sigmas_sq[k] = 0.0
+
+        print("Solving phi from the given delta\n")
+        
+        # Need to check whether we have negative values in the D-matrix so that we do not have
+        #non-negativity on S
+
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                if self.model.D[t, l] >= 0:
+                    pass
+                else:
+                    self._is_D_deriv = True
+        if self._is_D_deriv == True:
+            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
+
+        self.DSZ = dict()
+        self.CZtransp = dict()
+        
+        def D_SZTranspose(m, t, l, set_A, countt, countl, absorb):
+            if absorb:
+                D_bar = sum(m.model.C[t, k] * m.model.S[l, k] for k in self._abs_components)
+            else:
+                D_bar = sum(m.model.C[t, k] * m.model.S[l, k] for k in m._sublist_components)
+            self.DSZ[l,t] = m.model.D[t, l] - D_bar
+            DSZTel = self.DSZ[l, t]
+            return DSZTel
+        # build objective
+        def CZTranspose(m, t, k, set_A, countt, countl, absorb):
+            if absorb:
+                CZtransp = sum(m.model.C[t, k] - m.model.Z[t, k] for k in self._abs_components)
+            else:
+                CZtransp = sum(m.model.C[t, k] - m.model.Z[t, k] for k in m._sublist_components)
+            self.CZtransp[k,t] = CZtransp
+            CZT_el = self.CZtransp[k,t] 
+            return CZT_el        
+        
+        obj = 0.0
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        countt = 0
+        countl = 0
+        ntp = len(self._meas_times)
+        if hasattr(self, '_abs_components'):
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._abs_components)
+                    #DSZTransp = D_SZTranspose(self, t, l,set_A, countt,countl, absorb = True)
+                    obj += 1/(2*delta)*((self.model.D[t, l] - D_bar)**2)
+                    countl += 1
+                countt += 1
+        else:
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._sublist_components)
+                    #DSZTransp = D_SZTranspose(self, t, l, set_A, countt,countl, absorb = False)
+                    obj += 1/(2*delta)*((self.model.D[t, l] - D_bar)**2)
+                    countl += 1
+                countt += 1                    
+        res = 0
+        for t in self._meas_times:
+            for k in self._sublist_components:
+                #CZtransp = CZTranspose(self, t, k, set_A, countt,countl, absorb = False)
+                res += (self.model.C[t, k] - self.model.Z[t, k])**2
+        obj += 0.5*ntp*log((res)/ntp)
+                
+                
+        def non_zero_CZ_(m, t, k):
+
+            return (m.C[t, k] - m.Z[t, k])**2 >= 0.000000000000001
+                
+        #self.model.non_zero_CZ = Constraint(self.model.meas_times, self.model.mixture_components, rule=non_zero_CZ_)
+
+                 
+        self.model.init_objective = Objective(expr=obj)
+        
+        opt = SolverFactory(solver)
+
+        for key, val in solver_opts.items():
+            opt.options[key]=val
+        solver_results = opt.solve(self.model,
+                                   tee=tee,
+                                   report_timing=profile_time)
+        residuals = (value(self.model.init_objective))
+        
+        print("residuals: ", residuals)
+        
+        for k,v in six.iteritems(self.model.P):
+            print(k, v)
+            print(v.value)
+        sigma = dict()
+        for k in self._sublist_components:
+            CZtransp = CZTranspose(self, t, k, set_A, countt,countl, absorb = False)
+            sigma[k] += sum(((self.model.C[t, k] - self.model.Z[t, k])**2)/ntp for t in self._meas_times)
+        
+        self.model.del_component('init_objective')
+        print(sigma)        
+        return sigma
+
+    
+    def _solve_iterative_init(self, solver, **kwds):
+        """This method first fixes params and makes C = Z to solve for S. Requires fixed delta and sigmas
+        following this, the parameters are freed to users bounds and full problem is solved with 
+
+        Args:
+            sigma_sq (dict): variances 
+        
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
+            Default False
+        
+            subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
+            (Weifeng paper). Default all wavelengths.
+
+        Returns:
+
+            None
+
+        """   
+        solver_opts = kwds.pop('solver_options', dict())
+        tee = kwds.pop('tee', True)
+        set_A = kwds.pop('subset_lambdas', list())
+        profile_time = kwds.pop('profile_time', False)
+        sigmas_sq = kwds.pop('variances', dict())
+
+        if not set_A:
+            set_A = self._meas_lambdas
+        
+        keys = sigmas_sq.keys()
+        print(keys)
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        if hasattr(self, '_abs_components'):
+            for k in self._abs_components:
+                print(k)
+                if k not in keys:
+                    sigmas_sq[k] = 0.0
+        else:
+            for k in self._sublist_components:
+                if k not in keys:
+                    sigmas_sq[k] = 0.0
+        # Need to check whether we have negative values in the D-matrix so that we do not have
+        #non-negativity on S
+
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                if self.model.D[t, l] >= 0:
+                    pass
+                else:
+                    self._is_D_deriv = True
+        if self._is_D_deriv == True:
+            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
+            
+        list_components = []
+
+        list_components = [k for k in self._mixture_components]
+        print(sigmas_sq)                    
+        print("Solving Initialization Problem with fixed parameters\n")
+        original_bounds = dict()
+        for v,k in six.iteritems(self.model.P):
+            print(self.model.P[v].lb, self.model.P[v].ub)
+            low = value(self.model.P[v].lb)
+            high = value(self.model.P[v].ub)
+            print(low,high)
+            print(type(low))
+            original_bounds[v] = (low, high)
+            print(original_bounds)
+            ub = value(self.model.P[v])
+            lb = ub
+            self.model.P[v].setlb(lb)
+            self.model.P[v].setub(ub)
+        # build objective
+        obj = 0.0
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        if hasattr(self, '_abs_components'):
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self._abs_components)
+                    obj += (self.model.D[t, l] - D_bar) ** 2
+        else:
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self._sublist_components)
+                    obj += (self.model.D[t, l] - D_bar) ** 2
+        self.model.init_objective = Objective(expr=obj)
+        
+        opt = SolverFactory(solver)
+
+        for key, val in solver_opts.items():
+            opt.options[key]=val
+        solver_results = opt.solve(self.model,
+                                   tee=tee,
+                                   report_timing=profile_time)
+        for k,v in six.iteritems(self.model.P):
+            print(k, v)
+            print(v.value)
+        
+        for t in self._meas_times:
+            for k in self._mixture_components:
+                if k in sigmas_sq and sigmas_sq[k] > 0.0:
+                    self.model.C[t, k].value = np.random.normal(self.model.Z[t, k].value, sigmas_sq[k])
+                else:
+                    self.model.C[t, k].value = self.model.Z[t, k].value
+                
+        self.model.del_component('init_objective')
+        
+        for v,k in six.iteritems(self.model.P):
+            #print(self.model.P[v].lb, self.model.P[v].ub)
+            print(k,v)
+            print(type(original_bounds[v][1]))
+            ub = original_bounds[v][1]
+            lb = original_bounds[v][0]
+            self.model.P[v].setlb(lb)
+            self.model.P[v].setub(ub)
+            
+        m = self.model
+
+        m.D_bar = Var(m.meas_times,
+                      m.meas_lambdas)
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        if hasattr(self, '_abs_components'):
+            def rule_D_bar(m, t, l):
+                return m.D_bar[t, l] == sum(m.Cs[t, k] * m.S[l, k] for k in self._abs_components)
+        else:
+            def rule_D_bar(m, t, l):
+                return m.D_bar[t, l] == sum(m.C[t, k] * m.S[l, k] for k in self._sublist_components)
+
+        m.D_bar_constraint = Constraint(m.meas_times,
+                                        m.meas_lambdas,
+                                        rule=rule_D_bar)
+
+        # estimation
+        def rule_objective(m):
+            expr = 0
+            for t in m.meas_times:
+                for l in m.meas_lambdas:
+
+                    expr += (m.D[t, l] - m.D_bar[t, l]) ** 2 / (sigmas_sq['device'])
+
+            second_term = 0.0
+            for t in m.meas_times:
+                second_term += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigmas_sq[k] for k in list_components)
+
+            return expr
+
+        m.objective = Objective(rule=rule_objective) 
+        
+        opt = SolverFactory(solver)
+
+        for key, val in solver_opts.items():
+            opt.options[key]=val
+        solver_results = opt.solve(self.model,
+                                   tee=tee,
+                                   report_timing=profile_time)
+        for k,v in six.iteritems(self.model.P):
+            print(k, v)
+            print(v.value)        
+            print(value(v.ub))
+            print(value(v.lb))
+        
+        m.del_component('objective')
+        self.model = m
+        
+            
     def _solve_Z(self, solver, **kwds):
         """Solves formulation 20 in weifengs paper
 
