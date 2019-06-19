@@ -45,18 +45,18 @@ if __name__ == "__main__":
     dataDirectory = os.path.abspath(
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
             inspect.currentframe() ) ) ), 'data_sets'))
-    filename =  os.path.join(dataDirectory,'Dij.txt')
-    D_frame = read_spectral_data_from_txt(filename)
+    filename =  os.path.join(dataDirectory,'varest.csv')
+    D_frame = read_spectral_data_from_csv(filename, negatives_to_zero = True)
 
     # Then we build dae block for as described in the section 4.2.1. Note the addition
     # of the data using .add_spectral_data
     #################################################################################    
     builder = TemplateBuilder()    
-    components = {'A':1e-3,'B':0,'C':0}
+    components = {'A':1e-2,'B':0,'C':0}
     builder.add_mixture_component(components)
-    builder.add_parameter('k1', init=4.0, bounds=(0.0,5.0)) 
+    builder.add_parameter('k1', init=1.2, bounds=(0.01,5.0)) 
     #There is also the option of providing initial values: Just add init=... as additional argument as above.
-    builder.add_parameter('k2',bounds=(0.0,1.0))
+    builder.add_parameter('k2',init = 0.2, bounds=(0.001,1.0))
     builder.add_spectral_data(D_frame)
 
     # define explicit system of ODEs
@@ -77,7 +77,7 @@ if __name__ == "__main__":
     # We can therefore use the variance estimator described in the Overview section
     # of the documentation and Section 4.3.3
     v_estimator = VarianceEstimator(opt_model)
-    v_estimator.apply_discretization('dae.collocation',nfe=60,ncp=1,scheme='LAGRANGE-RADAU')
+    v_estimator.apply_discretization('dae.collocation',nfe=50,ncp=3,scheme='LAGRANGE-RADAU')
     
     # It is often requried for larger problems to give the solver some direct instructions
     # These must be given in the form of a dictionary
@@ -87,28 +87,24 @@ if __name__ == "__main__":
     # options['bound_push'] = 1e-8
     # options['tol'] = 1e-9
     options['linear_solver'] = 'ma57'
-    options['max_iter'] = 2000
     
     # The set A_set is then decided. This set, explained in Section 4.3.3 is used to make the
     # variance estimation run faster and has been shown to not decrease the accuracy of the variance 
     # prediction for large noisey data sets.
-    A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if (i % 4 == 0)]
-    print(A_set)
-    print(len(A_set))
+    #A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if (i % 4 == 0)]
+    dev_var = 1e-8
     # Finally we run the variance estimatator using the arguments shown in Seciton 4.3.3
-    sigmas = {'A': 1e-8,'B': 1e-8, 'C': 1e-8, 'device': 1e-6}
-    device_range = (1e-8, 1e-5)
-    points = 5
+    sigmas = {'A': 1e-9,'B': 1e-9, 'C': 1e-9, 'device': 1e-9}
     results_variances = v_estimator.run_opt('ipopt',
                                             method = 'direct_sigmas',
                                             initial_sigmas = sigmas,
-                                            #device_range = device_range,
-                                            num_points = points,
-                                            tee=True,
+                                            fixed_device_variance = dev_var,
+                                            tee=False,
                                             solver_opts=options,
                                             tolerance=1e-5,
-                                            max_iter=15,
-                                            subset_lambdas=A_set)
+                                            num_points = 100,                                            
+                                            #subset_lambdas=A_set,
+                                            max_iter=15)
     
     print("The estimated parameters are:")
     for k,v in six.iteritems(results_variances.P):
@@ -127,14 +123,14 @@ if __name__ == "__main__":
         plt.title("Absorbance  Profile")
     
         plt.show()    
-    #sys.exit()
+
     # Variances can then be displayed 
     print("\nThe estimated variances are:\n")
     #for k,v in six.iteritems(results_variances.sigma_sq):
     #    print(k, v)
 
     # and the sigmas for the parameter estimation step are now known and fixed
-    #sigmas = sigmas
+   # sigmas = sigmas
     
     sigmas = results_variances.sigma_sq
     #=========================================================================
