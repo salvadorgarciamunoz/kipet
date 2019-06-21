@@ -5,11 +5,8 @@
 #  _________________________________________________________________________
 
 # Sample Problem
-# Christina's project application
-# Estimation with known variances of spectral data using pyomo discretization
+# Tutorial problem data generation for variance
 #
-#               C_k(t_i) = Z_k(t_i) + w(t_i)    for all t_i in measurement points
-#               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j
 
 
 from kipet.library.TemplateBuilder import *
@@ -149,33 +146,7 @@ if __name__ == "__main__":
     
     # defines the discrete points wanted in the concentration profile
     sim.apply_discretization('dae.collocation', nfe=50, ncp=3, scheme='LAGRANGE-RADAU')
-    '''
-    #Since the model cannot discriminate inputs from other algebraic elements, we still
-    #need to define the inputs as inputs_sub
-    inputs_sub = {}
-    inputs_sub['Y'] = ['5']
-    
-    fixedy = True
-    yfix={}
-    yfix['Y']=['5']#needed in case of different input fixes
-    #since these are inputs we need to fix this
-    for key in sim.model.time.value:
-        sim.model.Y[key, '5'].set_value(key)
-        sim.model.Y[key, '5'].fix()
 
-    #this will allow for the fe_factory to run the element by element march forward along 
-    #the elements and also automatically initialize the PyomoSimulator model, allowing
-    #for the use of the run_sim() function as before. We only need to provide the inputs 
-    #to this function as an argument dictionary
-    
-    #New Inputs for discrete feeds
-    Z_step = {'AH': .03} #Which component and which amount is added
-    X_step = {'V': .01}
-    jump_states = {'Z': Z_step, 'X': X_step}
-    jump_points1 = {'AH': 101.035}#Which component is added at which point in time
-    jump_points2 = {'V': 303.126}
-    jump_times = {'Z': jump_points1, 'X': jump_points2}
-    '''
     init = sim.call_fe_factory()
     #=========================================================================
     #USER INPUT SECTION - SIMULATION
