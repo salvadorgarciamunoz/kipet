@@ -84,6 +84,9 @@ class VarianceEstimator(Optimizer):
             
             fixed_device_variance (float, optional): If the device variance is known in advanced we can fix it here.
                                                 Only to be used in conjunction with lsq_ipopt = True.
+                                                
+            with_plots (bool, optional): if with_plots is provided, it will plot the log objective versus the
+                                            iterations for the direct_sigmas method.
 
         Returns:
 
@@ -124,13 +127,14 @@ class VarianceEstimator(Optimizer):
         fixed_device_var = kwds.pop('fixed_device_variance', None)
         device_range = kwds.pop('device_range', None)
         num_points = kwds.pop('num_points', None)
+        with_plots = kwds.pop('with_plots', False)
         
-        if method not in ['Chen', "max_likelihood", "iterative_method", "direct_sigmas"]:
+        if method not in ['Chen', "direct_sigmas"]:
             method = 'Chen'
             print("Method not set, so assumed that the Chen method is chosen")
             
-        if method not in ['Chen', "max_likelihood", "iterative_method", "direct_sigmas"]:
-            raise RuntimeError("method must be either \"Chen\", \"max_likelihood\", \"direct_sigmas\" or \"iterative_method\"")
+        if method not in ['Chen', "direct_sigmas"]:
+            raise RuntimeError("method must be either \"Chen\", or \"direct_sigmas\"")
         
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
@@ -414,9 +418,9 @@ class VarianceEstimator(Optimizer):
                         
                     delta = delta + dist
                     count += 1
-
-                plt.plot(iteration_counter, max_likelihood_vals)
-                plt.show() 
+                if with_plots:
+                    plt.plot(iteration_counter, max_likelihood_vals)
+                    plt.show() 
 
                 results = ResultsObject()
             
@@ -652,126 +656,6 @@ class VarianceEstimator(Optimizer):
 
         return deltasq
     
-    def _solve_max_likelihood_init(self, solver, **kwds):
-        """Solves the maximum likelihood initialization with (C-Z) = 0 and delta as a variable
-
-           This method is not intended to be used by users directly
-
-        Args:
-            sigma_sq (dict): variances 
-        
-            tee (bool,optional): flag to tell the optimizer whether to stream output
-            to the terminal or not
-        
-            profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
-            Default False
-        
-            subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
-            (Weifeng paper). Default all wavelengths.
-
-        Returns:
-
-            None
-
-        """   
-        solver_opts = kwds.pop('solver_opts', dict())
-        tee = kwds.pop('tee', True)
-        set_A = kwds.pop('subset_lambdas', list())
-        profile_time = kwds.pop('profile_time', False)
-        sigmas_sq = kwds.pop('variances', dict())
-
-        if not set_A:
-            set_A = self._meas_lambdas
-        
-        keys = sigmas_sq.keys()
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-        if hasattr(self, '_abs_components'):
-            for k in self._abs_components:
-                if k not in keys:
-                    sigmas_sq[k] = 0.0
-        else:
-            for k in self._sublist_components:
-                if k not in keys:
-                    sigmas_sq[k] = 0.0
-
-        print("Solving Initialization Problem\n")
-        
-        # Need to check whether we have negative values in the D-matrix so that we do not have
-        #non-negativity on S
-
-        for t in self._meas_times:
-            for l in self._meas_lambdas:
-                if self.model.D[t, l] >= 0:
-                    pass
-                else:
-                    self._is_D_deriv = True
-        if self._is_D_deriv == True:
-            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
-        
-        
-        obj = 0.0
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-
-        ntp = len(self._meas_times)
-        if hasattr(self, '_abs_components'):
-            for t in self._meas_times:
-                for l in set_A:
-                    D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self._abs_components)
-                    DSZTransp = D_SZTranspose(self, t, l,set_A, countt,countl, absorb = True)
-                    obj += (self.model.D[t, l] - D_bar)**2
-        else:
-            for t in self._meas_times:
-                for l in set_A:
-                    D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self._sublist_components)
-                    DSZTransp = D_SZTranspose(self, t, l, set_A, countt,countl, absorb = False)
-                    obj += (self.model.D[t, l] - D_bar)**2
-                  
-        newobj = ntp/2*log(obj/ntp)            
-        self.model.init_objective = Objective(expr=newobj)
-        
-        opt = SolverFactory(solver)
-
-        for key, val in solver_opts.items():
-            opt.options[key]=val
-        solver_results = opt.solve(self.model,
-                                   tee=tee,
-                                   report_timing=profile_time)
-        
-        delta = (value(self.model.init_objective))
-        for k,v in six.iteritems(self.model.P):
-            print(k, v)
-            print(v.value)
-        
-        etaTeta = 0
-        if hasattr(self, '_abs_components'):
-            for t in self._meas_times:
-                for l in set_A:
-                    D_bar = sum(value(self.model.Z[t, k]) * value(self.model.S[l, k]) for k in self._abs_components)
-                    #DSZTransp = D_SZTranspose(self, t, l,set_A, countt,countl, absorb = True)
-                    etaTeta += (value(self.model.D[t, l])- D_bar)**2
-                    countl += 1
-                countt += 1
-        else:
-            for t in self._meas_times:
-                for l in set_A:
-                    D_bar = sum(value(self.model.Z[t, k]) * value(self.model.S[l, k]) for k in self._sublist_components)
-                    #DSZTransp = D_SZTranspose(self, t, l, set_A, countt,countl, absorb = False)
-                    etaTeta += (value(self.model.D[t, l]) - D_bar)**2
-                    countl += 1
-                countt += 1  
-        deltasq = etaTeta/ntp
-
-        for t in self._meas_times:
-            for k in self._mixture_components:
-                if k in sigmas_sq and sigmas_sq[k] > 0.0:
-                    self.model.C[t, k].value = np.random.normal(self.model.Z[t, k].value, sigmas_sq[k])
-                else:
-                    self.model.C[t, k].value = self.model.Z[t, k].value
-                
-        self.model.del_component('init_objective')
-        
-        return deltasq
-    
     def _solve_sigma_given_delta(self, solver, **kwds):
         """Solves the maximum likelihood formulation to determine the model variance from a
         given device variance.
@@ -789,36 +673,30 @@ class VarianceEstimator(Optimizer):
         
             subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
             (Weifeng paper). Default all wavelengths.
+            
+            solver_opts (dict, optional): dictionary containing solver options for IPOPT
 
         Returns:
 
-            None
+            residuals (float): the objective function value from the optimization
+            
+            variancesdict (dict): dictionary containing the model variance values
+            
+            stop_it (bool): boolean indicator showing whether no solution was found 
+                                (True) or if there is a solution (False)
+                                
+            solver_results: Variance estimation model results, similar to VarianceEstimator 
+                                        results from previous method
 
         """   
         solver_opts = kwds.pop('solver_opts', dict())
         tee = kwds.pop('tee', True)
         set_A = kwds.pop('subset_lambdas', list())
         profile_time = kwds.pop('profile_time', False)
-        sigmas_sq = kwds.pop('variances', dict())
         delta = kwds.pop('delta', dict())
-        #sigmas = kwds.pop('sigmas', dict())
 
         if not set_A:
-            #print("subset lambdas not selected. Solving full problem.")
             set_A = self._meas_lambdas
-        
-        keys = sigmas_sq.keys()
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-        if hasattr(self, '_abs_components'):
-            for k in self._abs_components:
-                if k not in keys:
-                    sigmas_sq[k] = 0.0
-        else:
-            for k in self._sublist_components:
-                if k not in keys:
-                    sigmas_sq[k] = 0.0
-
-        #print("Solving sigmas from the given delta\n")
         
         # Need to check whether we have negative values in the D-matrix so that we do not have
         #non-negativity on S
@@ -910,7 +788,7 @@ class VarianceEstimator(Optimizer):
            This method is not intended to be used by users directly
 
         Args:
-            solver: solver to use to solve the problems (recommended "ipopt")
+            solver (str): solver to use to solve the problems (recommended "ipopt")
             
             delta (float): the device variance squared 
         
@@ -938,8 +816,12 @@ class VarianceEstimator(Optimizer):
         return all_variances
     
     def _solve_iterative_init(self, solver, **kwds):
-        """This method first fixes params and makes C = Z to solve for S. Requires fixed delta and sigmas
-        following this, the parameters are freed to users bounds and full problem is solved with 
+        """This method first fixes params and makes C = Z to solve for S. Requires fixed delta and sigmas.
+        following this, the parameters are freed to users bounds and full problem is solved with fixed variances.
+        This function is only meant to be used as part of a full variance estimation strategy. Currently not
+        implemented in any of the strategies, however it can be useful in future implementations to initialize.
+        
+        Not meant to be directly used by users
 
         Args:
             sigma_sq (dict): variances 
@@ -952,6 +834,8 @@ class VarianceEstimator(Optimizer):
         
             subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
             (Weifeng paper). Default all wavelengths.
+            
+            solver_options (dict, optional): Solver options for IPOPT
 
         Returns:
 
@@ -994,17 +878,17 @@ class VarianceEstimator(Optimizer):
         list_components = []
 
         list_components = [k for k in self._mixture_components]
-        print(sigmas_sq)                    
+        #print(sigmas_sq)                    
         print("Solving Initialization Problem with fixed parameters\n")
         original_bounds = dict()
         for v,k in six.iteritems(self.model.P):
-            print(self.model.P[v].lb, self.model.P[v].ub)
+            #print(self.model.P[v].lb, self.model.P[v].ub)
             low = value(self.model.P[v].lb)
             high = value(self.model.P[v].ub)
-            print(low,high)
-            print(type(low))
+            #print(low,high)
+            #print(type(low))
             original_bounds[v] = (low, high)
-            print(original_bounds)
+            #print(original_bounds)
             ub = value(self.model.P[v])
             lb = ub
             self.model.P[v].setlb(lb)
@@ -1092,9 +976,9 @@ class VarianceEstimator(Optimizer):
         solver_results = opt.solve(self.model,
                                    tee=tee,
                                    report_timing=profile_time)
+        
         for k,v in six.iteritems(self.model.P):
-            print(k, v)
-            print(v.value)        
+            print(k, v.value)      
             print(value(v.ub))
             print(value(v.lb))
         

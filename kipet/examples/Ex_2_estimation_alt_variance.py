@@ -99,9 +99,9 @@ if __name__ == "__main__":
                                                                   subset_lambdas = A_set,
                                                                   solver_opts = options)
     
-    best_possible_accuracy = 1e-7
+    best_possible_accuracy = 5e-7
     search_range = (best_possible_accuracy, worst_case_device_var)
-    num_points = 20
+    num_points = 5
     # This will provide a list of sigma values based on the different delta values evaluated.
     results_variances = v_estimator.run_opt('ipopt',
                                             method = 'direct_sigmas',
