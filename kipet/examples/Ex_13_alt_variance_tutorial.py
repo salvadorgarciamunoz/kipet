@@ -117,7 +117,7 @@ if __name__ == "__main__":
                                             tee=False,
                                             solver_opts=options,
                                             num_points = num_points, 
-                                            with_plots = True,
+                                            #with_plots = True,
                                             #subset_lambdas=A_set,
                                             device_range = search_range)
 

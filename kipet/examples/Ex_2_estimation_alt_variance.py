@@ -54,9 +54,9 @@ if __name__ == "__main__":
     builder = TemplateBuilder()    
     components = {'A':1e-3,'B':0,'C':0}
     builder.add_mixture_component(components)
-    builder.add_parameter('k1', init=2.0, bounds=(0.05,5.0)) 
+    builder.add_parameter('k1', init=2.0, bounds=(0.01,5.0)) 
     #There is also the option of providing initial values: Just add init=... as additional argument as above.
-    builder.add_parameter('k2',init = 0.2, bounds=(0.0,1.0))
+    builder.add_parameter('k2',init = 0.2, bounds=(0.001,5))
     builder.add_spectral_data(D_frame)
 
     # define explicit system of ODEs
@@ -69,7 +69,7 @@ if __name__ == "__main__":
     
     builder.set_odes_rule(rule_odes)
     
-    builder.bound_profile(var = 'S', bounds = (0,500))
+    builder.bound_profile(var = 'S', bounds = (0,200))
     opt_model = builder.create_pyomo_model(0.0,10.0)
     
     #=========================================================================
@@ -94,30 +94,31 @@ if __name__ == "__main__":
     # The set A_set is then decided. This set, explained in Section 4.3.3 is used to make the
     # variance estimation run faster and has been shown to not decrease the accuracy of the variance 
     # prediction for large noisey data sets.
-    A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if (i % 5 == 0)]
+    #A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if (i % 5 == 0)]
     worst_case_device_var = v_estimator.solve_max_device_variance('ipopt', 
                                                                   tee = False, 
-                                                                  subset_lambdas = A_set,
+                                                                  #subset_lambdas = A_set,
                                                                   solver_opts = options)
 
 
     
-    best_possible_accuracy = 1e-6
+    best_possible_accuracy = 5e-07
     search_range = (best_possible_accuracy, worst_case_device_var)
-    num_points = 1
+    num_points = 5
     # This will provide a list of sigma values based on the different delta values evaluated.
     results_variances = v_estimator.run_opt('ipopt',
                                             method = 'direct_sigmas',
                                             tee=False,
                                             solver_opts=options,
                                             num_points = num_points,                                            
-                                            subset_lambdas=A_set,
-                                            device_range = search_range,
-                                            with_plots = True)
-
-    delta = 1e-6
+                                            #subset_lambdas=A_set,
+                                            #with_plots = True,
+                                            device_range = search_range)
+    
+    delta = 1.9596862469619414e-06
+    #1.9596862469619414e-06
     results_vest = v_estimator.solve_sigma_given_delta('ipopt', 
-                                                         subset_lambdas= A_set, 
+                                                         #subset_lambdas= A_set, 
                                                          solver_opts = options, 
                                                          tee=False,
                                                          delta = delta)
@@ -143,15 +144,15 @@ if __name__ == "__main__":
     
     # Certain problems may require initializations and scaling and these can be provided from the 
     # varininace estimation step. This is optional.
-    p_estimator.initialize_from_trajectory('Z',results_vest.Z)
-    p_estimator.initialize_from_trajectory('S',results_vest.S)
-    p_estimator.initialize_from_trajectory('C',results_vest.C)
+    p_estimator.initialize_from_trajectory('Z',results_variances.Z)
+    p_estimator.initialize_from_trajectory('S',results_variances.S)
+    p_estimator.initialize_from_trajectory('C',results_variances.C)
 
     # Scaling for Ipopt can also be provided from the variance estimator's solution
     # these details are elaborated on in the manual
-    p_estimator.scale_variables_from_trajectory('Z',results_vest.Z)
-    p_estimator.scale_variables_from_trajectory('S',results_vest.S)
-    p_estimator.scale_variables_from_trajectory('C',results_vest.C)
+    p_estimator.scale_variables_from_trajectory('Z',results_variances.Z)
+    p_estimator.scale_variables_from_trajectory('S',results_variances.S)
+    p_estimator.scale_variables_from_trajectory('C',results_variances.C)
     
     # Again we provide options for the solver, this time providing the scaling that we set above
     options = dict()
