@@ -94,7 +94,7 @@ if __name__ == "__main__":
     # The set A_set is then decided. This set, explained in Section 4.3.3 is used to make the
     # variance estimation run faster and has been shown to not decrease the accuracy of the variance 
     # prediction for large noisey data sets.
-    #A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if (i % 5 == 0)]
+    A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if (i % 5 == 0)]
     worst_case_device_var = v_estimator.solve_max_device_variance('ipopt', 
                                                                   tee = False, 
                                                                   #subset_lambdas = A_set,
@@ -102,7 +102,7 @@ if __name__ == "__main__":
 
 
     
-    best_possible_accuracy = 5e-07
+    best_possible_accuracy = 3e-07
     search_range = (best_possible_accuracy, worst_case_device_var)
     num_points = 5
     # This will provide a list of sigma values based on the different delta values evaluated.
