@@ -50,9 +50,9 @@ if __name__ == "__main__":
     builder = TemplateBuilder()    
     components = {'A':1e-2,'B':0,'C':0}
     builder.add_mixture_component(components)
-    builder.add_parameter('k1', init=1.2, bounds=(0.01,5.0)) 
+    builder.add_parameter('k1', init=1.2, bounds=(0.5,5.0)) 
     #There is also the option of providing initial values: Just add init=... as additional argument as above.
-    builder.add_parameter('k2',init = 0.2, bounds=(0.001,1.0))
+    builder.add_parameter('k2',init = 0.2, bounds=(0.05,5))
     builder.add_spectral_data(D_frame)
 
     # define explicit system of ODEs
@@ -107,18 +107,20 @@ if __name__ == "__main__":
     # for best and worst-case performance. We will solve for different values of model variance,
     # known as sigma, at each value. We can provide a range, based on the value from above and
     # device specifications and we can set a number of points to search within that range.
+    
     best_possible_accuracy = 1e-8
     search_range = (best_possible_accuracy, worst_case_device_var)
-    num_points = 10
+    num_points = 50
     # This will provide a list of sigma values based on the different delta values evaluated.
     results_variances = v_estimator.run_opt('ipopt',
                                             method = 'direct_sigmas',
                                             tee=False,
                                             solver_opts=options,
-                                            num_points = num_points,                                            
+                                            num_points = num_points, 
+                                            with_plots = True,
                                             #subset_lambdas=A_set,
                                             device_range = search_range)
-    
+
     # It is suggested that from this pool of solutions for different delta and sigma values, that the 
     # best choice for sigma and delta will then be which provided the parameter values closest to 
     # the initial guesses.
@@ -149,7 +151,7 @@ if __name__ == "__main__":
 
     # and define our parameter estimation problem and discretization strategy
     p_estimator = ParameterEstimator(opt_model)
-    p_estimator.apply_discretization('dae.collocation',nfe=60,ncp=1,scheme='LAGRANGE-RADAU')
+    p_estimator.apply_discretization('dae.collocation',nfe=50,ncp=3,scheme='LAGRANGE-RADAU')
     
     # Certain problems may require initializations and scaling and these can be provided from the 
     # varininace estimation step. This is optional.
@@ -168,8 +170,9 @@ if __name__ == "__main__":
     #options['nlp_scaling_method'] = 'user-scaling'
     options['linear_solver'] = 'ma57'
     # finally we run the optimization
-    results_pyomo = p_estimator.run_opt('ipopt',
+    results_pyomo = p_estimator.run_opt('ipopt_sens',
                                       tee=True,
+                                      covariance = True,
                                       solver_opts = options,
                                       variances=sigmas)
 

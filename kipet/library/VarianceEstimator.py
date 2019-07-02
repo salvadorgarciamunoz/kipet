@@ -440,6 +440,20 @@ class VarianceEstimator(Optimizer):
                 results.P = param_vals
                 results.sigma_sq = sigma_vals
                 results.sigma_sq['device'] = delta
+                
+                
+                #if with_plots:
+                #    results.C.plot.line(legend=True)
+                #    plt.xlabel("time (s)")
+                #    plt.ylabel("Concentration (mol/L)")
+                #    plt.title("Concentration Profile")
+            
+                #    results.S.plot.line(legend=True)
+                #    plt.xlabel("Wavelength (cm)")
+                #    plt.ylabel("Absorbance (L/(mol cm))")
+                #    plt.title("Absorbance  Profile")
+                
+                #    plt.show()
             else:
                 max_likelihood_val, sigma_vals, stop_it= self._solve_sigma_given_delta(solver, subset_lambdas= A, solver_opts = solver_opts, tee=tee,delta = fixed_device_var)
                 # retrieving solutions to results object  
@@ -610,6 +624,7 @@ class VarianceEstimator(Optimizer):
         
         obj = 0.0
         ntp = len(self._meas_times)
+        nwp = len(self._meas_lambdas)
         
         if hasattr(self, '_abs_components'):
             for t in self._meas_times:
@@ -622,7 +637,7 @@ class VarianceEstimator(Optimizer):
                     D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self._sublist_components)
                     obj += (self.model.D[t, l] - D_bar)**2
                
-        newobj = ntp/2*log(obj/ntp)   
+        newobj = ntp*nwp/2*log(obj/(ntp*nwp))   
          
         self.model.init_objective = Objective(expr=newobj)
         
@@ -649,7 +664,7 @@ class VarianceEstimator(Optimizer):
                     D_bar = sum(value(self.model.Z[t, k]) * value(self.model.S[l, k]) for k in self._sublist_components)
                     etaTeta += (value(self.model.D[t, l]) - D_bar)**2
 
-        deltasq = etaTeta/ntp
+        deltasq = etaTeta/(ntp*nwp)
         
         self.model.del_component('init_objective')
         print("worst case delta squared: ", deltasq)
@@ -697,7 +712,20 @@ class VarianceEstimator(Optimizer):
 
         if not set_A:
             set_A = self._meas_lambdas
-        
+            
+        if not self._sublist_components:
+            list_components = []
+            if species_list is None:
+                list_components = [k for k in self._mixture_components]
+                
+            else:
+                for k in species_list:
+                    if k in self._mixture_components:
+                        list_components.append(k)
+                    else:
+                        warnings.warn("Ignored {} since is not a mixture component of the model".format(k))
+    
+            self._sublist_components = list_components
         # Need to check whether we have negative values in the D-matrix so that we do not have
         #non-negativity on S
 
@@ -715,11 +743,13 @@ class VarianceEstimator(Optimizer):
         obj = 0.0
    
         if hasattr(self, '_abs_components'):
+            nc = len(self._abs_components)
             for t in self._meas_times:
                 for l in set_A:
                     D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._abs_components)
                     obj += 1/(2*delta)*(self.model.D[t, l] - D_bar)**2
         else:
+            nc = len(self._sublist_components)
             for t in self._meas_times:
                 for l in set_A:
                     D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._sublist_components)
@@ -736,7 +766,7 @@ class VarianceEstimator(Optimizer):
             for k in self._sublist_components:
                 inlog += ((self.model.C[t, k] - self.model.Z[t, k])**2)
                 
-        obj += (ntp/2)*log((inlog/ntp)+self.model.eps)
+        obj += (ntp*nc/2)*log((inlog/(ntp*nc))+self.model.eps)
                        
         self.model.init_objective = Objective(expr=obj)
 
@@ -771,6 +801,7 @@ class VarianceEstimator(Optimizer):
             variancesdict = None
             residuals = 0
             stop_it = True
+            solver_results = None
             for k,v in six.iteritems(self.model.P):
                 print(k, v.value)
             self.model = m

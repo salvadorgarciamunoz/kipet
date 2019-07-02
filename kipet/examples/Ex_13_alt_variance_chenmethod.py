@@ -97,20 +97,22 @@ if __name__ == "__main__":
     # however this may be due to the fact that we were able to get the device variance fairly accurately
     
     # This will provide a list of sigma values based on the different delta values evaluated.
-    results_vest = v_estimator.run_opt('ipopt',
+    results_variances = v_estimator.run_opt('ipopt',
                                             method = 'Chen',
                                             tee=False,
                                             solver_opts=options,
-                                            num_points = num_points,                                            
-                                            tolerance = 1e-8,
-                                            device_range = search_range)
+                                            #num_points = num_points,                                            
+                                            tolerance = 1e-10)
+                                            #device_range = search_range)
     
     # Variances can then be displayed 
     print("\nThe estimated variances are:\n")
-    for k,v in six.iteritems(results_vest.P):
+    for k,v in six.iteritems(results_variances.P):
         print(k,v)
     
-    sigmas = results_vest.sigma_sq
+    sigmas = results_variances.sigma_sq
+    for k,v in six.iteritems(sigmas):
+        print(k,v)
 
     #=========================================================================
     # USER INPUT SECTION - PARAMETER ESTIMATION 
@@ -139,8 +141,9 @@ if __name__ == "__main__":
     #options['nlp_scaling_method'] = 'user-scaling'
     options['linear_solver'] = 'ma57'
     # finally we run the optimization
-    results_pyomo = p_estimator.run_opt('ipopt',
+    results_pyomo = p_estimator.run_opt('ipopt_sens',
                                       tee=True,
+                                      covariance = True,
                                       solver_opts = options,
                                       variances=sigmas)
 

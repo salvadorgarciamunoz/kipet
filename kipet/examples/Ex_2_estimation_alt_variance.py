@@ -68,6 +68,8 @@ if __name__ == "__main__":
         return exprs
     
     builder.set_odes_rule(rule_odes)
+    
+    builder.bound_profile(var = 'S', bounds = (0,500))
     opt_model = builder.create_pyomo_model(0.0,10.0)
     
     #=========================================================================
@@ -93,15 +95,16 @@ if __name__ == "__main__":
     # variance estimation run faster and has been shown to not decrease the accuracy of the variance 
     # prediction for large noisey data sets.
     A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if (i % 5 == 0)]
-    
     worst_case_device_var = v_estimator.solve_max_device_variance('ipopt', 
                                                                   tee = False, 
                                                                   subset_lambdas = A_set,
                                                                   solver_opts = options)
+
+
     
-    best_possible_accuracy = 5e-7
+    best_possible_accuracy = 1e-6
     search_range = (best_possible_accuracy, worst_case_device_var)
-    num_points = 5
+    num_points = 1
     # This will provide a list of sigma values based on the different delta values evaluated.
     results_variances = v_estimator.run_opt('ipopt',
                                             method = 'direct_sigmas',
@@ -109,8 +112,9 @@ if __name__ == "__main__":
                                             solver_opts=options,
                                             num_points = num_points,                                            
                                             subset_lambdas=A_set,
-                                            device_range = search_range)
-    
+                                            device_range = search_range,
+                                            with_plots = True)
+
     delta = 1e-6
     results_vest = v_estimator.solve_sigma_given_delta('ipopt', 
                                                          subset_lambdas= A_set, 
@@ -139,24 +143,25 @@ if __name__ == "__main__":
     
     # Certain problems may require initializations and scaling and these can be provided from the 
     # varininace estimation step. This is optional.
-    p_estimator.initialize_from_trajectory('Z',results_variances.Z)
-    p_estimator.initialize_from_trajectory('S',results_variances.S)
-    p_estimator.initialize_from_trajectory('C',results_variances.C)
+    p_estimator.initialize_from_trajectory('Z',results_vest.Z)
+    p_estimator.initialize_from_trajectory('S',results_vest.S)
+    p_estimator.initialize_from_trajectory('C',results_vest.C)
 
     # Scaling for Ipopt can also be provided from the variance estimator's solution
     # these details are elaborated on in the manual
-    p_estimator.scale_variables_from_trajectory('Z',results_variances.Z)
-    p_estimator.scale_variables_from_trajectory('S',results_variances.S)
-    p_estimator.scale_variables_from_trajectory('C',results_variances.C)
+    p_estimator.scale_variables_from_trajectory('Z',results_vest.Z)
+    p_estimator.scale_variables_from_trajectory('S',results_vest.S)
+    p_estimator.scale_variables_from_trajectory('C',results_vest.C)
     
     # Again we provide options for the solver, this time providing the scaling that we set above
     options = dict()
     #options['nlp_scaling_method'] = 'user-scaling'
     options['linear_solver'] = 'ma57'
     # finally we run the optimization
-    results_pyomo = p_estimator.run_opt('ipopt',
+    results_pyomo = p_estimator.run_opt('ipopt_sens',
                                       tee=True,
                                       solver_opts = options,
+                                      covariance = True,
                                       variances=sigmas)
 
     # And display the results
