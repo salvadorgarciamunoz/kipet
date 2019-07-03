@@ -104,7 +104,7 @@ if __name__ == "__main__":
     
     best_possible_accuracy = 3e-07
     search_range = (best_possible_accuracy, worst_case_device_var)
-    num_points = 5
+    num_points = 3
     # This will provide a list of sigma values based on the different delta values evaluated.
     results_variances = v_estimator.run_opt('ipopt',
                                             method = 'direct_sigmas',
@@ -115,7 +115,7 @@ if __name__ == "__main__":
                                             #with_plots = True,
                                             device_range = search_range)
     
-    delta = 1.9596862469619414e-06
+    delta = worst_case_device_var
     #1.9596862469619414e-06
     results_vest = v_estimator.solve_sigma_given_delta('ipopt', 
                                                          #subset_lambdas= A_set, 
