@@ -96,7 +96,7 @@ class VarianceEstimator(Optimizer):
 
         solver_opts = kwds.pop('solver_opts', dict())
         sigma_sq = kwds.pop('variances', dict())
-        init_sigmas = kwds.pop('initial_sigmas', dict())
+        init_sigmas = kwds.pop('initial_sigmas', float())
         tee = kwds.pop('tee', False)
         method = kwds.pop('method', str())
         norm_order = kwds.pop('norm',np.inf)
@@ -129,12 +129,12 @@ class VarianceEstimator(Optimizer):
         num_points = kwds.pop('num_points', None)
         with_plots = kwds.pop('with_plots', False)
         
-        if method not in ['Chen', "direct_sigmas"]:
+        if method not in ['Chen', "direct_sigmas", "bieglershort"]:
             method = 'Chen'
             print("Method not set, so assumed that the Chen method is chosen")
             
-        if method not in ['Chen', "direct_sigmas"]:
-            raise RuntimeError("method must be either \"Chen\", or \"direct_sigmas\"")
+        if method not in ['Chen', "direct_sigmas", "bieglershort"]:
+            raise RuntimeError("method must be either \"Chen\", or \"direct_sigmas\", or \"bieglershort\" ")
         
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
@@ -360,7 +360,95 @@ class VarianceEstimator(Optimizer):
                 os.remove(self._tmp3)
             if os.path.exists(self._tmp4):
                 os.remove(self._tmp4)
-
+                
+        elif method == 'bieglershort':
+            #if init_sigmas == None:
+                
+            nu_squared = self.solve_max_device_variance('ipopt', tee = tee, subset_lambdas = A, solver_opts = solver_opts)
+            
+            init_sigmas = init_sigmas
+            second_point = init_sigmas*10
+            itersigma = dict()
+            
+            itersigma[1] = init_sigmas
+            itersigma[0] = second_point
+            
+            iterdelta = dict()
+            
+            count = 1
+            tol = 1e-15
+            funcval = 1000
+            damp = 0.99
+            tee = False
+            
+            iterdelta[0] = self._solve_delta_given_sigma('ipopt', tee = tee, subset_lambdas = A, solver_opts = solver_opts, init_sigmas = itersigma[0])
+            
+            while abs(funcval) >= tol:
+                print(itersigma[count])
+                new_delta = self._solve_delta_given_sigma('ipopt', tee = tee, subset_lambdas = A, solver_opts = solver_opts, init_sigmas = itersigma[count])
+                print("new delta_sq val: ", new_delta)
+                iterdelta[count] = new_delta
+                nwp = len(self._meas_lambdas)
+                
+                def func1(nu_squared, new_delta, initsigmas):
+                    sigmult = 0
+                    nwp = len(self._meas_lambdas)
+                    for l in self._meas_lambdas:
+                        for k in self._sublist_components: 
+                           sigmult += value(self.model.S[l, k])
+                    print("sum of absorbances: ",sigmult)
+                    funcval = nu_squared - new_delta - init_sigmas*(sigmult/nwp)
+                    return funcval, sigmult
+                
+                def func2(nu_squared, new_delta, initsigmas):
+                    sigmult = 0
+                    nwp = len(self._meas_lambdas)
+                    for l in self._meas_lambdas:
+                        for k in self._sublist_components: 
+                           sigmult += value(self.model.S[l, k])
+                    funcval = nu_squared - new_delta - init_sigmas*(sigmult/nwp)
+                    return funcval
+                
+                funcval, sigmult = func1(nu_squared, new_delta, itersigma[count])
+                print("f(sig): ",funcval)
+                print("nu_squared: ", nu_squared)
+                print("init_sigmas*(sigmult/nwp):", init_sigmas*(sigmult/nwp))
+                if abs(funcval) <= tol:
+                    print("We have arrived!")
+                    break
+                else:
+                    print("continue")
+                    print("damp*init_sigmas:", damp*init_sigmas)
+                    print("(1 - damp)*nwp*(nu_squared - new_delta)/(sigmult)",(1 - damp)*nwp*(nu_squared - new_delta)/(sigmult))
+                    #itersigma[count + 1] = damp*itersigma[count] + (1 - damp)*nwp*(nu_squared - new_delta)/(sigmult)
+                    numerator_secant = itersigma[count-1]*(func2(nu_squared, new_delta, itersigma[count])) - itersigma[count]*(func2(nu_squared, iterdelta[count-1], itersigma[count - 1]))
+                    denom_secant = func2(nu_squared, new_delta, itersigma[count]) - func2(nu_squared, iterdelta[count-1], itersigma[count - 1])
+                    print(itersigma[count], itersigma[count-1])
+                    print(func2(nu_squared, new_delta, itersigma[count]), func2(nu_squared, iterdelta[count-1], itersigma[count-1]))
+                    print("numerator:", numerator_secant)
+                    print("denom:", denom_secant)
+                    itersigma1= numerator_secant/denom_secant
+                    print("Num/den: ", itersigma1)
+                    itersigma[count + 1] = itersigma[count] - func2(nu_squared, new_delta, itersigma[count])*((itersigma[count]-itersigma[count-1])/denom_secant)
+                    print(itersigma[count + 1])
+                    count += 1
+            max_likelihood_val, sigma_vals, stop_it, results = self._solve_sigma_given_delta(solver, subset_lambdas= A, solver_opts = solver_opts, tee=tee, delta = new_delta)
+            results = ResultsObject()
+            if hasattr(self, '_abs_components'):
+                results.load_from_pyomo_model(self.model,
+                                          to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y'])
+            else:
+                results.load_from_pyomo_model(self.model,
+                                              to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
+            
+            param_vals = dict()
+            for name in self.model.parameter_names:
+                param_vals[name] = self.model.P[name].value
+    
+            results.P = param_vals
+            results.sigma_sq = sigma_vals
+            results.sigma_sq['device'] = new_delta
+        
         elif method == 'direct_sigmas':            
             print("Solving for sigmas assuming known device variances")
             direct_or_it = "it"
@@ -637,9 +725,9 @@ class VarianceEstimator(Optimizer):
                     D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self._sublist_components)
                     obj += (self.model.D[t, l] - D_bar)**2
                
-        newobj = ntp*nwp/2*log(obj/(ntp*nwp))   
+        #newobj = ntp*nwp/2*log(obj/(ntp*nwp))   
          
-        self.model.init_objective = Objective(expr=newobj)
+        self.model.init_objective = Objective(expr=obj)
         
         opt = SolverFactory(solver)
 
@@ -669,6 +757,135 @@ class VarianceEstimator(Optimizer):
         self.model.del_component('init_objective')
         print("worst case delta squared: ", deltasq)
 
+        return deltasq
+
+    def _solve_delta_given_sigma(self, solver, **kwds):
+        """Solves the maximum likelihood initialization with (C-Z) = 0 and delta as a variable
+
+           This method is not intended to be used by users directly
+
+        Args:
+            init_sigmas (dict): variances 
+        
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
+            Default False
+        
+            subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
+            (Weifeng paper). Default all wavelengths.
+
+        Returns:
+
+            None
+
+        """   
+        solver_opts = kwds.pop('solver_opts', dict())
+        tee = kwds.pop('tee', True)
+        set_A = kwds.pop('subset_lambdas', list())
+        profile_time = kwds.pop('profile_time', False)
+        sigmas = kwds.pop('init_sigmas', dict() or float() )
+
+        sigmas_sq = dict()
+        if not set_A:
+            set_A = self._meas_lambdas
+            
+        if isinstance(sigmas, float):
+            if hasattr(self, '_abs_components'):
+                for k in self._abs_components:
+                    sigmas_sq[k] = sigmas
+            else:
+                for k in self._sublist_components:
+                    sigmas_sq[k] = sigmas
+        
+        elif isinstance(sigmas, dict):
+            keys = sigmas.keys()
+            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+            if hasattr(self, '_abs_components'):
+                for k in self._abs_components:
+                    if k not in keys:
+                        sigmas_sq[k] = sigmas
+            else:
+                for k in self._sublist_components:
+                    if k not in keys:
+                        sigmas_sq[k] = sigmas
+
+        print("Solving delta from given sigmas\n")
+        print(sigmas_sq)
+        # Need to check whether we have negative values in the D-matrix so that we do not have
+        #non-negativity on S
+
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                if self.model.D[t, l] >= 0:
+                    pass
+                else:
+                    self._is_D_deriv = True
+        if self._is_D_deriv == True:
+            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
+  
+        obj = 0.0
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        ntp = len(self._meas_times) 
+        nwp = len(self._meas_lambdas) 
+        inlog = 0
+        #self.model.deltasq_inv = Var(within = NonNegativeReals)
+        if hasattr(self, '_abs_components'):
+            nc = len(self._abs_components)
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._sublist_components)
+                    inlog += (self.model.D[t, l] - D_bar)**2
+
+        else:
+            nc = len(self._sublist_components)
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._sublist_components)
+                    inlog += (self.model.D[t, l] - D_bar)**2
+                  
+        
+        for t in self._meas_times:
+            for k in self._sublist_components:
+                obj += 0.5*((self.model.C[t, k] - self.model.Z[t, k])**2)/(sigmas_sq[k])
+                
+        obj += (nwp)*log((inlog)+1e-12)     
+        #obj += (ntp*nwp/2)*log((inlog/(ntp*nwp))+1e-12)        
+        #obj += (ntp*nc/2)*log((inlog/(ntp*nc))+self.model.eps)              
+        self.model.init_objective = Objective(expr=obj)
+        
+        opt = SolverFactory(solver)
+
+        for key, val in solver_opts.items():
+            opt.options[key]=val
+        solver_results = opt.solve(self.model,
+                                   tee=tee,
+                                   report_timing=profile_time)
+        residuals = (value(self.model.init_objective))
+        
+        print("residuals: ", residuals)
+
+        for k,v in six.iteritems(self.model.P):
+            print(k, v)
+            print(v.value)
+            
+        etaTeta = 0
+        if hasattr(self, '_abs_components'):
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(value(self.model.C[t, k]) * value(self.model.S[l, k]) for k in self._abs_components)
+                    etaTeta += (value(self.model.D[t, l])- D_bar)**2
+        else:
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(value(self.model.C[t, k]) * value(self.model.S[l, k]) for k in self._sublist_components)
+                    etaTeta += (value(self.model.D[t, l]) - D_bar)**2
+
+        deltasq = etaTeta/(ntp*nwp)  
+        print(deltasq)
+        self.model.del_component('init_objective')
+        #self.model.del_component('init_objective')        
         return deltasq
     
     def _solve_sigma_given_delta(self, solver, **kwds):
@@ -755,7 +972,9 @@ class VarianceEstimator(Optimizer):
                     D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._sublist_components)
                     obj += 1/(2*delta)*(self.model.D[t, l] - D_bar)**2
 
-        inlog = 0  
+        inlog = dict()
+        for k in self._sublist_components:
+            inlog[k] = 0
         self.model.eps = Param(initialize = 1e-8)  
                
         variancesdict = dict()
@@ -764,9 +983,12 @@ class VarianceEstimator(Optimizer):
             
         for t in self._meas_times:
             for k in self._sublist_components:
-                inlog += ((self.model.C[t, k] - self.model.Z[t, k])**2)
-                
-        obj += (ntp*nc/2)*log((inlog/(ntp*nc))+self.model.eps)
+                inlog[k] += ((self.model.C[t, k] - self.model.Z[t, k])**2)
+        
+        for k in self._sublist_components:
+            obj += (ntp/2)*log((inlog[k]/(ntp))+self.model.eps)
+        
+        #obj += (ntp*nc/2)*log((inlog/(ntp*nc))+self.model.eps)
                        
         self.model.init_objective = Objective(expr=obj)
 
