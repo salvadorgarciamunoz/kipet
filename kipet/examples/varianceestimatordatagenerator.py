@@ -188,11 +188,11 @@ if __name__ == "__main__":
     #results_sim = sim.run_sim('ipopt',
                           #tee=True,
                           #solver_opts=options)
-    sigmas={'A': 5e-7,
+    sigmas={'A': 2e-6,
             'B':8e-9,
     'C': 1e-9,
     #'D': 1e-10,
-    'device':9e-7}
+    'device':1e-6}
 
     results_sim = sim.run_sim('ipopt',variances=sigmas,seed=123453256,
                           tee=True)

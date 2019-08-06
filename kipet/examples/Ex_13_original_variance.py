@@ -41,7 +41,7 @@ if __name__ == "__main__":
     dataDirectory = os.path.abspath(
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
             inspect.currentframe() ) ) ), 'data_sets'))
-    filename =  os.path.join(dataDirectory,'varest.csv')
+    filename =  os.path.join(dataDirectory,'varest2.csv')
     D_frame = read_spectral_data_from_csv(filename, negatives_to_zero = True)
 
     # Then we build dae block for as described in the section 4.2.1. Note the addition
@@ -50,9 +50,9 @@ if __name__ == "__main__":
     builder = TemplateBuilder()    
     components = {'A':1e-2,'B':0,'C':0}
     builder.add_mixture_component(components)
-    builder.add_parameter('k1', init=1.2, bounds=(0.5,5.0)) 
+    builder.add_parameter('k1', init=1.2, bounds=(0.01,5.0)) 
     #There is also the option of providing initial values: Just add init=... as additional argument as above.
-    builder.add_parameter('k2',init = 0.2, bounds=(0.005,5))
+    builder.add_parameter('k2',init = 0.2, bounds=(0.001,1.0))
     builder.add_spectral_data(D_frame)
 
     # define explicit system of ODEs
@@ -64,7 +64,6 @@ if __name__ == "__main__":
         return exprs
     
     builder.set_odes_rule(rule_odes)
-    builder.bound_profile(var = 'S', bounds = (0,100))
     opt_model = builder.create_pyomo_model(0.0,10.0)
     
     #=========================================================================
@@ -73,8 +72,7 @@ if __name__ == "__main__":
     # For this problem we have an input D matrix that has some noise in it
     # We can therefore use the variance estimator described in the Overview section
     # of the documentation and Section 4.3.3 or we can use the alternative methodology,
-    # where we use the secant method to determine the total model variance and total device 
-    # variance before separating out the individual species' variances.
+    # whereby we directly solve for the sigmas given different values of device variance
     v_estimator = VarianceEstimator(opt_model)
     v_estimator.apply_discretization('dae.collocation',nfe=50,ncp=3,scheme='LAGRANGE-RADAU')
     
@@ -93,41 +91,28 @@ if __name__ == "__main__":
     #A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if (i % 4 == 0)]
     # For this small problem we do not need this, however it should be set for larger problems
     
-    # If we do not wish to use the Chen et al. way of solving for variances, there is a simpler
-    # and often more reliable way of finding variances. This is done by first assuming we have no model 
-    # variance and solving for the overall variance. See details in the documentation under Section 4.16
-    # This value will give us our worst possible device variance (i.e. all variance is explained using 
-    # the device variance)    
-    # Once the worst case device variance we solve the maximum likelihood
-    # problem with different values of sigma in order to converge upon the most likely
-    # split between the total device variance and the total model variance, we can then, 
-    # based on this solution solve for the individual model variances if we wish.
+    # This is the standard Chen et al. method used within KIPET and added here for comparison with
+    # alternative method. Once can see that the results are quite different and it is not obvious which
+    # method provides the correct results. On close inspection, the alternative method is closer,
+    # however this may be due to the fact that we were able to get the device variance fairly accurately
     
-    # To do this we only need to provide an initial value for the variances.
-    init_sigmas = 5e-8
+    # This will provide a list of sigma values based on the different delta values evaluated.
     results_variances = v_estimator.run_opt('ipopt',
-                                            method = 'alternate',
+                                            method = 'Chen',
                                             tee=False,
-                                            initial_sigmas = init_sigmas,
                                             solver_opts=options,
-                                            tolerance = 1e-10,
-                                            secant_point = 5e-7,
-                                            individual_species = False)
-    
-    # other options that may needed include an option to provide the second point for
-    # the secant method to obtain good starting values, as well as the the tolerance for
-    # when the optimal solution is reached. Additionally, it may be useful to solve for the individual
-    # species' variances in addition to the overall model variance.
+                                            #num_points = num_points,                                            
+                                            tolerance = 1e-10)
+                                            #device_range = search_range)
     
     # Variances can then be displayed 
     print("\nThe estimated variances are:\n")
-    for k,v in six.iteritems(results_variances.sigma_sq):
+    for k,v in six.iteritems(results_variances.P):
         print(k,v)
-
-    # and the sigmas for the parameter estimation step are now known and fixed
-   # sigmas = sigmas
     
     sigmas = results_variances.sigma_sq
+    for k,v in six.iteritems(sigmas):
+        print(k,v)
 
     #=========================================================================
     # USER INPUT SECTION - PARAMETER ESTIMATION 

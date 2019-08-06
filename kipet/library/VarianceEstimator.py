@@ -85,6 +85,18 @@ class VarianceEstimator(Optimizer):
             fixed_device_variance (float, optional): If the device variance is known in advanced we can fix it here.
                                                 Only to be used in conjunction with lsq_ipopt = True.
                                                 
+            secant_point (float, optional): Provides the second point (in addition to the init_sigma) for the secant method
+                                            if not provided it will use 10 times the initial point
+            
+            device_range (tuple, optional): when using direct sigmas approach this provides the search region for delta
+            
+            num_points (int, optional): This provides the number of evaluations when using direct sigmas approach
+            
+            init_sigmas (float, optional): this will provide an initial value for the sigmas when using the alternative variance method
+            
+            individual_species (bool, optional): bool to see whether the overall model variance is returned or if the individual
+                                                species' variances are returned based on the obtainde value for delta
+            
             with_plots (bool, optional): if with_plots is provided, it will plot the log objective versus the
                                             iterations for the direct_sigmas method.
 
@@ -106,6 +118,7 @@ class VarianceEstimator(Optimizer):
         lsq_ipopt = kwds.pop('lsq_ipopt', False)
         init_C = kwds.pop('init_C', None)
         report_time = kwds.pop('report_time', False)
+        individual_species = kwds.pop('individual_species', False)
 
         # additional arguments for inputs CS
         inputs = kwds.pop("inputs", None)
@@ -126,15 +139,16 @@ class VarianceEstimator(Optimizer):
         # Modified variance estimation procedures arguments
         fixed_device_var = kwds.pop('fixed_device_variance', None)
         device_range = kwds.pop('device_range', None)
+        secant_point2 = kwds.pop('secant_point', None)
         num_points = kwds.pop('num_points', None)
         with_plots = kwds.pop('with_plots', False)
         
-        if method not in ['Chen', "direct_sigmas", "bieglershort"]:
-            method = 'Chen'
+        if method not in ['originalchenetal', "direct_sigmas", "alternate"]:
+            method = 'originalchenetal'
             print("Method not set, so assumed that the Chen method is chosen")
             
-        if method not in ['Chen', "direct_sigmas", "bieglershort"]:
-            raise RuntimeError("method must be either \"Chen\", or \"direct_sigmas\", or \"bieglershort\" ")
+        if method not in ['originalchenetal', "direct_sigmas", "alternate"]:
+            raise RuntimeError("method must be either \"originalchenetal\", or \"direct_sigmas\", or \"alternate\" ")
         
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
@@ -231,7 +245,7 @@ class VarianceEstimator(Optimizer):
 
         if report_time:
             start = time.time()
-        if method == 'Chen':    
+        if method == 'originalchenetal':    
             # solves formulation 18
             if init_C is None:
                 self._solve_initalization(solver, subset_lambdas=A, solver_opts = solver_opts, tee=tee)
@@ -361,13 +375,16 @@ class VarianceEstimator(Optimizer):
             if os.path.exists(self._tmp4):
                 os.remove(self._tmp4)
                 
-        elif method == 'bieglershort':
-            #if init_sigmas == None:
+        elif method == 'alternate':
                 
             nu_squared = self.solve_max_device_variance('ipopt', tee = tee, subset_lambdas = A, solver_opts = solver_opts)
             
             init_sigmas = init_sigmas
-            second_point = init_sigmas*10
+            
+            if secant_point2 is not None:
+                second_point = secant_point2
+            else:
+                second_point = init_sigmas*10
             itersigma = dict()
             
             itersigma[1] = init_sigmas
@@ -376,19 +393,17 @@ class VarianceEstimator(Optimizer):
             iterdelta = dict()
             
             count = 1
-            tol = 1e-15
+            tol = tol
             funcval = 1000
-            damp = 0.99
             tee = False
             
             iterdelta[0] = self._solve_delta_given_sigma('ipopt', tee = tee, subset_lambdas = A, solver_opts = solver_opts, init_sigmas = itersigma[0])
             
             while abs(funcval) >= tol:
-                print(itersigma[count])
+                print("overall sigma value at iteration", count,": ", itersigma[count])
                 new_delta = self._solve_delta_given_sigma('ipopt', tee = tee, subset_lambdas = A, solver_opts = solver_opts, init_sigmas = itersigma[count])
                 print("new delta_sq val: ", new_delta)
                 iterdelta[count] = new_delta
-                nwp = len(self._meas_lambdas)
                 
                 def func1(nu_squared, new_delta, initsigmas):
                     sigmult = 0
@@ -396,7 +411,7 @@ class VarianceEstimator(Optimizer):
                     for l in self._meas_lambdas:
                         for k in self._sublist_components: 
                            sigmult += value(self.model.S[l, k])
-                    print("sum of absorbances: ",sigmult)
+                    #print("sum of absorbances: ",sigmult)
                     funcval = nu_squared - new_delta - init_sigmas*(sigmult/nwp)
                     return funcval, sigmult
                 
@@ -410,29 +425,28 @@ class VarianceEstimator(Optimizer):
                     return funcval
                 
                 funcval, sigmult = func1(nu_squared, new_delta, itersigma[count])
-                print("f(sig): ",funcval)
-                print("nu_squared: ", nu_squared)
-                print("init_sigmas*(sigmult/nwp):", init_sigmas*(sigmult/nwp))
+
                 if abs(funcval) <= tol:
-                    print("We have arrived!")
                     break
                 else:
-                    print("continue")
-                    print("damp*init_sigmas:", damp*init_sigmas)
-                    print("(1 - damp)*nwp*(nu_squared - new_delta)/(sigmult)",(1 - damp)*nwp*(nu_squared - new_delta)/(sigmult))
+                    #print("continue")
+                    #print("damp*init_sigmas:", damp*init_sigmas)
+                    #print("(1 - damp)*nwp*(nu_squared - new_delta)/(sigmult)",(1 - damp)*nwp*(nu_squared - new_delta)/(sigmult))
                     #itersigma[count + 1] = damp*itersigma[count] + (1 - damp)*nwp*(nu_squared - new_delta)/(sigmult)
-                    numerator_secant = itersigma[count-1]*(func2(nu_squared, new_delta, itersigma[count])) - itersigma[count]*(func2(nu_squared, iterdelta[count-1], itersigma[count - 1]))
+                    #numerator_secant = itersigma[count-1]*(func2(nu_squared, new_delta, itersigma[count])) - itersigma[count]*(func2(nu_squared, iterdelta[count-1], itersigma[count - 1]))
                     denom_secant = func2(nu_squared, new_delta, itersigma[count]) - func2(nu_squared, iterdelta[count-1], itersigma[count - 1])
-                    print(itersigma[count], itersigma[count-1])
-                    print(func2(nu_squared, new_delta, itersigma[count]), func2(nu_squared, iterdelta[count-1], itersigma[count-1]))
-                    print("numerator:", numerator_secant)
-                    print("denom:", denom_secant)
-                    itersigma1= numerator_secant/denom_secant
-                    print("Num/den: ", itersigma1)
+                    #itersigma1= numerator_secant/denom_secant
                     itersigma[count + 1] = itersigma[count] - func2(nu_squared, new_delta, itersigma[count])*((itersigma[count]-itersigma[count-1])/denom_secant)
-                    print(itersigma[count + 1])
                     count += 1
-            max_likelihood_val, sigma_vals, stop_it, results = self._solve_sigma_given_delta(solver, subset_lambdas= A, solver_opts = solver_opts, tee=tee, delta = new_delta)
+            if individual_species:
+                print("solving for individual species' variance based on the obtained delta")
+                max_likelihood_val, sigma_vals, stop_it, results = self._solve_sigma_given_delta(solver, subset_lambdas= A, solver_opts = solver_opts, tee=tee, delta = new_delta)
+            else:
+                print("The overall model variance is: ", itersigma[count])
+                sigma_vals = {}
+                for k in self._sublist_components:
+                    sigma_vals[k] = itersigma[count]
+            #print("residuals:",max_likelihood_val )
             results = ResultsObject()
             if hasattr(self, '_abs_components'):
                 results.load_from_pyomo_model(self.model,
@@ -505,10 +519,7 @@ class VarianceEstimator(Optimizer):
                         iteration_counter.append(count)
                         
                     delta = delta + dist
-                    count += 1
-                if with_plots:
-                    plt.plot(iteration_counter, max_likelihood_vals)
-                    plt.show() 
+                    count += 1 
 
                 results = ResultsObject()
             
@@ -529,19 +540,6 @@ class VarianceEstimator(Optimizer):
                 results.sigma_sq = sigma_vals
                 results.sigma_sq['device'] = delta
                 
-                
-                #if with_plots:
-                #    results.C.plot.line(legend=True)
-                #    plt.xlabel("time (s)")
-                #    plt.ylabel("Concentration (mol/L)")
-                #    plt.title("Concentration Profile")
-            
-                #    results.S.plot.line(legend=True)
-                #    plt.xlabel("Wavelength (cm)")
-                #    plt.ylabel("Absorbance (L/(mol cm))")
-                #    plt.title("Absorbance  Profile")
-                
-                #    plt.show()
             else:
                 max_likelihood_val, sigma_vals, stop_it= self._solve_sigma_given_delta(solver, subset_lambdas= A, solver_opts = solver_opts, tee=tee,delta = fixed_device_var)
                 # retrieving solutions to results object  
@@ -760,7 +758,9 @@ class VarianceEstimator(Optimizer):
         return deltasq
 
     def _solve_delta_given_sigma(self, solver, **kwds):
-        """Solves the maximum likelihood initialization with (C-Z) = 0 and delta as a variable
+        """Solves the maximum likelihood formulation with fixed sigmas in order to
+        obtain delta. This formulation is highly unstable as the problem is ill-posed
+        with the optimal solution being that C-Z = 0. Should not use.
 
            This method is not intended to be used by users directly
 
@@ -885,7 +885,7 @@ class VarianceEstimator(Optimizer):
         deltasq = etaTeta/(ntp*nwp)  
         print(deltasq)
         self.model.del_component('init_objective')
-        #self.model.del_component('init_objective')        
+       
         return deltasq
     
     def _solve_sigma_given_delta(self, solver, **kwds):
@@ -1036,9 +1036,10 @@ class VarianceEstimator(Optimizer):
 
     def solve_sigma_given_delta(self, solver, **kwds):
         """Function that solves for model variances based on a given device variance. Solves
-        The log likelihood function and returns a dictionary containg al sigmas.
+        The log likelihood function and returns a dictionary containg all sigmas, including
+        the device/delta in order to easily apply to the parameter estimation problem.
 
-           This method is not intended to be used by users directly
+           This method is intended to be used by users directly
 
         Args:
             solver (str): solver to use to solve the problems (recommended "ipopt")
@@ -1055,7 +1056,7 @@ class VarianceEstimator(Optimizer):
 
         Returns:
 
-            None
+            all_variances (dict): dictionary containg all sigmas, including the device/delta
 
         """   
         solver_opts = kwds.pop('solver_opts', dict())
@@ -1135,11 +1136,8 @@ class VarianceEstimator(Optimizer):
         print("Solving Initialization Problem with fixed parameters\n")
         original_bounds = dict()
         for v,k in six.iteritems(self.model.P):
-            #print(self.model.P[v].lb, self.model.P[v].ub)
             low = value(self.model.P[v].lb)
             high = value(self.model.P[v].ub)
-            #print(low,high)
-            #print(type(low))
             original_bounds[v] = (low, high)
             #print(original_bounds)
             ub = value(self.model.P[v])
@@ -1169,8 +1167,8 @@ class VarianceEstimator(Optimizer):
                                    tee=tee,
                                    report_timing=profile_time)
         for k,v in six.iteritems(self.model.P):
-            print(k, v)
-            print(v.value)
+            print(k, v.value)
+            #print(v.value)
         
         for t in self._meas_times:
             for k in self._mixture_components:
@@ -1226,14 +1224,16 @@ class VarianceEstimator(Optimizer):
 
         for key, val in solver_opts.items():
             opt.options[key]=val
+        
+        print("Solving problem with unfixed parameters")
         solver_results = opt.solve(self.model,
                                    tee=tee,
                                    report_timing=profile_time)
         
         for k,v in six.iteritems(self.model.P):
             print(k, v.value)      
-            print(value(v.ub))
-            print(value(v.lb))
+            #print(value(v.ub))
+            #print(value(v.lb))
         
         m.del_component('objective')
         self.model = m
