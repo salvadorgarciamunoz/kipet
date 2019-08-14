@@ -93,7 +93,7 @@ if __name__ == "__main__":
     # see where the scree plot has an elbow. If there is a clear elbow, as there is 
     # this example, then it is advised to select this number of components
 
-    basic_pca(D_frame,n=100,with_plots=True)
+    basic_pca(D_frame,n=100, with_plots=with_plots)
     #After performing the PCA we can see that we should use 3 components
     
     # Now we would like to determine the rank of this matrix (which will be 3):
@@ -108,4 +108,3 @@ if __name__ == "__main__":
     # The output from this should give you whether the number of chosen components 
     # and the number of absorbing components match and whether it may be necessary to include
     # unwanted contributions or not
-    sys.exit()
