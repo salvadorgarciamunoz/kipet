@@ -1107,7 +1107,7 @@ class TemplateBuilder(object):
         matchCsC_con = getattr(model, 'matchCsC')
 
         for time in times:
-            for component in self._non_absorbing:
+            for component in allcomps:
                 new_con.add(C[time, component] == Z[time, component])
             for componenta in abscomps:
                 matchCsC_con.add(Cs[time, componenta] == C[time, componenta])

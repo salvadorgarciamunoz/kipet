@@ -16,6 +16,7 @@ import copy
 import sys
 import os
 import re
+import math
 from pyomo.core.expr import current as EXPR
 from pyomo.core.expr.numvalue import NumericConstant
 try:
@@ -47,13 +48,19 @@ class VarianceEstimator(Optimizer):
 
     def run_opt(self, solver, **kwds):
 
-        """Solves estimation following Weifengs procedure.
-           This method solved a sequence of optimization problems
-           to determine variances and initial guesses for parameter estimation.
+        """Solves estimation following either the original Chen etal (2016) procedure or via the 
+        maximum likelihood estimation with unknown covariance matrix. Chen's method solves a sequence 
+        of optimization problems to determine variances and initial guesses for parameter estimation.
+        The maximum likelihood estimation with unknown covariance matrix also solves a sequence of optimization
+        problems is a more robust and reliable method, albeit somputationally costly.
 
         Args:
 
             solver_opts (dict, optional): options passed to the nonlinear solver
+            
+            method (str, optional): default is "Chen", other options are "max_likelihood" and "iterative_method"
+            
+            initial_sigmas (dict, optional): Required for "iterative_method"
 
             tee (bool,optional): flag to tell the optimizer whether to stream output
             to the terminal or not
@@ -77,6 +84,21 @@ class VarianceEstimator(Optimizer):
             
             fixed_device_variance (float, optional): If the device variance is known in advanced we can fix it here.
                                                 Only to be used in conjunction with lsq_ipopt = True.
+                                                
+            secant_point (float, optional): Provides the second point (in addition to the init_sigma) for the secant method
+                                            if not provided it will use 10 times the initial point
+            
+            device_range (tuple, optional): when using direct sigmas approach this provides the search region for delta
+            
+            num_points (int, optional): This provides the number of evaluations when using direct sigmas approach
+            
+            init_sigmas (float, optional): this will provide an initial value for the sigmas when using the alternative variance method
+            
+            individual_species (bool, optional): bool to see whether the overall model variance is returned or if the individual
+                                                species' variances are returned based on the obtainde value for delta
+            
+            with_plots (bool, optional): if with_plots is provided, it will plot the log objective versus the
+                                            iterations for the direct_sigmas method.
 
         Returns:
 
@@ -85,8 +107,10 @@ class VarianceEstimator(Optimizer):
         """
 
         solver_opts = kwds.pop('solver_opts', dict())
-        variances = kwds.pop('variances', dict())
+        sigma_sq = kwds.pop('variances', dict())
+        init_sigmas = kwds.pop('initial_sigmas', float())
         tee = kwds.pop('tee', False)
+        method = kwds.pop('method', str())
         norm_order = kwds.pop('norm',np.inf)
         max_iter = kwds.pop('max_iter', 400)
         tol = kwds.pop('tolerance', 5.0e-5)
@@ -94,6 +118,7 @@ class VarianceEstimator(Optimizer):
         lsq_ipopt = kwds.pop('lsq_ipopt', False)
         init_C = kwds.pop('init_C', None)
         report_time = kwds.pop('report_time', False)
+        individual_species = kwds.pop('individual_species', False)
 
         # additional arguments for inputs CS
         inputs = kwds.pop("inputs", None)
@@ -111,8 +136,20 @@ class VarianceEstimator(Optimizer):
 
         species_list = kwds.pop('subset_components', None)
         
+        # Modified variance estimation procedures arguments
         fixed_device_var = kwds.pop('fixed_device_variance', None)
-
+        device_range = kwds.pop('device_range', None)
+        secant_point2 = kwds.pop('secant_point', None)
+        num_points = kwds.pop('num_points', None)
+        with_plots = kwds.pop('with_plots', False)
+        
+        if method not in ['originalchenetal', "direct_sigmas", "alternate"]:
+            method = 'originalchenetal'
+            print("Method not set, so assumed that the Chen method is chosen")
+            
+        if method not in ['originalchenetal', "direct_sigmas", "alternate"]:
+            raise RuntimeError("method must be either \"originalchenetal\", or \"direct_sigmas\", or \"alternate\" ")
+        
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
 
@@ -208,135 +245,319 @@ class VarianceEstimator(Optimizer):
 
         if report_time:
             start = time.time()
-            
-        # solves formulation 18
-        if init_C is None:
-            self._solve_initalization(solver, subset_lambdas=A, solver_opts = solver_opts, tee=tee)
-        else:
-            for t in self._meas_times:
-                for k in self._mixture_components:
-                    self.model.C[t, k].value = init_C[k][t]
-                    self.model.Z[t, k].value = init_C[k][t]
-
-            s_array = self._solve_S_from_DC(init_C)
-            S_frame = pd.DataFrame(data=s_array,
-                                   columns=self._mixture_components,
-                                   index=self._meas_lambdas)
-            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-            if hasattr(self, '_abs_components'):
-                for l in self._meas_lambdas:
-                    for k in self._abs_components:
-                        self.model.S[l, k].value = S_frame[k][l]  # 1e-2
-                        #: Some of these are gonna be non-zero
-                        # if hasattr(self.model, 'non_absorbing'):
-                        #     if k in self.model.non_absorbing:
-                        #         self.model.S[l, k].value = 0.0
-
-                        if hasattr(self.model, 'known_absorbance'):
-                            if k in self.model.known_absorbance:
-                                self.model.S[l, k].value = self.model.known_absorbance_data[k][l]
+        if method == 'originalchenetal':    
+            # solves formulation 18
+            if init_C is None:
+                self._solve_initalization(solver, subset_lambdas=A, solver_opts = solver_opts, tee=tee)
             else:
-                for l in self._meas_lambdas:
+                for t in self._meas_times:
                     for k in self._mixture_components:
-                        self.model.S[l, k].value = S_frame[k][l]  # 1e-2
-                        #: Some of these are gonna be non-zero
-                        # if hasattr(self.model, 'non_absorbing'):
-                        #     if k in self.model.non_absorbing:
-                        #         self.model.S[l, k].value = 0.0
-
-                        if hasattr(self.model, 'known_absorbance'):
-                            if k in self.model.known_absorbance:
-                                self.model.S[l, k].value = self.model.known_absorbance_data[k]
-
-        #start looping
-        #print("{: >11} {: >20} {: >16} {: >16}".format('Iter','|Zi-Zi+1|','|Ci-Ci+1|','|Si-Si+1|'))
-        print("{: >11} {: >20}".format('Iter', '|Zi-Zi+1|'))
-        logiterfile = "iterations.log"
-        if os.path.isfile(logiterfile):
-            os.remove(logiterfile)
-
-        # backup
-        if lsq_ipopt:
-            self._build_s_model()
-            self._build_c_model()
-        else:
-            if species_list is None:
-                self._build_scipy_lsq_arrays()
-            else:
-                lsq_ipopt = True
+                        self.model.C[t, k].value = init_C[k][t]
+                        self.model.Z[t, k].value = init_C[k][t]
+    
+                s_array = self._solve_S_from_DC(init_C)
+                S_frame = pd.DataFrame(data=s_array,
+                                       columns=self._mixture_components,
+                                       index=self._meas_lambdas)
+                # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+                if hasattr(self, '_abs_components'):
+                    for l in self._meas_lambdas:
+                        for k in self._abs_components:
+                            self.model.S[l, k].value = S_frame[k][l]  # 1e-2
+                            #: Some of these are gonna be non-zero
+                            # if hasattr(self.model, 'non_absorbing'):
+                            #     if k in self.model.non_absorbing:
+                            #         self.model.S[l, k].value = 0.0
+    
+                            if hasattr(self.model, 'known_absorbance'):
+                                if k in self.model.known_absorbance:
+                                    self.model.S[l, k].value = self.model.known_absorbance_data[k][l]
+                else:
+                    for l in self._meas_lambdas:
+                        for k in self._mixture_components:
+                            self.model.S[l, k].value = S_frame[k][l]  # 1e-2
+                            #: Some of these are gonna be non-zero
+                            # if hasattr(self.model, 'non_absorbing'):
+                            #     if k in self.model.non_absorbing:
+                            #         self.model.S[l, k].value = 0.0
+    
+                            if hasattr(self.model, 'known_absorbance'):
+                                if k in self.model.known_absorbance:
+                                    self.model.S[l, k].value = self.model.known_absorbance_data[k]
+    
+            #start looping
+            #print("{: >11} {: >20} {: >16} {: >16}".format('Iter','|Zi-Zi+1|','|Ci-Ci+1|','|Si-Si+1|'))
+            print("{: >11} {: >20}".format('Iter', '|Zi-Zi+1|'))
+            logiterfile = "iterations.log"
+            if os.path.isfile(logiterfile):
+                os.remove(logiterfile)
+    
+            # backup
+            if lsq_ipopt:
                 self._build_s_model()
                 self._build_c_model()
+            else:
+                if species_list is None:
+                    self._build_scipy_lsq_arrays()
+                else:
+                    lsq_ipopt = True
+                    self._build_s_model()
+                    self._build_c_model()
+                
+            for it in range(max_iter):
+                
+                rb = ResultsObject()
+                # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+                if hasattr(self, '_abs_components'):
+                    rb.load_from_pyomo_model(self.model, to_load=['Z', 'C', 'Cs', 'S', 'Y'])
+                else:
+                    rb.load_from_pyomo_model(self.model, to_load=['Z', 'C', 'S', 'Y'])
+                
+                self._solve_Z(solver)
+    
+                if lsq_ipopt:
+                    self._solve_S(solver)
+                    self._solve_C(solver)
+                else:
+                    solved_s = self._solve_s_scipy()
+                    solved_c = self._solve_c_scipy()
+                    
+                #pdb.set_trace()
+                
+                ra=ResultsObject()    
+                # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+                if hasattr(self, '_abs_components'):
+                    ra.load_from_pyomo_model(self.model, to_load=['Z','C','Cs','S'])
+                else:
+                    ra.load_from_pyomo_model(self.model, to_load=['Z', 'C', 'S'])
+                
+                r_diff = compute_diff_results(rb,ra)
+    
+                
+                Z_norm = r_diff.compute_var_norm('Z',norm_order)
+                #C_norm = r_diff.compute_var_norm('C',norm_order)
+                #S_norm = r_diff.compute_var_norm('S',norm_order)
+                if it>0:
+                    #print("{: >11} {: >20} {: >16} {: >16}".format(it,Z_norm,C_norm,S_norm))
+                    print("{: >11} {: >20}".format(it, Z_norm))
+                self._log_iterations(logiterfile, it)
+                if Z_norm<tol and it >= 1:
+                    break
+                    
+            results = ResultsObject()
             
-        for it in range(max_iter):
-            
-            rb = ResultsObject()
+            # retriving solutions to results object  
             # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
             if hasattr(self, '_abs_components'):
-                rb.load_from_pyomo_model(self.model, to_load=['Z', 'C', 'Cs', 'S', 'Y'])
+                results.load_from_pyomo_model(self.model,
+                                          to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y'])
             else:
-                rb.load_from_pyomo_model(self.model, to_load=['Z', 'C', 'S', 'Y'])
+                results.load_from_pyomo_model(self.model,
+                                              to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
+    
+            print('Iterative optimization converged. Estimating variances now')
+            # compute variances
+            solved_variances = self._solve_variances(results, fixed_dev_var = fixed_device_var)
             
-            self._solve_Z(solver)
-
-            if lsq_ipopt:
-                self._solve_S(solver)
-                self._solve_C(solver)
-            else:
-                solved_s = self._solve_s_scipy()
-                solved_c = self._solve_c_scipy()
+            self.compute_D_given_SC(results)
+            
+            param_vals = dict()
+            for name in self.model.parameter_names:
+                param_vals[name] = self.model.P[name].value
+    
+            results.P = param_vals
+    
+            # removes temporary files. This needs to be changes to work with pyutilib
+            if os.path.exists(self._tmp2):
+                os.remove(self._tmp2)
+            if os.path.exists(self._tmp3):
+                os.remove(self._tmp3)
+            if os.path.exists(self._tmp4):
+                os.remove(self._tmp4)
                 
-            #pdb.set_trace()
+        elif method == 'alternate':
+                
+            nu_squared = self.solve_max_device_variance('ipopt', tee = tee, subset_lambdas = A, solver_opts = solver_opts)
             
-            ra=ResultsObject()    
-            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+            init_sigmas = init_sigmas
+            
+            if secant_point2 is not None:
+                second_point = secant_point2
+            else:
+                second_point = init_sigmas*10
+            itersigma = dict()
+            
+            itersigma[1] = init_sigmas
+            itersigma[0] = second_point
+            
+            iterdelta = dict()
+            
+            count = 1
+            tol = tol
+            funcval = 1000
+            tee = False
+            
+            iterdelta[0] = self._solve_delta_given_sigma('ipopt', tee = tee, subset_lambdas = A, solver_opts = solver_opts, init_sigmas = itersigma[0])
+            
+            while abs(funcval) >= tol:
+                print("overall sigma value at iteration", count,": ", itersigma[count])
+                new_delta = self._solve_delta_given_sigma('ipopt', tee = tee, subset_lambdas = A, solver_opts = solver_opts, init_sigmas = itersigma[count])
+                print("new delta_sq val: ", new_delta)
+                iterdelta[count] = new_delta
+                
+                def func1(nu_squared, new_delta, initsigmas):
+                    sigmult = 0
+                    nwp = len(self._meas_lambdas)
+                    for l in self._meas_lambdas:
+                        for k in self._sublist_components: 
+                           sigmult += value(self.model.S[l, k])
+                    #print("sum of absorbances: ",sigmult)
+                    funcval = nu_squared - new_delta - init_sigmas*(sigmult/nwp)
+                    return funcval, sigmult
+                
+                def func2(nu_squared, new_delta, initsigmas):
+                    sigmult = 0
+                    nwp = len(self._meas_lambdas)
+                    for l in self._meas_lambdas:
+                        for k in self._sublist_components: 
+                           sigmult += value(self.model.S[l, k])
+                    funcval = nu_squared - new_delta - init_sigmas*(sigmult/nwp)
+                    return funcval
+                
+                funcval, sigmult = func1(nu_squared, new_delta, itersigma[count])
+
+                if abs(funcval) <= tol:
+                    break
+                else:
+                    #print("continue")
+                    #print("damp*init_sigmas:", damp*init_sigmas)
+                    #print("(1 - damp)*nwp*(nu_squared - new_delta)/(sigmult)",(1 - damp)*nwp*(nu_squared - new_delta)/(sigmult))
+                    #itersigma[count + 1] = damp*itersigma[count] + (1 - damp)*nwp*(nu_squared - new_delta)/(sigmult)
+                    #numerator_secant = itersigma[count-1]*(func2(nu_squared, new_delta, itersigma[count])) - itersigma[count]*(func2(nu_squared, iterdelta[count-1], itersigma[count - 1]))
+                    denom_secant = func2(nu_squared, new_delta, itersigma[count]) - func2(nu_squared, iterdelta[count-1], itersigma[count - 1])
+                    #itersigma1= numerator_secant/denom_secant
+                    itersigma[count + 1] = itersigma[count] - func2(nu_squared, new_delta, itersigma[count])*((itersigma[count]-itersigma[count-1])/denom_secant)
+                    count += 1
+            if individual_species:
+                print("solving for individual species' variance based on the obtained delta")
+                max_likelihood_val, sigma_vals, stop_it, results = self._solve_sigma_given_delta(solver, subset_lambdas= A, solver_opts = solver_opts, tee=tee, delta = new_delta)
+            else:
+                print("The overall model variance is: ", itersigma[count])
+                sigma_vals = {}
+                for k in self._sublist_components:
+                    sigma_vals[k] = itersigma[count]
+            #print("residuals:",max_likelihood_val )
+            results = ResultsObject()
             if hasattr(self, '_abs_components'):
-                ra.load_from_pyomo_model(self.model, to_load=['Z','C','Cs','S'])
+                results.load_from_pyomo_model(self.model,
+                                          to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y'])
             else:
-                ra.load_from_pyomo_model(self.model, to_load=['Z', 'C', 'S'])
+                results.load_from_pyomo_model(self.model,
+                                              to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
             
-            r_diff = compute_diff_results(rb,ra)
-
+            param_vals = dict()
+            for name in self.model.parameter_names:
+                param_vals[name] = self.model.P[name].value
+    
+            results.P = param_vals
+            results.sigma_sq = sigma_vals
+            results.sigma_sq['device'] = new_delta
+        
+        elif method == 'direct_sigmas':            
+            print("Solving for sigmas assuming known device variances")
+            direct_or_it = "it"
+            if device_range:
+                if not isinstance(device_range, tuple):
+                    print("device_range is of type {}".format(type(device_range)))
+                    print("It should be a tuple")
+                    raise Exception
+                elif device_range[0] > device_range[1]:
+                    print("device_range needs to be arranged in order from lowest to highest")
+                    raise Exception
+                else:
+                    print("Device range means that we will solve iteratively for different delta values in that range")
+            if device_range and not num_points:
+                print("Need to specify the number of points that we wish to evaluate in the device range")
+            if not num_points:
+                pass
+            elif not isinstance(num_points, int):  
+                print("num_points needs to be an integer!")
+                raise Exception
+            if not device_range:
+                device_range = list() 
+            if not device_range and not num_points:
+                direct_or_it = "direct"
+                print("assessing for the value of delta provided")
+                if not fixed_device_var:
+                    print("If iterative method not selected then need to provide fixed device variance (delta**2)")
+                    raise Exception
+                else:
+                    if not isinstance(fixed_device_var, float):
+                        raise Exception("fixed device variance needs to be of type float")
             
-            Z_norm = r_diff.compute_var_norm('Z',norm_order)
-            #C_norm = r_diff.compute_var_norm('C',norm_order)
-            #S_norm = r_diff.compute_var_norm('S',norm_order)
-            if it>0:
-                #print("{: >11} {: >20} {: >16} {: >16}".format(it,Z_norm,C_norm,S_norm))
-                print("{: >11} {: >20}".format(it, Z_norm))
-            self._log_iterations(logiterfile, it)
-            if Z_norm<tol and it >= 1:
-                break
+            if direct_or_it in ["it"]:
+                dist = abs((device_range[1] - device_range[0])/num_points)
                 
-        results = ResultsObject()
-        
-        # retriving solutions to results object  
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-        if hasattr(self, '_abs_components'):
-            results.load_from_pyomo_model(self.model,
-                                      to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y'])
-        else:
-            results.load_from_pyomo_model(self.model,
-                                          to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
+                max_likelihood_vals = []
+                delta_vals = []
+                iteration_counter = []
+                delta = device_range[0]
+                
+                count = 0
+                print("0000000000000000000000000000000000000000000000000000000")
+                print("000000000 ITERATION COUNT FOR VARIANCE 0000000000000000")
+                while delta < device_range[1]:
+                    print("iteration: ",count,"---------delta_sq: ",delta, "--------" )
+                    max_likelihood_val, sigma_vals, stop_it, results= self._solve_sigma_given_delta(solver, subset_lambdas= A, solver_opts = solver_opts, tee=tee,delta = delta)
+                    if max_likelihood_val >= 5000:
+                        max_likelihood_vals.append(5000)
+                        delta_vals.append(log(delta))
+                        iteration_counter.append(count)
+                    else:
+                        max_likelihood_vals.append(max_likelihood_val)
+                        delta_vals.append(log(delta))
+                        iteration_counter.append(count)
+                        
+                    delta = delta + dist
+                    count += 1 
 
-        print('Iterative optimization converged. Estimating variances now')
-        # compute variances
-        solved_variances = self._solve_variances(results, fixed_dev_var = fixed_device_var)
+                results = ResultsObject()
+            
+                # retrieving solutions to results object  
+                # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+                if hasattr(self, '_abs_components'):
+                    results.load_from_pyomo_model(self.model,
+                                              to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y'])
+                else:
+                    results.load_from_pyomo_model(self.model,
+                                                  to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
+                
+                param_vals = dict()
+                for name in self.model.parameter_names:
+                    param_vals[name] = self.model.P[name].value
         
-        self.compute_D_given_SC(results)
+                results.P = param_vals
+                results.sigma_sq = sigma_vals
+                results.sigma_sq['device'] = delta
+                
+            else:
+                max_likelihood_val, sigma_vals, stop_it= self._solve_sigma_given_delta(solver, subset_lambdas= A, solver_opts = solver_opts, tee=tee,delta = fixed_device_var)
+                # retrieving solutions to results object  
+                results = ResultsObject()
+                if hasattr(self, '_abs_components'):
+                    results.load_from_pyomo_model(self.model,
+                                              to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y'])
+                else:
+                    results.load_from_pyomo_model(self.model,
+                                                  to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
+                
+                param_vals = dict()
+                for name in self.model.parameter_names:
+                    param_vals[name] = self.model.P[name].value
         
-        param_vals = dict()
-        for name in self.model.parameter_names:
-            param_vals[name] = self.model.P[name].value
-
-        results.P = param_vals
-
-        # removes temporary files. This needs to be changes to work with pyutilib
-        if os.path.exists(self._tmp2):
-            os.remove(self._tmp2)
-        if os.path.exists(self._tmp3):
-            os.remove(self._tmp3)
-        if os.path.exists(self._tmp4):
-            os.remove(self._tmp4)
+                results.P = param_vals
+                results.sigma_sq = sigma_vals
+                results.sigma_sq['device'] = delta
             
         if report_time:
             end = time.time()
@@ -433,7 +654,591 @@ class VarianceEstimator(Optimizer):
                     self.model.C[t, k].value = self.model.Z[t, k].value
                 
         self.model.del_component('init_objective')
+
+    def solve_max_device_variance(self, solver, **kwds):
+        """Solves the maximum likelihood formulation with (C-Z) = 0. solves ntp/2*log(eTe/ntp)
+        and then calculates delta from the solution. See documentation for more details.
+
+        Args:
+            solver_opts (dict, optional): options passed to the nonlinear solver
         
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
+            (Weifeng paper). Default all wavelengths.
+
+        Returns:
+
+            delta_sq (float): value of the max device variance
+
+        """   
+        solver_opts = kwds.pop('solver_opts', dict())
+        tee = kwds.pop('tee', True)
+        set_A = kwds.pop('subset_lambdas', list())
+
+        if not set_A:
+            set_A = self._meas_lambdas
+
+        list_components = [k for k in self._mixture_components]
+                    
+        self._sublist_components = list_components
+
+        if hasattr(self.model, 'non_absorbing'):
+            warnings.warn("Overriden by non_absorbing")
+            list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
+            self._sublist_components = list_components
+        
+        if hasattr(self.model, 'known_absorbance'):
+            warnings.warn("Overriden by species with known absorbance")
+            list_components = [k for k in self._mixture_components if k not in self._known_absorbance]
+            self._sublist_components = list_components
+            
+        print("Solving For the worst possible device variance\n")
+        
+        # Need to check whether we have negative values in the D-matrix so that we do not have
+        # non-negativity on S
+
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                if self.model.D[t, l] >= 0:
+                    pass
+                else:
+                    self._is_D_deriv = True
+        if self._is_D_deriv == True:
+            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
+        
+        obj = 0.0
+        ntp = len(self._meas_times)
+        nwp = len(self._meas_lambdas)
+        
+        if hasattr(self, '_abs_components'):
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self._abs_components)
+                    obj += (self.model.D[t, l] - D_bar)**2
+        else:
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self._sublist_components)
+                    obj += (self.model.D[t, l] - D_bar)**2
+               
+        #newobj = ntp*nwp/2*log(obj/(ntp*nwp))   
+         
+        self.model.init_objective = Objective(expr=obj)
+        
+        opt = SolverFactory(solver)
+
+        for key, val in solver_opts.items():
+            opt.options[key]=val
+        solver_results = opt.solve(self.model,
+                                   tee=tee)
+        
+        print("values for the parameters in case with no model variance")
+        for k,v in six.iteritems(self.model.P):
+            print(k, v.value)
+        
+        etaTeta = 0
+        if hasattr(self, '_abs_components'):
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(value(self.model.Z[t, k]) * value(self.model.S[l, k]) for k in self._abs_components)
+                    etaTeta += (value(self.model.D[t, l])- D_bar)**2
+        else:
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(value(self.model.Z[t, k]) * value(self.model.S[l, k]) for k in self._sublist_components)
+                    etaTeta += (value(self.model.D[t, l]) - D_bar)**2
+
+        deltasq = etaTeta/(ntp*nwp)
+        
+        self.model.del_component('init_objective')
+        print("worst case delta squared: ", deltasq)
+
+        return deltasq
+
+    def _solve_delta_given_sigma(self, solver, **kwds):
+        """Solves the maximum likelihood formulation with fixed sigmas in order to
+        obtain delta. This formulation is highly unstable as the problem is ill-posed
+        with the optimal solution being that C-Z = 0. Should not use.
+
+           This method is not intended to be used by users directly
+
+        Args:
+            init_sigmas (dict): variances 
+        
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
+            Default False
+        
+            subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
+            (Weifeng paper). Default all wavelengths.
+
+        Returns:
+
+            None
+
+        """   
+        solver_opts = kwds.pop('solver_opts', dict())
+        tee = kwds.pop('tee', True)
+        set_A = kwds.pop('subset_lambdas', list())
+        profile_time = kwds.pop('profile_time', False)
+        sigmas = kwds.pop('init_sigmas', dict() or float() )
+
+        sigmas_sq = dict()
+        if not set_A:
+            set_A = self._meas_lambdas
+            
+        if isinstance(sigmas, float):
+            if hasattr(self, '_abs_components'):
+                for k in self._abs_components:
+                    sigmas_sq[k] = sigmas
+            else:
+                for k in self._sublist_components:
+                    sigmas_sq[k] = sigmas
+        
+        elif isinstance(sigmas, dict):
+            keys = sigmas.keys()
+            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+            if hasattr(self, '_abs_components'):
+                for k in self._abs_components:
+                    if k not in keys:
+                        sigmas_sq[k] = sigmas
+            else:
+                for k in self._sublist_components:
+                    if k not in keys:
+                        sigmas_sq[k] = sigmas
+
+        print("Solving delta from given sigmas\n")
+        print(sigmas_sq)
+        # Need to check whether we have negative values in the D-matrix so that we do not have
+        #non-negativity on S
+
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                if self.model.D[t, l] >= 0:
+                    pass
+                else:
+                    self._is_D_deriv = True
+        if self._is_D_deriv == True:
+            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
+  
+        obj = 0.0
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        ntp = len(self._meas_times) 
+        nwp = len(self._meas_lambdas) 
+        inlog = 0
+        #self.model.deltasq_inv = Var(within = NonNegativeReals)
+        if hasattr(self, '_abs_components'):
+            nc = len(self._abs_components)
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._sublist_components)
+                    inlog += (self.model.D[t, l] - D_bar)**2
+
+        else:
+            nc = len(self._sublist_components)
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._sublist_components)
+                    inlog += (self.model.D[t, l] - D_bar)**2
+                  
+        
+        for t in self._meas_times:
+            for k in self._sublist_components:
+                obj += 0.5*((self.model.C[t, k] - self.model.Z[t, k])**2)/(sigmas_sq[k])
+                
+        obj += (nwp)*log((inlog)+1e-12)     
+        #obj += (ntp*nwp/2)*log((inlog/(ntp*nwp))+1e-12)        
+        #obj += (ntp*nc/2)*log((inlog/(ntp*nc))+self.model.eps)              
+        self.model.init_objective = Objective(expr=obj)
+        
+        opt = SolverFactory(solver)
+
+        for key, val in solver_opts.items():
+            opt.options[key]=val
+        solver_results = opt.solve(self.model,
+                                   tee=tee,
+                                   report_timing=profile_time)
+        residuals = (value(self.model.init_objective))
+        
+        print("residuals: ", residuals)
+
+        for k,v in six.iteritems(self.model.P):
+            print(k, v)
+            print(v.value)
+            
+        etaTeta = 0
+        if hasattr(self, '_abs_components'):
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(value(self.model.C[t, k]) * value(self.model.S[l, k]) for k in self._abs_components)
+                    etaTeta += (value(self.model.D[t, l])- D_bar)**2
+        else:
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(value(self.model.C[t, k]) * value(self.model.S[l, k]) for k in self._sublist_components)
+                    etaTeta += (value(self.model.D[t, l]) - D_bar)**2
+
+        deltasq = etaTeta/(ntp*nwp)  
+        print(deltasq)
+        self.model.del_component('init_objective')
+       
+        return deltasq
+    
+    def _solve_sigma_given_delta(self, solver, **kwds):
+        """Solves the maximum likelihood formulation to determine the model variance from a
+        given device variance.
+
+           This method is not intended to be used by users directly
+
+        Args:
+            delta (float): the device variance squared 
+        
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
+            Default False
+        
+            subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
+            (Weifeng paper). Default all wavelengths.
+            
+            solver_opts (dict, optional): dictionary containing solver options for IPOPT
+
+        Returns:
+
+            residuals (float): the objective function value from the optimization
+            
+            variancesdict (dict): dictionary containing the model variance values
+            
+            stop_it (bool): boolean indicator showing whether no solution was found 
+                                (True) or if there is a solution (False)
+                                
+            solver_results: Variance estimation model results, similar to VarianceEstimator 
+                                        results from previous method
+
+        """   
+        solver_opts = kwds.pop('solver_opts', dict())
+        tee = kwds.pop('tee', True)
+        set_A = kwds.pop('subset_lambdas', list())
+        profile_time = kwds.pop('profile_time', False)
+        delta = kwds.pop('delta', dict())
+
+        if not set_A:
+            set_A = self._meas_lambdas
+            
+        if not self._sublist_components:
+            list_components = []
+            if species_list is None:
+                list_components = [k for k in self._mixture_components]
+                
+            else:
+                for k in species_list:
+                    if k in self._mixture_components:
+                        list_components.append(k)
+                    else:
+                        warnings.warn("Ignored {} since is not a mixture component of the model".format(k))
+    
+            self._sublist_components = list_components
+        # Need to check whether we have negative values in the D-matrix so that we do not have
+        #non-negativity on S
+
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                if self.model.D[t, l] >= 0:
+                    pass
+                else:
+                    self._is_D_deriv = True
+        if self._is_D_deriv == True:
+            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
+        ntp = len(self._meas_times) 
+       
+        m = self.model.clone()
+        obj = 0.0
+   
+        if hasattr(self, '_abs_components'):
+            nc = len(self._abs_components)
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._abs_components)
+                    obj += 1/(2*delta)*(self.model.D[t, l] - D_bar)**2
+        else:
+            nc = len(self._sublist_components)
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._sublist_components)
+                    obj += 1/(2*delta)*(self.model.D[t, l] - D_bar)**2
+
+        inlog = dict()
+        for k in self._sublist_components:
+            inlog[k] = 0
+        self.model.eps = Param(initialize = 1e-8)  
+               
+        variancesdict = dict()
+        for k in self._sublist_components:
+            variancesdict[k] = 0
+            
+        for t in self._meas_times:
+            for k in self._sublist_components:
+                inlog[k] += ((self.model.C[t, k] - self.model.Z[t, k])**2)
+        
+        for k in self._sublist_components:
+            obj += (ntp/2)*log((inlog[k]/(ntp))+self.model.eps)
+        
+        #obj += (ntp*nc/2)*log((inlog/(ntp*nc))+self.model.eps)
+                       
+        self.model.init_objective = Objective(expr=obj)
+
+        opt = SolverFactory(solver)
+
+        for key, val in solver_opts.items():
+            opt.options[key]=val
+        try:
+            solver_results = opt.solve(self.model,
+                                   tee=tee,
+                                   report_timing=profile_time)
+
+            residuals = (value(self.model.init_objective))
+                
+            for t in self._meas_times:
+                for k in self._sublist_components:
+                    variancesdict[k] += 1/ntp*((value(self.model.C[t, k]) - value(self.model.Z[t, k]))**2)           
+            
+            print("Variances")
+            for k in self._sublist_components:
+                print(k, variancesdict[k])
+            
+            print("Parameter estimates")
+            for k,v in six.iteritems(self.model.P):
+                print(k, v.value)
+                #print(v.value)
+
+            stop_it = False
+            
+        except:
+            print("FAILED AT THIS ITERATION")
+            variancesdict = None
+            residuals = 0
+            stop_it = True
+            solver_results = None
+            for k,v in six.iteritems(self.model.P):
+                print(k, v.value)
+            self.model = m
+            for k,v in six.iteritems(self.model.P):
+                print(k, v.value)
+        self.model.del_component('init_objective')
+        self.model.del_component('eps')
+
+        return residuals, variancesdict, stop_it, solver_results
+
+    def solve_sigma_given_delta(self, solver, **kwds):
+        """Function that solves for model variances based on a given device variance. Solves
+        The log likelihood function and returns a dictionary containg all sigmas, including
+        the device/delta in order to easily apply to the parameter estimation problem.
+
+           This method is intended to be used by users directly
+
+        Args:
+            solver (str): solver to use to solve the problems (recommended "ipopt")
+            
+            delta (float): the device variance squared 
+        
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            solver_opts (dict,optional): Dictionary containing solver options
+        
+            subset_lambdas (array_like,optional): Set of wavelengths to used in problem 
+            (Weifeng paper). Default all wavelengths.
+
+        Returns:
+
+            all_variances (dict): dictionary containg all sigmas, including the device/delta
+
+        """   
+        solver_opts = kwds.pop('solver_opts', dict())
+        tee = kwds.pop('tee', True)
+        set_A = kwds.pop('subset_lambdas', list())
+        delta = kwds.pop('delta', dict())
+        
+        residuals, sigma_vals, stop_it, results = self._solve_sigma_given_delta(solver, subset_lambdas= set_A, solver_opts = solver_opts, tee=tee, delta = delta)
+        all_variances = sigma_vals
+        all_variances['device'] = delta
+        return all_variances
+    
+    def _solve_iterative_init(self, solver, **kwds):
+        """This method first fixes params and makes C = Z to solve for S. Requires fixed delta and sigmas.
+        following this, the parameters are freed to users bounds and full problem is solved with fixed variances.
+        This function is only meant to be used as part of a full variance estimation strategy. Currently not
+        implemented in any of the strategies, however it can be useful in future implementations to initialize.
+        
+        Not meant to be directly used by users
+
+        Args:
+            sigma_sq (dict): variances 
+        
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
+            Default False
+        
+            subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
+            (Weifeng paper). Default all wavelengths.
+            
+            solver_options (dict, optional): Solver options for IPOPT
+
+        Returns:
+
+            None
+
+        """   
+        solver_opts = kwds.pop('solver_options', dict())
+        tee = kwds.pop('tee', True)
+        set_A = kwds.pop('subset_lambdas', list())
+        profile_time = kwds.pop('profile_time', False)
+        sigmas_sq = kwds.pop('variances', dict())
+
+        if not set_A:
+            set_A = self._meas_lambdas
+        
+        keys = sigmas_sq.keys()
+        print(keys)
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        if hasattr(self, '_abs_components'):
+            for k in self._abs_components:
+                print(k)
+                if k not in keys:
+                    sigmas_sq[k] = 0.0
+        else:
+            for k in self._sublist_components:
+                if k not in keys:
+                    sigmas_sq[k] = 0.0
+        # Need to check whether we have negative values in the D-matrix so that we do not have
+        #non-negativity on S
+
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                if self.model.D[t, l] >= 0:
+                    pass
+                else:
+                    self._is_D_deriv = True
+        if self._is_D_deriv == True:
+            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
+            
+        list_components = []
+
+        list_components = [k for k in self._mixture_components]
+        #print(sigmas_sq)                    
+        print("Solving Initialization Problem with fixed parameters\n")
+        original_bounds = dict()
+        for v,k in six.iteritems(self.model.P):
+            low = value(self.model.P[v].lb)
+            high = value(self.model.P[v].ub)
+            original_bounds[v] = (low, high)
+            #print(original_bounds)
+            ub = value(self.model.P[v])
+            lb = ub
+            self.model.P[v].setlb(lb)
+            self.model.P[v].setub(ub)
+        # build objective
+        obj = 0.0
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        if hasattr(self, '_abs_components'):
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self._abs_components)
+                    obj += (self.model.D[t, l] - D_bar) ** 2
+        else:
+            for t in self._meas_times:
+                for l in set_A:
+                    D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self._sublist_components)
+                    obj += (self.model.D[t, l] - D_bar) ** 2
+        self.model.init_objective = Objective(expr=obj)
+        
+        opt = SolverFactory(solver)
+
+        for key, val in solver_opts.items():
+            opt.options[key]=val
+        solver_results = opt.solve(self.model,
+                                   tee=tee,
+                                   report_timing=profile_time)
+        for k,v in six.iteritems(self.model.P):
+            print(k, v.value)
+            #print(v.value)
+        
+        for t in self._meas_times:
+            for k in self._mixture_components:
+                if k in sigmas_sq and sigmas_sq[k] > 0.0:
+                    self.model.C[t, k].value = np.random.normal(self.model.Z[t, k].value, sigmas_sq[k])
+                else:
+                    self.model.C[t, k].value = self.model.Z[t, k].value
+                
+        self.model.del_component('init_objective')
+        
+        for v,k in six.iteritems(self.model.P):
+            #print(self.model.P[v].lb, self.model.P[v].ub)
+            print(k,v)
+            print(type(original_bounds[v][1]))
+            ub = original_bounds[v][1]
+            lb = original_bounds[v][0]
+            self.model.P[v].setlb(lb)
+            self.model.P[v].setub(ub)
+            
+        m = self.model
+
+        m.D_bar = Var(m.meas_times,
+                      m.meas_lambdas)
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        if hasattr(self, '_abs_components'):
+            def rule_D_bar(m, t, l):
+                return m.D_bar[t, l] == sum(m.Cs[t, k] * m.S[l, k] for k in self._abs_components)
+        else:
+            def rule_D_bar(m, t, l):
+                return m.D_bar[t, l] == sum(m.C[t, k] * m.S[l, k] for k in self._sublist_components)
+
+        m.D_bar_constraint = Constraint(m.meas_times,
+                                        m.meas_lambdas,
+                                        rule=rule_D_bar)
+
+        # estimation
+        def rule_objective(m):
+            expr = 0
+            for t in m.meas_times:
+                for l in m.meas_lambdas:
+
+                    expr += (m.D[t, l] - m.D_bar[t, l]) ** 2 / (sigmas_sq['device'])
+
+            second_term = 0.0
+            for t in m.meas_times:
+                second_term += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigmas_sq[k] for k in list_components)
+
+            return expr
+
+        m.objective = Objective(rule=rule_objective) 
+        
+        opt = SolverFactory(solver)
+
+        for key, val in solver_opts.items():
+            opt.options[key]=val
+        
+        print("Solving problem with unfixed parameters")
+        solver_results = opt.solve(self.model,
+                                   tee=tee,
+                                   report_timing=profile_time)
+        
+        for k,v in six.iteritems(self.model.P):
+            print(k, v.value)      
+            #print(value(v.ub))
+            #print(value(v.lb))
+        
+        m.del_component('objective')
+        self.model = m
+        
+            
     def _solve_Z(self, solver, **kwds):
         """Solves formulation 20 in weifengs paper
 
@@ -554,7 +1359,7 @@ class VarianceEstimator(Optimizer):
             n = self._nabs_components
             for j, l in enumerate(self._meas_lambdas):
                 for k, c in enumerate(self._abs_components):
-                    if self.model.S[l, c].value < 0.0:  #: only less thant zero for non-absorbing
+                    if self.model.S[l, c].value < 0.0 and self._is_D_deriv == False:  #: only less thant zero for non-absorbing
                         self._s_array[j * n + k] = 1e-2
                     else:
                         self._s_array[j * n + k] = self.model.S[l, c].value
@@ -566,7 +1371,7 @@ class VarianceEstimator(Optimizer):
             n = self._n_components
             for j, l in enumerate(self._meas_lambdas):
                 for k, c in enumerate(self._mixture_components):
-                    if self.model.S[l, c].value < 0.0:  #: only less thant zero for non-absorbing
+                    if self.model.S[l, c].value < 0.0 and self._is_D_deriv == False:  #: only less thant zero for non-absorbing
                         self._s_array[j * n + k] = 1e-2
                     else:
                         self._s_array[j * n + k] = self.model.S[l, c].value
@@ -599,7 +1404,8 @@ class VarianceEstimator(Optimizer):
         if tee:
             # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
             if hasattr(self, '_abs_components'):
-                res = least_squares(F,self._s_array,JF,
+                if self._is_D_deriv == False:
+                    res = least_squares(F,self._s_array,JF,
                                     (0.0,np.inf),method,
                                     ftol,xtol,gtol,
                                     x_scale,loss,f_scale,
@@ -610,9 +1416,34 @@ class VarianceEstimator(Optimizer):
                                           self._n_meas_lambdas,
                                           self._n_meas_times,
                                           self._nabs_components))
+                else:
+                    res = least_squares(F,self._s_array,JF,
+                                    (-np.inf,np.inf),method,
+                                    ftol,xtol,gtol,
+                                    x_scale,loss,f_scale,
+                                    max_nfev=max_nfev,
+                                    verbose=verbose,
+                                    args=(self._z_array,
+                                          self._d_array,
+                                          self._n_meas_lambdas,
+                                          self._n_meas_times,
+                                          self._nabs_components))
             else:
-                res = least_squares(F,self._s_array,JF,
+                if self._is_D_deriv == False:
+                    res = least_squares(F,self._s_array,JF,
                                     (0.0,np.inf),method,
+                                    ftol,xtol,gtol,
+                                    x_scale,loss,f_scale,
+                                    max_nfev=max_nfev,
+                                    verbose=verbose,
+                                    args=(self._z_array,
+                                          self._d_array,
+                                          self._n_meas_lambdas,
+                                          self._n_meas_times,
+                                          self._n_components))
+                else:
+                    res = least_squares(F,self._s_array,JF,
+                                    (-np.inf,np.inf),method,
                                     ftol,xtol,gtol,
                                     x_scale,loss,f_scale,
                                     max_nfev=max_nfev,
@@ -626,8 +1457,21 @@ class VarianceEstimator(Optimizer):
             if hasattr(self, '_abs_components'):
                 f = StringIO()
                 with stdout_redirector(f):
-                    res = least_squares(F,self._s_array,JF,
+                    if self._is_D_deriv == False: 
+                        res = least_squares(F,self._s_array,JF,
                                         (0.0,np.inf),method,
+                                        ftol,xtol,gtol,
+                                        x_scale,loss,f_scale,
+                                        max_nfev=max_nfev,
+                                        verbose=verbose,
+                                        args=(self._z_array,
+                                              self._d_array,
+                                              self._n_meas_lambdas,
+                                              self._n_meas_times,
+                                              self._nabs_components))
+                    else: 
+                        res = least_squares(F,self._s_array,JF,
+                                        (-np.inf,np.inf),method,
                                         ftol,xtol,gtol,
                                         x_scale,loss,f_scale,
                                         max_nfev=max_nfev,
@@ -643,8 +1487,21 @@ class VarianceEstimator(Optimizer):
             else:
                 f = StringIO()
                 with stdout_redirector(f):
-                    res = least_squares(F, self._s_array, JF,
+                    if self._is_D_deriv == False: 
+                        res = least_squares(F, self._s_array, JF,
                                         (0.0, np.inf), method,
+                                        ftol, xtol, gtol,
+                                        x_scale, loss, f_scale,
+                                        max_nfev=max_nfev,
+                                        verbose=verbose,
+                                        args=(self._z_array,
+                                              self._d_array,
+                                              self._n_meas_lambdas,
+                                              self._n_meas_times,
+                                              self._n_components))
+                    else:
+                        res = least_squares(F, self._s_array, JF,
+                                        (-np.inf, np.inf), method,
                                         ftol, xtol, gtol,
                                         x_scale, loss, f_scale,
                                         max_nfev=max_nfev,

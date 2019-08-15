@@ -45,15 +45,15 @@ if __name__ == "__main__":
     filename =  os.path.join(dataDirectory,'Dij.txt')
     D_frame = read_spectral_data_from_txt(filename)
     #sD_frame = snv(dataFrame = D_frame)
-    fD_frame = savitzky_golay(dataFrame = D_frame, window_size = 17, orderPoly = 3, orderDeriv=1)
+    fD_frame = savitzky_golay(dataFrame = D_frame, window_size = 15, orderPoly = 5, orderDeriv=1)
     # Then we build dae block for as described in the section 4.2.1. Note the addition
     # of the data using .add_spectral_data
     #################################################################################    
     builder = TemplateBuilder()    
     components = {'A':1e-3,'B':0,'C':0}
     builder.add_mixture_component(components)
-    builder.add_parameter('k1',init = 1.0, bounds=(0.0,5.0))
-    builder.add_parameter('k2',init = 0.2, bounds=(0.0,1.0))
+    builder.add_parameter('k1',init = 2.0, bounds=(0.5,5.0))
+    builder.add_parameter('k2',init = 0.2, bounds=(0.001,1.0))
     builder.add_spectral_data(fD_frame)
 
     # define explicit system of ODEs
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     # We can therefore use the variance estimator described in the Overview section
     # of the documentation and Section 4.3.3
     v_estimator = VarianceEstimator(opt_model)
-    v_estimator.apply_discretization('dae.collocation',nfe=60,ncp=1,scheme='LAGRANGE-RADAU')
+    v_estimator.apply_discretization('dae.collocation',nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
     
     # It is often requried for larger problems to give the solver some direct instructions
     # These must be given in the form of a dictionary
@@ -87,15 +87,15 @@ if __name__ == "__main__":
     # The set A_set is then decided. This set, explained in Section 4.3.3 is used to make the
     # variance estimation run faster and has been shown to not decrease the accuracy of the variance 
     # prediction for large noisey data sets.
-    A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if (i % 4 == 0)]
+    # A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if (i % 4 == 0)]
     
     # Finally we run the variance estimatator using the arguments shown in Seciton 4.3.3
     results_variances = v_estimator.run_opt('ipopt',
                                             tee=True,
                                             solver_options=options,
                                             tolerance=1e-5,
-                                            max_iter=15,
-                                            subset_lambdas=A_set)
+                                            max_iter=15)
+                                            #subset_lambdas=A_set)
 
     # Variances can then be displayed 
     print("\nThe estimated variances are:\n")
@@ -113,7 +113,7 @@ if __name__ == "__main__":
 
     # and define our parameter estimation problem and discretization strategy
     p_estimator = ParameterEstimator(opt_model)
-    p_estimator.apply_discretization('dae.collocation',nfe=50,ncp=3,scheme='LAGRANGE-RADAU')
+    p_estimator.apply_discretization('dae.collocation',nfe=60,ncp=3,scheme='LAGRANGE-RADAU')
     
     # Certain problems may require initializations and scaling and these can be provided from the 
     # varininace estimation step. This is optional.
@@ -130,7 +130,8 @@ if __name__ == "__main__":
     # Again we provide options for the solver, this time providing the scaling that we set above
     options = dict()
     options['nlp_scaling_method'] = 'user-scaling'
-
+    options['linear_solver'] = 'ma57'
+    
     # finally we run the optimization
     results_pyomo = p_estimator.run_opt('ipopt',
                                       tee=True,
