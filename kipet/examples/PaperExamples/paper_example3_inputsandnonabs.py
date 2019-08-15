@@ -7,7 +7,6 @@
 # Sample Problem
 # Paper Example 3
 # Inputs, extra_states and non-absorbing species
-# Slight modification of the Michael's reaction
 # Estimation with known variances of spectral data using pyomo discretization
 #
 #               C_k(t_i) = Z_k(t_i) + w(t_i)    for all t_i in measurement points
@@ -47,13 +46,13 @@ if __name__ == "__main__":
     
    # components
     components = dict()
-    components['AH'] = 0.395555
+    components['A'] = 0.395555
     components['B'] = 0.0351202
     components['C'] = 0.0
-    components['BH+'] = 0.0
-    components['A-'] = 0.0
-    components['AC-'] = 0.0
-    components['P'] = 0.0
+    components['D'] = 0.0
+    components['E'] = 0.0
+    components['F'] = 0.0
+    components['G'] = 0.0
 
     builder.add_mixture_component(components)
 
@@ -64,7 +63,8 @@ if __name__ == "__main__":
     builder.add_algebraic_variable(algebraics)
 
     params = dict()
-    params['k0'] = 49.7796
+
+    params['k0'] = 0.2545
     params['k1'] = 8.93156
     params['k2'] = 1.31765
     params['k3'] = 0.310870
@@ -80,21 +80,21 @@ if __name__ == "__main__":
 
     # stoichiometric coefficients
     gammas = dict()
-    gammas['AH'] = [-1, 0, 0, -1, 0]
+    gammas['A'] = [-1, 0, 0, -1, 0]
     gammas['B'] = [-1, 0, 0, 0, 1]
     gammas['C'] = [0, -1, 1, 0, 0]
-    gammas['BH+'] = [1, 0, 0, 0, -1]
-    gammas['A-'] = [1, -1, 1, 1, 0]
-    gammas['AC-'] = [0, 1, -1, -1, -1]
-    gammas['P'] = [0, 0, 0, 1, 1]
+    gammas['D'] = [1, 0, 0, 0, -1]
+    gammas['E'] = [1, -1, 1, 1, 0]
+    gammas['F'] = [0, 1, -1, -1, -1]
+    gammas['G'] = [0, 0, 0, 1, 1]
 
     def rule_algebraics(m, t):
         r = list()
-        r.append(m.Y[t, '0'] - m.P['k0'] * m.Z[t, 'AH'] * m.Z[t, 'B'])
-        r.append(m.Y[t, '1'] - m.P['k1'] * m.Z[t, 'A-'] * m.Z[t, 'C'])
-        r.append(m.Y[t, '2'] - m.P['k2'] * m.Z[t, 'AC-'])
-        r.append(m.Y[t, '3'] - m.P['k3'] * m.Z[t, 'AC-'] * m.Z[t, 'AH'])
-        r.append(m.Y[t, '4'] - m.P['k4'] * m.Z[t, 'AC-'] * m.Z[t, 'BH+'])
+        r.append(m.Y[t, '0'] - m.P['k0'] * m.Z[t, 'A'] * m.Z[t, 'B'])
+        r.append(m.Y[t, '1'] - m.P['k1'] * m.Z[t, 'E'] * m.Z[t, 'C'])
+        r.append(m.Y[t, '2'] - m.P['k2'] * m.Z[t, 'F'])
+        r.append(m.Y[t, '3'] - m.P['k3'] * m.Z[t, 'F'] * m.Z[t, 'A'])
+        r.append(m.Y[t, '4'] - m.P['k4'] * m.Z[t, 'F'] * m.Z[t, 'D'])
 
         return r
     #: there is no ae for Y[t,5] because step equn under rule_odes functions as the switch for the "C" equation
@@ -124,12 +124,13 @@ if __name__ == "__main__":
 
     model = builder.create_pyomo_model(0, 600)
 
-    non_abs = ['AC-']
+    non_abs = ['F']
     builder.set_non_absorbing_species(model, non_abs)
     
     #Load data:
     dataDirectory = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe()))), 'data_sets'))
-    filenameD =  os.path.join(dataDirectory,'FeCaseexamplewithoutTemp_D_data_input_noiselesspoints.csv')
+
+    filenameD =  os.path.join(dataDirectory,'FeCaseexamplewithoutTemp_D_data_input_noiselesspoints2.csv')
     D_frame = read_spectral_data_from_csv(filenameD)
     builder.add_spectral_data(D_frame)
     model = builder.create_pyomo_model(0., 600.) 
@@ -166,10 +167,10 @@ if __name__ == "__main__":
     #to this function as an argument dictionary
     
     #New Inputs for discrete feeds
-    Z_step = {'AH': .03}#Which component and which amount is added
+    Z_step = {'A': .03}#Which component and which amount is added
     X_step = {'V': .01}
     jump_states = {'Z': Z_step, 'X': X_step}
-    jump_points1 = {'AH': 101.035}#Which component is added at which point in time
+    jump_points1 = {'A': 101.035}#Which component is added at which point in time
     jump_points2 = {'V': 303.126}
     jump_times = {'Z': jump_points1, 'X': jump_points2}
 
@@ -191,19 +192,21 @@ if __name__ == "__main__":
     # =========================================================================
     # USER INPUT SECTION - Parameter Estimation
     # # ========================================================================
-    sigmas={'AH': 1e-10,
+
+    sigmas={'A': 1e-10,
             'B':1e-10,
-            'C': 1e-10,
-            'BH+': 1e-10,
-            'A-':1e-10,
-            'P':1e-10,
-            'device':1e-10}
+    'C': 1e-10,
+    'D': 1e-10,
+    'E':1e-10,
+    'G':1e-10,
+    'device':1e-10}
 
     model = builder.create_pyomo_model(0., 600.)#0.51667
 
     model.del_component(params)
-    builder.add_parameter('k0', init=0.9*49.7796,bounds=(0.0, 100.0))
-    builder.add_parameter('k1', 8.93156)
+
+    builder.add_parameter('k0', init=0.9*0.2545,bounds=(0.0, 100.0))
+    builder.add_parameter('k1', init=0.9*8.93156, bounds=(0.0,100.))
     builder.add_parameter('k2', init=0.9*1.31765,bounds=(0.0,100.))
     builder.add_parameter('k3', init=0.9*0.310870, bounds=(0.,100.))
     builder.add_parameter('k4', init=0.9*3.87809,bounds=(0.0, 100.))
