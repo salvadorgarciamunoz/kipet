@@ -1,14 +1,17 @@
 KIPET: Kinetic Parameter Estimation Toolkit
 ===========================================
 
-KIPET is a python package designed to simulate, optimize, and analyze 
-chemical reaction systems. The software has the following functionality:
+KIPET is a Python package designed to simulate, and estimate parameters from 
+chemical reaction systems through the use of maximum likelihood principles,
+large-scale nonlinear programming and discretization methods. The software 
+has the following functionality:
 
 * Simulate a reactive system described with DAEs
 * Solve the DAE system with collocation methods
 * Pre-process data
-* Estimate variances of noise
-* Estimate kinetic parameters from spectra or concentration
+* Estimate variances of noise from the model and measurements
+* Estimate kinetic parameters from spectra or concentration data across 1 or 
+  multiple experiments with different conditions
 * Estimate confidence intervals of the estimated parameters
 * Able to estimate variances and parameters for problems where there is dosing / inputs into the system
 * Provide a set of tools for estimability analysis
@@ -40,7 +43,9 @@ Authors
    * Salvador Garcia-Munoz Eli Lilly
    * Lorenz T. Biegler Carnegie Mellon University
 
-
+Please cite
+------------
+Michael Short, Christina Schenk, David Thierry, Jose Santiago Rodriguez, Lorenz T Biegler, Salvador Garcia-Muñoz, (2019), KIPET–An Open-Source Kinetic Parameter Estimation Toolkit, Computer Aided Chemical Engineering, 47, 299-304.
 
  
 
