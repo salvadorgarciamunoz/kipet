@@ -100,9 +100,17 @@ class fe_initialize(object):
         zeit._bounds = (0, 1)
         zeit.clear()
         zeit.construct()
-        for i in self.mod.component_objects([Var, Constraint, DerivativeVar]):
+        for i in self.mod.component_objects(Var):
             i.clear()
             i.reconstruct()
+            #i.pprint()
+        for i in self.mod.component_objects(Var):
+            i.clear()
+            i.reconstruct()
+        for i in self.mod.component_objects(Constraint):
+            i.clear()
+            i.construct()
+
         # self.mod.display(filename="selfmoddisc0.txt")
         #: Discretize
         d = TransformationFactory('dae.collocation')
