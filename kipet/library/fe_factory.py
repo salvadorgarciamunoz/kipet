@@ -75,7 +75,9 @@ class fe_initialize(object):
         self.ip.options['halt_on_ampl_error'] = 'yes'
         self.ip.options['print_user_options'] = 'yes'
         self.tgt = tgt_mod
+        # src_mod.display(filename="src.txt")
         self.mod = src_mod.clone()  #: Deepcopy of the reference model
+        # self.mod.display(filename="selfmod0.txt")
         zeit = None
         for i in self.mod.component_objects(ContinuousSet):
             zeit = i
@@ -94,13 +96,22 @@ class fe_initialize(object):
         #: Re-construct the model with [0,1] time domain
         zeit = getattr(self.mod, self.time_set)
         #print()
+
         zeit._bounds = (0, 1)
         zeit.clear()
         zeit.construct()
-        for i in self.mod.component_objects([Var, Constraint, DerivativeVar]):
+        for i in self.mod.component_objects(Var):
+            i.clear()
+            i.reconstruct()
+            #i.pprint()
+        for i in self.mod.component_objects(Var):
+            i.clear()
+            i.reconstruct()
+        for i in self.mod.component_objects(Constraint):
             i.clear()
             i.construct()
 
+        # self.mod.display(filename="selfmoddisc0.txt")
         #: Discretize
         d = TransformationFactory('dae.collocation')
         d.apply_to(self.mod, nfe=1, ncp=self.ncp, scheme='LAGRANGE-RADAU')
@@ -295,6 +306,7 @@ class fe_initialize(object):
 
         #: Check nvars and mequations
         (n, m) = reconcile_nvars_mequations(self.mod)
+        # self.mod.display(filename="selfmod1.txt")
         if n != m:
             raise Exception("Inconsistent problem; n={}, m={}".format(n, m))
         self.jump = False
@@ -354,7 +366,7 @@ class fe_initialize(object):
         #for i in self.mod.Z.itervalues():
             #i.setlb(0)
         self.ip.options["print_level"] = 1  #: change this on demand
-        self.ip.options["OF_start_with_resto"] = 'no'
+        # self.ip.options["start_with_resto"] = 'no'
         self.ip.options['bound_push'] = 1e-02
         sol = self.ip.solve(self.mod, tee=True, symbolic_solver_labels=True)
 
@@ -685,7 +697,7 @@ def write_nl(d_mod, filename=None):
     if not filename:
         filename = d_mod.name + '.nl'
     d_mod.write(filename, format=ProblemFormat.nl,
-                io_options={"symbolic_solver_labels": False})
+                io_options={"symbolic_solver_labels": True})
     cwd = getcwd()
     print("nl file {}".format(cwd + "/" + filename))
     return cwd
@@ -712,10 +724,10 @@ def reconcile_nvars_mequations(d_mod):
         nvar = int(newl[0])
         meqn = int(newl[1])
         nl.close()
-    try:
-        remove(fullpth)
-    except OSError:
-        pass
+    #try:
+    #    remove(fullpth)
+    #except OSError:
+    #    pass
     return (nvar, meqn)
 
 
