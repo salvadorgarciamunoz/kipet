@@ -34,6 +34,7 @@ class ParameterEstimator(Optimizer):
         self._estimability = False
         self._idx_to_variable = dict()
         self._n_actual = self._n_components
+        self.model_variance = True
         
         if hasattr(self.model, 'non_absorbing'):
             warnings.warn("Overriden by non_absorbing")
@@ -109,19 +110,24 @@ class ParameterEstimator(Optimizer):
 
         all_sigma_specified = True
         print(sigma_sq)
-        keys = sigma_sq.keys()
-        for k in list_components:
-            if k not in keys:
+        if isinstance(sigma_sq, dict): 
+            keys = sigma_sq.keys()
+            for k in list_components:
+                if k not in keys:
+                    all_sigma_specified = False
+                    sigma_sq[k] = max(sigma_sq.values())
+    
+            if not 'device' in sigma_sq.keys():
                 all_sigma_specified = False
-                sigma_sq[k] = max(sigma_sq.values())
-
-        if not 'device' in sigma_sq.keys():
-            all_sigma_specified = False
-            sigma_sq['device'] = 1.0
+                sigma_sq['device'] = 1.0
+        elif isinstance(sigma_sq, float):
+            sigma_dev = sigma_sq
+            sigma_sq = dict()
+            sigma_sq['device'] = sigma_dev
 
         m = self.model
 
-        if with_d_vars:
+        if with_d_vars and self.model_variance:
             m.D_bar = Var(m.meas_times,
                           m.meas_lambdas)
             # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
@@ -135,8 +141,15 @@ class ParameterEstimator(Optimizer):
             m.D_bar_constraint = Constraint(m.meas_times,
                                             m.meas_lambdas,
                                             rule=rule_D_bar)
-
-        # estimation
+        '''
+        if self.model_variance == False:
+            def CequalZconst(m,t):
+                for t in m.meas_times:
+                    for k in self._sublist_components:
+                        return m.C[t, k] == m.Z[t, k]
+            m.C_equals_Z_constraint = Constraint(m.meas_times, rule = CequalZconst)
+        '''
+        # estimation with model variance and device
         def rule_objective(m):
             expr = 0
             for t in m.meas_times:
@@ -160,17 +173,55 @@ class ParameterEstimator(Optimizer):
             expr += weights[1] * second_term
             return expr
 
-        m.objective = Objective(rule=rule_objective)
+        # estimation without model variance and only device variance
+        def rule_objective_device_only(m):
+            expr = 0
+            for t in m.meas_times:
+                for l in m.meas_lambdas:
+                    
+                    # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+                    if hasattr(self, '_abs_components'):
+                        D_bar = sum(m.Z[t, k] * m.S[l, k] for k in self._abs_components)
+                        expr += (m.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
+                    else:
+                        D_bar = sum(m.Z[t, k] * m.S[l, k] for k in list_components)
+                        expr += (m.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
+
+            return expr
+        #print(self.model_variance)
+        if self.model_variance == True:
+            m.objective = Objective(rule=rule_objective)
+        else:
+            #m.del_component('C')
+            m.objective = Objective(rule=rule_objective_device_only)
 
         # solver_results = optimizer.solve(m,tee=True,
         #                                 report_timing=True)
-
+        #m.pprint()
+        #m.display()
+        
+        if self.model_variance == False:
+            ip = SolverFactory('ipopt')
+            solver_results = ip.solve(m, tee=True,
+                                      #logfile=self._tmpfile,
+                                      report_timing=True)
+            
+            for l in m.meas_lambdas:
+                if hasattr(self, '_abs_components'):
+                    for k in self._abs_components:                        
+                        m.S[l, k].fix()
+                else:
+                    for k in list_components:
+                        m.S[l, k].fix()
+        
         if covariance and self.solver == 'ipopt_sens':
+            if self.model_variance == False:
+                print("WARNING: FOR PROBLEMS WITH NO MODEL VARIANCE it is advised to use k_aug!!!")
             self._tmpfile = "ipopt_hess"
-            solver_results = optimizer.solve(m, tee=False,
+            solver_results = optimizer.solve(m, tee=tee,
                                              logfile=self._tmpfile,
                                              report_timing=True)
-
+            #self.model.red_hessian.pprint
             print("Done solving building reduce hessian")
             output_string = ''
             with open(self._tmpfile, 'r') as f:
@@ -179,7 +230,7 @@ class ParameterEstimator(Optimizer):
                 os.remove(self._tmpfile)
             # output_string = f.getvalue()
             ipopt_output, hessian_output = split_sipopt_string(output_string)
-            # print hessian_output
+            print(hessian_output)
             print("build strings")
             if tee == True:
                 print(ipopt_output)
@@ -191,11 +242,15 @@ class ParameterEstimator(Optimizer):
             n_vars = len(self._idx_to_variable)
             #print('n_vars', n_vars)
             hessian = read_reduce_hessian(hessian_output, n_vars)
+            
             print(hessian.size, "hessian size")
             # print(hessian.shape,"hessian shape")
             # hessian = read_reduce_hessian2(hessian_output,n_vars)
             # print hessian
-            self._compute_covariance(hessian, sigma_sq)
+            if self.model_variance:
+                self._compute_covariance(hessian, sigma_sq)
+            else:
+                self._compute_covariance_no_model_variance(hessian, sigma_sq)
 
         if warmstart==True:
             if hasattr(m,'dual') and hasattr(m,'ipopt_zL_out') and hasattr(m,'ipopt_zU_out') and hasattr(m,'ipopt_zL_in') and hasattr(m,'ipopt_zU_in'):
@@ -223,19 +278,22 @@ class ParameterEstimator(Optimizer):
             if not self._spectra_given:
                 pass
             else:
-                if hasattr(self, '_abs_components'):
+                if hasattr(self, '_abs_components') and self.model_variance:
                     for t in self._meas_times:
                         for c in self._abs_components:
                             m.Cs[t, c].set_suffix_value(m.dof_v, count_vars)
 
                             count_vars += 1
-                else:
+                elif self.model_variance:
+                    
                     for t in self._meas_times:
                         for c in self._sublist_components:
                             m.C[t, c].set_suffix_value(m.dof_v, count_vars)
 
                             count_vars += 1
-
+                else:
+                    pass
+                
             if not self._spectra_given:
                 pass
             else:
@@ -255,10 +313,10 @@ class ParameterEstimator(Optimizer):
                     continue
                 m.P.set_suffix_value(m.dof_v, count_vars)
                 count_vars += 1
-
+            print("SET FOR k_aug")
             self._tmpfile = "k_aug_hess"
             ip = SolverFactory('ipopt')
-            solver_results = ip.solve(m, tee=False,
+            solver_results = ip.solve(m, tee=tee,
                                       logfile=self._tmpfile,
                                       report_timing=True)
             k_aug = SolverFactory('k_aug')
@@ -266,7 +324,7 @@ class ParameterEstimator(Optimizer):
             m.ipopt_zL_in.update(m.ipopt_zL_out)  #: be sure that the multipliers got updated!
             m.ipopt_zU_in.update(m.ipopt_zU_out)
             # m.write(filename="mynl.nl", format=ProblemFormat.nl)
-            k_aug.solve(m, tee=False)
+            k_aug.solve(m, tee=tee)
             print("Done solving building reduce hessian")
 
             if not all_sigma_specified:
@@ -275,7 +333,7 @@ class ParameterEstimator(Optimizer):
 
             n_vars = len(self._idx_to_variable)
             print("n_vars", n_vars)
-            # m.rh_name.pprint()
+            #m.rh_name.pprint()
             var_loc = m.rh_name
             for v in six.itervalues(self._idx_to_variable):
                 try:
@@ -298,7 +356,10 @@ class ParameterEstimator(Optimizer):
             hessian = self._order_k_aug_hessian(unordered_hessian, var_loc)
             if self._estimability == True:
                 self.hessian = hessian
-            self._compute_covariance(hessian, sigma_sq)
+            if self.model_variance:
+                self._compute_covariance(hessian, sigma_sq)
+            else:
+                self._compute_covariance_no_model_variance(hessian, sigma_sq)
         else:
             solver_results = optimizer.solve(m, tee=tee)
 
@@ -389,7 +450,7 @@ class ParameterEstimator(Optimizer):
             solver_results = optimizer.solve(m, tee=False,
                                              logfile=self._tmpfile,
                                              report_timing=True)
-            # self.model.red_hessian.pprint
+            #self.model.red_hessian.pprint
             m.P.pprint()
             print("Done solving building reduce hessian")
             output_string = ''
@@ -416,8 +477,7 @@ class ParameterEstimator(Optimizer):
             # hessian = read_reduce_hessian2(hessian_output,n_vars)
             if self._concentration_given:
                 self._compute_covariance_C(hessian, sigma_sq)
-            # else:
-            #    self._compute_covariance(hessian, sigma_sq)
+
 
         elif covariance and self.solver == 'k_aug':
             m.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
@@ -449,13 +509,6 @@ class ParameterEstimator(Optimizer):
                         m.S[l, c].set_suffix_value(m.dof_v, count_vars)
                         count_vars += 1
 
-            # if self._concentration_given:
-            #    for t in self._meas_times:
-            #        for c in self._sublist_components:
-            #            m.Z[t, c].set_suffix_value(m.dof_v,count_vars)
-
-            #            count_vars += 1
-
             for v in six.itervalues(self.model.P):
                 if v.is_fixed():
                     continue
@@ -474,7 +527,7 @@ class ParameterEstimator(Optimizer):
             m.ipopt_zL_in.update(m.ipopt_zL_out)  #: be sure that the multipliers got updated!
             m.ipopt_zU_in.update(m.ipopt_zU_out)
             # m.write(filename="mynl.nl", format=ProblemFormat.nl)
-            k_aug.solve(m, tee=True)
+            k_aug.solve(m, tee=False)
             print("Done solving building reduce hessian")
 
             if not all_sigma_specified:
@@ -483,7 +536,7 @@ class ParameterEstimator(Optimizer):
 
             n_vars = len(self._idx_to_variable)
             print("n_vars", n_vars)
-            m.rh_name.pprint()
+            #m.rh_name.pprint()
             var_loc = m.rh_name
             for v in six.itervalues(self._idx_to_variable):
                 try:
@@ -521,34 +574,36 @@ class ParameterEstimator(Optimizer):
             pass
         else:
             # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-            if hasattr(self, '_abs_components'):  # added for removing non absorbing ones from first term in obj
+            if hasattr(self, '_abs_components') and self.model_variance:  # added for removing non absorbing ones from first term in obj
                 for t in self._meas_times:
                     for c in self._abs_components:
                         v = self.model.Cs[t, c]
                         self._idx_to_variable[count_vars] = v
                         self.model.red_hessian[v] = count_vars
                         count_vars += 1
-            else:
+            elif self.model_variance:
                 for t in self._meas_times:
                     for c in self._sublist_components:
                         v = self.model.C[t, c]
                         self._idx_to_variable[count_vars] = v
                         self.model.red_hessian[v] = count_vars
                         count_vars += 1
+            else:
+                pass
 
         if not self._spectra_given:
             pass
 
         else:
             # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-            if hasattr(self,'_abs_components'): #added for removing non absorbing ones from first term in obj
+            if hasattr(self,'_abs_components') and self.model_variance: #added for removing non absorbing ones from first term in obj
                 for l in self._meas_lambdas:
                     for c in self._abs_components:
                         v = self.model.S[l, c]
                         self._idx_to_variable[count_vars] = v
                         self.model.red_hessian[v] = count_vars
                         count_vars += 1
-            else:
+            elif self.model_variance:
                 for l in self._meas_lambdas:
                     for c in self._sublist_components:
                         v = self.model.S[l, c]
@@ -755,7 +810,41 @@ class ParameterEstimator(Optimizer):
                 continue
             print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
             i += 1
+    
+    def _compute_covariance_no_model_variance (self, hessian, variance):
+        """
+        Computes the covariance matrix for the paramaters taking in the Hessian
+        matrix and the device variance for the problem where model error is ignored.
+        Outputs the parameter confidence intervals.
 
+        This function is not intended to be used by the users directly
+
+        """
+        
+        nparams = 0
+        for v in six.itervalues(self.model.P):
+            if v.is_fixed():  #: Skip the fixed ones
+                print(str(v) + '\has been skipped for covariance calculations')
+                continue
+            nparams += 1
+        all_H = hessian
+        #w,v = np.linalg.eig(all_H)
+        #np.set_printoptions(threshold=sys.maxsize)
+        
+        H = all_H[-nparams:, :]
+
+        covariance_C = H
+        #print(covariance_C,"covariance matrix")
+        variances_p = np.diag(covariance_C)
+        print("Parameter variances: ", variances_p)
+        print('\nConfidence intervals:')
+        i = 0
+        for k, p in self.model.P.items():
+            if p.is_fixed():
+                continue
+            print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
+            i += 1
+    
     def _compute_B_matrix(self, variances, **kwds):
         """Builds B matrix for calculation of covariances
 
@@ -1063,8 +1152,8 @@ class ParameterEstimator(Optimizer):
             j = 0
             for vj in six.itervalues(self._idx_to_variable):
                 if n_vars ==1:
-                    print("var_loc[vi]",var_loc[vi])
-                    print(unordered_hessian)
+                    #print("var_loc[vi]",var_loc[vi])
+                    #print(unordered_hessian)
                     h = unordered_hessian
                     hessian[i, j] = h
                 else:
@@ -1084,20 +1173,24 @@ class ParameterEstimator(Optimizer):
 
             solver_opts (dict, optional): options passed to the nonlinear solver
 
-            variances (dict, optional): map of component name to noise variance. The
-            map also contains the device noise variance
+            variances (dict or float, optional): map of component name to noise variance. The
+            map also contains the device noise variance. If not float then we only use device variance
+            and ignore model variance.
 
             tee (bool,optional): flag to tell the optimizer whether to stream output
-            to the terminal or not
+            to the terminal or not.
 
             with_d_vars (bool,optional): flag to the optimizer whether to add
-            variables and constraints for D_bar(i,j)
+            variables and constraints for D_bar(i,j).
             
-            report_time (bool, optional): flag as to whether to time the parameter estimation or not
+            report_time (bool, optional): flag as to whether to time the parameter estimation or not.
 
             estimability (bool, optional): flag to tell the model whether it is
             being used by the estimability analysis and therefore will need to return the
             hessian for analysis.
+            
+            model_variance (bool, optional): Default is True. Flag to tell whether we are only
+            considering the variance in the device, or also model noise as well.
 
         Returns:
             Results object with loaded results
@@ -1112,6 +1205,8 @@ class ParameterEstimator(Optimizer):
 
         estimability = kwds.pop('estimability', False)
         report_time = kwds.pop('report_time', False)
+        
+        model_variance = kwds.pop('model_variance', True)
         
         #additional arguments for inputs CS
         inputs = kwds.pop("inputs", None)
@@ -1128,15 +1223,20 @@ class ParameterEstimator(Optimizer):
         feed_times = kwds.pop("feed_times", None)
 
         self.solver = solver
-        
+
+        if model_variance:
+            self.model_variance = model_variance
+        else:
+            self.model_variance = model_variance
+            
         if not self.model.time.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
         
         if report_time:
             start = time.time()
         # Look at the output in results
-        opt = SolverFactory(self.solver)
-
+        opt = SolverFactory(self.solver)           
+            
         if covariance:
             if self.solver != 'ipopt_sens' and self.solver != 'k_aug':
                 raise RuntimeError('To get covariance matrix the solver needs to be ipopt_sens or k_aug')
@@ -1219,17 +1319,20 @@ class ParameterEstimator(Optimizer):
                 "WARNING: The model has an active objective. Running optimization with models objective.\n"
                 " To solve optimization with default objective (Weifengs) deactivate all objectives in the model.")
             solver_results = opt.solve(self.model, tee=tee)
+            
         elif self._spectra_given:
             self._solve_extended_model(variances, opt,
                                        tee=tee,
                                        covariance=covariance,
                                        with_d_vars=with_d_vars,
                                        **kwds)
+            
         elif self._concentration_given:
             self._solve_model_given_c(variances, opt,
                                       tee=tee,
                                       covariance=covariance,
                                       **kwds)
+            
         else:
             raise RuntimeError(
                 'Must either provide concentration data or spectra in order to solve the parameter estimation problem')
