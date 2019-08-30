@@ -181,7 +181,7 @@ class ParameterEstimator(Optimizer):
                     
                     # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
                     if hasattr(self, '_abs_components'):
-                        D_bar = sum(m.Zs[t, k] * m.S[l, k] for k in self._abs_components)
+                        D_bar = sum(m.Z[t, k] * m.S[l, k] for k in self._abs_components)
                         expr += (m.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
                     else:
                         D_bar = sum(m.Z[t, k] * m.S[l, k] for k in list_components)
