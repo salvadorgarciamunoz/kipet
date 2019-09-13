@@ -186,7 +186,7 @@ if __name__ == "__main__":
     sim = PyomoSimulator(model)
     # defines the discrete points wanted in the concentration profile
     sim.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
-    fe_l = sim.model.time.get_finite_elements()
+    fe_l = sim.model.alltime.get_finite_elements()
     fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
     nfe = len(fe_list)  #: Create a list with the step-size
     print(nfe)
@@ -207,7 +207,7 @@ if __name__ == "__main__":
     sim.fix_from_trajectory('Y','f',fixed_traj)
 
     with open("f0.txt", "w") as f:
-        for t in sim.model.time:
+        for t in sim.model.alltime:
             val = value(sim.model.Y[t, 'f'])
             f.write('\t' + str(t) + '\t' + str(val) + '\n')
         f.close()
