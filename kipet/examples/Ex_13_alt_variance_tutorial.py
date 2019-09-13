@@ -104,14 +104,14 @@ if __name__ == "__main__":
     # based on this solution solve for the individual model variances if we wish.
     
     # To do this we only need to provide an initial value for the variances.
-    init_sigmas = 5e-8
+    init_sigmas = 5e-5
     results_variances = v_estimator.run_opt('ipopt',
                                             method = 'alternate',
                                             tee=False,
                                             initial_sigmas = init_sigmas,
                                             solver_opts=options,
                                             tolerance = 1e-10,
-                                            secant_point = 5e-7,
+                                            secant_point = 5e-4,
                                             individual_species = False)
     
     # other options that may needed include an option to provide the second point for

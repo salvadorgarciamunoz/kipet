@@ -151,7 +151,7 @@ if __name__ == "__main__":
     yfixtraj['Y']=['Temp']
     
     ## #since these are inputs we need to fix this
-    for key in sim.model.time.value:
+    for key in sim.model.alltime.value:
         sim.model.Y[key, '3'].set_value(key)
         sim.model.Y[key, '3'].fix()
     Z_step = {'A': .01} #Which component and which amount is added
@@ -311,6 +311,10 @@ if __name__ == "__main__":
     p_estimator.initialize_from_trajectory('dZdt', results.dZdt)
     p_estimator.initialize_from_trajectory('C', results.C)
 
+    p_estimator.scale_variables_from_trajectory('Z', results.Z)
+    p_estimator.scale_variables_from_trajectory('S', results.S)
+    p_estimator.scale_variables_from_trajectory('dZdt', results.dZdt)
+    p_estimator.scale_variables_from_trajectory('C', results.C)
     # Again we provide options for the solver
     options = dict()
 
