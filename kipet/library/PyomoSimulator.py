@@ -33,13 +33,19 @@ class PyomoSimulator(Simulator):
             model (Pyomo model)
         """
         super(PyomoSimulator, self).__init__(model)
-        self._times = sorted(self.model.time)
-        self._n_times = len(self._times)
+        self._alltimes = sorted(self.model.alltime)#added for special structure CS
+        #self._times = sorted(self.model.time)
+        self._n_alltimes = len(self._alltimes) #added for special structure CS
+        #self._n_times = len(self._times)
+        self._meas_times=sorted(self.model.meas_times)
+        self._allmeas_times=sorted(self.model.allmeas_times)
         self._ipopt_scaled = False
         self._spectra_given = hasattr(self.model, 'D')
         self._concentration_given = hasattr(self.model, 'C')
         self._absorption_given = hasattr(self.model,
                                          'S')  # added for special case of absorption data available but not concentration data CS
+        self._huplc_given = hasattr(self.model, 'Chat')
+        self._smoothparam_given = hasattr(self.model, 'Ps')
 
         # creates scaling factor suffix
         if not hasattr(self.model, 'scaling_factor'):
@@ -55,11 +61,42 @@ class PyomoSimulator(Simulator):
         Returns:
             None
         """
-        if not self.model.time.get_discretization_info():
+        if not self.model.alltime.get_discretization_info():
             discretizer = TransformationFactory(transformation)
-            discretizer.apply_to(self.model, wrt=self.model.time, **kwargs)
-            self._times = sorted(self.model.time)
-            self._n_times = len(self._times)
+            discretizer.apply_to(self.model, wrt=self.model.alltime, **kwargs)
+            self._alltimes = sorted(self.model.alltime)
+            self._n_alltimes = len(self._alltimes)
+
+            #added for optional smoothing parameter with reading values from file CS:
+            if self._smoothparam_given:
+                dfps = pd.DataFrame(index=self.model.alltime, columns=self.model.smoothparameter_names)
+                for t in self.model.alltime:
+                    if t not in self.model.allsmooth_times:  # for points that are the same in original meas times and feed times
+                        dfps.loc[t] = float(22.) #something that is not between 0 and 1
+                    else:
+                        ps_dict_help = dict()
+                        for p in self.model.smoothparameter_names:
+                            ps_dict_help[t, p] = value(self.model.smooth_param_data[t, p])
+                        dfps.loc[t] = [ps_dict_help[t, p] for p in self.model.smoothparameter_names]
+                dfallps = dfps
+                dfallps.sort_index(inplace=True)
+                dfallps.index = dfallps.index.to_series().apply(
+                    lambda x: np.round(x, 6))  # time from data rounded to 6 digits
+
+                dfallpsall = pd.DataFrame(index=self.model.alltime, columns=self.model.smoothparameter_names)
+                dfsmoothdata = pd.DataFrame(index=sorted(self.model.smooth_param_datatimes), columns=self.model.smoothparameter_names)
+
+                for t in self.model.smooth_param_datatimes:
+                    dfsmoothdata.loc[t] = [value(self.model.smooth_param_data[t, p]) for p in self.model.smoothparameter_names]
+
+                for p in self.model.smoothparameter_names:
+                    for ti in self.model.alltime:
+                        if float(dfallps[p][ti]) > 1:
+                            valueinterp=interpolate_from_trajectory(ti, dfsmoothdata[p])
+                            dfallpsall[p][ti] = float(valueinterp)
+                        else:
+                            dfallpsall.loc[ti] = float(dfallps[p][ti])
+
             self._default_initialization()
         else:
             print('***WARNING: Model already discretized. Ignoring second discretization')
@@ -70,15 +107,15 @@ class PyomoSimulator(Simulator):
             raise NotImplementedError("Fixing state variables is not allowd. Only algebraics can be fixed")
 
         single_traj = trajectories[variable_index]
-        sim_times = sorted(self._times)
+        sim_alltimes = sorted(self._alltimes)
         var = getattr(self.model, variable_name)
-        for i, t in enumerate(sim_times):
+        for i, t in enumerate(sim_alltimes):
             value = interpolate_from_trajectory(t, single_traj)
             var[t, variable_index].fix(value)
 
     def unfix_time_dependent_variable(self, variable_name, variable_index):
         var = getattr(self.model, variable_name)
-        sim_times = sorted(self._times)
+        sim_times = sorted(self._alltimes)
         for i, t in enumerate(sim_times):
             var[t, variable_index].fixed = False
 
@@ -95,52 +132,55 @@ class PyomoSimulator(Simulator):
         """
         tol = 1e-4
         z_init = []
-        for t in self._times:
+        for t in self._alltimes:
             for k in self._mixture_components:
                 if abs(self.model.init_conditions[k].value) > tol:
                     z_init.append(self.model.init_conditions[k].value)
                 else:
                     z_init.append(1.0)
 
-        z_array = np.array(z_init).reshape((self._n_times, self._n_components))
+        z_array = np.array(z_init).reshape((self._n_alltimes, self._n_components))
         z_init_panel = pd.DataFrame(data=z_array,
                                     columns=self._mixture_components,
-                                    index=self._times)
+                                    index=self._alltimes)
 
         c_init = []
         if self._concentration_given:
             pass
         else:
-            for t in self._meas_times:
+            for t in self._allmeas_times:
                 for k in self._mixture_components:
-                    if abs(self.model.init_conditions[k].value) > tol:
-                        c_init.append(self.model.init_conditions[k].value)
-                    else:
-                        c_init.append(1.0)
+                    if t in self._meas_times:
+                        if abs(self.model.init_conditions[k].value) > tol:
+                            c_init.append(self.model.init_conditions[k].value)
+                        else:
+                            c_init.append(1.0)
+                    else: c_init.append(float('nan')) #added for new huplc structure!
 
-        if self._n_meas_times:
+        if self._n_allmeas_times:
             if self._concentration_given:
                 pass
             else:
-                c_array = np.array(c_init).reshape((self._n_meas_times, self._n_components))
+                c_array = np.array(c_init).reshape((self._n_allmeas_times, self._n_components))
                 c_init_panel = pd.DataFrame(data=c_array,
-                                            columns=self._mixture_components,
-                                            index=self._meas_times)
+                                        columns=self._mixture_components,
+                                        index=self._allmeas_times)
+
                 self.initialize_from_trajectory('C', c_init_panel)
                 print("self._n_meas_times is true in _default_init in PyomoSim")
 
         x_init = []
-        for t in self._times:
+        for t in self._alltimes:
             for k in self._complementary_states:
                 if abs(self.model.init_conditions[k].value) > tol:
                     x_init.append(self.model.init_conditions[k].value)
                 else:
                     x_init.append(1.0)
 
-        x_array = np.array(x_init).reshape((self._n_times, self._n_complementary_states))
+        x_array = np.array(x_init).reshape((self._n_alltimes, self._n_complementary_states))
         x_init_panel = pd.DataFrame(data=x_array,
                                     columns=self._complementary_states,
-                                    index=self._times)
+                                    index=self._alltimes)
 
         self.initialize_from_trajectory('Z', z_init_panel)
         self.initialize_from_trajectory('X', x_init_panel)
@@ -164,42 +204,42 @@ class PyomoSimulator(Simulator):
 
         """
 
-        if not self.model.time.get_discretization_info():
+        if not self.model.alltime.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
 
         if variable_name == 'Z':
             var = self.model.Z
-            inner_set = self.model.time
+            inner_set = self.model.alltime
         elif variable_name == 'dZdt':
             var = self.model.dZdt
-            inner_set = self.model.time
+            inner_set = self.model.alltime
         elif variable_name == 'C':
             var = self.model.C
-            inner_set = self._meas_times
+            inner_set = self._allmeas_times
         elif variable_name =='Cs':
-                var = self.model.Cs
-                inner_set = self._meas_times
+            var = self.model.Cs
+            inner_set = self._allmeas_times
         elif variable_name == 'S':
-            # if hasattr(self, '_abs_components'):
-            #     var = self.model.Ss
-            # else:
             var = self.model.S
             inner_set = self._meas_lambdas
-        # elif variable_name == 'Ss':
-        #     var = self.model.Ss
-        #     inner_set = self._meas_lambdas
         elif variable_name == 'X':
             var = self.model.X
-            inner_set = self.model.time
+            inner_set = self.model.alltime
         elif variable_name == 'dXdt':
             var = self.model.dXdt
-            inner_set = self.model.time
+            inner_set = self.model.alltime
         elif variable_name == 'Y':
             var = self.model.Y
-            inner_set = self.model.time
+            inner_set = self.model.alltime
         elif variable_name == 'dual':  # for warm start
             var = self.model.dual
-            inner_set = self.model.time
+            inner_set = self.model.alltime
+        elif variable_name == 'Ps':
+            var = self.model.Ps
+            inner_set = self.model.alltime
+        elif variable_name =='Chat':
+            var = self.model.Chat
+            inner_set = self.model.huplctime
         else:
             raise RuntimeError('Initialization of variable {} is not supported'.format(variable_name))
 
@@ -224,6 +264,28 @@ class PyomoSimulator(Simulator):
                             component))
                 else:
                     to_initialize.append(component)
+
+        #added for additional huplc data CS:
+        if variable_name in ['Chat']:#, 'Dhat']:
+            for component in columns:
+                if component not in self._huplcabs_components:
+                    print(
+                        'WARNING: HUPLC absorbing component {} is not in model absorbing components. initialization ignored'.format(
+                            component))
+                else:
+                    to_initialize.append(component)
+
+        #added for additional smoothing data CS:
+        if variable_name in ['Ps']:#, 'Dhat']:
+            for component in columns:
+                if component not in self.model.smoothparameter_names:
+                    print(
+                        'WARNING: Smoothing parameter component {} is not in Smoothing parameter components. initialization ignored'.format(
+                            component))
+                else:
+                    to_initialize.append(component)
+
+
         if variable_name in ['X', 'dXdt']:
             for component in columns:
                 if component not in self._complementary_states:
@@ -295,30 +357,36 @@ class PyomoSimulator(Simulator):
 
         """
         # time-invariant nominal scaling
-        if not self.model.time.get_discretization_info():
+        if not self.model.alltime.get_discretization_info():
             raise RuntimeError('apply discretization first before runing simulation')
 
         if variable_name == 'Z':
             var = self.model.Z
-            inner_set = self.model.time
+            inner_set = self.model.alltime
         elif variable_name == 'dZdt':
             var = self.model.dZdt
-            inner_set = self.model.time
+            inner_set = self.model.alltime
         elif variable_name == 'C':
             var = self.model.C
-            inner_set = self._meas_times
+            inner_set = self._allmeas_times
+        elif variable_name =='Cs':
+            var = self.model.Cs
+            inner_set = self._allmeas_times
         elif variable_name == 'S':
             var = self.model.S
             inner_set = self._meas_lambdas
         elif variable_name == 'X':
             var = self.model.X
-            inner_set = self.model.time
+            inner_set = self.model.alltime
         elif variable_name == 'dXdt':
             var = self.model.dXdt
-            inner_set = self.model.time
+            inner_set = self.model.alltime
         elif variable_name == 'Y':
             var = self.model.Y
-            inner_set = self.model.time
+            inner_set = self.model.alltime
+        elif variable_name =='Chat':
+            var = self.model.Chat
+            inner_set = self.model.huplctime
         else:
             raise RuntimeError('Scaling of variable {} is not supported'.format(variable_name))
 
@@ -382,7 +450,7 @@ class PyomoSimulator(Simulator):
         tee = kwds.pop('tee', False)
         seed = kwds.pop('seed', None)
 
-        if not self.model.time.get_discretization_info():
+        if not self.model.alltime.get_discretization_info():
             raise RuntimeError('apply discretization first before runing simulation')
 
         # adjusts the seed to reproduce results with noise
@@ -395,7 +463,9 @@ class PyomoSimulator(Simulator):
         X_var = self.model.X
         dX_var = self.model.dXdt
         C_var = self.model.C  # added for estimation with inputs and conc data CS
-
+        if self._huplc_given: #added for additional data CS
+            Dhat_var = self.model.Dhat
+            Chat_var = self.model.Chat
         # check all parameters are fixed before simulating
         for p_var_data in six.itervalues(P_var):
             if not p_var_data.fixed:
@@ -436,52 +506,58 @@ class PyomoSimulator(Simulator):
 
         c_noise_results = []
 
-        w = np.zeros((self._n_components, self._n_meas_times))
-        n_sig = np.zeros((self._n_components, self._n_meas_times))
+        w = np.zeros((self._n_components, self._n_allmeas_times))
+        n_sig = np.zeros((self._n_components, self._n_allmeas_times))
         # for the noise term
         if sigmas:
             for i, k in enumerate(self._mixture_components):
                 if k in sigmas.keys():
                     sigma = sigmas[k] ** 0.5
-                    dw_k = np.random.normal(0.0, sigma, self._n_meas_times)
-                    n_sig[i, :] = np.random.normal(0.0, sigma, self._n_meas_times)
+                    dw_k = np.random.normal(0.0, sigma, self._n_allmeas_times)
+                    n_sig[i, :] = np.random.normal(0.0, sigma, self._n_allmeas_times)
                     w[i, :] = np.cumsum(dw_k)
 
         # this addition is not efficient but it can be changed later
 
-        for i, t in enumerate(self._meas_times):
+        for i, t in enumerate(self._allmeas_times):
             for j, k in enumerate(self._mixture_components):
                 # c_noise_results.append(Z_var[t,k].value+ w[j,i])
                 c_noise_results.append(Z_var[t, k].value + n_sig[j, i])
 
-        c_noise_array = np.array(c_noise_results).reshape((self._n_meas_times, self._n_components))
+        c_noise_array = np.array(c_noise_results).reshape((self._n_allmeas_times, self._n_components))
         results.C = pd.DataFrame(data=c_noise_array,
                                  columns=self._mixture_components,
-                                 index=self._meas_times)
+                                 index=self._allmeas_times)
 
         #added due to new structure for non_abs species, Cs as subset of C (CS):
         if hasattr(self, '_abs_components'):
             cs_noise_results=[]
-            for i, t in enumerate(self._meas_times):
+            for i, t in enumerate(self._allmeas_times):
+                # if i in self._meas_times:
                 for j, k in enumerate(self._abs_components):
                     # c_noise_results.append(Z_var[t,k].value+ w[j,i])
                     cs_noise_results.append(Z_var[t, k].value + n_sig[j, i])
 
-            cs_noise_array = np.array(cs_noise_results).reshape((self._n_meas_times, self._nabs_components))
+            cs_noise_array = np.array(cs_noise_results).reshape((self._n_allmeas_times, self._nabs_components))
             results.Cs = pd.DataFrame(data=cs_noise_array,
                                      columns=self._abs_components,
-                                     index=self._meas_times)
+                                     index=self._allmeas_times)
 
         # addition for inputs estimation with concentration data CS:
         if self._concentration_given == True and self._absorption_given == False:
             c_noise_results = []
-            for i, t in enumerate(self._meas_times):
+            for i, t in enumerate(self._allmeas_times):
+                # if i in self._meas_times:
                 for j, k in enumerate(self._mixture_components):
                     c_noise_results.append(C_var[t, k].value)
-            c_noise_array = np.array(c_noise_results).reshape((self._n_meas_times, self._n_components))
+            c_noise_array = np.array(c_noise_results).reshape((self._n_allmeas_times, self._n_components))
             results.C = pd.DataFrame(data=c_noise_array,
                                      columns=self._mixture_components,
-                                     index=self._meas_times)
+                                     index=self._allmeas_times)
+
+        if self._huplc_given == True:
+            results.load_from_pyomo_model(self.model,
+                                      to_load=['Chat'])
         s_results = []
         # added due to new structure for non_abs species, non-absorbing species not included in S (CS):
         if hasattr(self, '_abs_components'):
@@ -502,26 +578,34 @@ class PyomoSimulator(Simulator):
             # added due to new structure for non_abs species, Cs and S as above(CS):
             if hasattr(self,'_abs_components'):
                 for i, t in enumerate(self._meas_times):
+                    #if t in self._meas_times:
+                        # print(i, t)
                     for j, l in enumerate(self._meas_lambdas):
                         suma = 0.0
                         for w, k in enumerate(self._abs_components):
+                            # print(i, self._meas_times)
                             Cs = cs_noise_results[i * self._nabs_components + w]
                             S = s_results[j * self._nabs_components + w]
                             suma += Cs * S
                         if sigma_d:
                             suma += np.random.normal(0.0, sigma_d)
                         d_results.append(suma)
+                        # print(d_results)
             else:
                 for i, t in enumerate(self._meas_times):
+                    # # print(i, t)
+                    # if t in self._meas_times:
                     for j, l in enumerate(self._meas_lambdas):
                         suma = 0.0
                         for w, k in enumerate(self._mixture_components):
+                            # print(i, self._meas_times)
                             C = c_noise_results[i * self._n_components + w]
                             S = s_results[j * self._n_components + w]
                             suma += C * S
                         if sigma_d:
                             suma += np.random.normal(0.0, sigma_d)
                         d_results.append(suma)
+                        # print(d_results)
         # added due to new structure for non_abs species, non-absorbing species not included in S (CS):
         if hasattr(self, '_abs_components'):
             s_array = np.array(s_results).reshape((self._n_meas_lambdas, self._nabs_components))
