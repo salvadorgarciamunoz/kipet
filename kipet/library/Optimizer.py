@@ -137,7 +137,7 @@ class Optimizer(PyomoSimulator):
         wb = kwds.pop('with_bounds',True)
         max_iter = kwds.pop('max_lsq_iter',200)
         
-        if not self.model.time.get_discretization_info():
+        if not self.model.alltime.get_discretization_info():
             raise RuntimeError('apply discretization first before runing simulation')
 
         #self.model =copy.deepcopy(self.model)
@@ -199,18 +199,18 @@ class Optimizer(PyomoSimulator):
         results.load_from_pyomo_model(self.model,
                                       to_load=['Z','dZdt','X','dXdt','Y'])
 
-        c_array = np.zeros((self._n_meas_times,self._n_components))
-        for i,t in enumerate(self._meas_times):
+        c_array = np.zeros((self._n_allmeas_times,self._n_components))
+        for i,t in enumerate(self._allmeas_times):
             for j,k in enumerate(self._mixture_components):
                 c_array[i,j] = results.Z[k][t]
 
         results.C = pd.DataFrame(data=c_array,
                                  columns=self._mixture_components,
-                                 index=self._meas_times)
+                                 index=self._allmeas_times)
         
         D_data = self.model.D
         
-        if self._n_meas_times and self._n_meas_times<self._n_components:
+        if self._n_allmeas_times and self._n_allmeas_times<self._n_components:
             raise RuntimeError('Not enough measurements num_meas>= num_components')
 
         # solves over determined system
@@ -234,7 +234,7 @@ class Optimizer(PyomoSimulator):
                                  index=self._meas_times)        
 
         if initialization:
-            for t in self.model.meas_times:
+            for t in self.model.allmeas_times:
                 for k in self.mixture_components:
                     self.model.C[t,k].value = self.model.Z[t,k].value
 

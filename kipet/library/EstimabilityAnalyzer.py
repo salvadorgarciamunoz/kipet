@@ -58,7 +58,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
             dsdp (numpy matrix):  sensitivity matrix with columns being parameters and rows the Z vars
             idx_to_params (dict): dictionary that maps the columns to the parameters
         """               
-        if not self.model.time.get_discretization_info():
+        if not self.model.alltime.get_discretization_info():
             raise RuntimeError('apply discretization first before running the estimability')
             
         sigma_sq = kwds.pop('sigmasq', dict())
@@ -78,6 +78,9 @@ class EstimabilityAnalyzer(ParameterEstimator):
         if not self._concentration_given:
             raise NotImplementedError("In order to use the estimability analysis from concentration data requires concentration data model.C[ti,cj]")
 
+        if self._huplc_given:
+            raise NotImplementedError("Estimability analysis for additional huplc data is not implemented yet.")
+
         all_sigma_specified = True
 
         keys = sigma_sq.keys()
@@ -95,9 +98,9 @@ class EstimabilityAnalyzer(ParameterEstimator):
         # estimation
         def rule_objective(m):
             obj = 0
-            for t in m.meas_times:
+            for t in m.allmeas_times:
+                # if t in m.meas_times:
                 obj += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components)
-
             return obj
             
         m.objective = Objective(rule=rule_objective)
@@ -156,10 +159,9 @@ class EstimabilityAnalyzer(ParameterEstimator):
         if not self._spectra_given:
             pass
         else:
-            for t in self._meas_times:
+            for t in self._allmeas_times:
                 for c in self._sublist_components:
                     m.C[t, c].set_suffix_value(m.var_order,count_vars)
-                        
                     count_vars += 1
         
         if not self._spectra_given:
@@ -171,10 +173,13 @@ class EstimabilityAnalyzer(ParameterEstimator):
                     count_vars += 1
                         
         if self._concentration_given:
-            for t in self._meas_times:
+            for t in self._allmeas_times:
                 for c in self._sublist_components:
-                    m.Z[t, c].set_suffix_value(m.var_order,count_vars)                        
+                    m.Z[t, c].set_suffix_value(m.var_order,count_vars)
                     count_vars += 1
+
+        if self._huplc_given:
+            raise RuntimeError('Estimability Analysis for additional huplc data is not included as a feature yet!')
                     
         count_dcdp = 1
 
@@ -648,7 +653,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         # first we need the total number of responses
         N = 0
         for c in self._sublist_components:
-            for t in self._meas_times:
+            for t in self._allmeas_times:
                 N += 1 
                 
         crit_rat = dict()
@@ -687,13 +692,13 @@ class EstimabilityAnalyzer(ParameterEstimator):
             value of sum of squared scaled residuals
         This method is not intended to be used by users directly
         """        
-        nt = self._n_meas_times
+        nt = self._n_allmeas_times
         nc = self._n_actual
         self.residuals = dict()
         count_c = 0
         for c in self._sublist_components:
             count_t = 0
-            for t in self._meas_times:
+            for t in self._allmeas_times:
                 a = model.C[c][t]
                 b = model.Z[c][t]
                 r = ((a - b) ** 2)
@@ -702,7 +707,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
             count_c += 1
         E = 0           
         for c in self._sublist_components:
-            for t in self._meas_times:                
+            for t in self._allmeas_times:
                 E += self.residuals[t, c] / (meas_scaling ** 2)
-                
+
         return E
