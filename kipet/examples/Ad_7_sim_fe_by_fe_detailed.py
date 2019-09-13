@@ -150,7 +150,7 @@ if __name__ == "__main__":
     inputs_sub['Y'] = [5]
 
     #: define the values for our simulation
-    for key in sim.model.time.value:
+    for key in sim.model.alltime.value:
         sim.model.Y[key, 5].set_value(key)
         sim.model.Y[key, 5].fix()  #if you don't fix this, fe_factory is will not work complain.
 
