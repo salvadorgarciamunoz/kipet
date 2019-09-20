@@ -39,7 +39,7 @@ project = 'KIPET'
 #slug = re.sub(r'\W+', '-', project.lower())
 version = 1.1
 #release = 1.1.01
-author = 'Michael Short'
+author = 'KIPET-Team'
 copyright = author
 language = 'en'
 
