@@ -327,7 +327,8 @@ and the warmstart argument should be set to true:
                                     with_d_vars=True,
                                     warmstart=True)
 
-An example is provided in Ad_2_estimation_warmstart.py, where we just estimate one parameter first and then initialize the estimation of both parameters with that solution.\\
+An example is provided in Ad_2_estimation_warmstart.py, where we just estimate one parameter first and then initialize the estimation of both parameters with that solution.
+
 In some cases it can be useful to provide expected optimal parameter values and ensure that the estimated parameters stay close to these values. For that purpose, it is possible to add optional L2-penalty terms to the objective and define the expected parameter values and corresponding penalty weights, e.g.
 ::
 
@@ -348,8 +349,9 @@ These dictionaries should then be handed to the ParameterEstimator setting the p
 					    penaltyparam=True,
 					    ppenalty_dict=ppenalty_dict,
 					    ppenalty_weights=ppenalty_weights)
-					    
-\\In case one wants to check the eigenvalues of the reduced Hessian to check whether the estimates have large variances, set the option eigredhess2file option to True, i.e.
+	
+	
+In case one wants to check the eigenvalues of the reduced Hessian to check whether the estimates have large variances, set the option eigredhess2file option to True, i.e.
 ::
 	eigredhess2file=True
 	
