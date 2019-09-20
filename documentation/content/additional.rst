@@ -329,15 +329,17 @@ and the warmstart argument should be set to true:
 
 An example is provided in Ad_2_estimation_warmstart.py, where we just estimate one parameter first and then initialize the estimation of both parameters with that solution. 
 In some cases it can be useful to provide expected optimal parameter values and ensure that the estimated parameters stay close to these values. For that purpose, it is possible to add optional L2-penalty terms to the objective and define the expected parameter values and corresponding penalty weights, e.g.
+::
 
 	ppenalty_dict=dict()
 	ppenalty_dict={'k1':1.2,  'k2':2.3}
 
 	ppenalty_weights = dict()
    	ppenalty_weights = {'k1': 10., 'k2': 1.}
+	
 where in ppenalty_dict you define the expected optimal values and in ppenalty_weights you define the corresponding weights.
 These dictionaries should then be handed to the ParameterEstimator setting the penaltyparam option to True as well, i.e. 
-
+::
 	results_pyomo = p_estimator.run_opt('ipopt',
 					    tee=True,
 					    solver_opts=options,
@@ -348,5 +350,7 @@ These dictionaries should then be handed to the ParameterEstimator setting the p
 					    ppenalty_weights=ppenalty_weights)
 					    
 In case one wants to check the eigenvalues of the reduced Hessian to check whether the estimates have large variances, set the option eigredhess2file option to True, i.e.
+::
 	eigredhess2file=True
+	
 handing it to the ParameterEstimator. Note that to use this option you have to solve the problem with sensitivities, i.e. the solver 'ipopt_sens' or 'k_aug' has to be called. 
