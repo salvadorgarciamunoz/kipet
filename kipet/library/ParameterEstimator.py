@@ -190,14 +190,14 @@ class ParameterEstimator(Optimizer):
                     else:
                         # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
                         if hasattr(m, '_abs_components'):
-                            if hasattr(m, 'huplc_absorbing'):
+                            if hasattr(m, 'huplc_absorbing') and hasattr(m, 'solid_spec_arg1'):
                                 D_bar = sum(
                                     m.Cs[t, k] * m.S[l, k] for k in m._abs_components if k not in m.solid_spec_arg1)
                             else:
                                 D_bar = sum(m.Cs[t, k] * m.S[l, k] for k in m._abs_components)
                             expr += (m.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
                         else:
-                            if hasattr(m, 'huplc_absorbing'):
+                            if hasattr(m, 'huplc_absorbing') and hasattr(m, 'solid_spec_arg1'):
                                 D_bar = sum(
                                     m.C[t, k] * m.S[l, k] for k in list_components if k not in m.solid_spec_arg1)
                             else:
@@ -275,6 +275,9 @@ class ParameterEstimator(Optimizer):
                                                 new_consolidvol.add(m.solidvol[time, l] == m.Z[time, k] / m.vol)
                                         else:
                                             new_consolidvol.add(m.solidvol[time, l] == 0.0)
+                    else:
+                        new_consolidvol.add(m.solidvol[time, l] == 0.0)
+
 
                     m.Dhat_bar = Var(m.huplcmeas_times,
                                      m.huplc_absorbing)
@@ -2277,7 +2280,7 @@ class ParameterEstimator(Optimizer):
             for c in self._sublist_components:
                 c_count += 1
                 t_count = 0
-                for t in self._allmeas_times:
+                for t in self._meas_times:
                     C[t_count, c_count] = self.model.C[t, c].value
                     t_count += 1
 
