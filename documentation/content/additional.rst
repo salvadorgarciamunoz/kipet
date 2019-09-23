@@ -377,4 +377,4 @@ You should specify a device variance for the H/UPLC data as well. If you do not 
 The lack of fit related to the UPLC data can be calculated using     
 ::
 	lof2 = p_estimator.lack_of_fit_huplc()
-An example is provided in Ex_2_estimation_uplc.py.
+An example is provided in Ad_2_estimation_uplc.py.
