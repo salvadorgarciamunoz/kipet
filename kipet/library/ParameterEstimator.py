@@ -252,7 +252,7 @@ class ParameterEstimator(Optimizer):
                                         strsolidspec = "\'" + str(k) + "\'" + ', ' + "\'" + str(
                                             l) + "\'"  # pair of absorbing solid and liquid
                                         if l in m.solid_spec_arg2 and strsolidspec in str(
-                                                m.solid_spec.keys()):  # str(l) in str(k):The liquid string has to be contained in the solid one!
+                                                m.solid_spec.keys()):  #check whether pair of solid and liquid in keys and whether liquid in huplcabs species
                                             valY = value(m.Y[time, k]) / value(m.vol)
                                             if valY <= 0:
                                                 new_consolidvol.add(m.solidvol[time, l] == 0.0)
@@ -267,7 +267,7 @@ class ParameterEstimator(Optimizer):
                                         strsolidspec = "\'" + str(k) + "\'" + ', ' + "\'" + str(
                                             l) + "\'"  # pair of absorbing solid and liquid
                                         if l in m.solid_spec_arg2 and strsolidspec in str(
-                                                m.solid_spec.keys()):  #The liquid string has to be contained in the solid one!
+                                                m.solid_spec.keys()):  #check whether pair of solid and liquid in keys and whether liquid in huplcabs species
                                             valZ = value(m.Z[time, k]) / value(m.vol)
                                             if valZ <= 0:
                                                 new_consolidvol.add(m.solidvol[time, l] == 0.0)
@@ -347,7 +347,7 @@ class ParameterEstimator(Optimizer):
                                         strsolidspec = "\'" + str(k) + "\'" + ', ' + "\'" + str(
                                             l) + "\'"  # pair of absorbing solid and liquid
                                         if l in m.solid_spec_arg2 and strsolidspec in str(
-                                                m.solid_spec.keys()):  # str(l) in str(k):The liquid string has to be contained in the solid one!
+                                                m.solid_spec.keys()):  #check whether pair of solid and liquid in keys and whether liquid in huplcabs species
                                             valY = value(m.Y[time, k]) / value(m.vol)
                                             if valY <= 0:
                                                 new_consolidvol.add(m.solidvol[time, l] == 0.0)
@@ -362,7 +362,7 @@ class ParameterEstimator(Optimizer):
                                         strsolidspec = "\'" + str(k) + "\'" + ', ' + "\'" + str(
                                             l) + "\'"  # pair of absorbing solid and liquid
                                         if l in m.solid_spec_arg2 and strsolidspec in str(
-                                                m.solid_spec.keys()): #The liquid string has to be contained in the solid one!
+                                                m.solid_spec.keys()): #check whether pair of solid and liquid in keys and whether liquid in huplcabs species
                                             valZ = value(m.Z[time, k]) / value(m.vol)
                                             if valZ <= 0:
                                                 new_consolidvol.add(m.solidvol[time, l] == 0.0)
