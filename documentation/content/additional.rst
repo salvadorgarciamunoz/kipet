@@ -356,3 +356,25 @@ In case one wants to check the eigenvalues of the reduced Hessian to check wheth
 	eigredhess2file=True
 	
 handing it to the ParameterEstimator. Note that to use this option you have to solve the problem with sensitivities, i.e. the solver 'ipopt_sens' or 'k_aug' has to be called. 
+
+If you have additional HPLC or UPLC data available, you can make use of that data for the parameter estimation as well.
+The H/UPLC data needs to be added to the model in a similar fashion as the concentration data. However, the measurements are area percentages and should add up to 1 at each time point. Furthermore, the species that are absorbed by H/UPLC data need to be defined in a set called huplcabs, where they should have the same names as the columns in the data file. 
+You then hand those to the function 
+::
+	filename2 = os.path.join(dataDirectory, 'UPLCdata2.csv')
+	add_frame = read_concentration_data_from_csv(filename2)
+	
+	builder.add_huplc_data(add_frame)
+	opt_model = builder.create_pyomo_model(0.0,10.0)
+	huplcabs = ['A','C']
+	builder.set_huplc_absorbing_species(opt_model, huplcabs)
+
+You should specify a device variance for the H/UPLC data as well. If you do not declare one, by default it will be set to 1. 
+::
+	# Here we assume that the UPLC data has the same variance as the IR data:
+	sigmas['device-huplc'] = sigmas['device']
+
+The lack of fit related to the UPLC data can be calculated using     
+::
+	lof2 = p_estimator.lack_of_fit_huplc()
+An example is provided in Ex_2_estimation_uplc.py.
