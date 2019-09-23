@@ -369,7 +369,7 @@ You then hand those to the function
 	huplcabs = ['A','C']
 	builder.set_huplc_absorbing_species(opt_model, huplcabs)
 
-You should specify a device variance for the H/UPLC data as well. If you do not declare one, by default it will be set to 1. 
+You should specify a device variance for the H/UPLC data as well. If you do not declare one by default it will be set to 1. 
 ::
 	# Here we assume that the UPLC data has the same variance as the IR data:
 	sigmas['device-huplc'] = sigmas['device']
