@@ -407,22 +407,6 @@ class ParameterEstimator(Optimizer):
         if self.model_variance == True:
             m.objective = Objective(rule=rule_objective)
         else:
-            # m.del_component('C')
-=======
-                    
-                    # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-                    if hasattr(self, '_abs_components'):
-                        D_bar = sum(m.Z[t, k] * m.S[l, k] for k in self._abs_components)
-                        expr += (m.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
-                    else:
-                        D_bar = sum(m.Z[t, k] * m.S[l, k] for k in list_components)
-                        expr += (m.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
-
-            return expr
-        #print(self.model_variance)
-        if self.model_variance == True:
-            m.objective = Objective(rule=rule_objective)
-        else:
             #m.del_component('C')
             m.objective = Objective(rule=rule_objective_device_only)
 
