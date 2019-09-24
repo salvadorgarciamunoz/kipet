@@ -4,15 +4,15 @@
 #  Copyright (c) 2016 Eli Lilly.
 #  _________________________________________________________________________
 
-# Sample Problem
-# Estimation with unknow variancesof spectral data using pyomo discretization
+# Sample Problem 
+# Estimation with unknow variancesof spectral data using pyomo discretization 
 #
 #		\frac{dZ_a}{dt} = -k_1*Z_a	                Z_a(0) = 1
 #		\frac{dZ_b}{dt} = k_1*Z_a - k_2*Z_b		Z_b(0) = 0
 #               \frac{dZ_c}{dt} = k_2*Z_b	                Z_c(0) = 0
 #               C_k(t_i) = Z_k(t_i) + w(t_i)    for all t_i in measurement points
-#               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j
-#       Initial concentration
+#               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
+#       Initial concentration 
 
 from __future__ import print_function
 from kipet.library.TemplateBuilder import *
@@ -29,20 +29,22 @@ import six
 if __name__ == "__main__":
 
     with_plots = True
-    if len(sys.argv) == 2:
+    if len(sys.argv)==2:
         if int(sys.argv[1]):
             with_plots = False
-
-    # =========================================================================
-    # USER INPUT SECTION - REQUIRED MODEL BUILDING ACTIONS
-    # =========================================================================
-
+ 
+        
+    #=========================================================================
+    #USER INPUT SECTION - REQUIRED MODEL BUILDING ACTIONS
+    #=========================================================================
+       
+    
     # Load spectral data from the relevant file location. As described in section 4.3.1
     #################################################################################
     dataDirectory = os.path.abspath(
-        os.path.join(os.path.dirname(os.path.abspath(inspect.getfile(
-            inspect.currentframe()))), 'data_sets'))
-    filename = os.path.join(dataDirectory, 'Dij.txt')
+        os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
+            inspect.currentframe() ) ) ), 'data_sets'))
+    filename =  os.path.join(dataDirectory,'Dij.txt')
     D_frame = read_spectral_data_from_txt(filename)
 
     # Then we build dae block for as described in the section 4.2.1. Note the addition
@@ -73,6 +75,7 @@ if __name__ == "__main__":
     # =========================================================================
     # USER INPUT SECTION - VARIANCE ESTIMATION
     # =========================================================================
+
     # For this problem we have an input D matrix that has some noise in it
     # We can therefore use the variance estimator described in the Overview section
     # of the documentation and Section 4.3.3
@@ -140,5 +143,4 @@ if __name__ == "__main__":
         plt.xlabel("Wavelength (cm)")
         plt.ylabel("Absorbance (L/(mol cm))")
         plt.title("Absorbance  Profile")
-
         plt.show()

@@ -29,6 +29,7 @@ import six
 if __name__ == "__main__":
 
     with_plots = True
+
     if len(sys.argv) == 2:
         if int(sys.argv[1]):
             with_plots = False
@@ -124,6 +125,7 @@ if __name__ == "__main__":
     print("The estimated parameters are:")
     for k, v in six.iteritems(results_pyomo.P):
         print(k, v)
+    
 
     # display results
     if with_plots:
@@ -136,5 +138,4 @@ if __name__ == "__main__":
         plt.xlabel("Wavelength (cm)")
         plt.ylabel("Absorbance (L/(mol cm))")
         plt.title("Absorbance  Profile")
-
         plt.show()
