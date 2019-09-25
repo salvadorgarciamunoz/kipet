@@ -1,4 +1,3 @@
-
 #  _________________________________________________________________________
 #
 #  Kipet: Kinetic parameter estimation toolkit
@@ -50,87 +49,89 @@ if __name__ == "__main__":
 
     # Then we build dae block for as described in the section 4.2.1. Note the addition
     # of the data using .add_spectral_data
-    #################################################################################    
-    builder = TemplateBuilder()    
-    components = {'A':1e-3,'B':0,'C':0}
+    #################################################################################
+    builder = TemplateBuilder()
+    components = {'A': 1e-3, 'B': 0, 'C': 0}
     builder.add_mixture_component(components)
-    builder.add_parameter('k1', init=4.0, bounds=(0.0,5.0)) 
-    #There is also the option of providing initial values: Just add init=... as additional argument as above.
-    builder.add_parameter('k2',bounds=(0.0,1.0))
+    builder.add_parameter('k1', init=4.0, bounds=(0.0, 5.0))
+    # There is also the option of providing initial values: Just add init=... as additional argument as above.
+    builder.add_parameter('k2', bounds=(0.0, 1.0))
     builder.add_spectral_data(D_frame)
 
+
     # define explicit system of ODEs
-    def rule_odes(m,t):
+    def rule_odes(m, t):
         exprs = dict()
-        exprs['A'] = -m.P['k1']*m.Z[t,'A']
-        exprs['B'] = m.P['k1']*m.Z[t,'A']-m.P['k2']*m.Z[t,'B']
-        exprs['C'] = m.P['k2']*m.Z[t,'B']
+        exprs['A'] = -m.P['k1'] * m.Z[t, 'A']
+        exprs['B'] = m.P['k1'] * m.Z[t, 'A'] - m.P['k2'] * m.Z[t, 'B']
+        exprs['C'] = m.P['k2'] * m.Z[t, 'B']
         return exprs
-    
+
+
     builder.set_odes_rule(rule_odes)
-    builder.bound_profile(var = 'S', bounds = (0,200))
-    opt_model = builder.create_pyomo_model(0.0,10.0)
-    
-    #=========================================================================
-    #USER INPUT SECTION - VARIANCE ESTIMATION 
-    #=========================================================================
+    builder.bound_profile(var='S', bounds=(0, 200))
+    opt_model = builder.create_pyomo_model(0.0, 10.0)
+
+    # =========================================================================
+    # USER INPUT SECTION - VARIANCE ESTIMATION
+    # =========================================================================
+
     # For this problem we have an input D matrix that has some noise in it
     # We can therefore use the variance estimator described in the Overview section
     # of the documentation and Section 4.3.3
     v_estimator = VarianceEstimator(opt_model)
-    v_estimator.apply_discretization('dae.collocation',nfe=100,ncp=1,scheme='LAGRANGE-RADAU')
-    
+    v_estimator.apply_discretization('dae.collocation', nfe=100, ncp=1, scheme='LAGRANGE-RADAU')
+
     # It is often requried for larger problems to give the solver some direct instructions
     # These must be given in the form of a dictionary
     options = {}
-    # While this problem should solve without changing the deault options, example code is 
+    # While this problem should solve without changing the deault options, example code is
     # given commented out below. See Section 5.6 for more options and advice.
     # options['bound_push'] = 1e-8
     # options['tol'] = 1e-9
-    
-    # The set A_set is then decided. This set, explained in Section 4.3.3 is used to make the
-    # variance estimation run faster and has been shown to not decrease the accuracy of the variance 
-    # prediction for large noisey data sets.
-    A_set = [l for i,l in enumerate(opt_model.meas_lambdas) if (i % 4 == 0)]
-    
-    # Finally we run the variance estimatator using the arguments shown in Seciton 4.3.3
-    worst_case_device_var = v_estimator.solve_max_device_variance('ipopt', 
-                                                                  tee = False, 
-                                                                  #subset_lambdas = A_set,
-                                                                  solver_opts = options)
 
-    # Variances can then be displayed 
+    # The set A_set is then decided. This set, explained in Section 4.3.3 is used to make the
+    # variance estimation run faster and has been shown to not decrease the accuracy of the variance
+    # prediction for large noisey data sets.
+    A_set = [l for i, l in enumerate(opt_model.meas_lambdas) if (i % 4 == 0)]
+
+    # Finally we run the variance estimatator using the arguments shown in Seciton 4.3.3
+    worst_case_device_var = v_estimator.solve_max_device_variance('ipopt',
+                                                                  tee=False,
+                                                                  # subset_lambdas = A_set,
+                                                                  solver_opts=options)
+
+    # Variances can then be displayed
     print("\nThe estimated variance is:\n")
     print(worst_case_device_var)
-    
-    
-    #=========================================================================
-    # USER INPUT SECTION - PARAMETER ESTIMATION 
-    #=========================================================================
+
+    # =========================================================================
+    # USER INPUT SECTION - PARAMETER ESTIMATION
+    # =========================================================================
     # In order to run the paramter estimation we create a pyomo model as described in section 4.3.4
-    #opt_model = builder.create_pyomo_model(0.0,10.0)
+    # opt_model = builder.create_pyomo_model(0.0,10.0)
 
     # and define our parameter estimation problem and discretization strategy
     p_estimator = ParameterEstimator(opt_model)
 
     options = dict()
-    #options['nlp_scaling_method'] = 'user-scaling'
+    # options['nlp_scaling_method'] = 'user-scaling'
     options['linear_solver'] = 'ma57'
 
     # Since, for this case we only need delta and not the model variance, we add the additional option
     # to exclude model variance and then run the optimization
 
     results_pyomo = p_estimator.run_opt('ipopt',
-                                      tee=True,
-                                      model_variance = False,
-                                      solver_opts = options,
-                                      variances=worst_case_device_var)
+                                        tee=True,
+                                        model_variance=False,
+                                        solver_opts=options,
+                                        variances=worst_case_device_var)
 
     # And display the results
     print("The estimated parameters are:")
-    for k,v in six.iteritems(results_pyomo.P):
+    for k, v in six.iteritems(results_pyomo.P):
         print(k, v)
-        
+
     # display results
     if with_plots:
         results_pyomo.Z.plot.line(legend=True)
@@ -142,5 +143,4 @@ if __name__ == "__main__":
         plt.xlabel("Wavelength (cm)")
         plt.ylabel("Absorbance (L/(mol cm))")
         plt.title("Absorbance  Profile")
-    
         plt.show()

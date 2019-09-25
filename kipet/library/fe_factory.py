@@ -11,6 +11,9 @@ import sys
 import six
 from pyomo.core.expr import current as EXPR
 from pyomo.core.expr.numvalue import NumericConstant
+import numpy as np
+import math
+import pandas as pd
 
 
 __author__ = 'David M Thierry'  #: April 2018
@@ -75,9 +78,9 @@ class fe_initialize(object):
         self.ip.options['halt_on_ampl_error'] = 'yes'
         self.ip.options['print_user_options'] = 'yes'
         self.tgt = tgt_mod
-        # src_mod.display(filename="src.txt")
+
         self.mod = src_mod.clone()  #: Deepcopy of the reference model
-        # self.mod.display(filename="selfmod0.txt")
+
         zeit = None
         for i in self.mod.component_objects(ContinuousSet):
             zeit = i
@@ -93,9 +96,9 @@ class fe_initialize(object):
         fe_l = tgt_cts.get_finite_elements()
         self.fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
         self.nfe = len(self.fe_list)  #: Create a list with the step-size
+
         #: Re-construct the model with [0,1] time domain
         zeit = getattr(self.mod, self.time_set)
-        #print()
 
         zeit._bounds = (0, 1)
         zeit.clear()
@@ -103,7 +106,6 @@ class fe_initialize(object):
         for i in self.mod.component_objects(Var):
             i.clear()
             i.reconstruct()
-            #i.pprint()
         for i in self.mod.component_objects(Var):
             i.clear()
             i.reconstruct()
@@ -128,6 +130,7 @@ class fe_initialize(object):
                     self.dvar_names.append(namel[0])
                     self.dvs_names.append(realname.get_state_var().name)
         self.mod.h_i = Param(zeit, mutable=True, default=1.0)  #: Length of finite element
+
         #: Modify the collocation equations to introduce h_i (the length of finite element)
         for i in self.dvar_names:
             con = getattr(self.mod, i + '_disc_eq')
@@ -319,7 +322,7 @@ class fe_initialize(object):
 
         for i in self.dvs_names:
             dv = getattr(self.mod, i)
-            ts = getattr(self.mod, self.time_set)
+            ts = getattr(self.mod, self.time_set)#self.mod.alltime
             for t in ts:
                 for s in self.remaining_set[i]:
                     if s is None:
@@ -444,8 +447,6 @@ class fe_initialize(object):
         t_last = t_ij(ts, 0, self.ncp)
 
         #Inclusion of discrete jumps: (CS)
-        ttgt = getattr(self.tgt, self.time_set)
-
         for i in self.dvs_names:
             dv = getattr(self.mod, i)
             for s in self.remaining_set[i]:
@@ -592,7 +593,7 @@ class fe_initialize(object):
 
         """
         print("*"*5, end='\t')
-        print("Fe Factory: fe_initialize by DT \@2018", end='\t')
+        print("Fe Factory: fe_initialize \@2018", end='\t')  # davs: :)
         print("*" * 5)
         print("*" * 5 + '\tSolving for {} elements\t'.format(len(self.fe_list)) + "*" * 5 )
         for i in range(0, len(self.fe_list)):

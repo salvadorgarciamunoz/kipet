@@ -131,7 +131,7 @@ if __name__ == "__main__":
     inputs_sub['Y'] = [5]
 
     #since these are inputs we need to fix this
-    for key in sim.model.time.value:
+    for key in sim.model.alltime.value:
         sim.model.Y[key, 5].set_value(key)
         sim.model.Y[key, 5].fix()
 

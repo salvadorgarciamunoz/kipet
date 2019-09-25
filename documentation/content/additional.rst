@@ -327,6 +327,54 @@ and the warmstart argument should be set to true:
                                     with_d_vars=True,
                                     warmstart=True)
 
-An example is provided in Ad_2_estimation_warmstart.py, where we just estimate one parameter first and then initialize the estimation of both parameters with that solution. 
+An example is provided in Ad_2_estimation_warmstart.py, where we just estimate one parameter first and then initialize the estimation of both parameters with that solution.
 
-   
+In some cases it can be useful to provide expected optimal parameter values and ensure that the estimated parameters stay close to these values. For that purpose, it is possible to add optional L2-penalty terms to the objective and define the expected parameter values and corresponding penalty weights, e.g.
+::
+
+	ppenalty_dict=dict()
+	ppenalty_dict={'k1':1.2,  'k2':2.3}
+
+	ppenalty_weights = dict()
+   	ppenalty_weights = {'k1': 10., 'k2': 1.}
+	
+where in ppenalty_dict you define the expected optimal values and in ppenalty_weights you define the corresponding weights.
+These dictionaries should then be handed to the ParameterEstimator setting the penaltyparam option to True as well, i.e. 
+::
+	results_pyomo = p_estimator.run_opt('ipopt',
+					    tee=True,
+					    solver_opts=options,
+					    variances=sigmas,
+					    with_d_vars=True,
+					    penaltyparam=True,
+					    ppenalty_dict=ppenalty_dict,
+					    ppenalty_weights=ppenalty_weights)
+	
+	
+In case one wants to check the eigenvalues of the reduced Hessian to check whether the estimates have large variances, set the option eigredhess2file option to True, i.e.
+::
+	eigredhess2file=True
+	
+handing it to the ParameterEstimator. Note that to use this option you have to solve the problem with sensitivities, i.e. the solver 'ipopt_sens' or 'k_aug' has to be called. 
+
+If you have additional HPLC or UPLC data available, you can make use of that data for the parameter estimation as well.
+The H/UPLC data needs to be added to the model in a similar fashion as the concentration data. However, the measurements are area percentages and should add up to 1 at each time point. Furthermore, the species that are absorbed by H/UPLC data need to be defined in a set called huplcabs, where they should have the same names as the columns in the data file. 
+You then hand those to the function 
+::
+	filename2 = os.path.join(dataDirectory, 'UPLCdata2.csv')
+	add_frame = read_concentration_data_from_csv(filename2)
+	
+	builder.add_huplc_data(add_frame)
+	opt_model = builder.create_pyomo_model(0.0,10.0)
+	huplcabs = ['A','C']
+	builder.set_huplc_absorbing_species(opt_model, huplcabs)
+
+You should specify a device variance for the H/UPLC data as well. If you do not declare one by default it will be set to 1. 
+::
+	# Here we assume that the UPLC data has the same variance as the IR data:
+	sigmas['device-huplc'] = sigmas['device']
+
+The lack of fit related to the UPLC data can be calculated using     
+::
+	lof2 = p_estimator.lack_of_fit_huplc()
+An example is provided in Ad_2_estimation_uplc.py.

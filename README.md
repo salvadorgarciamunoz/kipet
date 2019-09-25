@@ -18,6 +18,11 @@ has the following functionality:
 * Allows for wavelength selection of most informative wavelengths from a dataset
 * Visualize results
 
+For more information and detailed tutorials go to our readthedocs website:
+
+https://kipet.readthedocs.io
+
+
 License
 ------------
 

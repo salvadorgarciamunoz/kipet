@@ -198,7 +198,7 @@ if __name__ == "__main__":
     
     # defines the discrete points wanted in the concentration profile(nfe_x)
     sim.apply_discretization('dae.collocation', nfe=200, ncp=3, scheme='LAGRANGE-RADAU')
-    fe_l = sim.model.time.get_finite_elements()
+    fe_l = sim.model.alltime.get_finite_elements()
     fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
     nfe = len(fe_list)  #: Create a list with the step-size
     print(nfe)

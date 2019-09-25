@@ -6,6 +6,7 @@ import numbers
 import copy
 import logging
 import warnings
+# import math
 
 from pyomo.environ import *
 from pyomo.dae import *
@@ -51,6 +52,10 @@ class TemplateBuilder(object):
 
         _meas_times (set, optional): container of measurement times
 
+        _huplcmeas_times (set, optional): container of  H/UPLC measurement times
+
+        _allmeas_times (set, optional): container of all measurement times
+
         _feed_times (set, optional): container of feed times
 
         _complementary_states (set,optional): container with additional states
@@ -73,14 +78,20 @@ class TemplateBuilder(object):
         self._parameters = dict()
         self._parameters_init = dict()  # added for parameter initial guess CS
         self._parameters_bounds = dict()
+        self._smoothparameters = dict()  # added for mutable parameters CS
+        self._smoothparameters_mutable = dict() #added for mutable parameters CS
         self._y_bounds = dict()  # added for additional optional bounds CS
         self._prof_bounds = list()  # added for additional optional bounds MS
         self._init_conditions = dict()
         self._spectral_data = None
         self._concentration_data = None
+        self._huplc_data = None #added for additional data CS
+        self._smoothparam_data = None  # added for additional smoothing parameter data CS
         self._absorption_data = None
         self._odes = None
         self._meas_times = set()
+        self._huplcmeas_times = set() #added for additional data CS
+        self._allmeas_times = set() #added for new data structure CS
         self._m_lambdas = None
         self._complementary_states = set()
         self._algebraics = dict()
@@ -91,9 +102,15 @@ class TemplateBuilder(object):
         self._known_absorbance_data = None
         self._non_absorbing = None
         self._is_non_abs_set = False
+        self._huplc_absorbing = None #for add additional data CS
+        self._is_huplc_abs_set = False #for add additional data CS
+        self._vol = None #For add additional data CS
         self._feed_times = set()  # For inclusion of discrete feeds CS
         self._is_D_deriv = False
         self._is_C_deriv = False
+        self._is_Dhat_deriv = False
+
+
 
         components = kwargs.pop('concentrations', dict())
         if isinstance(components, dict):
@@ -196,11 +213,44 @@ class TemplateBuilder(object):
                 if bounds is not None:
                     self._parameters_bounds[first] = bounds
                 if init is not None:
-                    self._parameter_init[first] = init
+                    self._parameters_init[first] = init
             else:
                 raise RuntimeError('Parameter argument not supported. Try str,val')
         else:
             raise RuntimeError('Parameter argument not supported. Try str,val')
+
+
+    def add_smoothparameter(self, *args, **kwds): #added for smoothingparameter (CS)
+        """Add a kinetic parameter(s) to the model.
+
+        Note:
+            Plan to change this method add parameters as PYOMO variables
+
+            This method tries to mimic a template implementation. Depending
+            on the argument type it will behave differently
+
+        Args:
+            param1 (boolean): Mutable value. Creates a variable mutable
+
+        Returns:
+            None
+
+        """
+        # bounds = kwds.pop('bounds', None)
+        # init = kwds.pop('init', None)
+        mutable = kwds.pop('mutable', False)
+
+        if len(args) == 2:
+            first = args[0]
+            second = args[1]
+            if isinstance(first, six.string_types):
+                self._smoothparameters[first] = second
+                if mutable is not False and second is pd.DataFrame:
+                    self._smoothparameters_mutable[first] = mutable #added for mutable parameters CS
+            else:
+                raise RuntimeError('Parameter argument not supported. Try pandas.Dataframe and mutable=True')
+        else:
+            raise RuntimeError('Parameter argument not supported. ry pandas.Dataframe and mutable=True')
 
     def add_mixture_component(self, *args):
         """Add a component (reactive or product) to the model.
@@ -247,6 +297,79 @@ class TemplateBuilder(object):
                 raise RuntimeError('Mixture component data not supported. Try str, float')
         else:
             raise RuntimeError('Mixture component data not supported. Try str, float')
+
+    def add_huplc_data(self, data): #added for the inclusion of h/uplc data CS
+        """Add HPLC or UPLC data
+
+                Args:
+                    data (DataFrame): DataFrame with measurement times as
+                                      indices and wavelengths as columns.
+
+                Returns:
+                    None
+        """
+        if isinstance(data, pd.DataFrame):
+            dfDhat = pd.DataFrame(index=self._feed_times, columns=data.columns)
+            for t in self._feed_times:
+                if t not in data.index:  # for points that are the same in original meas times and feed times
+                    dfDhat.loc[t] = [0.0 for n in range(len(data.columns))]
+            dfallDhat = data.append(dfDhat)
+            dfallDhat.sort_index(inplace=True)
+            dfallDhat.index = dfallDhat.index.to_series().apply(
+                lambda x: np.round(x, 6))  # time from data rounded to 6 digits
+            ##############Filter out NaN###############
+            count = 0
+            for j in dfallDhat.index:
+                if count >= 1 and count < len(dfallDhat.index):
+                    if dfallDhat.index[count] == dfallDhat.index[count - 1]:
+                        dfallDhat = dfallDhat.dropna()
+                count += 1
+            ###########################################
+            self._huplc_data = dfallDhat
+        else:
+            raise RuntimeError('HUPLC data format not supported. Try pandas.DataFrame')
+        Dhat = np.array(dfallDhat)
+        for t in range(len(dfallDhat.index)):
+            for l in range(len(dfallDhat.columns)):
+                if Dhat[t, l] >= 0:
+                    pass
+                else:
+                    self._is_Dhat_deriv = True
+        if self._is_Dhat_deriv == True:
+            print(
+                "Warning! Since Dhat-matrix contains negative values Kipet is assuming a derivative of C has been inputted")
+
+    def add_smoothparam_data(self, data): #added for mutable smoothing parameter option CS
+        """Add HPLC or UPLC data
+
+                Args:
+                    data (DataFrame): DataFrame with measurement times as
+                                      indices and wavelengths as columns.
+
+                Returns:
+                    None
+        """
+        if isinstance(data, pd.DataFrame):
+            dfPs = pd.DataFrame(index=self._feed_times, columns=data.columns)
+            for t in self._feed_times:
+                if t not in data.index:  # for points that are the same in original meas times and feed times
+                    dfPs.loc[t] = [0.0 for n in range(len(data.columns))]
+            dfallPs = data.append(dfPs)
+            dfallPs.sort_index(inplace=True)
+            dfallPs.index = dfallPs.index.to_series().apply(
+                lambda x: np.round(x, 6))  # time from data rounded to 6 digits
+            ##############Filter out NaN###############
+            count = 0
+            for j in dfallPs.index:
+                if count >= 1 and count < len(dfallPs.index):
+                    if dfallPs.index[count] == dfallPs.index[count - 1]:
+                        dfallPs = dfallPs.dropna()
+                count += 1
+            ###########################################
+            self._smoothparam_data = dfallPs
+        else:
+            raise RuntimeError('Smooth parameter data format not supported. Try pandas.DataFrame')
+        Ps = np.array(dfallPs)
 
     def add_spectral_data(self, data):
         """Add spectral data
@@ -382,6 +505,21 @@ class TemplateBuilder(object):
             t = round(t,
                       6)  # for added ones when generating data otherwise too many digits due to different data types CS
             self._meas_times.add(t)
+
+
+    def add_huplcmeasurement_times(self, times): #added for additional huplc times that are on a different time scale CS
+        """Add H/UPLC measurement times to the model
+
+        Args:
+            times (array_like): measurement points
+
+        Returns:
+            None
+
+        """
+        for t in times:
+            t = round(t,6)  # for added ones when generating data otherwise too many digits due to different data types CS
+            self._huplcmeas_times.add(t)
 
     def add_complementary_state_variable(self, *args):
         """Add an extra state variable to the model.
@@ -610,14 +748,27 @@ class TemplateBuilder(object):
         list_feedtimes = self._feed_times  # For inclusion of discrete feeds CS
         feed_times = sorted(list_feedtimes)  # For inclusion of discrete feeds CS
         m_lambdas = list()
+        m_alltimes = m_times
+
+        if self._smoothparam_data is not None:#added for optional smoothing parameter values (mutable) read from file CS
+            pyomo_model.smoothparameter_names = Set(initialize=self._smoothparameters.keys()) #added for mutable parameters
+            pyomo_model.smooth_param_datatimes = Set(initialize=sorted(self._smoothparam_data.index))
+            help_dict=dict()
+            for k in self._smoothparam_data.index:
+                for j in self._smoothparam_data.columns:
+                    help_dict[k, j]=float(self._smoothparam_data[j][k])
+            pyomo_model.smooth_param_data = Param(self._smoothparam_data.index, sorted(self._smoothparam_data.columns), initialize=help_dict)
+
         if self._spectral_data is not None and self._absorption_data is not None:
             raise RuntimeError('Either add absorption data or spectral data but not both')
 
-        if self._spectral_data is not None:
+        if self._spectral_data is not None and self._huplc_data is None:
             list_times = list_times.union(set(self._spectral_data.index))
             list_lambdas = list(self._spectral_data.columns)
             m_times = sorted(list_times)
             m_lambdas = sorted(list_lambdas)
+            m_alltimes=m_times
+
 
         if self._absorption_data is not None:
             if not self._meas_times:
@@ -631,26 +782,96 @@ class TemplateBuilder(object):
             list_times = list_times.union(set(self._concentration_data.index))
             list_concs = list(self._concentration_data.columns)
             m_times = sorted(list_times)
+            m_alltimes = sorted(list_times)#has to be changed for including huplc data with conc data!
             m_concs = sorted(list_concs)
 
-        if m_times:
-            if m_times[0] < start_time:
-                raise RuntimeError('Measurement time {0} not within ({1},{2})'.format(m_times[0], start_time, end_time))
-            if m_times[-1] > end_time:
+        #For inclusion of h/uplc data:
+        if self._huplc_data is not None and self._spectral_data is None: #added for additional H/UPLC data (CS)
+            list_huplctimes = self._huplcmeas_times
+            list_huplctimes = list_huplctimes.union(set(self._huplc_data.index))
+            list_conDhats = list(self._huplc_data.columns)
+            m_huplctimes = sorted(list_huplctimes)
+
+        if self._huplc_data is not None and self._spectral_data is not None:
+            list_times = list_times.union(set(self._spectral_data.index))
+            list_lambdas = list(self._spectral_data.columns)
+            m_times = sorted(list_times)
+            m_lambdas = sorted(list_lambdas)
+            list_huplctimes = self._huplcmeas_times
+            list_huplctimes = list_huplctimes.union(set(self._huplc_data.index))
+            list_conDhats = list(self._huplc_data.columns)
+            m_huplctimes = sorted(list_huplctimes)
+            list_alltimes = list_times.union(list_huplctimes)
+            m_alltimes = sorted(list_alltimes)
+
+        #added for optional smoothing CS:
+        if self._smoothparam_data is not None:
+            if self._huplc_data is not None and self._spectral_data is not None:
+                list_alltimes = list_times.union(list_huplctimes)
+                m_alltimes = sorted(list_alltimes)
+                list_alltimessmooth = list_alltimes.union(set(self._smoothparam_data.index))
+                m_allsmoothtimes = sorted(list_alltimessmooth)
+            else:
+                list_timessmooth = list_times.union(set(self._smoothparam_data.index))
+                m_alltimes = m_times
+                m_allsmoothtimes = sorted(list_timessmooth)
+
+        if self._huplc_data is not None:
+            if m_huplctimes:
+                if m_huplctimes[0] < start_time:
+                    raise RuntimeError(
+                        'Measurement time {0} not within ({1},{2})'.format(m_huplctimes[0], start_time, end_time))
+                if m_huplctimes[-1] > end_time:
+                    raise RuntimeError(
+                        'Measurement time {0} not within ({1},{2})'.format(m_huplctimes[-1], start_time, end_time))
+
+        if self._smoothparam_data is not None:
+            if m_allsmoothtimes:
+                if m_allsmoothtimes[0] < start_time:
+                    raise RuntimeError(
+                        'Measurement time {0} not within ({1},{2})'.format(m_allsmoothtimes[0], start_time, end_time))
+                if m_allsmoothtimes[-1] > end_time:
+                    raise RuntimeError(
+                        'Measurement time {0} not within ({1},{2})'.format(m_allsmoothtimes[-1], start_time, end_time))
+
+        # if m_times:
+        #     if m_times[0] < start_time:
+        #         raise RuntimeError('Measurement time {0} not within ({1},{2})'.format(m_times[0], start_time, end_time))
+        #     if m_times[-1] > end_time:
+        #         raise RuntimeError(
+        #             'Measurement time {0} not within ({1},{2})'.format(m_times[-1], start_time, end_time))
+
+        if m_alltimes:
+            if m_alltimes[0] < start_time:
+                raise RuntimeError('Measurement time {0} not within ({1},{2})'.format(m_alltimes[0], start_time, end_time))
+            if m_alltimes[-1] > end_time:
                 raise RuntimeError(
-                    'Measurement time {0} not within ({1},{2})'.format(m_times[-1], start_time, end_time))
+                    'Measurement time {0} not within ({1},{2})'.format(m_alltimes[-1], start_time, end_time))
+
         self._m_lambdas = m_lambdas
+
         # For inclusion of discrete feeds CS
         if self._feed_times is not None:
             list_feedtimes = list(self._feed_times)
             feed_times = sorted(list_feedtimes)
 
+        if self._huplc_data is not None:#added for addition huplc data CS
+            pyomo_model.huplcmeas_times = Set(initialize=m_huplctimes, ordered=True)
+            pyomo_model.huplctime = ContinuousSet(initialize=pyomo_model.huplcmeas_times,
+                                                  bounds=(start_time, end_time))
+        if self._smoothparam_data is not None:
+            pyomo_model.allsmooth_times = Set(initialize=m_allsmoothtimes, ordered=True)
+
+        pyomo_model.allmeas_times = Set(initialize=m_alltimes, ordered=True) #add for new data structure CS
         pyomo_model.meas_times = Set(initialize=m_times, ordered=True)
         pyomo_model.feed_times = Set(initialize=feed_times, ordered=True)  # For inclusion of discrete feeds CS
         pyomo_model.meas_lambdas = Set(initialize=m_lambdas, ordered=True)
 
-        pyomo_model.time = ContinuousSet(initialize=pyomo_model.meas_times,
-                                         bounds=(start_time, end_time))
+        # pyomo_model.time = ContinuousSet(initialize=pyomo_model.meas_times,
+        #                                  bounds=(start_time, end_time))
+
+        pyomo_model.alltime = ContinuousSet(initialize=pyomo_model.allmeas_times,
+                                         bounds=(start_time, end_time)) #add for new data structure CS
 
         # Parameters
         pyomo_model.init_conditions = Param(pyomo_model.states,
@@ -659,7 +880,7 @@ class TemplateBuilder(object):
         pyomo_model.end_time = Param(initialize=end_time)
 
         # Variables
-        pyomo_model.Z = Var(pyomo_model.time,
+        pyomo_model.Z = Var(pyomo_model.alltime,
                             pyomo_model.mixture_components,
                             # bounds=(0.0,None),
                             initialize=1)
@@ -670,11 +891,11 @@ class TemplateBuilder(object):
                 # pyomo_model.Z[t, s].fixed = True
 
         pyomo_model.dZdt = DerivativeVar(pyomo_model.Z,
-                                         wrt=pyomo_model.time)
+                                         wrt=pyomo_model.alltime)
 
         p_dict = dict()
         for p, v in self._parameters.items():
-            if v is not None:
+            if v is not None and v is not pd.DataFrame:
                 p_dict[p] = v
 
             # added for option of providing initial guesses CS:
@@ -690,12 +911,30 @@ class TemplateBuilder(object):
         pyomo_model.P = Var(pyomo_model.parameter_names,
                             # bounds = (0.0,None),
                             initialize=p_dict)
+
         # set bounds P
         for k, v in self._parameters_bounds.items():
             lb = v[0]
             ub = v[1]
             pyomo_model.P[k].setlb(lb)
             pyomo_model.P[k].setub(ub)
+
+        #for optional smoothing parameters (CS):
+        if isinstance(self._smoothparameters, dict) and self._smoothparam_data is not None:
+            ps_dict = dict()
+            for k in self._smoothparam_data.columns:
+                for c in pyomo_model.allsmooth_times:
+                    ps_dict[c, k] = float(self._smoothparam_data[k][c])
+
+            ps_dict2 = dict()
+            for p in self._smoothparameters.keys():
+                for t in pyomo_model.alltime:
+                    if t in pyomo_model.allsmooth_times:
+                        ps_dict2[t, p] = float(ps_dict[t, p])
+                    else:
+                        ps_dict2[t, p] = 0.0
+
+            pyomo_model.Ps = Param(pyomo_model.alltime, pyomo_model.smoothparameter_names, initialize=ps_dict2, mutable=True, default=20.)#here just set to some value that is noc
 
         if self._concentration_data is not None:
             c_dict = dict()
@@ -710,13 +949,13 @@ class TemplateBuilder(object):
         else:
             c_bounds = (0.0, None)
 
-        pyomo_model.C = Var(pyomo_model.meas_times,
+        pyomo_model.C = Var(pyomo_model.allmeas_times,
                             pyomo_model.mixture_components,
                             bounds=c_bounds,
                             initialize=c_dict)
 
         if self._concentration_data is not None:
-            for t in pyomo_model.meas_times:
+            for t in pyomo_model.allmeas_times:
                 for k in pyomo_model.mixture_components:
                     pyomo_model.C[t, k].fixed = True
 
@@ -747,7 +986,7 @@ class TemplateBuilder(object):
                             pyomo_model.C[t, c].setlb(i[3][0])
                             pyomo_model.C[t, c].setub(i[3][1])
 
-        pyomo_model.X = Var(pyomo_model.time,
+        pyomo_model.X = Var(pyomo_model.alltime,
                             pyomo_model.complementary_states,
                             initialize=1.0)
 
@@ -757,13 +996,13 @@ class TemplateBuilder(object):
                 pyomo_model.X[t, s].value = self._init_conditions[s]
 
         pyomo_model.dXdt = DerivativeVar(pyomo_model.X,
-                                         wrt=pyomo_model.time)
-        pyomo_model.Y = Var(pyomo_model.time,
+                                         wrt=pyomo_model.alltime)
+        pyomo_model.Y = Var(pyomo_model.alltime,
                             pyomo_model.algebraics,
                             initialize=1.0)
 
         # Add optional bounds for algebraic variables (CS):
-        for t in pyomo_model.time:
+        for t in pyomo_model.alltime:
             for k, v in self._y_bounds.items():
                 lb = v[0]
                 ub = v[1]
@@ -790,15 +1029,33 @@ class TemplateBuilder(object):
                 pyomo_model.P[p].fixed = True
 
         # spectral data
-        if self._spectral_data is not None:
+        if self._spectral_data is not None: #changed for new data structure CS
             s_data_dict = dict()
             for t in pyomo_model.meas_times:
                 for l in pyomo_model.meas_lambdas:
-                    s_data_dict[t, l] = float(self._spectral_data[l][t])
+                    if t in pyomo_model.meas_times:
+                        s_data_dict[t, l] = float(self._spectral_data[l][t])
+                    else:
+                        s_data_dict[t, l] = float('nan') #missing time points are set to nan to filter out later
 
             pyomo_model.D = Param(pyomo_model.meas_times,
                                   pyomo_model.meas_lambdas,
                                   initialize=s_data_dict)
+        ####### Added for new add data CS:
+        if self._huplc_data is not None and self._is_huplc_abs_set:
+            self.set_huplc_absorbing_species(pyomo_model, self._huplc_absorbing, self._vol, self._solid_spec, check=False)
+
+            Dhat_dict = dict()
+            for k in self._huplc_data.columns:
+                for c in self._huplc_data.index:
+                    Dhat_dict[c, k] = float(self._huplc_data[k][c])
+
+        if self._is_Dhat_deriv == True:
+            Dhat_bounds = (None, None)
+        else:
+            Dhat_bounds = (0.0, None)
+
+        ###########
 
         # validate the model before writing constraints
         self._validate_data(pyomo_model, start_time, end_time)
@@ -832,7 +1089,7 @@ class TemplateBuilder(object):
                         else:
                             return Constraint.Skip
 
-            pyomo_model.odes = Constraint(pyomo_model.time,
+            pyomo_model.odes = Constraint(pyomo_model.alltime,
                                           pyomo_model.states,
                                           rule=rule_odes)
 
@@ -844,7 +1101,7 @@ class TemplateBuilder(object):
                 alg_const = self._algebraic_constraints(m, t)[k]
                 return alg_const == 0.0
 
-            pyomo_model.algebraic_consts = Constraint(pyomo_model.time,
+            pyomo_model.algebraic_consts = Constraint(pyomo_model.alltime,
                                                       range(n_alg_eqns),
                                                       rule=rule_algebraics)
         #######################
@@ -1017,6 +1274,10 @@ class TemplateBuilder(object):
     def measurement_times(self):
         return self._meas_times
 
+    @property #added with additional data CS
+    def huplcmeasurement_times(self):
+        return self._huplcmeas_times
+
     @property
     def feed_times(self):
         return self._feed_times  # added for feeding points CS
@@ -1039,6 +1300,10 @@ class TemplateBuilder(object):
 
     @measurement_times.setter
     def measurement_times(self):
+        raise RuntimeError('Not supported')
+
+    @huplcmeasurement_times.setter
+    def huplcmeasurement_times(self):
         raise RuntimeError('Not supported')
 
     @feed_times.setter
@@ -1089,6 +1354,7 @@ class TemplateBuilder(object):
         Z = getattr(model, 'Z')
 
         times = getattr(model, 'meas_times')
+        alltimes = getattr(model, 'allmeas_times')
         allcomps = getattr(model, 'mixture_components')
 
         model.add_component('fixed_C', ConstraintList())
@@ -1106,11 +1372,12 @@ class TemplateBuilder(object):
         model.add_component('matchCsC', ConstraintList())
         matchCsC_con = getattr(model, 'matchCsC')
 
-        for time in times:
+        for time in alltimes:
             for component in allcomps:
                 new_con.add(C[time, component] == Z[time, component])
             for componenta in abscomps:
-                matchCsC_con.add(Cs[time, componenta] == C[time, componenta])
+                if time in times:
+                    matchCsC_con.add(Cs[time, componenta] == C[time, componenta])
         ##########################
 
     def set_known_absorbing_species(self, model, known_abs_list, absorbance_data, check=True):
@@ -1137,10 +1404,80 @@ class TemplateBuilder(object):
         S = getattr(model, 'S')
         C = getattr(model, 'C')
         Z = getattr(model, 'Z')
-        times = getattr(model, 'meas_times')
         lambdas = getattr(model, 'meas_lambdas')
         model.known_absorbance_data = self._known_absorbance_data
         for component in self._known_absorbance:
             for l in lambdas:
                 S[l, component].set_value(self._known_absorbance_data[component][l])
                 S[l, component].fix()
+      #########################
+
+        #added for additional huplc data CS
+    def set_huplc_absorbing_species(self, model, huplc_abs_list, vol=None, solid_spec=None, check=True):
+        # type: (ConcreteModel, list, bool) -> None
+        """Sets the non absorbing component of the model.
+
+        Args:
+            huplc_abs_list: List of huplc absorbing components.
+            vol: reactor volume
+            solid_spec: solid species observed with huplc data
+            model: The corresponding model.
+            check: Safeguard against setting this up twice.
+        """
+        if hasattr(model, 'huplc_absorbing'):
+            print("huplc-absorbing species were already set up before.")
+            return
+
+        if (self._is_huplc_abs_set and check):
+            raise RuntimeError('huplc-absorbing species have been already set up.')
+
+
+        self._is_huplc_abs_set = True
+        self._vol=vol
+        model.add_component('vol', Param(initialize=self._vol))
+
+
+        self._huplc_absorbing = huplc_abs_list
+        model.add_component('huplc_absorbing', Set(initialize=self._huplc_absorbing))
+        alltime = getattr(model, 'alltime')
+        times = getattr(model, 'huplcmeas_times')
+        alltimes = getattr(model, 'allmeas_times')
+        timesh = getattr(model, 'huplctime')
+        alltime=getattr(model, 'alltime')
+        #########
+        model.add_component('huplcabs_components_names', Set())
+        huplcabscompsnames = [name for name in set(sorted(self._huplc_absorbing))]
+        model.add_component('huplcabs_components', Set(initialize=huplcabscompsnames))
+        huplcabscomps = getattr(model, 'huplcabs_components')
+
+        self._solid_spec=solid_spec
+        if solid_spec is not None:
+            solid_spec_arg1keys = [key for key in set(sorted(self._solid_spec.keys()))]
+            model.add_component('solid_spec_arg1', Set(initialize=solid_spec_arg1keys))
+            solid_spec_arg2keys = [key for key in set(sorted(self._solid_spec.values()))]
+            model.add_component('solid_spec_arg2', Set(initialize=solid_spec_arg2keys))
+            model.add_component('solid_spec', Var(model.solid_spec_arg1, model.solid_spec_arg2, initialize=self._solid_spec))
+
+        C = getattr(model, 'C')
+        Z = getattr(model, 'Z')
+
+        Dhat_dict=dict()
+        for k in self._huplc_data.columns:
+            for c in self._huplc_data.index:
+                Dhat_dict[c, k] = float(self._huplc_data[k][c])
+
+
+        model.add_component('fixed_Dhat', ConstraintList())
+        new_con = getattr(model, 'fixed_Dhat')
+
+        model.add_component('Dhat', Var(times, huplcabscompsnames,initialize=Dhat_dict))
+        Dhat = getattr(model, 'Dhat')
+        model.add_component('Chat', Var(timesh, huplcabscompsnames,initialize=1))
+
+        Chat = getattr(model, 'Chat')
+
+        model.add_component('matchChatZ', ConstraintList())
+        matchChatZ_con = getattr(model, 'matchChatZ')
+
+        ##########################
+

@@ -1150,7 +1150,7 @@ This concludes the last of the tutorial examples. This hopefully provides a good
 The next section of the documentation provides more detailed and miscellaneous functions from within KIPET that were not demonstrated in the tutorials.
 
 .. _example-list:
-.. table:: List of exaple problems
+.. table:: List of example problems
 
    +------------------------------------------------+-------------------------------------------------------+
    | Filename                                       | Example problem description                           | 
@@ -1293,8 +1293,12 @@ The next section of the documentation provides more detailed and miscellaneous f
    |						    | problem (Section 5.6). (RS1)                          |
    +------------------------------------------------+-------------------------------------------------------+
    | Ad_2_estimation_warmstart.py                   | Tutorial example of parameter estimation with variance|
-   |						    | stimation (of RS1) with warmstart option and estimate |
+   |						    | estimation (of RS1) with warmstart option and estimate|
    |						    | parameters in steps.                                  | 
+   +------------------------------------------------+-------------------------------------------------------+
+   | Ad_2_estimation_uplc.py                        | Tutorial example of parameter estimation with variance|
+   |						    | estimation (of RS1) with additional UPLC data for     |
+   |						    | estimation of parameters                              | 
    +------------------------------------------------+-------------------------------------------------------+
    | Ad_2_ode_sim.py                                | Simulation of RS3 from Sawall, et al. (2012),         |
    |                                                | nonlinear system.                                     |

@@ -144,7 +144,7 @@ if __name__ == "__main__":
     sim.fix_from_trajectory('Y', 'Temp', fixed_Ttraj) # def fix_from_trajectory(self,variable_name,variable_index,trajectories):
 
     #since these are inputs we need to fix this
-    for key in sim.model.time.value:
+    for key in sim.model.alltime.value:
         sim.model.Y[key, '5'].set_value(key)
         sim.model.Y[key, '5'].fix()
 
