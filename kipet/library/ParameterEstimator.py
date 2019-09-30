@@ -529,6 +529,12 @@ class ParameterEstimator(Optimizer):
                     continue
                 m.P.set_suffix_value(m.dof_v, count_vars)
                 count_vars += 1
+
+            if hasattr(m,'Pinit'):
+                for v in six.itervalues(m.Pinit):
+                    m.init_conditions[m.start_time, v].set_suffix_value(m.dof_v, count_vars)#init_conditions[m.start_time, v]
+                    count_vars += 1
+
             print("SET FOR k_aug")
             self._tmpfile = "k_aug_hess"
             ip = SolverFactory('ipopt')
@@ -607,6 +613,7 @@ class ParameterEstimator(Optimizer):
             weights = kwds.pop('weights', [0.0, 1.0])
         covariance = kwds.pop('covariance', False)
         warmstart = kwds.pop('warmstart', False)
+        # estim_init = kwds.pop('estim_init', False) #New for Estimate initial conditions of states CS
         eigredhess2file = kwds.pop('eigredhess2file', False)
         penaltyparam = kwds.pop('penaltyparam', False)
         ppenalty_dict = kwds.pop('ppenalty_dict', None)
@@ -649,17 +656,108 @@ class ParameterEstimator(Optimizer):
         #    all_sigma_specified = False
         #    sigma_sq['device'] = 1.0
 
+        if hasattr(self.model, 'Pinit'):
+            print('herehere')
+            self.allinitcomps = dict()
+            for k in self._mixture_components:
+                self.allinitcomps[k] = self.model.init_conditions[k].value
+            for i in self._complementary_states:
+                self.allinitcomps[i] = self.model.init_conditions[i].value
+            # print('allinitcomps', self.allinitcomps)
+            # print('here2')
+            # self.model.init_conditions.pprint()
+
+            self.model.del_component('init_conditions')
+
+            # alldiffstates = dict()
+            # alldiffstates.update(self.allinitcomps)
+
+            init_dict = dict()
+            for t in self.model.alltime:
+                for k, l in self.allinitcomps.items():
+                    init_dict[t, k] = l
+            # print(init_dict)
+
+            self._init_conditions = Var(self.model.alltime, self.model.states, initialize=init_dict)
+            self.model.add_component('init_conditions', self._init_conditions)
+            self.model.init_conditions.pprint()
+            # print(self.model.initextraest)
+            # self.model.states.pprint()
+            for t in self.model.alltime:
+                for k in self.allinitcomps.keys():
+                        # if k in self.model.Pinit.keys() and t == self.model.start_time:
+                        #     # print('here')
+                        #     self.model.init_conditions[t, k].fixed = False
+                        # else:
+                    self.model.init_conditions[t, k].fixed = True
+            for k in self.model.Pinit.keys():
+                # print('here')
+                self.model.init_conditions[self.model.start_time, k].fixed = False
+
+            # for l in pest.model.alltime:
+            #     for k in pest.model.mixture_components:
+            #         if l==pest.model.start_time:
+            #             if k == 'C2H3OL' or k == 'OL' or k == 'C3H5OL':
+            #                 pest.model.init_conditions[l, k].fixed = False
+            #             else:
+            #                 pest.model.init_conditions[l, k].fixed = True
+                        # if k in k== 'C2H3OL' or k == 'OL' or k == 'C3H5OL':
+                        #     self.model.init_conditions[l, k].fixed = False
+                        # else:
+                        #     self.model.init_conditions[l, k].fixed = True
+            init_bounds=dict()
+            for t in self.model.alltime:
+                # for k in self.model.initextraest:
+                #     print(self.model.initext)
+                for k in self.model.Pinit.keys():
+                    # print(k)
+                    lb = self.model.Pinit[k].lb
+                    # print(lb)
+                    ub = self.model.Pinit[k].ub
+
+                    # print(ub)
+                    # init_bounds[k]=self._initextraparams_bounds[k]
+                    # print(init_bounds[k][0])
+                # self._init_conditions[t, k].setlb(lb)
+                # self._init_conditions[t, k].setub(ub)
+            # self._init_conditions.pprint()
+            # self.model.init_conditions.pprint()
+            # self.model.init_conditions[t, 'C2H3OL'].setlb(0.0)
+            # self.model.init_conditions[t, 'C3H5OL'].setlb(0.0)
+            # self.model.init_conditions[t, 'OL'].setlb(0.9)
+            # self.model.init_conditions[t, 'C2H3OL'].setub(0.1)
+            # self.model.init_conditions[t, 'C3H5OL'].setub(0.1)
+            # self.model.init_conditions[t, 'OL'].setub(1)
+            self.model.del_component('init_conditions_c')
+
+            def rule_init_conditionsnew(mod, t, k):
+                st = mod.start_time.value#important!
+                if k in mod.Pinit.keys():
+                    return mod.X[st, k] == self._init_conditions[t, k]
+                else:#if k in m._mixture_components:
+                    return mod.Z[st, k] == self._init_conditions[t, k]
+            self.model.init_conditions_c = Constraint(self.model.alltime, self.model.states, rule=rule_init_conditionsnew)
+
+            # self.model.del_component('Pinit')
+            for k in self.model.Pinit.keys():
+                st=self.model.start_time.value
+                exprPinit = self.model.Pinit[k] == self._init_conditions[st, k]
+                self.model.add_component('Pinit_expr' + str(k), Constraint(expr=exprPinit))
+            self.model.Pinit_exprOL.pprint()
+            self.model.Pinit_exprC3H5OL.pprint()
+            self.model.Pinit_exprC2H3OL.pprint()
         m = self.model
 
         # estimation
         def rule_objective(m):
             obj = 0
             for t in m.allmeas_times:
-                    obj += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components)
+                    obj += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components)# if k!='OL' and k!='C3H5OL' and k!='C2H3OL')
 
             return obj
 
         m.objective = Objective(rule=rule_objective)
+        m.objective.pprint()
 
         # solver_results = optimizer.solve(m,tee=True,
         #                                 report_timing=True)
@@ -744,6 +842,11 @@ class ParameterEstimator(Optimizer):
                 m.P.set_suffix_value(m.dof_v, count_vars)
                 count_vars += 1
 
+            if hasattr(self.model,'Pinit'):
+                for v in six.itervalues(self.model.Pinit):
+                    m.init_conditions[m.start_time, v].set_suffix_value(m.dof_v, count_vars)
+                    count_vars += 1
+
             self._tmpfile = "k_aug_hess"
             ip = SolverFactory('ipopt')
             solver_results = ip.solve(m, tee=False,
@@ -792,6 +895,8 @@ class ParameterEstimator(Optimizer):
             if self._concentration_given:
                 self._compute_covariance_C(hessian, sigma_sq)
         else:
+            print('exhere')
+            # m.pprint(filename="selfmoddisc0.txt")
             solver_results = optimizer.solve(m, tee=tee)
 
         m.del_component('objective')
@@ -883,6 +988,12 @@ class ParameterEstimator(Optimizer):
             self.model.red_hessian[v] = count_vars
             count_vars += 1
 
+        if hasattr(self.model, 'Pinit'):
+            for v in six.itervalues(self.model.Pinit):
+                self._idx_to_variable[count_vars] = v
+                self.model.red_hessian[v] = count_vars
+                count_vars += 1
+
     def _define_reduce_hess_order(self):
         self.model.red_hessian = Suffix(direction=Suffix.IMPORT_EXPORT)
         count_vars = 1
@@ -936,6 +1047,12 @@ class ParameterEstimator(Optimizer):
             self._idx_to_variable[count_vars] = v
             self.model.red_hessian[v] = count_vars
             count_vars += 1
+
+        if hasattr(self.model, 'Pinit'):
+            for v in six.itervalues(self.model.Pinit):
+                self._idx_to_variable[count_vars] = v
+                self.model.red_hessian[v] = count_vars
+                count_vars += 1
 
     def _compute_covariance(self, hessian, variances):
 
@@ -1012,6 +1129,11 @@ class ParameterEstimator(Optimizer):
                     continue
                 print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
                 i += 1
+            if hasattr(self.model, 'Pinit'):
+                for k, p in self.model.Pinit.items():
+                    print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
+                    i +=1
+
             return 1
         else:
             nc = self._n_actual
@@ -1088,6 +1210,10 @@ class ParameterEstimator(Optimizer):
                     continue
                 print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
                 i += 1
+            if hasattr(self.model, 'Pinit'):
+                for k, p in self.model.Pinit.items():
+                    print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
+                    i += 1
             return 1
 
     def _compute_covariance_C(self, hessian, variances):
@@ -1141,6 +1267,10 @@ class ParameterEstimator(Optimizer):
                 continue
             print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
             i += 1
+        if hasattr(self.model, 'Pinit'):
+            for k, p in self.model.Pinit.items():
+                print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
+                i += 1
         return 1
 
     def _compute_covariance_no_model_variance(self, hessian, variance):
@@ -1948,6 +2078,8 @@ class ParameterEstimator(Optimizer):
         yfix = kwds.pop("yfix", None)
         yfixtraj = kwds.pop("yfixtraj", None)
 
+        # estim_init = kwds.pop('estim_init', False)#added for estimation of initial values
+
         jump = kwds.pop("jump", False)
         var_dic = kwds.pop("jump_states", None)
         jump_times = kwds.pop("jump_times", None)
@@ -1966,7 +2098,112 @@ class ParameterEstimator(Optimizer):
         if report_time:
             start = time.time()
         # Look at the output in results
-        opt = SolverFactory(self.solver)           
+        opt = SolverFactory(self.solver)
+
+        # if hasattr(self.model, 'Pinit'):
+        #     print('herehere')
+        #     self.allinitcomps = dict()
+        #     for k in self._mixture_components:
+        #         self.allinitcomps[k] = self.model.init_conditions[k].value
+        #     for i in self._complementary_states:
+        #         self.allinitcomps[i] = self.model.init_conditions[i].value
+        #     # print('allinitcomps', self.allinitcomps)
+        #     # print('here2')
+        #     # self.model.init_conditions.pprint()
+        #
+        #     self.model.del_component('init_conditions')
+        #
+        #     # alldiffstates = dict()
+        #     # alldiffstates.update(self.allinitcomps)
+        #
+        #     init_dict = dict()
+        #     for t in self.model.alltime:
+        #         for k, l in self.allinitcomps.items():
+        #             init_dict[t, k] = l
+        #     # print(init_dict)
+        #
+        #     self._init_conditions = Var(self.model.alltime, self.model.states, initialize=init_dict)
+        #     self.model.add_component('init_conditions', self._init_conditions)
+        #     self.model.init_conditions.pprint()
+        #     # print(self.model.initextraest)
+        #     # self.model.states.pprint()
+        #     for t in self.model.alltime:
+        #         for k in self.allinitcomps.keys():
+        #                 # if k in self.model.Pinit.keys() and t == self.model.start_time:
+        #                 #     # print('here')
+        #                 #     self.model.init_conditions[t, k].fixed = False
+        #                 # else:
+        #             self.model.init_conditions[t, k].fixed = True
+        #     for k in self.model.Pinit.keys():
+        #         # print('here')
+        #         self.model.init_conditions[self.model.start_time, k].fixed = False
+        #
+        #     # for l in pest.model.alltime:
+        #     #     for k in pest.model.mixture_components:
+        #     #         if l==pest.model.start_time:
+        #     #             if k == 'C2H3OL' or k == 'OL' or k == 'C3H5OL':
+        #     #                 pest.model.init_conditions[l, k].fixed = False
+        #     #             else:
+        #     #                 pest.model.init_conditions[l, k].fixed = True
+        #                 # if k in k== 'C2H3OL' or k == 'OL' or k == 'C3H5OL':
+        #                 #     self.model.init_conditions[l, k].fixed = False
+        #                 # else:
+        #                 #     self.model.init_conditions[l, k].fixed = True
+        #     init_bounds=dict()
+        #     for t in self.model.alltime:
+        #         # for k in self.model.initextraest:
+        #         #     print(self.model.initext)
+        #         for k in self.model.Pinit.keys():
+        #             print(k)
+        #             lb = self.model.Pinit[k].lb
+        #             print(lb)
+        #             ub = self.model.Pinit[k].ub
+        #
+        #             print(ub)
+        #             # init_bounds[k]=self._initextraparams_bounds[k]
+        #             # print(init_bounds[k][0])
+        #         self._init_conditions[t, k].setlb(lb)
+        #         self._init_conditions[t, k].setub(ub)
+        #     self._init_conditions.pprint()
+        #     # self.model.init_conditions.pprint()
+        #     # self.model.init_conditions[t, 'C2H3OL'].setlb(0.0)
+        #     # self.model.init_conditions[t, 'C3H5OL'].setlb(0.0)
+        #     # self.model.init_conditions[t, 'OL'].setlb(0.9)
+        #     # self.model.init_conditions[t, 'C2H3OL'].setub(0.1)
+        #     # self.model.init_conditions[t, 'C3H5OL'].setub(0.1)
+        #     # self.model.init_conditions[t, 'OL'].setub(1)
+        #     self.model.del_component('init_conditions_c')
+        #
+        #     def rule_init_conditionsnew(m, t, k):
+        #         st = m.start_time.value#important!
+        #         print(k,t)
+        #         if k in m.Pinit.keys():
+        #             print(self._init_conditions[t, k])
+        #             print(m.X[st, k])
+        #             return m.X[st, k] == self._init_conditions[t, k]
+        #         else:#if k in m._mixture_components:
+        #             return m.Z[st, k] == self._init_conditions[t, k]
+        #     self.model.states.pprint()
+        #     self.model.init_conditions_c = Constraint(self.model.alltime, self.model.states, rule=rule_init_conditionsnew)
+        #     self.model.init_conditions_c.pprint()
+        #     # pest.model.del_component(pest.model.init_conditions_c)
+        #     #
+        #     # def rule_init_conditionsnew(m, t, k):
+        #     #     st = start_time
+        #     #     if k in m.mixture_components:
+        #     #         return m.Z[st, k] == m.init_conditions[t, k]
+        #     #     # else:
+        #     #     #     return m.X[st, k] == self._init_conditions[k]
+        #     #
+        #     # pest.model.init_conditions_c = \
+        #     #     Constraint(pest.model.alltime, pest.model.states, rule=rule_init_conditionsnew)
+        #
+        #     for k in self.model.Pinit:
+        #         exprPinit = self.model.Pinit[k] == self.model.init_conditions[self.model.start_time, k]
+        #         self.model.add_component("Pinit_expr" + str(k), Constraint(expr=exprPinit))
+        #     self.model.Pinit_exprOL.pprint()
+        #     self.model.Pinit_exprC3H5OL.pprint()
+        #     self.model.Pinit_exprC2H3OL.pprint()
             
         if covariance:
             if self.solver != 'ipopt_sens' and self.solver != 'k_aug':
@@ -2098,6 +2335,12 @@ class ParameterEstimator(Optimizer):
             param_vals[name] = self.model.P[name].value
 
         results.P = param_vals
+
+        if hasattr(self.model, 'Pinit'):
+            param_valsinit = dict()
+            for name in self.model.initparameter_names:
+                param_valsinit[name] = self.model.init_conditions[self.model.start_time, name].value
+            results.Pinit = param_valsinit
 
         if report_time:
             end = time.time()
