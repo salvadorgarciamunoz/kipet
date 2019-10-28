@@ -116,11 +116,10 @@ class TemplateBuilder(object):
         self._is_C_deriv = False
         self._is_Dhat_deriv = False
 
-        #New for Estimate initial conditions of states CS:
+        #New for estimate initial conditions of complementary states CS:
         self._estim_init = False
         self._allinitcomponents=dict()
         self._initextra_est_list = None
-        # self._extra_states = dict()
 
 
         components = kwargs.pop('concentrations', dict())
@@ -677,7 +676,7 @@ class TemplateBuilder(object):
         if not isinstance(var, str):
             raise RuntimeError('var argument needs to be type string')
 
-        if var != 'S' and var != 'C':
+        if var != 'S' and var != 'C' and var != 'Z':
             raise RuntimeError('var argument needs to be either C, or S')
 
         if comp:
@@ -906,6 +905,26 @@ class TemplateBuilder(object):
                             pyomo_model.mixture_components,
                             # bounds=(0.0,None),
                             initialize=1)
+        for i in self._prof_bounds: #added for Z as well (CS)!
+            if i[0] == 'Z':
+                for t, c in pyomo_model.Z:
+                    if i[1] == c:
+                        if i[2]:
+                            if t >= i[2][0] and t < i[2][1]:
+                                pyomo_model.Z[t, c].setlb(i[3][0])
+                                pyomo_model.Z[t, c].setub(i[3][1])
+                        else:
+                            pyomo_model.Z[t, c].setlb(i[3][0])
+                            pyomo_model.Z[t, c].setub(i[3][1])
+
+                    elif i[1] == None:
+                        if i[2]:
+                            if t >= i[2][0] and t < i[2][1]:
+                                pyomo_model.Z[t, c].setlb(i[3][0])
+                                pyomo_model.Z[t, c].setub(i[3][1])
+                        else:
+                            pyomo_model.Z[t, c].setlb(i[3][0])
+                            pyomo_model.Z[t, c].setub(i[3][1])
 
         for t, s in pyomo_model.Z:
             if t == pyomo_model.start_time.value:
@@ -940,12 +959,8 @@ class TemplateBuilder(object):
             ub = v[1]
             pyomo_model.P[k].setlb(lb)
             pyomo_model.P[k].setub(ub)
-        print(self._estim_init)
-        if self._estim_init==True:#hasattr(pyomo_model, 'estim_init'):#==True:
-            print('herehe')
-            # pyomo_model.Pinit = Var(pyomo_model.,
-            #                     # bounds = (0.0,None),
-            #                     initialize=p_dict)
+
+        if self._estim_init==True:#added for the estimation of initial conditions which have to be complementary state vars CS
             pyomo_model.initparameter_names = Set(initialize=self._initextraest)
             pyomo_model.add_component('initextraparams', Set(initialize=self._initextraest))
             pinit_dict = dict()
@@ -968,8 +983,9 @@ class TemplateBuilder(object):
                 ub = v[1]
                 pyomo_model.Pinit[k].setlb(lb)
                 pyomo_model.Pinit[k].setub(ub)
-            # for k in pyomo_model.initparameter_names:
-            #     pyomo_model.Pinit[k].fixed = True
+            for k in pyomo_model.initparameter_names:
+                pyomo_model.Pinit[k].fixed = True #Just added for bound etc functionalities, variable is init_conditions
+                # but Pinit is set to the value after solution of the parameter estimation problem CS
 
         #for optional smoothing parameters (CS):
         if isinstance(self._smoothparameters, dict) and self._smoothparam_data is not None:
@@ -1037,6 +1053,7 @@ class TemplateBuilder(object):
                         else:
                             pyomo_model.C[t, c].setlb(i[3][0])
                             pyomo_model.C[t, c].setub(i[3][1])
+
 
         pyomo_model.X = Var(pyomo_model.alltime,
                             pyomo_model.complementary_states,
@@ -1385,28 +1402,27 @@ class TemplateBuilder(object):
             model.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
             model.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
 
-    def set_estinit_extra_species(self, model, initextra_est_list, check=True):
+    def set_estinit_extra_species(self, model, initextra_est_list, check=True):#added for the estimation of initial conditions which have to be complementary state vars CS
         # type: (ConcreteModel, list, bool) -> None
         """Sets the non absorbing component of the model.
 
         Args:
-            non_abs_list: List of non absorbing components.
+            initextra_est_list: List of to be estimated initial conditions of complementary state variables.
             model: The corresponding model.
             check: Safeguard against setting this up twice.
         """
-        # if hasattr(model, 'non_absorbing'):
-        #     print("non-absorbing species were already set up before.")
-        #     return
+        if hasattr(model, 'estim_init'):
+            print("To be estimated initial conditions of complementary state variables were already set up before.")
+            return
 
-        # if (self._estim_init and check):
-        #     raise RuntimeError('To be estimated initial conditions have been already set up.')
+        if (self._initextra_est_list and check):
+            raise RuntimeError('To be estimated initial conditions of complementary state variables have been already set up.')
 
-        # self._is_non_abs_set = True
         self._initextraest = initextra_est_list
         self._estim_init = True
         model.estim_init=Param(initialize=self._estim_init)
 
-    def add_init_extra(self, *args, **kwds):
+    def add_init_extra(self, *args, **kwds):#added for the estimation of initial conditions which have to be complementary state vars CS
         """Add a kinetic parameter(s) to the model.
 
         Note:

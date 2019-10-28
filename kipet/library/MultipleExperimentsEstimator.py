@@ -6,6 +6,9 @@ from pyomo.dae import *
 from kipet.library.ParameterEstimator import *
 from kipet.library.VarianceEstimator import *
 from kipet.library.Optimizer import *
+from kipet.library.FESimulator import *
+# from kipet.library.fe_factory import *
+from kipet.library.PyomoSimulator import *
 from pyomo import *
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -55,6 +58,10 @@ class MultipleExperimentsEstimator(object):
             self.experiments.append(key)
         
         self._variance_solved = False
+        #added for new initialization options (CS):
+        self._sim_solved = False
+        self.sim_results = dict()
+        self.cloneopt_model = dict()
         
         self.variances= dict()
         self.variance_results = dict()
@@ -120,6 +127,7 @@ class MultipleExperimentsEstimator(object):
         for i in self.experiments:
             for k,v in six.iteritems(self.model.experiment[i].P):
                 #print(k,v)
+                # print(v)
                 if v.is_fixed():
                     print(v, end='\t')
                     print("is fixed")
@@ -128,6 +136,15 @@ class MultipleExperimentsEstimator(object):
                 #print("count_vars:", count_vars, "self._idx_to_variable[count_vars]")
                 self.model.red_hessian[v] = count_vars
                 count_vars += 1
+
+            if hasattr(self.model.experiment[i], 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+                for k,v in six.iteritems(self.model.experiment[i].Pinit):
+                    v=self.model.experiment[i].init_conditions[k]
+                    # print(v)
+                    self._idx_to_variable[count_vars] = v
+                    self.model.red_hessian[v] = count_vars
+                    count_vars += 1
+        # print(self._idx_to_variable)
             
     def _order_k_aug_hessian(self, unordered_hessian, var_loc):
         """
@@ -196,11 +213,14 @@ class MultipleExperimentsEstimator(object):
                     print(str(v) + '\has been skipped for covariance calculations')
                     continue
                 nparams += 1
-            self.p_mark[exp_count] = nparams
+            if hasattr(self.model.experiment[i], 'Pinit'): #added for the estimation of initial conditions which have to be complementary state vars CS
+                for v in six.itervalues(self.model.experiment[i].Pinit):
+                    nparams += 1
+                self.p_mark[exp_count] = nparams
             exp_count +=1
         # nparams = len(self.model.P)
         self._n_params = nparams
-        
+
         nd = nw * nt
         ntheta = 0
         exp_count = 0
@@ -251,6 +271,13 @@ class MultipleExperimentsEstimator(object):
                     continue
                 print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
                 i += 1
+        if hasattr(self.model.experiment[exp], 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+            i = 0
+            for k in self.model.experiment[exp].Pinit.keys():
+                self.model.experiment[exp].Pinit[k] = self.model.experiment[exp].init_conditions[k].value
+            for k, p in self.model.experiment[exp].Pinit.items():
+                print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
+                i += 1
         return 1
 
     def _compute_covariance_C(self, hessian, variances):
@@ -290,10 +317,14 @@ class MultipleExperimentsEstimator(object):
                     print(str(v) + '\has been skipped for covariance calculations')
                     continue
                 nparams += 1
+            if hasattr(self.model.experiment[i], 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+                for v in six.itervalues(self.model.experiment[i].Pinit):
+                    nparams += 1
             self.p_mark[exp_count] = nparams
             exp_count +=1
         # nparams = len(self.model.P)
         self._n_params = nparams
+
         
         
         self._compute_residuals()
@@ -329,11 +360,19 @@ class MultipleExperimentsEstimator(object):
         i = 0
         for exp in self.experiments:
             for k, p in self.model.experiment[exp].P.items():
-        
                 if p.is_fixed():
                     continue
                 print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
                 i += 1
+        if hasattr(self.model.experiment[exp], 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+            i = 0
+            for exp in self.experiments:
+                for k in self.model.experiment[exp].Pinit.keys():
+                    self.model.experiment[exp].Pinit[k] = self.model.experiment[exp].init_conditions[k].value
+                for k, p in self.model.experiment[exp].Pinit.items():
+                    print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
+                    i += 1
+        return 1
 
     def _compute_B_matrix(self, variances, **kwds):
         """Builds B matrix for calculation of covariances
@@ -679,7 +718,175 @@ class MultipleExperimentsEstimator(object):
                     self.residuals[x, t, c] = r
                     count_t += 1
                 count_c += 1
-         
+    ################################
+    def run_simulation(self, builder, **kwds): #added for option to initialize from simulation (CS)
+        """ Runs simulation by solving nonlinear system with ipopt
+
+        Args:
+            solver (str,optional): solver to be used, default is ipopt
+
+            solver_opts (dict, optional): options passed to the nonlinear solver
+
+            start_time (dict): dictionary with key of experiment name and value float
+
+            end_time (dict): dictionary with key of experiment name and value float
+
+            nfe (int): number of finite elements
+
+            ncp (int): number of collocation points
+
+            builder (TemplateBuilder): need to add the TemplateBuilder before create_pyomo_model
+
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+
+        Returns:
+            None
+
+        """
+        solver = kwds.pop('solver', str)
+        FEsim = kwds.pop('FEsim', False)
+        FEPysim = kwds.pop('FEPysim', False)
+        solver_opts = kwds.pop('solver_opts', dict())
+        sigmas = kwds.pop('variances', dict())
+        tee = kwds.pop('tee', False)
+        seed = kwds.pop('seed', None)
+
+        start_time = kwds.pop('start_time', dict())
+        end_time = kwds.pop('end_time', dict())
+        nfe = kwds.pop('nfe', 50)
+        ncp = kwds.pop('ncp', 3)
+
+        # additional arguments for inputs
+        # These will need to be made into dicts if there are different
+        # conditions in each experiment
+        inputs = kwds.pop("inputs", None)
+        inputs_sub = kwds.pop("inputs_sub", None)
+        trajectories = kwds.pop("trajectories", None)
+        fixedtraj = kwds.pop('fixedtraj', False)
+        fixedy = kwds.pop('fixedy', False)
+        yfix = kwds.pop("yfix", None)
+        yfixtraj = kwds.pop("yfixtraj", None)
+
+        jump = kwds.pop("jump", False)
+        var_dic = kwds.pop("jump_states", None)
+        jump_times = kwds.pop("jump_times", None)
+        feed_times = kwds.pop("feed_times", None)
+
+        if not isinstance(start_time, dict):
+            raise RuntimeError("Must provide start_times as dict with each experiment")
+        else:
+            for key, val in start_time.items():
+                if key not in self.experiments:
+                    raise RuntimeError("The keys for start_time need to be the same as the experimental datasets")
+        self.start_time = start_time
+        if not isinstance(end_time, dict):
+            raise RuntimeError("Must provide end_times as dict with each experiment")
+        else:
+            for key, val in end_time.items():
+                if key not in self.experiments:
+                    raise RuntimeError("The keys for end_time need to be the same as the experimental datasets")
+        self.end_time = end_time
+
+        # This is to make sure that for either cases of 1 model for all experiments or different models,
+        # we ensure we have the correct builders
+
+        if isinstance(builder, dict):
+            for key, val in builder.items():
+                if key not in self.experiments:
+                    raise RuntimeError("The keys for builder need to be the same as the experimental datasets")
+
+                if not isinstance(val, TemplateBuilder):
+                    raise RuntimeError('builder needs to be type TemplateBuilder')
+
+        elif isinstance(builder, TemplateBuilder):
+            builder_dict = {}
+            for item in self.experiments:
+                builder_dict[item] = builder
+
+            builder = builder_dict
+        else:
+            raise RuntimeError("builder added needs to be a dictionary of TemplateBuilders or a TemplateBuilder")
+
+        if solver == '':
+            solver = 'ipopt'
+
+        print("SOLVING SIMULATION FOR INDIVIDUAL DATASETS")
+
+        sim_dict = dict()
+        results_sim = dict()
+
+        for l in self.experiments:
+            print("solving for dataset ", l)
+            self.builder[l] = builder[l]
+            self.builder[l].add_spectral_data(self.datasets[l])
+            self.opt_model[l] = self.builder[l].create_pyomo_model(start_time[l], end_time[l])
+            self.cloneopt_model[l] = self.opt_model[l].clone()
+
+            #fix parameters for simulation:
+            for k in self.cloneopt_model[l].P.keys():
+                self.cloneopt_model[l].P[k].fixed=True
+            # self.cloneopt_model[l].pprint()
+
+            if FEsim==True: #Initialize with FEsimulator
+                sim_dict = dict()
+                results_sim = dict()
+                sim_dict[l] = FESimulator(self.cloneopt_model[l])
+                # # # defines the discrete points wanted in the concentration profile
+                sim_dict[l].apply_discretization('dae.collocation', nfe=nfe, ncp=ncp, scheme='LAGRANGE-RADAU')
+                inputs_sub = {}
+                initexp1 = sim_dict[l].call_fe_factory(inputs_sub)
+
+                results_sim[l] = sim_dict[l].run_sim(solver,
+                                      tee=True,
+                                      solver_opts=solver_opts)
+
+            elif FEPysim == True: #initialize with FESimulator and then PyomoSimulator
+                sim_dict1 = dict()
+                results_sim1 = dict()
+                sim_dict1[l] = FESimulator(self.cloneopt_model[l])
+                # # # defines the discrete points wanted in the concentration profile
+                sim_dict1[l].apply_discretization('dae.collocation', nfe=nfe, ncp=ncp, scheme='LAGRANGE-RADAU')
+                inputs_sub = {}
+                initexp1 = sim_dict1[l].call_fe_factory(inputs_sub)
+
+                results_sim1[l] = sim_dict1[l].run_sim(solver,
+                                                     tee=True,
+                                                     solver_opts=solver_opts)
+                sim_dict2 = dict()
+                results_sim = dict()
+                sim_dict2[l] = PyomoSimulator(self.cloneopt_model[l])
+                sim_dict2[l].apply_discretization('dae.collocation', nfe=nfe, ncp=ncp, scheme='LAGRANGE-RADAU')
+                if hasattr(results_sim1,'Y'):
+                    sim_dict2[l].initialize_from_trajectory('Y',results_sim1[l].Y)
+                    sim_dict2[l].scale_variables_from_trajectory('Y', results_sim1[l].Y)
+                if hasattr(results_sim1,'C'):
+                    sim_dict2[l].initialize_from_trajectory('C', results_sim1[l].C)
+                    sim_dict2[l].scale_variables_from_trajectory('C', results_sim1[l].C)
+
+                sim_dict2[l].initialize_from_trajectory('dZdt',results_sim1[l].dZdt)
+                sim_dict2[l].initialize_from_trajectory('Z',results_sim1[l].Z)
+                sim_dict2[l].scale_variables_from_trajectory('Z',results_sim1[l].Z)
+                sim_dict2[l].scale_variables_from_trajectory('dZdt',results_sim1[l].dZdt)
+
+                results_sim[l] = sim_dict2[l].run_sim(solver,
+                                                 tee=True,
+                                                 solver_opts=solver_opts)
+            else:
+                sim_dict = dict()
+                results_sim = dict()
+                sim_dict[l] = PyomoSimulator(self.cloneopt_model[l])
+                sim_dict[l].apply_discretization('dae.collocation', nfe=nfe, ncp=ncp, scheme='LAGRANGE-RADAU')
+                results_sim[l] = sim_dict[l].run_sim(solver,
+                                                 tee=True,
+                                                 solver_opts=solver_opts)
+
+            self.sim_results[l] = results_sim[l]
+
+        self._sim_solved = True
+
+        return results_sim
+    #################################
     def run_variance_estimation(self, builder, **kwds):
         """Solves the Variance Estimation procedure described in Chen et al 2016. Here, we call the VarianceEstimator
             seperately on each dataset in order to not only get the model noise and the 
@@ -756,6 +963,9 @@ class MultipleExperimentsEstimator(object):
         var_dic = kwds.pop("jump_states", None)
         jump_times = kwds.pop("jump_times", None)
         feed_times = kwds.pop("feed_times", None)
+
+        #option for non-negativity bounds for Z:
+        # self.lbZ = kwds.pop('lbZ', False)
 
         species_list = kwds.pop('subset_components', None)
         
@@ -858,7 +1068,7 @@ class MultipleExperimentsEstimator(object):
         if solver == 'ipopt_sens':
             self._tmpfile = "ipopt_hess"
             solver_results = optimizer.solve(m,
-                                             logfile=self._tmpfile,
+                                             logfile=self._tmpfile,# tee=True,
                                              report_timing=True)
 
             print("Done solving building reduce hessian")
@@ -873,7 +1083,7 @@ class MultipleExperimentsEstimator(object):
             print("build strings")
             if tee == True:
                 print(ipopt_output)
-
+            # print(self._idx_to_variable)
             n_vars = len(self._idx_to_variable)
             #print('n_vars', n_vars)
             hessian = read_reduce_hessian(hessian_output, n_vars)
@@ -917,6 +1127,11 @@ class MultipleExperimentsEstimator(object):
                         continue
                     m.experiment[i].P.set_suffix_value(m.dof_v, count_vars)
                     count_vars += 1
+
+                if hasattr(self.model.experiment[i].Pinit):#added for the estimation of initial conditions which have to be complementary state vars CS
+                    for v in six.itervalues(self.model.experiment[i].Pinit):
+                        m.experiment[i].init_conditions[v].set_suffix_value(m.dof_v, count_vars)
+                        count_vars += 1
             
             print("count_vars:", count_vars)
             self._tmpfile = "k_aug_hess"
@@ -940,7 +1155,7 @@ class MultipleExperimentsEstimator(object):
             k_aug.solve(m, tee=False)
             print("Done solving building reduce hessian")
     
-            if not all_sigma_specified:
+            if not self.all_sigma_specified:
                 raise RuntimeError(
                     'All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
     
@@ -969,7 +1184,7 @@ class MultipleExperimentsEstimator(object):
             hessian = self._order_k_aug_hessian(unordered_hessian, var_loc)
             #if self._estimability == True:
             #    self.hessian = hessian
-            self._compute_covariance(hessian, sigma_sq)        
+            self._compute_covariance(hessian, sigma_sq)
 
     def solve_conc_full_problem(self, solver, **kwds):
         """Solves estimation based on concentration data. (known variances)
@@ -1058,11 +1273,12 @@ class MultipleExperimentsEstimator(object):
             if not self._spectra_given:
                 pass
             else:
-                for t in m.experiment[i].meas_times:
-                    for c in self._sublist_components[i]:
-                        m.experiment[i].C[t, c].set_suffix_value(m.dof_v, count_vars)
+                for i in self.experiments:
+                    for t in m.experiment[i].meas_times:
+                        for c in self._sublist_components[i]:
+                            m.experiment[i].C[t, c].set_suffix_value(m.dof_v, count_vars)
 
-                        count_vars += 1
+                            count_vars += 1
                         
 
             if not self._spectra_given:
@@ -1078,18 +1294,27 @@ class MultipleExperimentsEstimator(object):
             print("globs", self.global_params)
             
             for i in self.experiments:
-                for k,v in six.iteritems(self.model.experiment[i].P):
+                for k, v in six.iteritems(self.model.experiment[i].P):
                     #print(k,v)                    
                     if k not in var_counted:
                         #print(count_vars)
-                        #print(k,v)
+                        # print(k,v, i)
                         if v.is_fixed():  #: Skip the fixed ones
                             print(str(v) + '\has been skipped for covariance calculations')
                             continue
                         m.experiment[i].P.set_suffix_value(m.dof_v, count_vars)
-                    count_vars += 1
-                    
-                    var_counted.append(k)
+                        print(m.experiment[i].P, m.dof_v, count_vars)
+                        count_vars += 1
+                        var_counted.append(k)
+
+                if hasattr(self.model.experiment[i], 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+                    for k, v in six.iteritems(self.model.experiment[i].Pinit):
+                        # print(k,v,i)
+                        if k not in var_counted:
+                            m.experiment[i].init_conditions[k].set_suffix_value(m.dof_v, count_vars)
+                            # print(m.experiment[i].Pinit, m.dof_v, count_vars)
+                            count_vars += 1
+                            var_counted.append(k)
                     
             self._tmpfile = "k_aug_hess"
             ip = SolverFactory('ipopt')
@@ -1104,12 +1329,12 @@ class MultipleExperimentsEstimator(object):
             m.ipopt_zU_in.update(m.ipopt_zU_out)
             # m.write(filename="mynl.nl", format=ProblemFormat.nl)
             #print("do we get here?")
-            k_aug.solve(m, tee=False)
+            k_aug.solve(m, tee=False) #True
             print("Done solving building reduce hessian")
-
-            if not all_sigma_specified:
-                raise RuntimeError(
-                    'All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
+            #
+            # if not self.all_sigma_specified:
+            #     raise RuntimeError(
+            #         'All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
 
             n_vars = len(self._idx_to_variable)
             print("n_vars", n_vars)
@@ -1134,10 +1359,10 @@ class MultipleExperimentsEstimator(object):
             # print(hessian)
             print(unordered_hessian.size, "unordered hessian size")
             hessian = self._order_k_aug_hessian(unordered_hessian, var_loc)
-            if self._estimability == True:
-                self.hessian = hessian
+            # if self._estimability == True:
+            #     self.hessian = hessian
             if self._concentration_given:
-                self._compute_covariance_C(hessian, sigma_sq)
+                self._compute_covariance_C(hessian, self.variances)
         else:
             solver_results = optimizer.solve(m, tee=tee)
 
@@ -1219,6 +1444,19 @@ class MultipleExperimentsEstimator(object):
         covariance = kwds.pop('covariance', False)
         
         spectra_problem = kwds.pop('spectra_problem', True)
+
+
+        #init from file:
+        init_files = kwds.pop('init_files', False)
+        resultY = kwds.pop('resultY', dict())
+        resultX = kwds.pop('resultX', dict())
+        resultZ = kwds.pop('resultZ', dict())
+        resultdZdt = kwds.pop('resultdZdt', dict())
+        resultC = kwds.pop('resultC', dict())
+
+
+        # option for non-negativity bounds for Z:
+        # self.lbZ = kwds.pop('lbZ', False)
         
         if covariance:
             if solver != 'ipopt_sens' and solver != 'k_aug':
@@ -1277,17 +1515,17 @@ class MultipleExperimentsEstimator(object):
                 if key not in self.experiments:
                     raise RuntimeError("The keys for sigma_sq need to be the same as the experimental datasets")
                     
-                all_sigma_specified = True
+                self.all_sigma_specified = True
                 keys = sigma_sq[key].keys()
                 expsigma = sigma_sq[key]
                 
                 for k in list_components:
                     if k not in keys:
-                        all_sigma_specified = False
+                        self.all_sigma_specified = False
                         expsigma[k] = max(expsigma.values())
         
                 if not 'device' in val.keys():
-                    all_sigma_specified = False
+                    self.all_sigma_specified = False
                     expsigma['device'] = 1.0
                 
                 
@@ -1295,20 +1533,28 @@ class MultipleExperimentsEstimator(object):
             self.variances = sigma_sq
             
         print("SOLVING PARAMETER ESTIMATION FOR INDIVIDUAL DATASETS - For initialization")
-        
+
+        def is_empty(any_structure): #function for cases below to check if dict is empty!
+            if any_structure:
+                return False
+            else:
+                return True
+
+
         ind_p_est = dict()
         list_params_across_blocks = list()
         all_params = list()
         global_params = list()
+        print(self.experiments)
         for l in self.experiments:
             print("Solving for DATASET ", l)
-            if self._variance_solved == True and spectra_problem:
+            if self._variance_solved == True:
                 #then we already have inits
                 ind_p_est[l] = ParameterEstimator(self.opt_model[l])
                 #ind_p_est[l].apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
-                               
                 ind_p_est[l].initialize_from_trajectory('Z',self.variance_results[l].Z)
-                ind_p_est[l].initialize_from_trajectory('S',self.variance_results[l].S)
+                if hasattr(ind_p_est[l], 'S'):
+                    ind_p_est[l].initialize_from_trajectory('S', self.sim_results[l].S)
                 ind_p_est[l].initialize_from_trajectory('C',self.variance_results[l].C)
                 #NOTICE here that we may need to add X and Y variables and DZdt vars here depending on the situtation
                 #This needs to be done based on their existence.
@@ -1333,10 +1579,135 @@ class MultipleExperimentsEstimator(object):
                     
                     if k not in list_params_across_blocks:
                         list_params_across_blocks.append(k)
-                
+
+                if hasattr(results_pest[l], 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+                    print("The estimated parameters are:")
+                    for k, v in six.iteritems(results_pest[l].Pinit):
+                        # print(k, v)
+                        if k not in all_params:
+                            all_params.append(k)
+                        else:
+                            global_params.append(k)
+
+                        if k not in list_params_across_blocks:
+                            list_params_across_blocks.append(k)
+
                 #print("all_params:" , all_params)
                 #print("global_params:", global_params)
-            
+            elif self._sim_solved == True:# and spectra_problem:
+                # then we already have inits
+                # self.opt_model[l].pprint()
+                ind_p_est[l] = ParameterEstimator(self.opt_model[l])
+                ind_p_est[l].apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
+                ind_p_est[l].initialize_from_trajectory('Z', self.sim_results[l].Z)
+                ind_p_est[l].initialize_from_trajectory('dZdt', self.sim_results[l].dZdt)
+                ind_p_est[l].initialize_from_trajectory('C', self.sim_results[l].C)
+                if hasattr(ind_p_est[l], 'Y'):
+                    ind_p_est[l].initialize_from_trajectory('Y', self.sim_results[l].Y)
+                    # ind_p_est[l].scale_variables_from_trajectory('Y', self.sim_results[l].Y)
+                if hasattr(ind_p_est[l], 'X'):
+                    ind_p_est[l].initialize_from_trajectory('X', self.sim_results[l].X)
+                    # ind_p_est[l].scale_variables_from_trajectory('X', self.sim_results[l].X)
+                # NOTICE here that we may need to add X and Y variables and DZdt vars here depending on the situtation
+                # This needs to be done based on their existence.
+                # ind_p_est[l].scale_variables_from_trajectory('Z', self.sim_results[l].Z)
+                # ind_p_est[l].scale_variables_from_trajectory('dZdt', self.sim_results[l].dZdt)
+                # ind_p_est[l].scale_variables_from_trajectory('C', self.sim_results[l].C)
+
+                results_pest[l] = ind_p_est[l].run_opt('ipopt',
+                                                       tee=True,
+                                                       solver_opts=solver_opts,
+                                                       variances = sigma_sq[l])
+                with open('filemodelMultexpbef.txt', 'w') as f:
+                    ind_p_est[l].model.pprint(ostream=f)
+                    f.close()
+
+                self.initialization_model[l] = ind_p_est[l]
+
+                print("The estimated parameters are:")
+                for k, v in six.iteritems(results_pest[l].P):
+                    # print(k, v)
+                    if k not in all_params:
+                        all_params.append(k)
+                    else:
+                        global_params.append(k)
+
+                    if k not in list_params_across_blocks:
+                        list_params_across_blocks.append(k)
+
+                if hasattr(results_pest[l], 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+                    print("The estimated parameters are:")
+                    for k, v in six.iteritems(results_pest[l].Pinit):
+                        # print(k, v)
+                        if k not in all_params:
+                            all_params.append(k)
+                        else:
+                            global_params.append(k)
+
+                        if k not in list_params_across_blocks:
+                            list_params_across_blocks.append(k)
+
+                # print("all_params:" , all_params)
+                # print("global_params:", global_params)
+
+
+            elif init_files == True:# and spectra_problem:
+                # then we already have inits
+                # self.opt_model[l].pprint()
+                print('here')
+                self._spectra_given = True
+                self.builder[l] = builder[l]
+                self.builder[l].add_spectral_data(self.datasets[l])
+                self.opt_model[l] = self.builder[l].create_pyomo_model(start_time[l], end_time[l])
+                ind_p_est[l] = ParameterEstimator(self.opt_model[l])
+                ind_p_est[l].apply_discretization('dae.collocation', nfe=nfe, ncp=ncp, scheme='LAGRANGE-RADAU')
+                if is_empty(resultZ) == False:
+                    ind_p_est[l].initialize_from_trajectory('Z', resultZ[l])
+                if is_empty(resultdZdt) == False:
+                    ind_p_est[l].initialize_from_trajectory('dZdt', resultdZdt[l])
+                if is_empty(resultC)==False:
+                    ind_p_est[l].initialize_from_trajectory('C', resultC[l])
+                if is_empty(resultX) == False:
+                    ind_p_est[l].initialize_from_trajectory('X', resultX[l])
+                if is_empty(resultY) == False:
+                    ind_p_est[l].initialize_from_trajectory('Y', resultY[l])
+
+                results_pest[l] = ind_p_est[l].run_opt('ipopt',
+                                                       tee=True,
+                                                       solver_opts=solver_opts,
+                                                       variances=sigma_sq[l])
+                # with open('filemodelMultexpbef.txt', 'w') as f:
+                #     ind_p_est[l].model.pprint(ostream=f)
+                #     f.close()
+
+                self.initialization_model[l] = ind_p_est[l]
+
+                print("The estimated parameters are:")
+                for k, v in six.iteritems(results_pest[l].P):
+                    # print(k, v)
+                    if k not in all_params:
+                        all_params.append(k)
+                    else:
+                        global_params.append(k)
+
+                    if k not in list_params_across_blocks:
+                        list_params_across_blocks.append(k)
+
+                if hasattr(results_pest[l], 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+                    print("The estimated parameters are:")
+                    for k, v in six.iteritems(results_pest[l].Pinit):
+                        # print(k, v)
+                        if k not in all_params:
+                            all_params.append(k)
+                        else:
+                            global_params.append(k)
+
+                        if k not in list_params_across_blocks:
+                            list_params_across_blocks.append(k)
+
+                # print("all_params:" , all_params)
+                # print("global_params:", global_params)
+
             else:
                 #we do not have inits
                 if spectra_problem == True:
@@ -1360,16 +1731,23 @@ class MultipleExperimentsEstimator(object):
                     self.builder[l]=builder[l]
                     self.builder[l].add_concentration_data(self.datasets[l])
                     self.opt_model[l] = self.builder[l].create_pyomo_model(start_time[l],end_time[l])
+
                     ind_p_est[l] = ParameterEstimator(self.opt_model[l])
                     ind_p_est[l].apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
-                    
+
+                    # if self.lbZ == True:
+                    #     print('here')
+                    #     for t in ind_p_est[l].model.alltime:
+                    #         for c in ind_p_est[l].model.mixture_components:
+                    #             ind_p_est[l].model.Z[t, c].setlb(0.0)
+
                     results_pest[l] = ind_p_est[l].run_opt('ipopt',
-                                                         tee=tee,
+                                                         tee=True,
                                                           solver_opts = solver_opts,
                                                           variances = sigma_sq[l])
-    
-    
-                    self.initialization_model[l] = ind_p_est[l]                    
+
+
+                    self.initialization_model[l] = ind_p_est[l]
                 
                 print("The estimated parameters are:")
                 for k,v in six.iteritems(results_pest[l].P):
@@ -1384,10 +1762,22 @@ class MultipleExperimentsEstimator(object):
                     if k not in list_params_across_blocks:
                         list_params_across_blocks.append(k)
 
+                if hasattr(results_pest[l], 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+                    print("The estimated parameters are:")
+                    for k, v in six.iteritems(results_pest[l].Pinit):
+                        print(k, v)
+                        if k not in all_params:
+                            all_params.append(k)
+                        else:
+                            global_params.append(k)
+
+                        if k not in list_params_across_blocks:
+                            list_params_across_blocks.append(k)
+
                 #print("all_params:" , all_params)
                 #print("global_params:", global_params)
                 self.global_params = global_params
-                
+
         #Now that we have all our datasets solved individually we can build our blocks and use
         #these solutions to initialize
         m = ConcreteModel()
@@ -1539,7 +1929,12 @@ class MultipleExperimentsEstimator(object):
         # loading the results, notice that we return a dictionary
         for i in m.experiment:
             solver_results[i] = ResultsObject()
-            solver_results[i].load_from_pyomo_model(m.experiment[i],to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y', 'P'])
+            if hasattr(m.experiment[i], 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+                solver_results[i].load_from_pyomo_model(m.experiment[i],
+                                                        to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y', 'P', 'Pinit'])
+            else:
+                solver_results[i].load_from_pyomo_model(m.experiment[i],
+                                                        to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y', 'P'])
         
         return solver_results
     

@@ -99,7 +99,6 @@ class EstimabilityAnalyzer(ParameterEstimator):
         def rule_objective(m):
             obj = 0
             for t in m.allmeas_times:
-                # if t in m.meas_times:
                 obj += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components)
             return obj
             
@@ -211,7 +210,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         
         if os.path.exists('dxdp_.dat'):
             os.remove('dxdp_.dat')
-        print(idx_to_param)
+        # print(idx_to_param)
         
         return dsdp , idx_to_param
 
@@ -288,7 +287,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         # parameters and variables at the initial values for the parameters
         self.cloned_before_k_aug = self.model.clone()
         dsdp, idx_to_param = self.get_sensitivities_for_params(tee=True, sigmasq=sigmas)
-        #print("idx_to_param",idx_to_param )
+        # print("idx_to_param",idx_to_param )
         nvars = np.size(dsdp,0)
         #print("nvars,", nvars)
         nparams = 0
@@ -343,100 +342,102 @@ class EstimabilityAnalyzer(ParameterEstimator):
                 if sorted_euc[p-1]==eucnorm_scaled[t-1]:
                     ordered_params[count] = t-1
             count +=1
-        #print("ordered_params", ordered_params)
+        # print("ordered_params", ordered_params)
         # set the first ranked parameter as the one with highest norm
         iter_count=0
         self.param_ranks[1] = idx_to_param[ordered_params[0]+1]
-            
+        # print("self.param_ranks",self.param_ranks)
         #The ranking strategy of Yao, where the X and Z matrices are formed
         next_est = dict()
         X= None
         kcol = None
 
         for i in range(nparams-1):
+            # print('iter_count',iter_count)
+            if iter_count<=nparams-4:
+                if i==0:
+                    X = np.zeros((nvars,1))
+                else:
+                    X = np.append(X,np.zeros([len(X),1]),1)
+                #print(X)
+                # Form the appropriate matrix
+                for x in range(i+1):
+                    #print(self.param_ranks)
+                    paramhere = self.param_ranks[(x+1)]
+                    #print(paramhere)
 
-            if i==0:
-                X = np.zeros((nvars,1))
-            else:
-                X = np.append(X,np.zeros([len(X),1]),1)
-            #print(X)
-            # Form the appropriate matrix
-            for x in range(i+1):
-                #print(self.param_ranks)
-                paramhere = self.param_ranks[(x+1)]
-                #print(paramhere)
+                    for key, value in six.iteritems(self.param_ranks):
+                        for idx, val in six.iteritems(idx_to_param):
+                            if value ==paramhere:
+                                if value == val:
+                                    #print(key, val, idx)
+                                    which_col = (idx-1)
+                                    #print(which_col)
+                    kcol = dsdp_scaled[:,which_col].T
+                    recol= kcol.reshape((nvars,1))
+                    #print("x",x)
+                    #if x >= 1:
+                    #    X = np.append(X,np.zeros([len(X),1]),1)
+                    #    print("why?")
+                    #    print("X_before 2 loop",X)
+                    for n in range(nvars):
+                        X[n][x] = recol[n][0]
+                    #print(x)
+                    #print("X",X)
 
-                for key, value in six.iteritems(self.param_ranks):
-                    for idx, val in six.iteritems(idx_to_param):
-                        if value ==paramhere:
-                            if value == val:
-                                #print(key, val, idx)
-                                which_col = (idx-1) 
-                                #print(which_col)
-                kcol = dsdp_scaled[:,which_col].T
-                recol= kcol.reshape((nvars,1))
-                #print("x",x)
-                #if x >= 1:
-                #    X = np.append(X,np.zeros([len(X),1]),1)
-                #    print("why?")
-                #    print("X_before 2 loop",X)
-                for n in range(nvars):
-                    X[n][x] = recol[n][0]
-                #print(x)
-                #print("X",X)
-                
-            #print("X_afterloop",X)
-            # Use Ordinary Least Squares to use X to predict Z
-            # try is here to catch any error resulting from a singular matrix
-            # perhaps not the most elegant way of checking for this
-            try:
-                A = X.T.dot(X)
-                B= np.linalg.inv(A)
-                C = B.dot(X.T)
-                D=X.dot(C)
-                Z = dsdp.T
-                Zbar=D.dot(Z.T)
-                #Get residuals of prediction
-                Res = Z.T - Zbar
-            except:
-                print("There was an error during the OLS prediction. Most likely caused by a singular matrix. Unable to continue the procedure")
-                break
-            
-            # Calculate the magnitude of residuals
-            magres = dict()
-            counter=0
-            for i in range(nparams):
-                total = 0
-                for row in range(len(Res)):
-                    total += Res[row][counter]**2
-                float(total)
-                total = np.asscalar(total)
-                sqr = (total)**(0.5)
-                magres[counter]=sqr
-                counter +=1
+                #print("X_afterloop",X)
+                # Use Ordinary Least Squares to use X to predict Z
+                # try is here to catch any error resulting from a singular matrix
+                # perhaps not the most elegant way of checking for this
+                try:
+                    A = X.T.dot(X)
+                    B= np.linalg.inv(A)
+                    C = B.dot(X.T)
+                    D=X.dot(C)
+                    Z = dsdp.T
+                    Zbar=D.dot(Z.T)
+                    #Get residuals of prediction
+                    Res = Z.T - Zbar
+                except:
+                    print("There was an error during the OLS prediction. Most likely caused by a singular matrix. Unable to continue the procedure")
+                    break
 
-            # Sort the residuals and ensure the params are correctly assigned
-            sorted_magres = sorted(magres.values(), reverse=True)
-            count2=0
-            #next_est = dict()
-            for p in idx_to_param:
-                for t in idx_to_param:
-                    if sorted_magres[p-1]==magres[t-1]:
-                        #print('p,t', p,t,count2)
-                        next_est[count2] = t
-                        #print(next_est[count2])
-                count2 += 1
-            #print(sorted_magres)
-            #print("next_est", next_est)
-            # Add next most estimable param to the ranking list  
-            self.param_ranks[(iter_count+2)]=idx_to_param[next_est[0]]
-            iter_count += 1
-            #print("parameter ranks!", self.param_ranks)
-            
-            #print("======================PARAMETER RANKED======================")
-            if len(self.param_ranks) == nparams - 1:
-                print("All parameters have been ranked")
-                break
+                # Calculate the magnitude of residuals
+                magres = dict()
+                counter=0
+                for i in range(nparams):
+                    total = 0
+                    for row in range(len(Res)):
+                        total += Res[row][counter]**2
+                    float(total)
+                    total = np.asscalar(total)
+                    sqr = (total)**(0.5)
+                    magres[counter]=sqr
+                    counter +=1
+
+                # Sort the residuals and ensure the params are correctly assigned
+                sorted_magres = sorted(magres.values(), reverse=True)
+                count2=0
+                #next_est = dict()
+                for p in idx_to_param:
+                    for t in idx_to_param:
+                        if sorted_magres[p-1]==magres[t-1]:
+                            # print('p,t', p,t,count2)
+                            next_est[count2] = t
+                            # print(next_est[count2])
+                    count2 += 1
+                # print(sorted_magres)
+                # print("next_est", next_est)
+                # Add next most estimable param to the ranking list
+                self.param_ranks[(iter_count+2)]=idx_to_param[next_est[0]]
+                iter_count += 1
+                # print("parameter ranks!", self.param_ranks)
+                # print("nparams", nparams)
+
+                #print("======================PARAMETER RANKED======================")
+                if len(self.param_ranks) == nparams - 1:
+                    print("All parameters have been ranked")
+                    break
         
         #adding the unranked parameters to the list
         #NOTE: if param appears here then it was not evaluated (i.e. it was the least estimable)
@@ -462,7 +463,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         print("The least estimable parameters are as follows: ")
         if len(self.unranked_params) == 0:
             print("All parameters ranked")
-            
+
         for i in self.unranked_params:
             count+=1
             print("unranked ", (count), "is ", self.unranked_params[i])
@@ -476,7 +477,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         for i in self.unranked_params:
             self.ordered_params.append(self.unranked_params[i])
             count += 1
-        
+        print(self.param_ranks)
         return self.ordered_params
 
     def run_analyzer(self, method = None, parameter_rankings = None, meas_scaling = None, variances = None):
@@ -610,13 +611,35 @@ class EstimabilityAnalyzer(ParameterEstimator):
             # We then solve the Parameter estimaion problem for the SM
             options = dict()            
             cloned_pestim[count] = ParameterEstimator(cloned_full_model[count])
+            if count>=2:
+                if hasattr(results[count-1], 'Y'):
+                    cloned_pestim[count].initialize_from_trajectory('Y', results[count - 1].Y)
+                    cloned_pestim[count].scale_variables_from_trajectory('Y', results[count - 1].Y)
+                if hasattr(results[count-1], 'X'):
+                    cloned_pestim[count].initialize_from_trajectory('X', results[count - 1].X)
+                    cloned_pestim[count].scale_variables_from_trajectory('X', results[count - 1].X)
+                if hasattr(results[count-1], 'C'):
+                    cloned_pestim[count].initialize_from_trajectory('C', results[count - 1].C)
+                    cloned_pestim[count].scale_variables_from_trajectory('C', results[count - 1].C)
+                # if hasattr(results[count-1], 'S'):
+                #     cloned_pestim[count].initialize_from_trajectory('S', results[count-1].S)
+                #     cloned_pestim[count].scale_variables_from_trajectory('S', results[count-1].S)
+                cloned_pestim[count].initialize_from_trajectory('Z', results[count-1].Z)
+                cloned_pestim[count].scale_variables_from_trajectory('Z', results[count - 1].Z)
+                cloned_pestim[count].initialize_from_trajectory('dZdt', results[count - 1].dZdt)
+                cloned_pestim[count].scale_variables_from_trajectory('dZdt', results[count - 1].dZdt)
+
             results[count] = cloned_pestim[count].run_opt('ipopt',
-                                        tee=False,
+                                        tee=True,#False,
                                         solver_opts = options,
-                                        variances=sigmas
+                                        variances=sigmas, symbolic_solver_labels=True
                                         )
-            #for v,k in six.iteritems(results[count].P):                
-                #print(v,k)
+
+            # print('TC',TerminationCondition.optimal)
+            # print('selfterm',self.termination_condition)
+
+            for v,k in six.iteritems(results[count].P):
+                print(v,k)
             # Then compute the scaled residuals to obtain the Jk in the Wu et al paper   
             J [count] = self._compute_scaled_residuals(results[count], meas_scaling)
             count += 1            
