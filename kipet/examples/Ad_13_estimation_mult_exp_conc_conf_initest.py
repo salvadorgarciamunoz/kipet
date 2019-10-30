@@ -5,7 +5,8 @@
 #  _________________________________________________________________________
 
 # Sample Problem 
-# Estimation with unknow variancesof spectral data using pyomo discretization 
+# Estimation with estimating initial values for complementary states as local parameters of concentration data using pyomo discretization
+# Including different initialization strategies
 #
 #		\frac{dZ_a}{dt} = -k_1*Z_a	                Z_a(0) = 1
 #		\frac{dZ_b}{dt} = k_1*Z_a - k_2*Z_b		Z_b(0) = 0
