@@ -686,7 +686,7 @@ class ParameterEstimator(Optimizer):
                                              logfile=self._tmpfile,
                                              report_timing=True)
             #self.model.red_hessian.pprint
-            m.P.pprint()
+            # m.P.pprint()
             print("Done solving building reduce hessian")
             output_string = ''
             with open(self._tmpfile, 'r') as f:

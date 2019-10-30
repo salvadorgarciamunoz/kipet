@@ -962,6 +962,7 @@ class TemplateBuilder(object):
 
         if self._estim_init==True:#added for the estimation of initial conditions which have to be complementary state vars CS
             pyomo_model.initparameter_names = Set(initialize=self._initextraest)
+            # pyomo_model.initparameter_names.pprint()
             pyomo_model.add_component('initextraparams', Set(initialize=self._initextraest))
             pinit_dict = dict()
             for p, v in self._initextraparams.items():
@@ -978,6 +979,7 @@ class TemplateBuilder(object):
                         ub = s[1]
                         pinit_dict[p] = (ub - lb) / 2
             pyomo_model.Pinit = Var(pyomo_model.initparameter_names,initialize=pinit_dict)
+
             for k, v in self._initextraparams_bounds.items():
                 lb = v[0]
                 ub = v[1]

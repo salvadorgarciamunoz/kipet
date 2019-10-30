@@ -62,6 +62,7 @@ class MultipleExperimentsEstimator(object):
         self._sim_solved = False
         self.sim_results = dict()
         self.cloneopt_model = dict()
+        # self.clonecloneopt_model = dict()
         
         self.variances= dict()
         self.variance_results = dict()
@@ -213,6 +214,7 @@ class MultipleExperimentsEstimator(object):
                     print(str(v) + '\has been skipped for covariance calculations')
                     continue
                 nparams += 1
+                self.p_mark[exp_count] = nparams
             if hasattr(self.model.experiment[i], 'Pinit'): #added for the estimation of initial conditions which have to be complementary state vars CS
                 for v in six.itervalues(self.model.experiment[i].Pinit):
                     nparams += 1
@@ -235,7 +237,7 @@ class MultipleExperimentsEstimator(object):
                 ntimex = (self.t_mark[exp_count] - self.t_mark[exp_count - 1] )
                 nwavex = (self.l_mark[exp_count] - self.l_mark[exp_count - 1])
                 nparmx = self.p_mark[exp_count] - self.p_mark[exp_count - 1]
-                print(ncompx,ntimex, nwavex, nparmx)
+                # print(ncompx,ntimex, nwavex, nparmx)
                 ntheta += ncompx * (ntimex+ nwavex) + nparmx
             exp_count += 1
             print("ntheta:", ntheta)
@@ -746,7 +748,6 @@ class MultipleExperimentsEstimator(object):
         """
         solver = kwds.pop('solver', str)
         FEsim = kwds.pop('FEsim', False)
-        FEPysim = kwds.pop('FEPysim', False)
         solver_opts = kwds.pop('solver_opts', dict())
         sigmas = kwds.pop('variances', dict())
         tee = kwds.pop('tee', False)
@@ -756,6 +757,8 @@ class MultipleExperimentsEstimator(object):
         end_time = kwds.pop('end_time', dict())
         nfe = kwds.pop('nfe', 50)
         ncp = kwds.pop('ncp', 3)
+
+        # spectra_problem = kwds.pop('spectra_problem', True)
 
         # additional arguments for inputs
         # These will need to be made into dicts if there are different
@@ -815,18 +818,25 @@ class MultipleExperimentsEstimator(object):
 
         sim_dict = dict()
         results_sim = dict()
+        ind_p_est = dict()
 
         for l in self.experiments:
             print("solving for dataset ", l)
             self.builder[l] = builder[l]
-            self.builder[l].add_spectral_data(self.datasets[l])
+            # if spectra_problem==True:
+            #     self._spectra_given=True
+            #     self.builder[l].add_spectral_data(self.datasets[l])
+            # else:
+            #     self._concentration_given=True
+            #     self.builder[l].add_concentration_data(self.datasets[l])
             self.opt_model[l] = self.builder[l].create_pyomo_model(start_time[l], end_time[l])
+            ind_p_est[l] = ParameterEstimator(self.opt_model[l])
+
             self.cloneopt_model[l] = self.opt_model[l].clone()
 
             #fix parameters for simulation:
             for k in self.cloneopt_model[l].P.keys():
                 self.cloneopt_model[l].P[k].fixed=True
-            # self.cloneopt_model[l].pprint()
 
             if FEsim==True: #Initialize with FEsimulator
                 sim_dict = dict()
@@ -840,38 +850,6 @@ class MultipleExperimentsEstimator(object):
                 results_sim[l] = sim_dict[l].run_sim(solver,
                                       tee=True,
                                       solver_opts=solver_opts)
-
-            elif FEPysim == True: #initialize with FESimulator and then PyomoSimulator
-                sim_dict1 = dict()
-                results_sim1 = dict()
-                sim_dict1[l] = FESimulator(self.cloneopt_model[l])
-                # # # defines the discrete points wanted in the concentration profile
-                sim_dict1[l].apply_discretization('dae.collocation', nfe=nfe, ncp=ncp, scheme='LAGRANGE-RADAU')
-                inputs_sub = {}
-                initexp1 = sim_dict1[l].call_fe_factory(inputs_sub)
-
-                results_sim1[l] = sim_dict1[l].run_sim(solver,
-                                                     tee=True,
-                                                     solver_opts=solver_opts)
-                sim_dict2 = dict()
-                results_sim = dict()
-                sim_dict2[l] = PyomoSimulator(self.cloneopt_model[l])
-                sim_dict2[l].apply_discretization('dae.collocation', nfe=nfe, ncp=ncp, scheme='LAGRANGE-RADAU')
-                if hasattr(results_sim1,'Y'):
-                    sim_dict2[l].initialize_from_trajectory('Y',results_sim1[l].Y)
-                    sim_dict2[l].scale_variables_from_trajectory('Y', results_sim1[l].Y)
-                if hasattr(results_sim1,'C'):
-                    sim_dict2[l].initialize_from_trajectory('C', results_sim1[l].C)
-                    sim_dict2[l].scale_variables_from_trajectory('C', results_sim1[l].C)
-
-                sim_dict2[l].initialize_from_trajectory('dZdt',results_sim1[l].dZdt)
-                sim_dict2[l].initialize_from_trajectory('Z',results_sim1[l].Z)
-                sim_dict2[l].scale_variables_from_trajectory('Z',results_sim1[l].Z)
-                sim_dict2[l].scale_variables_from_trajectory('dZdt',results_sim1[l].dZdt)
-
-                results_sim[l] = sim_dict2[l].run_sim(solver,
-                                                 tee=True,
-                                                 solver_opts=solver_opts)
             else:
                 sim_dict = dict()
                 results_sim = dict()
@@ -1128,10 +1106,14 @@ class MultipleExperimentsEstimator(object):
                     m.experiment[i].P.set_suffix_value(m.dof_v, count_vars)
                     count_vars += 1
 
-                if hasattr(self.model.experiment[i].Pinit):#added for the estimation of initial conditions which have to be complementary state vars CS
-                    for v in six.itervalues(self.model.experiment[i].Pinit):
-                        m.experiment[i].init_conditions[v].set_suffix_value(m.dof_v, count_vars)
+                if hasattr(self.model.experiment[i],'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+                    for k, v in six.iteritems(self.model.experiment[i].Pinit):
+                        # print(k,v,i)
+                        m.experiment[i].init_conditions[k].set_suffix_value(m.dof_v, count_vars)
+                            # print(m.experiment[i].Pinit, m.dof_v, count_vars)
                         count_vars += 1
+                        # m.experiment[i].init_conditions[v].set_suffix_value(m.dof_v, count_vars)
+                        # count_vars += 1
             
             print("count_vars:", count_vars)
             self._tmpfile = "k_aug_hess"
@@ -1303,7 +1285,7 @@ class MultipleExperimentsEstimator(object):
                             print(str(v) + '\has been skipped for covariance calculations')
                             continue
                         m.experiment[i].P.set_suffix_value(m.dof_v, count_vars)
-                        print(m.experiment[i].P, m.dof_v, count_vars)
+                        # print(m.experiment[i].P, m.dof_v, count_vars)
                         count_vars += 1
                         var_counted.append(k)
 
@@ -1546,186 +1528,224 @@ class MultipleExperimentsEstimator(object):
         all_params = list()
         global_params = list()
         print(self.experiments)
+        # if spectra_problem:
+        #     self._spectra_given = True
+        #     self._concentration_given = False
+        # else:
+        #     self._spectra_given = False
+        #     self._concentration_given = True
         for l in self.experiments:
             print("Solving for DATASET ", l)
-            if self._variance_solved == True:
-                #then we already have inits
-                ind_p_est[l] = ParameterEstimator(self.opt_model[l])
-                #ind_p_est[l].apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
-                ind_p_est[l].initialize_from_trajectory('Z',self.variance_results[l].Z)
-                if hasattr(ind_p_est[l], 'S'):
-                    ind_p_est[l].initialize_from_trajectory('S', self.sim_results[l].S)
-                ind_p_est[l].initialize_from_trajectory('C',self.variance_results[l].C)
-                #NOTICE here that we may need to add X and Y variables and DZdt vars here depending on the situtation
-                #This needs to be done based on their existence.
-                ind_p_est[l].scale_variables_from_trajectory('Z',self.variance_results[l].Z)
-                ind_p_est[l].scale_variables_from_trajectory('S',self.variance_results[l].S)
-                ind_p_est[l].scale_variables_from_trajectory('C',self.variance_results[l].C)
-                
-                results_pest[l] = ind_p_est[l].run_opt('ipopt',
-                                                      tee=tee,
-                                                      solver_opts = solver_opts,
-                                                      variances = self.variances[l])
-                
-                self.initialization_model[l] = ind_p_est[l]
-                
-                print("The estimated parameters are:")
-                for k,v in six.iteritems(results_pest[l].P):
-                    #print(k, v)
-                    if k not in all_params:
-                        all_params.append(k)
-                    else:
-                        global_params.append(k)
-                    
-                    if k not in list_params_across_blocks:
-                        list_params_across_blocks.append(k)
-
-                if hasattr(results_pest[l], 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-                    print("The estimated parameters are:")
-                    for k, v in six.iteritems(results_pest[l].Pinit):
-                        # print(k, v)
-                        if k not in all_params:
-                            all_params.append(k)
-                        else:
-                            global_params.append(k)
-
-                        if k not in list_params_across_blocks:
-                            list_params_across_blocks.append(k)
 
                 #print("all_params:" , all_params)
                 #print("global_params:", global_params)
-            elif self._sim_solved == True:# and spectra_problem:
-                # then we already have inits
-                # self.opt_model[l].pprint()
-                ind_p_est[l] = ParameterEstimator(self.opt_model[l])
-                ind_p_est[l].apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
-                ind_p_est[l].initialize_from_trajectory('Z', self.sim_results[l].Z)
-                ind_p_est[l].initialize_from_trajectory('dZdt', self.sim_results[l].dZdt)
-                ind_p_est[l].initialize_from_trajectory('C', self.sim_results[l].C)
-                if hasattr(ind_p_est[l], 'Y'):
-                    ind_p_est[l].initialize_from_trajectory('Y', self.sim_results[l].Y)
-                    # ind_p_est[l].scale_variables_from_trajectory('Y', self.sim_results[l].Y)
-                if hasattr(ind_p_est[l], 'X'):
-                    ind_p_est[l].initialize_from_trajectory('X', self.sim_results[l].X)
-                    # ind_p_est[l].scale_variables_from_trajectory('X', self.sim_results[l].X)
-                # NOTICE here that we may need to add X and Y variables and DZdt vars here depending on the situtation
-                # This needs to be done based on their existence.
-                # ind_p_est[l].scale_variables_from_trajectory('Z', self.sim_results[l].Z)
-                # ind_p_est[l].scale_variables_from_trajectory('dZdt', self.sim_results[l].dZdt)
-                # ind_p_est[l].scale_variables_from_trajectory('C', self.sim_results[l].C)
-
-                results_pest[l] = ind_p_est[l].run_opt('ipopt',
-                                                       tee=True,
-                                                       solver_opts=solver_opts,
-                                                       variances = sigma_sq[l])
-                with open('filemodelMultexpbef.txt', 'w') as f:
-                    ind_p_est[l].model.pprint(ostream=f)
-                    f.close()
-
-                self.initialization_model[l] = ind_p_est[l]
-
-                print("The estimated parameters are:")
-                for k, v in six.iteritems(results_pest[l].P):
-                    # print(k, v)
-                    if k not in all_params:
-                        all_params.append(k)
-                    else:
-                        global_params.append(k)
-
-                    if k not in list_params_across_blocks:
-                        list_params_across_blocks.append(k)
-
-                if hasattr(results_pest[l], 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-                    print("The estimated parameters are:")
-                    for k, v in six.iteritems(results_pest[l].Pinit):
-                        # print(k, v)
-                        if k not in all_params:
-                            all_params.append(k)
-                        else:
-                            global_params.append(k)
-
-                        if k not in list_params_across_blocks:
-                            list_params_across_blocks.append(k)
-
-                # print("all_params:" , all_params)
-                # print("global_params:", global_params)
-
-
-            elif init_files == True:# and spectra_problem:
-                # then we already have inits
-                # self.opt_model[l].pprint()
-                print('here')
-                self._spectra_given = True
-                self.builder[l] = builder[l]
-                self.builder[l].add_spectral_data(self.datasets[l])
-                self.opt_model[l] = self.builder[l].create_pyomo_model(start_time[l], end_time[l])
-                ind_p_est[l] = ParameterEstimator(self.opt_model[l])
-                ind_p_est[l].apply_discretization('dae.collocation', nfe=nfe, ncp=ncp, scheme='LAGRANGE-RADAU')
-                if is_empty(resultZ) == False:
-                    ind_p_est[l].initialize_from_trajectory('Z', resultZ[l])
-                if is_empty(resultdZdt) == False:
-                    ind_p_est[l].initialize_from_trajectory('dZdt', resultdZdt[l])
-                if is_empty(resultC)==False:
-                    ind_p_est[l].initialize_from_trajectory('C', resultC[l])
-                if is_empty(resultX) == False:
-                    ind_p_est[l].initialize_from_trajectory('X', resultX[l])
-                if is_empty(resultY) == False:
-                    ind_p_est[l].initialize_from_trajectory('Y', resultY[l])
-
-                results_pest[l] = ind_p_est[l].run_opt('ipopt',
-                                                       tee=True,
-                                                       solver_opts=solver_opts,
-                                                       variances=sigma_sq[l])
-                # with open('filemodelMultexpbef.txt', 'w') as f:
-                #     ind_p_est[l].model.pprint(ostream=f)
-                #     f.close()
-
-                self.initialization_model[l] = ind_p_est[l]
-
-                print("The estimated parameters are:")
-                for k, v in six.iteritems(results_pest[l].P):
-                    # print(k, v)
-                    if k not in all_params:
-                        all_params.append(k)
-                    else:
-                        global_params.append(k)
-
-                    if k not in list_params_across_blocks:
-                        list_params_across_blocks.append(k)
-
-                if hasattr(results_pest[l], 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-                    print("The estimated parameters are:")
-                    for k, v in six.iteritems(results_pest[l].Pinit):
-                        # print(k, v)
-                        if k not in all_params:
-                            all_params.append(k)
-                        else:
-                            global_params.append(k)
-
-                        if k not in list_params_across_blocks:
-                            list_params_across_blocks.append(k)
-
-                # print("all_params:" , all_params)
-                # print("global_params:", global_params)
-
-            else:
                 #we do not have inits
-                if spectra_problem == True:
+            if spectra_problem == True:
+                if self._variance_solved == True:
+                    # then we already have inits
+                    ind_p_est[l] = ParameterEstimator(self.opt_model[l])
+                    ind_p_est[l].apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
+                    ind_p_est[l].initialize_from_trajectory('Z', self.variance_results[l].Z)
+                    if hasattr(ind_p_est[l], 'S'):
+                        ind_p_est[l].initialize_from_trajectory('S', self.sim_results[l].S)
+                    ind_p_est[l].initialize_from_trajectory('C', self.variance_results[l].C)
+                    # NOTICE here that we may need to add X and Y variables and DZdt vars here depending on the situtation
+                    # This needs to be done based on their existence.
+                    ind_p_est[l].scale_variables_from_trajectory('Z', self.variance_results[l].Z)
+                    ind_p_est[l].scale_variables_from_trajectory('S', self.variance_results[l].S)
+                    ind_p_est[l].scale_variables_from_trajectory('C', self.variance_results[l].C)
+
+                    results_pest[l] = ind_p_est[l].run_opt('ipopt',
+                                                           tee=tee,
+                                                           solver_opts=solver_opts,
+                                                           variances=self.variances[l])
+
+                    self.initialization_model[l] = ind_p_est[l]
+
+                    print("The estimated parameters are:")
+                    for k, v in six.iteritems(results_pest[l].P):
+                        print(k, v)
+                        if k not in all_params:
+                            all_params.append(k)
+                        else:
+                            global_params.append(k)
+
+                        if k not in list_params_across_blocks:
+                            list_params_across_blocks.append(k)
+
+                    if hasattr(results_pest[l],
+                               'Pinit'):  # added for the estimation of initial conditions which have to be complementary state vars CS
+                        print("The estimated parameters are:")
+                        for k, v in six.iteritems(results_pest[l].Pinit):
+                            print(k, v)
+                            if k not in all_params:
+                                all_params.append(k)
+                            else:
+                                global_params.append(k)
+
+                            if k not in list_params_across_blocks:
+                                list_params_across_blocks.append(k)
+                else:
                     self._spectra_given = True
                     self.builder[l]=builder[l]
                     self.builder[l].add_spectral_data(self.datasets[l])
                     self.opt_model[l] = self.builder[l].create_pyomo_model(start_time[l],end_time[l])
                     ind_p_est[l] = ParameterEstimator(self.opt_model[l])
                     ind_p_est[l].apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
-                    
+
                     results_pest[l] = ind_p_est[l].run_opt('ipopt',
                                                          tee=tee,
                                                           solver_opts = solver_opts,
                                                           variances = sigma_sq[l])
-    
+
                     self.initialization_model[l] = ind_p_est[l]
-                
-                elif spectra_problem == False:
+
+                    print("The estimated parameters are:")
+                    for k, v in six.iteritems(results_pest[l].P):
+                        print(k, v)
+                        if k not in all_params:
+                            all_params.append(k)
+                        else:
+                            global_params.append(k)
+
+                        if k not in list_params_across_blocks:
+                            list_params_across_blocks.append(k)
+
+                    if hasattr(results_pest[l],
+                               'Pinit'):  # added for the estimation of initial conditions which have to be complementary state vars CS
+                        print("The estimated parameters are:")
+                        for k, v in six.iteritems(results_pest[l].Pinit):
+                            print(k, v)
+                            if k not in all_params:
+                                all_params.append(k)
+                            else:
+                                global_params.append(k)
+
+                            if k not in list_params_across_blocks:
+                                list_params_across_blocks.append(k)
+
+            else:
+                if self._sim_solved == True:# and spectra_problem == False:
+                    # then we already have inits
+                    self._spectra_given = False
+                    self._concentration_given = True
+                    self.builder[l] = builder[l]
+                    self.builder[l].add_concentration_data(self.datasets[l])
+                    self.opt_model[l] = self.builder[l].create_pyomo_model(start_time[l], end_time[l])
+                    ind_p_est[l] = ParameterEstimator(self.opt_model[l])
+                    ind_p_est[l].apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
+                    ind_p_est[l].initialize_from_trajectory('Z', self.sim_results[l].Z)
+                    ind_p_est[l].initialize_from_trajectory('dZdt', self.sim_results[l].dZdt)
+                    if hasattr(ind_p_est[l], 'C'):
+                        ind_p_est[l].initialize_from_trajectory('C', self.sim_results[l].C)
+                    if hasattr(ind_p_est[l], 'Y'):
+                        ind_p_est[l].initialize_from_trajectory('Y', self.sim_results[l].Y)
+                        # ind_p_est[l].scale_variables_from_trajectory('Y', self.sim_results[l].Y)
+                    if hasattr(ind_p_est[l], 'X'):
+                        ind_p_est[l].initialize_from_trajectory('X', self.sim_results[l].X)
+                        # ind_p_est[l].scale_variables_from_trajectory('X', self.sim_results[l].X)
+                    # NOTICE here that we may need to add X and Y variables and DZdt vars here depending on the situtation
+                    # This needs to be done based on their existence.
+                    # ind_p_est[l].scale_variables_from_trajectory('Z', self.sim_results[l].Z)
+                    # ind_p_est[l].scale_variables_from_trajectory('dZdt', self.sim_results[l].dZdt)
+                    # ind_p_est[l].scale_variables_from_trajectory('C', self.sim_results[l].C)
+
+                    results_pest[l] = ind_p_est[l].run_opt('ipopt',
+                                                           tee=True,
+                                                           solver_opts=solver_opts,
+                                                           variances=sigma_sq[l])
+                    # with open('filemodelMultexpbef.txt', 'w') as f:
+                    #     ind_p_est[l].model.pprint(ostream=f)
+                    #     f.close()
+
+                    self.initialization_model[l] = ind_p_est[l]
+
+                    print("The estimated parameters are:")
+                    for k, v in six.iteritems(results_pest[l].P):
+                        print(k, v)
+                        if k not in all_params:
+                            all_params.append(k)
+                        else:
+                            global_params.append(k)
+
+                        if k not in list_params_across_blocks:
+                            list_params_across_blocks.append(k)
+
+                    if hasattr(results_pest[l],
+                               'Pinit'):  # added for the estimation of initial conditions which have to be complementary state vars CS
+                        print("The estimated parameters are:")
+                        for k, v in six.iteritems(results_pest[l].Pinit):
+                            print(k, v)
+                            if k not in all_params:
+                                all_params.append(k)
+                            else:
+                                global_params.append(k)
+
+                            if k not in list_params_across_blocks:
+                                list_params_across_blocks.append(k)
+
+                    # print("all_params:" , all_params)
+                    # print("global_params:", global_params)
+
+
+                elif init_files == True:
+                    # then we already have inits
+                    self._spectra_given = False
+                    self._concentration_given = True
+                    self.builder[l] = builder[l]
+                    self.builder[l].add_concentration_data(self.datasets[l])
+                    self.opt_model[l] = self.builder[l].create_pyomo_model(start_time[l], end_time[l])
+                    ind_p_est[l] = ParameterEstimator(self.opt_model[l])
+                    ind_p_est[l].apply_discretization('dae.collocation', nfe=nfe, ncp=ncp, scheme='LAGRANGE-RADAU')
+
+                    if is_empty(resultZ) == False:
+                        ind_p_est[l].initialize_from_trajectory('Z', resultZ[l])
+                    if is_empty(resultdZdt) == False:
+                        ind_p_est[l].initialize_from_trajectory('dZdt', resultdZdt[l])
+                    if is_empty(resultC) == False:
+                        ind_p_est[l].initialize_from_trajectory('C', resultC[l])
+                    if is_empty(resultX) == False:
+                        ind_p_est[l].initialize_from_trajectory('X', resultX[l])
+                    if is_empty(resultY) == False:
+                        ind_p_est[l].initialize_from_trajectory('Y', resultY[l])
+
+                    results_pest[l] = ind_p_est[l].run_opt('ipopt',
+                                                           tee=True,
+                                                           solver_opts=solver_opts,
+                                                           variances=sigma_sq[l])
+                    # with open('filemodelMultexpbef.txt', 'w') as f:
+                    #     ind_p_est[l].model.pprint(ostream=f)
+                    #     f.close()
+
+                    self.initialization_model[l] = ind_p_est[l]
+
+                    print("The estimated parameters are:")
+                    for k, v in six.iteritems(results_pest[l].P):
+                        print(k, v)
+                        if k not in all_params:
+                            all_params.append(k)
+                        else:
+                            global_params.append(k)
+
+                        if k not in list_params_across_blocks:
+                            list_params_across_blocks.append(k)
+
+                    if hasattr(results_pest[l],
+                               'Pinit'):  # added for the estimation of initial conditions which have to be complementary state vars CS
+                        print("The estimated parameters are:")
+                        for k, v in six.iteritems(results_pest[l].Pinit):
+                            print(k, v)
+                            if k not in all_params:
+                                all_params.append(k)
+                            else:
+                                global_params.append(k)
+
+                            if k not in list_params_across_blocks:
+                                list_params_across_blocks.append(k)
+
+                    # print("all_params:" , all_params)
+                    # print("global_params:", global_params)
+                else:
                     self._spectra_given = False
                     self._concentration_given = True
                     self.builder[l]=builder[l]
@@ -1748,35 +1768,35 @@ class MultipleExperimentsEstimator(object):
 
 
                     self.initialization_model[l] = ind_p_est[l]
-                
-                print("The estimated parameters are:")
-                for k,v in six.iteritems(results_pest[l].P):
-                    print(k, v)
-                    if k not in all_params:
-                        all_params.append(k)
-                    else:
-                        if k not in global_params:
-                            global_params.append(k)
-                        else:
-                            pass
-                    if k not in list_params_across_blocks:
-                        list_params_across_blocks.append(k)
 
-                if hasattr(results_pest[l], 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
                     print("The estimated parameters are:")
-                    for k, v in six.iteritems(results_pest[l].Pinit):
+                    for k,v in six.iteritems(results_pest[l].P):
                         print(k, v)
                         if k not in all_params:
                             all_params.append(k)
                         else:
-                            global_params.append(k)
-
+                            if k not in global_params:
+                                global_params.append(k)
+                            else:
+                                pass
                         if k not in list_params_across_blocks:
                             list_params_across_blocks.append(k)
 
-                #print("all_params:" , all_params)
-                #print("global_params:", global_params)
-                self.global_params = global_params
+                    if hasattr(results_pest[l], 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+                        print("The estimated parameters are:")
+                        for k, v in six.iteritems(results_pest[l].Pinit):
+                            print(k, v)
+                            if k not in all_params:
+                                all_params.append(k)
+                            else:
+                                global_params.append(k)
+
+                            if k not in list_params_across_blocks:
+                                list_params_across_blocks.append(k)
+
+            #print("all_params:" , all_params)
+            #print("global_params:", global_params)
+            self.global_params = global_params
 
         #Now that we have all our datasets solved individually we can build our blocks and use
         #these solutions to initialize
