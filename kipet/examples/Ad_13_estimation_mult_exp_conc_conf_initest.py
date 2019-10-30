@@ -239,7 +239,7 @@ if __name__ == "__main__":
 
     # Finally we run the parameter estimation. This solves each dataset separately first and then
     # links the models and solves it simultaneously
-    results_pest = pest.run_parameter_estimation(solver = 'k_aug', #or ipopt_sens #for k_aug new version of k_aug needs to be installed
+    results_pest = pest.run_parameter_estimation(solver = 'ipopt_sens', #or k_aug #for k_aug new version of k_aug needs to be installed
                                                         tee=True,
                                                          nfe=nfe,
                                                          ncp=ncp,
