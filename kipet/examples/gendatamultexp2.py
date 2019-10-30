@@ -5,7 +5,6 @@
 #  _________________________________________________________________________
 
 # Sample Problem
-# Christina's project application
 # Estimation with known variances of spectral data using pyomo discretization
 #
 #               C_k(t_i) = Z_k(t_i) + w(t_i)    for all t_i in measurement points
