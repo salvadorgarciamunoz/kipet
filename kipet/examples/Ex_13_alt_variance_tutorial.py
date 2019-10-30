@@ -157,7 +157,7 @@ if __name__ == "__main__":
     options['linear_solver'] = 'ma57'
     # finally we run the optimization
     results_pyomo = p_estimator.run_opt('ipopt_sens',
-                                      tee=True,
+                                      tee=False,
                                       covariance = True,
                                       solver_opts = options,
                                       variances=sigmas)
