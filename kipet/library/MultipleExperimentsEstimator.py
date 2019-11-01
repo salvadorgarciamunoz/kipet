@@ -767,6 +767,11 @@ class MultipleExperimentsEstimator(object):
         if method == 'alternate':
             if not isinstance(initsigs, dict):
                 raise RuntimeError("Must provide initial sigmas as a dictionary of dictionaries with each experiment")
+        else:
+            for item in self.experiments:
+                initsigs[item] = 1e-10
+            for item in self.experiments:
+                tolerance[item] = tol
         
         if not isinstance(start_time, dict):
             raise RuntimeError("Must provide start_times as dict with each experiment")
@@ -819,9 +824,19 @@ class MultipleExperimentsEstimator(object):
             
             v_est_dict[l] = VarianceEstimator(self.opt_model[l])
             v_est_dict[l].apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
-            results_variances[l] = v_est_dict[l].run_opt(solver,
+            if method == 'alternate':
+                results_variances[l] = v_est_dict[l].run_opt(solver,
                                             initial_sigmas = initsigs[l],
                                             secant_point = secant_point[l],
+                                            tolerance = tolerance[l],
+                                            method = method,
+                                            tee=tee,
+                                            solver_opts=solver_opts,
+                                            max_iter=max_iter,
+                                            tol=tol,
+                                            subset_lambdas = A)
+            else:
+                results_variances[l] = v_est_dict[l].run_opt(solver,                                 
                                             tolerance = tolerance[l],
                                             method = method,
                                             tee=tee,
