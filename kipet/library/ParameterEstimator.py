@@ -16,6 +16,7 @@ import os
 import time
 from pyomo.core.expr import current as EXPR
 from pyomo.core.expr.numvalue import NumericConstant
+from pyomo.opt import SolverFactory, ProblemFormat, TerminationCondition
 
 
 class ParameterEstimator(Optimizer):
@@ -36,6 +37,7 @@ class ParameterEstimator(Optimizer):
         self._idx_to_variable = dict()
         self._n_actual = self._n_components
         self.model_variance = True
+        self.termination_condition = None
 
         if hasattr(self.model, 'non_absorbing'):
             warnings.warn("Overriden by non_absorbing")
@@ -524,11 +526,18 @@ class ParameterEstimator(Optimizer):
                             m.S[l, c].set_suffix_value(m.dof_v, count_vars)
                             count_vars += 1
 
-            for v in six.itervalues(self.model.P):
+            for v in six.itervalues(m.P):
                 if v.is_fixed():
                     continue
                 m.P.set_suffix_value(m.dof_v, count_vars)
                 count_vars += 1
+
+            if hasattr(m,'Pinit'):
+                for v in self.model.initparameter_names:
+                    m.init_conditions[v].set_suffix_value(m.dof_v,
+                                                              count_vars)
+                    count_vars += 1
+
             print("SET FOR k_aug")
             self._tmpfile = "k_aug_hess"
             ip = SolverFactory('ipopt')
@@ -612,6 +621,7 @@ class ParameterEstimator(Optimizer):
         ppenalty_dict = kwds.pop('ppenalty_dict', None)
         ppenalty_weights = kwds.pop('ppenalty_weights', None)
         species_list = kwds.pop('subset_components', None)
+        symbolic_solver_labels = kwds.pop('symbolic_solver_labels', False)
 
         list_components = []
         if species_list is None:
@@ -645,17 +655,13 @@ class ParameterEstimator(Optimizer):
                 all_sigma_specified = False
                 sigma_sq[k] = max(sigma_sq.values())
 
-        # if not 'device' in sigma_sq.keys():
-        #    all_sigma_specified = False
-        #    sigma_sq['device'] = 1.0
-
         m = self.model
 
         # estimation
         def rule_objective(m):
             obj = 0
             for t in m.allmeas_times:
-                    obj += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components)
+                obj += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components)
 
             return obj
 
@@ -680,7 +686,7 @@ class ParameterEstimator(Optimizer):
                                              logfile=self._tmpfile,
                                              report_timing=True)
             #self.model.red_hessian.pprint
-            m.P.pprint()
+            # m.P.pprint()
             print("Done solving building reduce hessian")
             output_string = ''
             with open(self._tmpfile, 'r') as f:
@@ -738,17 +744,43 @@ class ParameterEstimator(Optimizer):
                         m.S[l, c].set_suffix_value(m.dof_v, count_vars)
                         count_vars += 1
 
-            for v in six.itervalues(self.model.P):
+            for v in six.itervalues(m.P):
                 if v.is_fixed():
                     continue
                 m.P.set_suffix_value(m.dof_v, count_vars)
                 count_vars += 1
 
+            if hasattr(m,'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+                for v in self.model.initparameter_names:
+                    m.init_conditions[v].set_suffix_value(m.dof_v, count_vars)
+                    count_vars += 1
+
             self._tmpfile = "k_aug_hess"
             ip = SolverFactory('ipopt')
             solver_results = ip.solve(m, tee=False,
                                       logfile=self._tmpfile,
-                                      report_timing=True)
+                                      report_timing=True, symbolic_solver_labels=True)
+            ##############################################
+            # Try different options in case it fails! (CS)
+            ############################################
+            self.termination_condition = solver_results.solver.termination_condition
+            if self.termination_condition != TerminationCondition.optimal:
+                print("WARNING: The solution of the iteration was unsuccessful. The problem is solved with additional solver options.")
+                optimizer.options["OF_start_with_resto"] = 'yes'
+                solver_results = optimizer.solve(m, tee=tee, symbolic_solver_labels=True)
+                self.termination_condition = solver_results.solver.termination_condition
+                if self.termination_condition != TerminationCondition.optimal:
+                    print(
+                        "WARNING: The solution of the iteration was unsuccessful. The problem is solved with additional solver options.")
+                    optimizer.options["OF_start_with_resto"] = 'no'
+                    # optimizer.options["OF_bound_push"] = 1E-02
+                    optimizer.options["OF_bound_relax_factor"] = 1E-05
+                    solver_results = optimizer.solve(m, tee=tee, symbolic_solver_labels=True)
+                    self.termination_condition = solver_results.solver.termination_condition
+                    # options["OF_bound_relax_factor"] = 1E-08
+                    if self.termination_condition != TerminationCondition.optimal:
+                        print("The current iteration was unsuccessful.")
+            #############################################
             # m.P.pprint()
             k_aug = SolverFactory('k_aug')
 
@@ -792,8 +824,27 @@ class ParameterEstimator(Optimizer):
             if self._concentration_given:
                 self._compute_covariance_C(hessian, sigma_sq)
         else:
-            solver_results = optimizer.solve(m, tee=tee)
-
+            solver_results = optimizer.solve(m, tee=tee, symbolic_solver_labels=True)
+            ##############################################
+            #Try different options in case it fails! (CS)
+            ############################################
+            self.termination_condition = solver_results.solver.termination_condition
+            if self.termination_condition!= TerminationCondition.optimal:
+                print("WARNING: The solution of the iteration was unsuccessful. The problem is solved with additional solver options.")
+                optimizer.options["OF_start_with_resto"] = 'yes'
+                solver_results = optimizer.solve(m, tee=tee, symbolic_solver_labels=True)
+                self.termination_condition = solver_results.solver.termination_condition
+                if self.termination_condition!= TerminationCondition.optimal:
+                    print(
+                        "WARNING: The solution of the iteration was unsuccessful. The problem is solved with additional solver options.")
+                    optimizer.options["OF_start_with_resto"] = 'no'
+                    optimizer.options["bound_push"] = 1E-02
+                    optimizer.options["OF_bound_relax_factor"] = 1E-05
+                    solver_results = optimizer.solve(m, tee=tee, symbolic_solver_labels=True)
+                    self.termination_condition = solver_results.solver.termination_condition
+                    # options["OF_bound_relax_factor"] = 1E-08
+                    if self.termination_condition!= TerminationCondition.optimal:
+                        raise Exception("The current iteration was unsuccessful.")
         m.del_component('objective')
 
     def _define_reduce_hess_order_new(self):
@@ -883,6 +934,12 @@ class ParameterEstimator(Optimizer):
             self.model.red_hessian[v] = count_vars
             count_vars += 1
 
+        if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+            for v in six.itervalues(self.model.Pinit):
+                self._idx_to_variable[count_vars] = v
+                self.model.red_hessian[v] = count_vars
+                count_vars += 1
+
     def _define_reduce_hess_order(self):
         self.model.red_hessian = Suffix(direction=Suffix.IMPORT_EXPORT)
         count_vars = 1
@@ -937,6 +994,16 @@ class ParameterEstimator(Optimizer):
             self.model.red_hessian[v] = count_vars
             count_vars += 1
 
+        if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+            for v in six.itervalues(self.model.Pinit):
+                if v.is_fixed():
+                    print(v, end='\t')
+                    print("is fixed")
+                    continue
+                self._idx_to_variable[count_vars] = v
+                self.model.red_hessian[v] = count_vars
+                count_vars += 1
+
     def _compute_covariance(self, hessian, variances):
 
         nt = self._n_allmeas_times
@@ -950,6 +1017,12 @@ class ParameterEstimator(Optimizer):
                     print(str(v) + '\has been skipped for covariance calculations')
                     continue
                 nparams += 1
+            if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+                for v in six.itervalues(self.model.Pinit):
+                    if v.is_fixed():  #: Skip the fixed ones
+                        print(str(v) + '\has been skipped for covariance calculations')
+                        continue
+                    nparams += 1
             # nparams = len(self.model.P)
             nd = nw * nt
             ntheta = nabs * (nw + nt) + nparams
@@ -998,6 +1071,12 @@ class ParameterEstimator(Optimizer):
                 if v.is_fixed():  #: Skip the fixed ones ;)
                     continue
                 nparams += 1
+            if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+                for v in six.itervalues(self.model.Pinit):
+                    if v.is_fixed():  #: Skip the fixed ones
+                        print(str(v) + '\has been skipped for covariance calculations')
+                        continue
+                    nparams += 1
 
             # this changes depending on the order of the suffixes passed to sipopt
             nd = nw * nt
@@ -1012,6 +1091,15 @@ class ParameterEstimator(Optimizer):
                     continue
                 print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
                 i += 1
+            if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+                i=0
+                for k in self.model.Pinit.keys():
+                    # st=self.model.start_time.value
+                    self.model.Pinit[k]=self.model.init_conditions[k].value
+                for k,p in self.model.Pinit.items():
+                    print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
+                    i +=1
+
             return 1
         else:
             nc = self._n_actual
@@ -1022,6 +1110,12 @@ class ParameterEstimator(Optimizer):
                     print(str(v) + '\has been skipped for covariance calculations')
                     continue
                 nparams += 1
+            if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+                for v in six.itervalues(self.model.Pinit):
+                    if v.is_fixed():  #: Skip the fixed ones
+                        print(str(v) + '\has been skipped for covariance calculations')
+                        continue
+                    nparams += 1
             # nparams = len(self.model.P)
             nd = nw * nt
             ntheta = nc * (nw + nt) + nparams
@@ -1074,6 +1168,11 @@ class ParameterEstimator(Optimizer):
                 if v.is_fixed():  #: Skip the fixed ones ;)
                     continue
                 nparams += 1
+            if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+                for v in six.itervalues(self.model.Pinit):
+                    # if v.is_fixed():  #: Skip the fixed ones ;)
+                    #     continue
+                    nparams += 1
 
             # this changes depending on the order of the suffixes passed to sipopt
             nd = nw * nt
@@ -1088,6 +1187,13 @@ class ParameterEstimator(Optimizer):
                     continue
                 print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
                 i += 1
+            if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+                i = 0
+                for k in self.model.Pinit.keys():
+                    self.model.Pinit[k]=self.model.init_conditions[k].value
+                for k,p in self.model.Pinit.items():
+                    print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
+                    i +=1
             return 1
 
     def _compute_covariance_C(self, hessian, variances):
@@ -1119,6 +1225,9 @@ class ParameterEstimator(Optimizer):
                 print(str(v) + '\has been skipped for covariance calculations')
                 continue
             nparams += 1
+        if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+            for v in six.itervalues(self.model.Pinit):
+                nparams += 1
         all_H = hessian
         H = all_H[-nparams:, :]
 
@@ -1141,6 +1250,13 @@ class ParameterEstimator(Optimizer):
                 continue
             print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
             i += 1
+        if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+            i = 0
+            for k in self.model.Pinit.keys():
+                self.model.Pinit[k] = self.model.init_conditions[k].value
+            for k, p in self.model.Pinit.items():
+                print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
+                i += 1
         return 1
 
     def _compute_covariance_no_model_variance(self, hessian, variance):
@@ -1158,6 +1274,9 @@ class ParameterEstimator(Optimizer):
                 print(str(v) + '\has been skipped for covariance calculations')
                 continue
             nparams += 1
+        if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+            for v in six.itervalues(self.model.Pinit):
+                nparams += 1
         all_H = hessian
         # w,v = np.linalg.eig(all_H)
         # np.set_printoptions(threshold=sys.maxsize)
@@ -1182,6 +1301,13 @@ class ParameterEstimator(Optimizer):
                 continue
             print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
             i += 1
+        if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+            i = 0
+            for k in self.model.Pinit.keys():
+                self.model.Pinit[k] = self.model.init_conditions[k].value
+            for k, p in self.model.Pinit.items():
+                print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
+                i += 1
         return 1
 
     #######
@@ -1384,6 +1510,12 @@ class ParameterEstimator(Optimizer):
             if v.is_fixed():  #: Skip the fixed parameters
                 continue
             nparams += 1
+        if hasattr(self.model, 'Pinit'):
+            for v in six.itervalues(self.model.Pinit):#added for the estimation of initial conditions which have to be complementary state vars CS
+                if v.is_fixed():  #: Skip the fixed ones
+                    print(str(v) + '\has been skipped for covariance calculations')
+                    continue
+                nparams += 1
 
         # nparams = len(self.model.P)
         # this changes depending on the order of the suffixes passed to sipopt
@@ -1448,6 +1580,12 @@ class ParameterEstimator(Optimizer):
             if v.is_fixed():  #: Skip the fixed parameters
                 continue
             nparams += 1
+        if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+            for v in six.itervalues(self.model.Pinit):
+                if v.is_fixed():  #: Skip the fixed ones
+                    print(str(v) + '\has been skipped for covariance calculations')
+                    continue
+                nparams += 1
 
         # nparams = len(self.model.P)
         # this changes depending on the order of the suffixes passed to sipopt
@@ -1934,6 +2072,7 @@ class ParameterEstimator(Optimizer):
         tee = kwds.pop('tee', False)
         with_d_vars = kwds.pop('with_d_vars', False)
         covariance = kwds.pop('covariance', False)
+        symbolic_solver_labels = kwds.pop('symbolic_solver_labels', False)
 
         estimability = kwds.pop('estimability', False)
         report_time = kwds.pop('report_time', False)
@@ -1966,8 +2105,62 @@ class ParameterEstimator(Optimizer):
         if report_time:
             start = time.time()
         # Look at the output in results
-        opt = SolverFactory(self.solver)           
-            
+        opt = SolverFactory(self.solver)
+
+        def rule_Pinit(mod, k):#added for the estimation of initial conditions which have to be complementary state vars CS
+            # st = mod.start_time.value
+            Pinit_const = mod.Pinit[k] - mod.init_conditions[k]
+            return Pinit_const == 0.0
+
+        def rule_init_conditionsnew(mod, k):#added for the estimation of initial conditions which have to be complementary state vars CS
+            st = mod.start_time.value  # important!
+            if k in mod.Pinit.keys():
+                bla = mod.X[st, k]
+            else:
+                bla = mod.Z[st, k]
+            return bla == mod.init_conditions[k]
+        #############################################
+        if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
+
+            self.allinitcomps = dict()
+            for k in self._mixture_components:
+                self.allinitcomps[k] = self.model.init_conditions[k].value
+            for i in self._complementary_states:
+                self.allinitcomps[i] = self.model.init_conditions[i].value
+
+
+            self.model.del_component('init_conditions')
+            self.model.del_component('init_conditions_c')
+
+
+            init_dict = dict()
+            for k, l in self.allinitcomps.items():
+                init_dict[k] = l
+
+            self._init_conditions = Var(self.model.states, initialize=init_dict)
+            self.model.add_component('init_conditions', self._init_conditions)
+            for k in self.allinitcomps.keys():
+                if k in self.model.Pinit.keys():
+                    st = self.model.start_time.value
+                    self.model.init_conditions[k].fixed = False
+                    self.model.init_conditions[k].stale = False
+                else:
+                    self.model.init_conditions[k].fixed = True
+                    self.model.init_conditions[k].stale = True
+
+            for k in self.model.Pinit.keys():
+                lb = self.model.Pinit[k].lb #just to take value for bounds and initial values from user input
+                ub = self.model.Pinit[k].ub #fixed var
+
+                self.model.init_conditions[k].setlb(lb)
+                self.model.init_conditions[k].setub(ub)
+
+
+            self.model.init_conditions_c = Constraint(self.model.states, rule=rule_init_conditionsnew)
+
+            Pinitset=[k for k in self.model.Pinit.keys()]
+            self.model.add_component('Pinitsetset', Set(initialize=Pinitset))
+            #############################
         if covariance:
             if self.solver != 'ipopt_sens' and self.solver != 'k_aug':
                 raise RuntimeError('To get covariance matrix the solver needs to be ipopt_sens or k_aug')
@@ -2088,7 +2281,7 @@ class ParameterEstimator(Optimizer):
                                           to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Y'])
         else:
             raise RuntimeError(
-                'Must either provide concentration data or spectra in order to solve the parameter estimatiD-on problem')
+                'Must either provide concentration data or spectra in order to solve the parameter estimation problem')
 
         if self._spectra_given:
             self.compute_D_given_SC(results)
@@ -2099,14 +2292,28 @@ class ParameterEstimator(Optimizer):
 
         results.P = param_vals
 
+        if hasattr(self.model, 'Pinit'):
+            param_valsinit = dict()
+            for name in self.model.initparameter_names:
+                param_valsinit[name] = self.model.init_conditions[name].value
+                # print(param_valsinit)
+            results.Pinit = param_valsinit
+
         if report_time:
             end = time.time()
             print("Total execution time in seconds for variance estimation:", end - start)
 
+
         if self._estimability == True:
-            return self.hessian, results
+            if self.termination_condition!=None and self.termination_condition!=TerminationCondition.optimal:
+                raise Exception("The current iteration was unsuccessful.")
+            else:
+                return self.hessian, results
         else:
-            return results
+            if self.termination_condition!=None and self.termination_condition!=TerminationCondition.optimal:
+                raise Exception("The current iteration was unsuccessful.")
+            else:
+                return results
 
     def run_param_est_with_subset_lambdas(self, builder_clone, end_time, subset, nfe, ncp, sigmas, solver='ipopt', ):
         """ Performs the parameter estimation with a specific subset of wavelengths.

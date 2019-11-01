@@ -378,3 +378,30 @@ The lack of fit related to the UPLC data can be calculated using
 ::
 	lof2 = p_estimator.lack_of_fit_huplc()
 An example is provided in Ad_2_estimation_uplc.py.
+
+In case one wants to determine the initial values of complementary state variables as degrees of freedom of the parameter estimation problem as well, after creating the model,
+the following additions have to be made to the TemplateBuilder called builder her
+::
+    modelexp1 = builder.create_pyomo_model(start_time1, end_time1)
+    initextra = {'A'}  # to define to be estimated initial values for extra states
+    builder.add_init_extra('A', init=1e-3, bounds=(0.0, 0.1))
+    builder.set_estinit_extra_species(modelexp1, initextra)  # to define to be estimated initial values for extra states
+    
+If you want to solve a parameter estimation problem for a single experiment, you will have to create the model again after this and hand it to the ParameterEstimator. 
+When solving a parameter estimation problem for multiple experiments, you can hand the builder as an argument to the run_parameter_estimation function after calling the MultipleExperimentsEstimator on the datasets.
+::
+    pest = MultipleExperimentsEstimator(datasets)
+    
+    results_pest = pest.run_parameter_estimation(solver = 'k_aug', #or ipopt_sens #for k_aug new version of k_aug needs to be installed
+                                                        tee=True,
+                                                         nfe=nfe,
+                                                         ncp=ncp,
+                                                         covariance = True,
+                                                         solver_opts = options,
+                                                         start_time=start_time,
+                                                         end_time=end_time,
+                                                         spectra_problem = False,
+                                                         sigma_sq=variances,
+                                                         builder = builder_dict)
+An example with some initialization options commented out is provided in Ad_13_estimation_mult_exp_conc_conf_initest.py. In case of initialization with previous results, the upper additions always have to be made before calling the ParameterEstimator and not before running a simulation or variance estimation. The builders for these two are different in this case. You can find more explanation in the example.  
+                                                    
