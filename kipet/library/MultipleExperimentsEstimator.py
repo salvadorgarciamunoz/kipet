@@ -203,7 +203,7 @@ class MultipleExperimentsEstimator(object):
             self.n_mark[exp_count] = nc
             exp_count +=1
             
-        print(nc)        
+        #print(nc)        
         self._n_actual = nc
         
         exp_count = 0
@@ -240,7 +240,7 @@ class MultipleExperimentsEstimator(object):
                 # print(ncompx,ntimex, nwavex, nparmx)
                 ntheta += ncompx * (ntimex+ nwavex) + nparmx
             exp_count += 1
-            print("ntheta:", ntheta)
+            #print("ntheta:", ntheta)
             
         #ntheta = nc * (nw + nt) + nparams
 
@@ -392,7 +392,7 @@ class MultipleExperimentsEstimator(object):
         nw = self._n_meas_lambdas
         nc = self._n_actual
         nparams = self._n_params
-        print(nt,nw,nc,nparams)
+        #print(nt,nw,nc,nparams)
         
         nd = nw * nt
         ntheta = 0
@@ -400,7 +400,7 @@ class MultipleExperimentsEstimator(object):
         rindmark = 0
         for i in self.experiments:
             if exp_count == 0:
-                print(self.n_mark[exp_count],self.t_mark[exp_count], self.l_mark[exp_count], self.p_mark[exp_count])
+                #print(self.n_mark[exp_count],self.t_mark[exp_count], self.l_mark[exp_count], self.p_mark[exp_count])
                 ntheta += self.n_mark[exp_count] * (self.t_mark[exp_count] + self.l_mark[exp_count]) + self.p_mark[exp_count]
                 rindmark += self.n_mark[exp_count]*self.t_mark[exp_count]
             else:
@@ -408,9 +408,9 @@ class MultipleExperimentsEstimator(object):
                 ntimex = (self.t_mark[exp_count] - self.t_mark[exp_count - 1] )
                 nwavex = (self.l_mark[exp_count] - self.l_mark[exp_count - 1])
                 nparmx = self.p_mark[exp_count] - self.p_mark[exp_count - 1]
-                print(ncompx,ntimex, nwavex, nparmx)
+                #print(ncompx,ntimex, nwavex, nparmx)
                 rindmark += ncompx*ntimex
-                print("rindmark", rindmark)
+                #print("rindmark", rindmark)
                 ntheta += ncompx * (ntimex+ nwavex) + nparmx
             exp_count += 1
         self.B_matrix = np.zeros((ntheta, nw * nt))
@@ -513,7 +513,7 @@ class MultipleExperimentsEstimator(object):
                     waveshift = j
                     nc_prev = nc
                     nc = (self.n_mark[exp_count] - self.n_mark[exp_count - 1])
-                    print("HERE IS THE EXP CHANGE")
+                    #print("HERE IS THE EXP CHANGE")
                 
                     #timeshift = self.t_mark[exp_count]
                     #waveshift = self.l_mark[exp_count]
@@ -916,7 +916,7 @@ class MultipleExperimentsEstimator(object):
         tee = kwds.pop('tee', False)
         norm_order = kwds.pop('norm',np.inf)
         max_iter = kwds.pop('max_iter', 400)
-        tol = kwds.pop('tolerance', 5.0e-5)
+        tol = kwds.pop('tol', 5.0e-5)
         A = kwds.pop('subset_lambdas', None)
         lsq_ipopt = kwds.pop('lsq_ipopt', False)
         init_C = kwds.pop('init_C', None)
@@ -930,6 +930,11 @@ class MultipleExperimentsEstimator(object):
         # These will need to be made into dicts if there are different 
         # conditions in each experiment
         inputs = kwds.pop("inputs", None)
+        method = kwds.pop("method", None)
+        initsigs = kwds.pop("initial_sigmas", dict())
+        tolerance = kwds.pop("tolerance", dict())
+        secant_point = kwds.pop("secant_point",dict())
+        
         inputs_sub = kwds.pop("inputs_sub", None)
         trajectories = kwds.pop("trajectories", None)
         fixedtraj = kwds.pop('fixedtraj', False)
@@ -946,6 +951,15 @@ class MultipleExperimentsEstimator(object):
         # self.lbZ = kwds.pop('lbZ', False)
 
         species_list = kwds.pop('subset_components', None)
+        
+        if method == 'alternate':
+            if not isinstance(initsigs, dict):
+                raise RuntimeError("Must provide initial sigmas as a dictionary of dictionaries with each experiment")
+        else:
+            for item in self.experiments:
+                initsigs[item] = 1e-10
+            for item in self.experiments:
+                tolerance[item] = tol
         
         if not isinstance(start_time, dict):
             raise RuntimeError("Must provide start_times as dict with each experiment")
@@ -998,7 +1012,21 @@ class MultipleExperimentsEstimator(object):
             
             v_est_dict[l] = VarianceEstimator(self.opt_model[l])
             v_est_dict[l].apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
-            results_variances[l] = v_est_dict[l].run_opt(solver,
+            if method == 'alternate':
+                results_variances[l] = v_est_dict[l].run_opt(solver,
+                                            initial_sigmas = initsigs[l],
+                                            secant_point = secant_point[l],
+                                            tolerance = tolerance[l],
+                                            method = method,
+                                            tee=tee,
+                                            solver_opts=solver_opts,
+                                            max_iter=max_iter,
+                                            tol=tol,
+                                            subset_lambdas = A)
+            else:
+                results_variances[l] = v_est_dict[l].run_opt(solver,                                 
+                                            tolerance = tolerance[l],
+                                            method = method,
                                             tee=tee,
                                             solver_opts=solver_opts,
                                             max_iter=max_iter,
@@ -1046,7 +1074,8 @@ class MultipleExperimentsEstimator(object):
         if solver == 'ipopt_sens':
             self._tmpfile = "ipopt_hess"
             solver_results = optimizer.solve(m,
-                                             logfile=self._tmpfile,# tee=True,
+                                             tee = tee,
+                                             logfile=self._tmpfile,
                                              report_timing=True)
 
             print("Done solving building reduce hessian")
@@ -1059,9 +1088,10 @@ class MultipleExperimentsEstimator(object):
             ipopt_output, hessian_output = split_sipopt_string(output_string)
             #print hessian_output
             print("build strings")
-            if tee == True:
-                print(ipopt_output)
-            # print(self._idx_to_variable)
+            
+            #if tee == True:
+            #    print(ipopt_output)
+    
             n_vars = len(self._idx_to_variable)
             #print('n_vars', n_vars)
             hessian = read_reduce_hessian(hessian_output, n_vars)
@@ -1224,8 +1254,8 @@ class MultipleExperimentsEstimator(object):
             ipopt_output, hessian_output = split_sipopt_string1(output_string)
             #print (hessian_output)
             #print("build strings")
-            if tee == True:
-                print(ipopt_output)
+            #if tee == True:
+                #print(ipopt_output)
 
             n_vars = len(self._idx_to_variable)
 
@@ -1385,6 +1415,8 @@ class MultipleExperimentsEstimator(object):
             sigma_sq (dict): variances
             
             spectra_problem (bool): tells whether we have spectral data or concentration data (False if not specified)
+            
+            shared_spectra (bool): tells whether spectra are shared across datasets for species (False if not specified)
 
         Returns:
 
@@ -1439,6 +1471,8 @@ class MultipleExperimentsEstimator(object):
 
         # option for non-negativity bounds for Z:
         # self.lbZ = kwds.pop('lbZ', False)
+        
+        spectra_shared = kwds.pop('shared_spectra', False)
         
         if covariance:
             if solver != 'ipopt_sens' and solver != 'k_aug':
@@ -1525,21 +1559,16 @@ class MultipleExperimentsEstimator(object):
 
         ind_p_est = dict()
         list_params_across_blocks = list()
+        list_waves_across_blocks = list()
+        list_species_across_blocks = list()
+        all_waves = list()
         all_params = list()
         global_params = list()
-        print(self.experiments)
-        # if spectra_problem:
-        #     self._spectra_given = True
-        #     self._concentration_given = False
-        # else:
-        #     self._spectra_given = False
-        #     self._concentration_given = True
+        global_waves = list()
+        all_species = list()
+        shared_species = list()
         for l in self.experiments:
             print("Solving for DATASET ", l)
-
-                #print("all_params:" , all_params)
-                #print("global_params:", global_params)
-                #we do not have inits
             if spectra_problem == True:
                 if self._variance_solved == True:
                     # then we already have inits
@@ -1585,6 +1614,29 @@ class MultipleExperimentsEstimator(object):
 
                             if k not in list_params_across_blocks:
                                 list_params_across_blocks.append(k)
+                                
+                if spectra_shared ==True:
+                    for wa in ind_p_est[l].model.meas_lambdas:
+                        if k not in all_waves:
+                            all_waves.append(wa)
+                        else:
+                            global_waves.append(wa)
+                        
+                        if wa not in list_waves_across_blocks:
+                            list_waves_across_blocks.append(wa)
+                
+                if spectra_shared ==True:
+                    for sp in ind_p_est[l].model.mixture_components:
+                        if sp not in all_species:
+                            all_species.append(sp)
+                        else:
+                            shared_species.append(sp)
+                        
+                        if sp not in list_species_across_blocks:
+                            list_species_across_blocks.append(sp)
+                #print("all_species:" , all_species)
+                #print("shared species:", shared_species)
+                #print("list_species_across_blocks", list_species_across_blocks)
                 else:
                     self._spectra_given = True
                     self.builder[l]=builder[l]
@@ -1794,9 +1846,34 @@ class MultipleExperimentsEstimator(object):
                             if k not in list_params_across_blocks:
                                 list_params_across_blocks.append(k)
 
-            #print("all_params:" , all_params)
-            #print("global_params:", global_params)
-            self.global_params = global_params
+                #print("all_params:" , all_params)
+                #print("global_params:", global_params)
+                self.global_params = global_params
+                
+                if spectra_shared ==True:
+                    for wa in ind_p_est[l].model.meas_lambdas:
+                        if wa not in all_waves:
+                            all_waves.append(wa)
+                        else:
+                            global_waves.append(wa)
+                        
+                        if wa not in list_waves_across_blocks:
+                            list_waves_across_blocks.append(wa)
+                            
+                if spectra_shared ==True:
+                    for sp in ind_p_est[l].model.mixture_components:
+                        if sp not in all_species:
+                            #print(sp)
+                            all_species.append(sp)
+                        else:
+                            shared_species.append(sp)
+                        
+                        if sp not in list_species_across_blocks:
+                            list_species_across_blocks.append(sp)
+                #print("all_species:" , all_species)
+                #print("shared species:", shared_species)
+                #print("list_species_across_blocks", list_species_across_blocks)
+                #print("list_waves_across_blocks", list_waves_across_blocks)
 
         #Now that we have all our datasets solved individually we can build our blocks and use
         #these solutions to initialize
@@ -1913,6 +1990,36 @@ class MultipleExperimentsEstimator(object):
             
         m.parameter_linking = Constraint(self.experiments, list_params_across_blocks, rule = param_linking_rule)
         
+        def wavelength_linking_rule(m, exp, wave, comp):
+            prev_exp = None
+            if exp == m.first_exp:
+                return Constraint.Skip
+            else:
+                for key, val in m.map_exp_to_count.items():
+                    #print(key,val)
+                    if val == exp:
+                        prev_exp = m.map_exp_to_count[key-1]
+                if wave in list_waves_across_blocks and prev_exp != None:
+                    #This here is to check that the correct linking constraints are constructed
+                    
+                    #print(self.initialization_model[exp]._mixture_components)
+                    #print(comp)
+                    #print("this constraint is written:")
+                    #print(m.experiment[exp].S[wave,comp],"=", m.experiment[prev_exp].S[wave,comp])
+                    if comp in m.experiment[prev_exp].mixture_components and comp in m.experiment[exp].mixture_components:
+                        return m.experiment[exp].S[wave,comp] == m.experiment[prev_exp].S[wave,comp]
+                    else:
+                        return Constraint.Skip
+                else:
+                    return Constraint.Skip
+                
+        if spectra_shared == True:
+            #print(list_components[self.experiments])
+            #print(list_waves_across_blocks)
+            #print(self.experiments)
+            #print(list_species_across_blocks)
+            m.spectra_linking = Constraint(self.experiments, list_waves_across_blocks, list_species_across_blocks, rule = wavelength_linking_rule)
+            
         m.obj = Objective(sense = minimize, expr=sum(b.error for b in m.experiment[:]))
         self.model = m
         
