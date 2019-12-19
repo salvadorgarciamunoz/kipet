@@ -459,6 +459,8 @@ class VarianceEstimator(Optimizer):
                     denom_secant = func2(nu_squared, new_delta, itersigma[count]) - func2(nu_squared, iterdelta[count-1], itersigma[count - 1])
                     #itersigma1= numerator_secant/denom_secant
                     itersigma[count + 1] = itersigma[count] - func2(nu_squared, new_delta, itersigma[count])*((itersigma[count]-itersigma[count-1])/denom_secant)
+                    if itersigma[count + 1] < 0:
+                        itersigma[count + 1] = -1*itersigma[count + 1]
                     count += 1
             if individual_species:
                 print("solving for individual species' variance based on the obtained delta")

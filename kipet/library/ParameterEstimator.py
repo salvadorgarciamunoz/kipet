@@ -448,10 +448,10 @@ class ParameterEstimator(Optimizer):
                 os.remove(self._tmpfile)
             # output_string = f.getvalue()
             ipopt_output, hessian_output = split_sipopt_string(output_string)
-            print(hessian_output)
+            #print(hessian_output)
             print("build strings")
-            if tee == True:
-                print(ipopt_output)
+            #if tee == True:
+                #print(ipopt_output)
 
             if not all_sigma_specified:
                 raise RuntimeError(

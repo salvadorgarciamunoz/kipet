@@ -41,29 +41,49 @@ if __name__ == "__main__":
     dataDirectory = os.path.abspath(
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
             inspect.currentframe() ) ) ), 'data_sets'))
-    filename =  os.path.join(dataDirectory,'varest2.csv')
+    filename =  os.path.join(dataDirectory,'varest3.csv')
     D_frame = read_spectral_data_from_csv(filename, negatives_to_zero = True)
 
     # Then we build dae block for as described in the section 4.2.1. Note the addition
     # of the data using .add_spectral_data
     #################################################################################    
-    builder = TemplateBuilder()    
-    components = {'A':1e-2,'B':0,'C':0}
-    builder.add_mixture_component(components)
-    builder.add_parameter('k1', init=1.2, bounds=(0.01,5.0)) 
-    #There is also the option of providing initial values: Just add init=... as additional argument as above.
-    builder.add_parameter('k2',init = 0.2, bounds=(0.001,1.0))
-    builder.add_spectral_data(D_frame)
+    builder = TemplateBuilder()  
+    components = dict()
+    components['A'] = 3e-2
+    components['B'] = 4e-2
+    components['C'] = 0.0
+    components['D'] = 2e-2
+    components['E'] = 0.0
+    components['F'] = 0.0
 
-    # define explicit system of ODEs
+    builder.add_mixture_component(components)
+
+
+
+    #builder.add_parameter('k1', init=1.0, bounds=(0.5,5.0)) 
+    #There is also the option of providing initial values: Just add init=... as additional argument as above.
+    #builder.add_parameter('k2',init = 20.0, bounds=(0.005,40))
+    #builder.add_parameter('k3',init = 0.05, bounds=(0.005,1.0))
+    builder.add_parameter('k1', init=1.5, bounds=(0.5,2.0)) 
+    #There is also the option of providing initial values: Just add init=... as additional argument as above.
+    builder.add_parameter('k2',init = 28.0, bounds=(1,30))
+    builder.add_parameter('k3',init = 0.3, bounds=(0.001,0.5))
+
     def rule_odes(m,t):
         exprs = dict()
         exprs['A'] = -m.P['k1']*m.Z[t,'A']
-        exprs['B'] = m.P['k1']*m.Z[t,'A']-m.P['k2']*m.Z[t,'B']
-        exprs['C'] = m.P['k2']*m.Z[t,'B']
+        exprs['B'] = -m.P['k1']*m.Z[t,'A']-m.P['k3']*m.Z[t,'B']
+        exprs['C'] = -m.P['k2']*m.Z[t,'C']*m.Z[t,'D'] +m.P['k1']*m.Z[t,'A']
+        exprs['D'] = -2*m.P['k2']*m.Z[t,'C']*m.Z[t,'D']
+        exprs['E'] = m.P['k2']*m.Z[t,'C']*m.Z[t,'D']
+        exprs['F'] = m.P['k3']*m.Z[t,'B']
         return exprs
-    
+
     builder.set_odes_rule(rule_odes)
+
+    builder.add_spectral_data(D_frame)
+    builder.bound_profile(var = 'S', bounds = (0,20))
+    
     opt_model = builder.create_pyomo_model(0.0,10.0)
     
     #=========================================================================
