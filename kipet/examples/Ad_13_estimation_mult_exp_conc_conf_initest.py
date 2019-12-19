@@ -61,6 +61,8 @@ if __name__ == "__main__":
     builder2.add_parameter('k1', init=1.0, bounds=(0.00, 10))
     # There is also the option of providing initial values: Just add init=... as additional argument as above.
     builder2.add_parameter('k2', init=0.224, bounds=(0.0, 10))
+
+    #A and A2 are the states that we want to estimate the initial condition for, they are not measured:
     #add complementary state variable:
     extra_states1 = dict()
     extra_states1['A'] = 1e-3
@@ -118,7 +120,7 @@ if __name__ == "__main__":
     builder_dict = {'Exp1':builder, 'Exp2':builder22}
     
     options = dict()
-    options['linear_solver'] = 'ma57'
+    # options['linear_solver'] = 'ma97'#''ma86'
     #options['mu_init']=1e-6
     
     # ============================================================================
