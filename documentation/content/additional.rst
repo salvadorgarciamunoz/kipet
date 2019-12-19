@@ -329,7 +329,7 @@ and the warmstart argument should be set to true:
 
 An example is provided in Ad_2_estimation_warmstart.py, where we just estimate one parameter first and then initialize the estimation of both parameters with that solution.
 
-In some cases it can be useful to provide expected optimal parameter values and ensure that the estimated parameters stay close to these values. For that purpose, it is possible to add optional L2-penalty terms to the objective and define the expected parameter values and corresponding penalty weights, e.g.
+In some cases it can be useful to provide expected optimal parameter values and ensure that the estimated parameters stay close to these values. For that purpose, it is possible to add optional quadratic penalty terms to the objective and define the expected parameter values and corresponding penalty weights, e.g.
 ::
 
 	ppenalty_dict=dict()
