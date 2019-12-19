@@ -95,6 +95,7 @@ class ParameterEstimator(Optimizer):
         warmstart = kwds.pop('warmstart', False)
         eigredhess2file = kwds.pop('eigredhess2file', False)
         penaltyparam = kwds.pop('penaltyparam', False)
+        penaltyparamcon = kwds.pop('penaltyparamcon', False) #added for optional penalty term related to constraint CS
         ppenalty_dict = kwds.pop('ppenalty_dict', None)
         ppenalty_weights = kwds.pop('ppenalty_weights', None)
         covariance = kwds.pop('covariance', False)
@@ -310,6 +311,15 @@ class ParameterEstimator(Optimizer):
                 #                     fourth_term = 0.0
                 #                     #weights[3] = 0.0
                 #     expr += weights[3] * fourth_term
+                if penaltyparamcon == True: #added for optional penalty term related to constraint CS
+                    #if ppenalty_weights is None:
+                    # fifth_term = 0.0
+                    rho=1e-1
+                    sumpen=0.0
+                    for t in m.alltime:
+                        sumpen = sumpen + m.Y[t,'npen']
+                    fifth_term = rho*sumpen
+                    expr += fifth_term
             return expr
 
         # estimation without model variance and only device variance
@@ -533,9 +543,8 @@ class ParameterEstimator(Optimizer):
                 count_vars += 1
 
             if hasattr(m,'Pinit'):
-                for v in self.model.initparameter_names:
-                    m.init_conditions[v].set_suffix_value(m.dof_v,
-                                                              count_vars)
+                for k, v in six.iteritems(self.model.Pinit):
+                    m.init_conditions[k].set_suffix_value(m.dof_v, count_vars)
                     count_vars += 1
 
             print("SET FOR k_aug")
@@ -618,6 +627,7 @@ class ParameterEstimator(Optimizer):
         warmstart = kwds.pop('warmstart', False)
         eigredhess2file = kwds.pop('eigredhess2file', False)
         penaltyparam = kwds.pop('penaltyparam', False)
+        penaltyparamcon = kwds.pop('penaltyparamcon', False) #added for optional penalty term related to constraint CS
         ppenalty_dict = kwds.pop('ppenalty_dict', None)
         ppenalty_weights = kwds.pop('ppenalty_weights', None)
         species_list = kwds.pop('subset_components', None)
@@ -659,10 +669,18 @@ class ParameterEstimator(Optimizer):
 
         # estimation
         def rule_objective(m):
-            obj = 0
-            for t in m.allmeas_times:
-                obj += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components)
-
+            if penaltyparamcon == True: #added for optional penalty term related to constraint CS
+                obj=0
+                rho = 100
+                sumpen = 0.0
+                for t in m.allmeas_times:
+                    sumpen = sumpen + m.Y[t, 'npen']
+                fifth_term =  rho * sumpen
+                obj += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components) + fifth_term
+            else:
+                obj = 0
+                for t in m.allmeas_times:
+                    obj += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components)
             return obj
 
         m.objective = Objective(rule=rule_objective)
@@ -823,6 +841,10 @@ class ParameterEstimator(Optimizer):
                 self.hessian = hessian
             if self._concentration_given:
                 self._compute_covariance_C(hessian, sigma_sq)
+        elif self.solver == 'gams' and covariance==False: #To use conopt as alternative NLP solver, CS
+            ip = SolverFactory('gams')
+            solver_results = ip.solve(m, solver='conopt', tee=True)
+            ##############################################
         else:
             solver_results = optimizer.solve(m, tee=tee, symbolic_solver_labels=True)
             ##############################################
@@ -935,7 +957,8 @@ class ParameterEstimator(Optimizer):
             count_vars += 1
 
         if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-            for v in six.itervalues(self.model.Pinit):
+            for k, v in six.iteritems(self.model.Pinit):
+                v = self.model.init_conditions[k]
                 self._idx_to_variable[count_vars] = v
                 self.model.red_hessian[v] = count_vars
                 count_vars += 1
@@ -995,11 +1018,8 @@ class ParameterEstimator(Optimizer):
             count_vars += 1
 
         if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-            for v in six.itervalues(self.model.Pinit):
-                if v.is_fixed():
-                    print(v, end='\t')
-                    print("is fixed")
-                    continue
+            for k, v in six.iteritems(self.model.Pinit):
+                v = self.model.init_conditions[k]
                 self._idx_to_variable[count_vars] = v
                 self.model.red_hessian[v] = count_vars
                 count_vars += 1
@@ -1091,14 +1111,13 @@ class ParameterEstimator(Optimizer):
                     continue
                 print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
                 i += 1
-            if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-                i=0
+            if hasattr(self.model, 'Pinit'):  # added for the estimation of initial conditions which have to be complementary state vars CS
                 for k in self.model.Pinit.keys():
-                    # st=self.model.start_time.value
-                    self.model.Pinit[k]=self.model.init_conditions[k].value
-                for k,p in self.model.Pinit.items():
-                    print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
-                    i +=1
+                    self.model.Pinit[k] = self.model.init_conditions[k].value
+
+                    print('{} ({},{})'.format(k, self.model.Pinit[k].value - variances_p[i] ** 0.5,
+                                              self.model.Pinit[k].value + variances_p[i] ** 0.5))
+                    i += 1
 
             return 1
         else:
@@ -1187,13 +1206,12 @@ class ParameterEstimator(Optimizer):
                     continue
                 print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
                 i += 1
-            if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-                i = 0
+            if hasattr(self.model,'Pinit'):  # added for the estimation of initial conditions which have to be complementary state vars CS
                 for k in self.model.Pinit.keys():
-                    self.model.Pinit[k]=self.model.init_conditions[k].value
-                for k,p in self.model.Pinit.items():
-                    print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
-                    i +=1
+                    self.model.Pinit[k] = self.model.init_conditions[k].value
+                    print('{} ({},{})'.format(k, self.model.Pinit[k].value - variances_p[i] ** 0.5,
+                                              self.model.Pinit[k].value + variances_p[i] ** 0.5))
+                    i += 1
             return 1
 
     def _compute_covariance_C(self, hessian, variances):
@@ -1251,11 +1269,9 @@ class ParameterEstimator(Optimizer):
             print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
             i += 1
         if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-            i = 0
             for k in self.model.Pinit.keys():
                 self.model.Pinit[k] = self.model.init_conditions[k].value
-            for k, p in self.model.Pinit.items():
-                print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
+                print('{} ({},{})'.format(k, self.model.Pinit[k].value - variances_p[i] ** 0.5, self.model.Pinit[k].value + variances_p[i] ** 0.5))
                 i += 1
         return 1
 
@@ -1302,11 +1318,9 @@ class ParameterEstimator(Optimizer):
             print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
             i += 1
         if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-            i = 0
             for k in self.model.Pinit.keys():
                 self.model.Pinit[k] = self.model.init_conditions[k].value
-            for k, p in self.model.Pinit.items():
-                print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
+                print('{} ({},{})'.format(k, self.model.Pinit[k].value - variances_p[i] ** 0.5, self.model.Pinit[k].value + variances_p[i] ** 0.5))
                 i += 1
         return 1
 
@@ -2159,7 +2173,8 @@ class ParameterEstimator(Optimizer):
             self.model.init_conditions_c = Constraint(self.model.states, rule=rule_init_conditionsnew)
 
             Pinitset=[k for k in self.model.Pinit.keys()]
-            self.model.add_component('Pinitsetset', Set(initialize=Pinitset))
+            if hasattr(self.model, 'Pinitsetset')==False:
+                self.model.add_component('Pinitsetset', Set(initialize=Pinitset))
             #############################
         if covariance:
             if self.solver != 'ipopt_sens' and self.solver != 'k_aug':
