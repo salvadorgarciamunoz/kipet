@@ -203,7 +203,7 @@ class MultipleExperimentsEstimator(object):
             self.n_mark[exp_count] = nc
             exp_count +=1
             
-        #print(nc)        
+        print(nc)        
         self._n_actual = nc
         
         exp_count = 0
@@ -240,7 +240,7 @@ class MultipleExperimentsEstimator(object):
                 # print(ncompx,ntimex, nwavex, nparmx)
                 ntheta += ncompx * (ntimex+ nwavex) + nparmx
             exp_count += 1
-            #print("ntheta:", ntheta)
+            print("ntheta:", ntheta)
             
         #ntheta = nc * (nw + nt) + nparams
 
@@ -265,6 +265,14 @@ class MultipleExperimentsEstimator(object):
         V_param = V_theta
         variances_p = np.diag(V_param)
         print(variances_p)
+        print('\nParameters:')
+        i=0
+        for exp in self.experiments:
+            for k, p in self.model.experiment[exp].P.items():
+                if p.is_fixed():
+                    continue
+                print('{}, {}'.format(k, p.value))
+                i += 1
         print('\nConfidence intervals:')
         i = 0
         for exp in self.experiments:
@@ -274,12 +282,18 @@ class MultipleExperimentsEstimator(object):
                 print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
                 i += 1
         if hasattr(self.model.experiment[exp], 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-            i = 0
-            for k in self.model.experiment[exp].Pinit.keys():
-                self.model.experiment[exp].Pinit[k] = self.model.experiment[exp].init_conditions[k].value
-            for k, p in self.model.experiment[exp].Pinit.items():
-                print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
-                i += 1
+            print('\nLocal Parameters:')
+            for exp in self.experiments:
+                for k in self.model.experiment[exp].Pinit.keys():
+                    self.model.experiment[exp].Pinit[k] = self.model.experiment[exp].init_conditions[k].value
+                    print('{}, {}'.format(k, self.model.experiment[exp].Pinit[k].value))
+
+            print('\nConfidence intervals:')
+            for exp in self.experiments:
+                for k in self.model.experiment[exp].Pinit.keys():
+                    self.model.experiment[exp].Pinit[k] = self.model.experiment[exp].init_conditions[k].value
+                    print('{} ({},{})'.format(k, self.model.experiment[exp].Pinit[k].value - variances_p[i] ** 0.5, self.model.experiment[exp].Pinit[k].value + variances_p[i] ** 0.5))
+                    i += 1
         return 1
 
     def _compute_covariance_C(self, hessian, variances):
@@ -358,6 +372,14 @@ class MultipleExperimentsEstimator(object):
         #print(covariance_C,"covariance matrix")
         variances_p = np.diag(covariance_C)
         #print("Parameter variances: ", variances_p)
+        print('\nParameters:')
+        i=0
+        for exp in self.experiments:
+            for k, p in self.model.experiment[exp].P.items():
+                if p.is_fixed():
+                    continue
+                print('{}, {}'.format(k, p.value))
+                i += 1
         print('\nConfidence intervals:')
         i = 0
         for exp in self.experiments:
@@ -367,12 +389,17 @@ class MultipleExperimentsEstimator(object):
                 print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
                 i += 1
         if hasattr(self.model.experiment[exp], 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-            i = 0
+            print('\nLocal Parameters:')
+            # i = 0
             for exp in self.experiments:
                 for k in self.model.experiment[exp].Pinit.keys():
                     self.model.experiment[exp].Pinit[k] = self.model.experiment[exp].init_conditions[k].value
-                for k, p in self.model.experiment[exp].Pinit.items():
-                    print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
+                    print('{}, {}'.format(k, self.model.experiment[exp].Pinit[k].value))
+            print('\nConfidence intervals:')
+            for exp in self.experiments:
+                for k in self.model.experiment[exp].Pinit.keys():
+                    self.model.experiment[exp].Pinit[k] = self.model.experiment[exp].init_conditions[k].value
+                    print('{} ({},{})'.format(k, self.model.experiment[exp].Pinit[k].value - variances_p[i] ** 0.5, self.model.experiment[exp].Pinit[k].value + variances_p[i] ** 0.5))
                     i += 1
         return 1
 
@@ -934,7 +961,7 @@ class MultipleExperimentsEstimator(object):
         initsigs = kwds.pop("initial_sigmas", dict())
         tolerance = kwds.pop("tolerance", dict())
         secant_point = kwds.pop("secant_point",dict())
-        
+
         inputs_sub = kwds.pop("inputs_sub", None)
         trajectories = kwds.pop("trajectories", None)
         fixedtraj = kwds.pop('fixedtraj', False)
@@ -960,7 +987,7 @@ class MultipleExperimentsEstimator(object):
                 initsigs[item] = 1e-10
             for item in self.experiments:
                 tolerance[item] = tol
-        
+
         if not isinstance(start_time, dict):
             raise RuntimeError("Must provide start_times as dict with each experiment")
         else:
@@ -1024,7 +1051,7 @@ class MultipleExperimentsEstimator(object):
                                             tol=tol,
                                             subset_lambdas = A)
             else:
-                results_variances[l] = v_est_dict[l].run_opt(solver,                                 
+                results_variances[l] = v_est_dict[l].run_opt(solver,
                                             tolerance = tolerance[l],
                                             method = method,
                                             tee=tee,
@@ -1059,6 +1086,7 @@ class MultipleExperimentsEstimator(object):
         if solver != 'ipopt_sens' and solver != 'k_aug':
             raise RuntimeError('To get covariance matrix the solver needs to be ipopt_sens or k_aug')
         if solver == 'ipopt_sens':
+            # solver_opts['linear_solver'] = 'pardiso'
             if not 'compute_red_hessian' in solver_opts.keys():
                 solver_opts['compute_red_hessian'] = 'yes'
         if solver == 'k_aug':
@@ -1074,8 +1102,7 @@ class MultipleExperimentsEstimator(object):
         if solver == 'ipopt_sens':
             self._tmpfile = "ipopt_hess"
             solver_results = optimizer.solve(m,
-                                             tee = tee,
-                                             logfile=self._tmpfile,
+                                             logfile=self._tmpfile, tee=True,
                                              report_timing=True)
 
             print("Done solving building reduce hessian")
@@ -1088,10 +1115,9 @@ class MultipleExperimentsEstimator(object):
             ipopt_output, hessian_output = split_sipopt_string(output_string)
             #print hessian_output
             print("build strings")
-            
-            #if tee == True:
-            #    print(ipopt_output)
-    
+            if tee == True:
+                print(ipopt_output)
+            # print(self._idx_to_variable)
             n_vars = len(self._idx_to_variable)
             #print('n_vars', n_vars)
             hessian = read_reduce_hessian(hessian_output, n_vars)
@@ -1153,7 +1179,7 @@ class MultipleExperimentsEstimator(object):
                 f.close()
                 
             m.write(filename="ip.nl", format=ProblemFormat.nl)
-            solver_results = ip.solve(m, tee=m.tee, 
+            solver_results = ip.solve(m, tee=True,
                                       options = solver_opts,
                                       logfile=self._tmpfile,
                                       report_timing=True)
@@ -1227,8 +1253,11 @@ class MultipleExperimentsEstimator(object):
         if solver == 'ipopt_sens':
             if not 'compute_red_hessian' in solver_opts.keys():
                 solver_opts['compute_red_hessian'] = 'yes'
+                # solver_opts['linear_solver'] = 'ma57'
+                # solver_opts['ma57_pivot_order'] = 4
         if solver == 'k_aug':
             solver_opts['compute_inv'] = ''
+            # solver_opts['linear_solver']='ma86'
         #print(solver_opts)
         optimizer = SolverFactory(solver)
         for key, val in solver_opts.items():
@@ -1265,6 +1294,7 @@ class MultipleExperimentsEstimator(object):
             sigma_sq = self.variances
             if self._concentration_given:
                 self._compute_covariance_C(hessian, sigma_sq)
+
             # else:
             #    self._compute_covariance(hessian, sigma_sq)
 
@@ -1415,7 +1445,7 @@ class MultipleExperimentsEstimator(object):
             sigma_sq (dict): variances
             
             spectra_problem (bool): tells whether we have spectral data or concentration data (False if not specified)
-            
+
             shared_spectra (bool): tells whether spectra are shared across datasets for species (False if not specified)
 
         Returns:
@@ -1473,7 +1503,7 @@ class MultipleExperimentsEstimator(object):
         # self.lbZ = kwds.pop('lbZ', False)
         
         spectra_shared = kwds.pop('shared_spectra', False)
-        
+
         if covariance:
             if solver != 'ipopt_sens' and solver != 'k_aug':
                 raise RuntimeError('To get covariance matrix the solver needs to be ipopt_sens or k_aug')
@@ -1614,24 +1644,24 @@ class MultipleExperimentsEstimator(object):
 
                             if k not in list_params_across_blocks:
                                 list_params_across_blocks.append(k)
-                                
+
                 if spectra_shared ==True:
                     for wa in ind_p_est[l].model.meas_lambdas:
                         if k not in all_waves:
                             all_waves.append(wa)
                         else:
                             global_waves.append(wa)
-                        
+
                         if wa not in list_waves_across_blocks:
                             list_waves_across_blocks.append(wa)
-                
+
                 if spectra_shared ==True:
                     for sp in ind_p_est[l].model.mixture_components:
                         if sp not in all_species:
                             all_species.append(sp)
                         else:
                             shared_species.append(sp)
-                        
+
                         if sp not in list_species_across_blocks:
                             list_species_across_blocks.append(sp)
                 #print("all_species:" , all_species)
@@ -1849,17 +1879,17 @@ class MultipleExperimentsEstimator(object):
                 #print("all_params:" , all_params)
                 #print("global_params:", global_params)
                 self.global_params = global_params
-                
+
                 if spectra_shared ==True:
                     for wa in ind_p_est[l].model.meas_lambdas:
                         if wa not in all_waves:
                             all_waves.append(wa)
                         else:
                             global_waves.append(wa)
-                        
+
                         if wa not in list_waves_across_blocks:
                             list_waves_across_blocks.append(wa)
-                            
+
                 if spectra_shared ==True:
                     for sp in ind_p_est[l].model.mixture_components:
                         if sp not in all_species:
@@ -1867,7 +1897,7 @@ class MultipleExperimentsEstimator(object):
                             all_species.append(sp)
                         else:
                             shared_species.append(sp)
-                        
+
                         if sp not in list_species_across_blocks:
                             list_species_across_blocks.append(sp)
                 #print("all_species:" , all_species)
@@ -1987,8 +2017,22 @@ class MultipleExperimentsEstimator(object):
                     
                 else:
                     return Constraint.Skip
-            
-        m.parameter_linking = Constraint(self.experiments, list_params_across_blocks, rule = param_linking_rule)
+        #Without the fixed ones:
+        new_list_params_across_blocks=list()
+        # print(self.list_fixed_params)
+        list_fixed_params=list()
+        for i in self.experiments:
+            for param in m.experiment[i].P.keys():
+                if m.experiment[i].P[param].is_fixed():
+                    if param not in list_fixed_params:
+                        list_fixed_params.append(param)
+                    # else:
+                    #     print('WARNING: The fixed parameters across experiments do not match.')
+        print(list_fixed_params)
+        for k in list_params_across_blocks:
+            if k not in list_fixed_params:
+                new_list_params_across_blocks.append(k)
+        m.parameter_linking = Constraint(self.experiments, new_list_params_across_blocks, rule = param_linking_rule)
         
         def wavelength_linking_rule(m, exp, wave, comp):
             prev_exp = None
@@ -2001,7 +2045,7 @@ class MultipleExperimentsEstimator(object):
                         prev_exp = m.map_exp_to_count[key-1]
                 if wave in list_waves_across_blocks and prev_exp != None:
                     #This here is to check that the correct linking constraints are constructed
-                    
+
                     #print(self.initialization_model[exp]._mixture_components)
                     #print(comp)
                     #print("this constraint is written:")
@@ -2012,14 +2056,14 @@ class MultipleExperimentsEstimator(object):
                         return Constraint.Skip
                 else:
                     return Constraint.Skip
-                
+
         if spectra_shared == True:
             #print(list_components[self.experiments])
             #print(list_waves_across_blocks)
             #print(self.experiments)
             #print(list_species_across_blocks)
             m.spectra_linking = Constraint(self.experiments, list_waves_across_blocks, list_species_across_blocks, rule = wavelength_linking_rule)
-            
+
         m.obj = Objective(sense = minimize, expr=sum(b.error for b in m.experiment[:]))
         self.model = m
         
@@ -2037,14 +2081,14 @@ class MultipleExperimentsEstimator(object):
             
         elif self._spectra_given:
             #Working
-            optimizer = SolverFactory('ipopt')  
+            optimizer = SolverFactory('ipopt')
             solver_results = optimizer.solve(m, options = solver_opts,tee=tee)
         
         elif covariance and solver == 'k_aug' and self._concentration_given:   
-            self.solve_conc_full_problem(solver, covariance = covariance, tee=tee)
+            self.solve_conc_full_problem(solver, covariance = covariance, tee=True, solver_opts=solver_opts)
             
         elif covariance and solver == 'ipopt_sens' and self._concentration_given:   
-            self.solve_conc_full_problem(solver, covariance = covariance, tee=tee)     
+            self.solve_conc_full_problem(solver, covariance = covariance, tee=tee, solver_opts=solver_opts)
             
         elif self._concentration_given:
             #Working

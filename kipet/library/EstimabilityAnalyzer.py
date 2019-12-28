@@ -351,93 +351,98 @@ class EstimabilityAnalyzer(ParameterEstimator):
         next_est = dict()
         X= None
         kcol = None
-
+        countdoub=0
         for i in range(nparams-1):
-            # print('iter_count',iter_count)
-            if iter_count<=nparams-4:
-                if i==0:
-                    X = np.zeros((nvars,1))
-                else:
-                    X = np.append(X,np.zeros([len(X),1]),1)
-                #print(X)
-                # Form the appropriate matrix
-                for x in range(i+1):
+            if i==0:
+                X = np.zeros((nvars,1))
+            else:
+                X = np.append(X,np.zeros([len(X),1]),1)
+            #print(X)
+            # Form the appropriate matrix
+            for x in range(i+1):
+                if x < nparams-countdoub-2:
                     #print(self.param_ranks)
+                    # print(x)
                     paramhere = self.param_ranks[(x+1)]
                     #print(paramhere)
 
-                    for key, value in six.iteritems(self.param_ranks):
-                        for idx, val in six.iteritems(idx_to_param):
-                            if value ==paramhere:
-                                if value == val:
-                                    #print(key, val, idx)
-                                    which_col = (idx-1)
-                                    #print(which_col)
-                    kcol = dsdp_scaled[:,which_col].T
-                    recol= kcol.reshape((nvars,1))
-                    #print("x",x)
-                    #if x >= 1:
-                    #    X = np.append(X,np.zeros([len(X),1]),1)
-                    #    print("why?")
-                    #    print("X_before 2 loop",X)
-                    for n in range(nvars):
-                        X[n][x] = recol[n][0]
-                    #print(x)
-                    #print("X",X)
+                for key, value in six.iteritems(self.param_ranks):
+                    for idx, val in six.iteritems(idx_to_param):
+                        if value ==paramhere:
+                            if value == val:
+                                #print(key, val, idx)
+                                which_col = (idx-1)
+                                #print(which_col)
+                kcol = dsdp_scaled[:,which_col].T
+                recol= kcol.reshape((nvars,1))
+                #print("x",x)
+                #if x >= 1:
+                #    X = np.append(X,np.zeros([len(X),1]),1)
+                #    print("why?")
+                #    print("X_before 2 loop",X)
+                for n in range(nvars):
+                    X[n][x] = recol[n][0]
+                #print(x)
+                #print("X",X)
 
-                #print("X_afterloop",X)
-                # Use Ordinary Least Squares to use X to predict Z
-                # try is here to catch any error resulting from a singular matrix
-                # perhaps not the most elegant way of checking for this
-                try:
-                    A = X.T.dot(X)
-                    B= np.linalg.inv(A)
-                    C = B.dot(X.T)
-                    D=X.dot(C)
-                    Z = dsdp.T
-                    Zbar=D.dot(Z.T)
-                    #Get residuals of prediction
-                    Res = Z.T - Zbar
-                except:
-                    print("There was an error during the OLS prediction. Most likely caused by a singular matrix. Unable to continue the procedure")
-                    break
+            #print("X_afterloop",X)
+            # Use Ordinary Least Squares to use X to predict Z
+            # try is here to catch any error resulting from a singular matrix
+            # perhaps not the most elegant way of checking for this
+            try:
+                A = X.T.dot(X)
+                B= np.linalg.inv(A)
+                C = B.dot(X.T)
+                D=X.dot(C)
+                Z = dsdp.T
+                Zbar=D.dot(Z.T)
+                #Get residuals of prediction
+                Res = Z.T - Zbar
+            except:
+                print("There was an error during the OLS prediction. Most likely caused by a singular matrix. Unable to continue the procedure")
+                break
 
-                # Calculate the magnitude of residuals
-                magres = dict()
-                counter=0
-                for i in range(nparams):
-                    total = 0
-                    for row in range(len(Res)):
-                        total += Res[row][counter]**2
-                    float(total)
-                    total = np.asscalar(total)
-                    sqr = (total)**(0.5)
-                    magres[counter]=sqr
-                    counter +=1
+            # Calculate the magnitude of residuals
+            magres = dict()
+            counter=0
+            for i in range(nparams):
+                total = 0
+                for row in range(len(Res)):
+                    total += Res[row][counter]**2
+                float(total)
+                total = np.asscalar(total)
+                sqr = (total)**(0.5)
+                magres[counter]=sqr
+                counter +=1
 
-                # Sort the residuals and ensure the params are correctly assigned
-                sorted_magres = sorted(magres.values(), reverse=True)
-                count2=0
-                #next_est = dict()
-                for p in idx_to_param:
-                    for t in idx_to_param:
-                        if sorted_magres[p-1]==magres[t-1]:
-                            # print('p,t', p,t,count2)
-                            next_est[count2] = t
-                            # print(next_est[count2])
-                    count2 += 1
-                # print(sorted_magres)
-                # print("next_est", next_est)
-                # Add next most estimable param to the ranking list
+            # Sort the residuals and ensure the params are correctly assigned
+            sorted_magres = sorted(magres.values(), reverse=True)
+            count2=0
+            #next_est = dict()
+            for p in idx_to_param:
+                for t in idx_to_param:
+                    if sorted_magres[p-1]==magres[t-1]:
+                        # print('p,t', p,t,count2)
+                        next_est[count2] = t
+                        # print(next_est[count2])
+                count2 += 1
+            # print(sorted_magres)
+            # print("next_est", next_est)
+            # Add next most estimable param to the ranking list
+            # print('idx_to_param[next_est[0]]', idx_to_param[next_est[0]])
+            # print('self.param_ranks[1]',self.param_ranks[1][:])
+            if idx_to_param[next_est[0]] not in self.param_ranks.values():
                 self.param_ranks[(iter_count+2)]=idx_to_param[next_est[0]]
                 iter_count += 1
-                # print("parameter ranks!", self.param_ranks)
-                # print("nparams", nparams)
+            else:
+                countdoub+=1
+            # print("parameter ranks!", self.param_ranks)
+            # print("nparams", nparams)
 
-                #print("======================PARAMETER RANKED======================")
-                if len(self.param_ranks) == nparams - 1:
-                    print("All parameters have been ranked")
-                    break
+            #print("======================PARAMETER RANKED======================")
+            if len(self.param_ranks) == nparams-countdoub-1:
+                print("Parameters have been ranked")
+                break
         
         #adding the unranked parameters to the list
         #NOTE: if param appears here then it was not evaluated (i.e. it was the least estimable)
