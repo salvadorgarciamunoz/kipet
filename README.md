@@ -51,7 +51,7 @@ Authors
 Please cite
 ------------
 C. Schenk, M. Short, J.S. Rodriguez, D. Thierry, L.T. Biegler, S. García-Muñoz, W. Chen (2020)
-Introducing KIPET: A novel open-source software package for kinetic parameter estimation from experimental datasets including spectra, Computers & Chemical Engineering, Volume 134, 106716
+Introducing KIPET: A novel open-source software package for kinetic parameter estimation from experimental datasets including spectra, Computers & Chemical Engineering, Volume 134, 106716.
 
 Michael Short, Christina Schenk, David Thierry, Jose Santiago Rodriguez, Lorenz T Biegler, Salvador Garcia-Muñoz (2019), KIPET–An Open-Source Kinetic Parameter Estimation Toolkit, Computer Aided Chemical Engineering, 47, 299-304.
 
