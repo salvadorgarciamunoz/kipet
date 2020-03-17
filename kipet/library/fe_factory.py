@@ -5,6 +5,7 @@ from pyomo.environ import *
 from pyomo.dae import *
 from pyomo.opt import SolverFactory, ProblemFormat, TerminationCondition
 from pyomo import *
+from pyomo.core.base.sets import _SetProduct
 #from pyomo.core.kernel.numvalue import value as value
 from os import getcwd, remove
 import sys
@@ -70,7 +71,20 @@ class fe_initialize(object):
                     inputs (dict): The input dictionary. Use this dictonary for single index (time) inputs
                     inputs_sub (dict): The multi-index dictionary. Use this dictionary for multi-index inputs.
                 """
-
+        def identify_member_sets(index): #update for pyomo 5.6.8 KH.L
+            queue = [index]
+            ans = []
+            n = 0
+            while queue:
+                n+=1
+                s = queue.pop(0)
+                if not isinstance(s, _SetProduct):
+                    ans.append(s)
+                else:
+                    queue.extend(s.set_tuple) 
+            if n == 1:
+                ans = None
+            return ans
 
 
 
@@ -164,7 +178,9 @@ class fe_initialize(object):
                 #print(i, 'here')
                 self.remaining_set[i] = None
                 continue
-            set_i = dv._implicit_subsets  #: More than just time set
+            #set_i = dv._implicit_subsets  #: More than just time set
+            #set_i = dv._index._implicit_subsets #Update for pyomo 5.6.8 KH.L
+            set_i = identify_member_sets(dv.index_set())
             remaining_set = set_i[1]
             for s in set_i[2:]:
                 remaining_set *= s
@@ -176,13 +192,17 @@ class fe_initialize(object):
         #: Algebraic variables
         self.weird_vars = [] #:Not indexed by time
         self.remaining_set_alg = {}
+        # with open('model_check.txt', 'w') as f5:
+        #     self.mod.pprint(ostream = f5)
         for av in self.mod.component_objects(Var):
             if av.name in self.dvs_names:
                 continue
             if av.index_set().name == zeit.name:  #: Just time set
                 self.remaining_set_alg[av.name] = None
                 continue
-            set_i = av._implicit_subsets
+            #set_i = av._implicit_subsets 
+            #set_i = av._index._implicit_subsets #Update for pyomo 5.6.8 KH.L
+            set_i = identify_member_sets(av.index_set())
             if set_i is None or not zeit in set_i:
                 self.weird_vars.append(av.name)  #: Not indexed by time!
                 continue  #: if this happens we might be in trouble
@@ -266,7 +286,9 @@ class fe_initialize(object):
                 if p.index_set().name == zeit.name:  #: Only time-set
                     self.input_remaining_set[i] = None
                     continue
-                set_i = p._implicit_subsets
+                #set_i = p._implicit_subsets
+                #set_i = p._index._implicit_subsets #Update for pyomo 5.6.8 KH.L
+                set_i = identify_member_sets(p.index_set())
                 if not zeit in set_i:
                     raise RuntimeError("{} is not by index by time, this can't be an input".format(i))
                 remaining_set = set_i[1]
@@ -290,14 +312,16 @@ class fe_initialize(object):
                 if not isinstance(self.inputs_sub[key], list):
                     raise TypeError("input_sub[{}] must be a list".format(key))
                 p = getattr(self.mod, key)
-                if p._implicit_subsets is None:
+                #if p._implicit_subsets is None:
+                if identify_member_sets(p.index_set()) is None: #Update for pyomo 5.6.8 KH.L
                     raise RuntimeError("This variable is does not have multiple indices"
                                        "Pass {} as part of the inputs keyarg instead.".format(key))
                 elif p.index_set().name == zeit.name:
                     raise RuntimeError("This variable is indexed over time"
                                        "Pass {} as part of the inputs keyarg instead.".format(key))
                 else:
-                    if not zeit in p._implicit_subsets:
+                    #if not zeit in p._implicit_subsets:
+                    if not zeit in identify_member_sets(p.index_set()): #Update for pyomo 5.6.8 KH.L
                         raise RuntimeError("{} is not indexed over time; it can not be an input".format(key))
                 for k in self.inputs_sub[key]:
                     if isinstance(k, str) or isinstance(k, int) or isinstance(k, tuple):
@@ -313,8 +337,6 @@ class fe_initialize(object):
         if n != m:
             raise Exception("Inconsistent problem; n={}, m={}".format(n, m))
         self.jump = False
-
-
 
     def load_initial_conditions(self, init_cond=None):
         if not isinstance(init_cond, dict):
@@ -474,6 +496,10 @@ class fe_initialize(object):
         ###########################
         ts = getattr(self.mod, self.time_set)
         ttgt = getattr(self.tgt, self.time_set)
+        # with open('model_mod.txt', 'w') as f1:
+        #     self.mod.pprint(ostream = f1)
+        # with open('model_tgt.txt', 'w') as f2:
+        #     self.tgt.pprint(ostream = f2)
         for v in self.mod.component_objects(Var, active=True):
             v_tgt = getattr(self.tgt, v.name)
             if v.name in self.weird_vars:  #: This has got to work.

@@ -84,11 +84,20 @@ class ResultsObject(object):
                     d = v.get_values()
                     keys = d.keys()
                     if keys:
-                        split_keys = v._implicit_subsets
-                        # split_keys = zip(*keys)
-                        # print(split_keys)
-                        first_set = set(split_keys[0])
-                        second_set = set(split_keys[1])
+                        # split_keys = v._implicit_subsets
+                        # print(v._implicit_subsets)
+                        # # split_keys = zip(*keys)
+                        # # print(split_keys)
+                        # first_set = set(split_keys[0])
+                        # second_set = set(split_keys[1])
+                        first_key_list = []
+                        second_key_list = []
+                        for i in list(keys):
+                            first_key_list.append(i[0])
+                            second_key_list.append(i[1])
+                        first_set = set(first_key_list)    
+                        second_set = set(second_key_list)
+                        
                         s_first_set = sorted(first_set)
                         s_second_set = sorted(second_set)
                         m = len(first_set)
