@@ -75,7 +75,7 @@ if __name__ == "__main__":
     optimizer = ParameterEstimator(pyomo_model2)
 
     optimizer.apply_discretization('dae.collocation',nfe=30,ncp=3,scheme='LAGRANGE-RADAU')
-    optimizer.model.time.pprint()
+    # optimizer.model.time.pprint()
 
     # Provide good initial guess
     p_guess = {'k1':2.0, 'k2':0.5}
