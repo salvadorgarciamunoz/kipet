@@ -99,6 +99,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         def rule_objective(m):
             obj = 0
             for t in m.allmeas_times:
+                # if t in m.meas_times:
                 obj += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components)
             return obj
             
@@ -210,7 +211,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         
         if os.path.exists('dxdp_.dat'):
             os.remove('dxdp_.dat')
-        # print(idx_to_param)
+        print(idx_to_param)
         
         return dsdp , idx_to_param
 
@@ -287,7 +288,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         # parameters and variables at the initial values for the parameters
         self.cloned_before_k_aug = self.model.clone()
         dsdp, idx_to_param = self.get_sensitivities_for_params(tee=True, sigmasq=sigmas)
-        # print("idx_to_param",idx_to_param )
+        #print("idx_to_param",idx_to_param )
         nvars = np.size(dsdp,0)
         #print("nvars,", nvars)
         nparams = 0
@@ -342,17 +343,18 @@ class EstimabilityAnalyzer(ParameterEstimator):
                 if sorted_euc[p-1]==eucnorm_scaled[t-1]:
                     ordered_params[count] = t-1
             count +=1
-        # print("ordered_params", ordered_params)
+        #print("ordered_params", ordered_params)
         # set the first ranked parameter as the one with highest norm
         iter_count=0
         self.param_ranks[1] = idx_to_param[ordered_params[0]+1]
-        # print("self.param_ranks",self.param_ranks)
+            
         #The ranking strategy of Yao, where the X and Z matrices are formed
         next_est = dict()
         X= None
         kcol = None
-        countdoub=0
+
         for i in range(nparams-1):
+
             if i==0:
                 X = np.zeros((nvars,1))
             else:
@@ -360,18 +362,16 @@ class EstimabilityAnalyzer(ParameterEstimator):
             #print(X)
             # Form the appropriate matrix
             for x in range(i+1):
-                if x < nparams-countdoub-2:
-                    #print(self.param_ranks)
-                    # print(x)
-                    paramhere = self.param_ranks[(x+1)]
-                    #print(paramhere)
+                #print(self.param_ranks)
+                paramhere = self.param_ranks[(x+1)]
+                #print(paramhere)
 
                 for key, value in six.iteritems(self.param_ranks):
                     for idx, val in six.iteritems(idx_to_param):
                         if value ==paramhere:
                             if value == val:
                                 #print(key, val, idx)
-                                which_col = (idx-1)
+                                which_col = (idx-1) 
                                 #print(which_col)
                 kcol = dsdp_scaled[:,which_col].T
                 recol= kcol.reshape((nvars,1))
@@ -384,7 +384,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
                     X[n][x] = recol[n][0]
                 #print(x)
                 #print("X",X)
-
+                
             #print("X_afterloop",X)
             # Use Ordinary Least Squares to use X to predict Z
             # try is here to catch any error resulting from a singular matrix
@@ -401,7 +401,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
             except:
                 print("There was an error during the OLS prediction. Most likely caused by a singular matrix. Unable to continue the procedure")
                 break
-
+            
             # Calculate the magnitude of residuals
             magres = dict()
             counter=0
@@ -422,26 +422,20 @@ class EstimabilityAnalyzer(ParameterEstimator):
             for p in idx_to_param:
                 for t in idx_to_param:
                     if sorted_magres[p-1]==magres[t-1]:
-                        # print('p,t', p,t,count2)
+                        #print('p,t', p,t,count2)
                         next_est[count2] = t
-                        # print(next_est[count2])
+                        #print(next_est[count2])
                 count2 += 1
-            # print(sorted_magres)
-            # print("next_est", next_est)
-            # Add next most estimable param to the ranking list
-            # print('idx_to_param[next_est[0]]', idx_to_param[next_est[0]])
-            # print('self.param_ranks[1]',self.param_ranks[1][:])
-            if idx_to_param[next_est[0]] not in self.param_ranks.values():
-                self.param_ranks[(iter_count+2)]=idx_to_param[next_est[0]]
-                iter_count += 1
-            else:
-                countdoub+=1
-            # print("parameter ranks!", self.param_ranks)
-            # print("nparams", nparams)
-
+            #print(sorted_magres)
+            #print("next_est", next_est)
+            # Add next most estimable param to the ranking list  
+            self.param_ranks[(iter_count+2)]=idx_to_param[next_est[0]]
+            iter_count += 1
+            #print("parameter ranks!", self.param_ranks)
+            
             #print("======================PARAMETER RANKED======================")
-            if len(self.param_ranks) == nparams-countdoub-1:
-                print("Parameters have been ranked")
+            if len(self.param_ranks) == nparams - 1:
+                print("All parameters have been ranked")
                 break
         
         #adding the unranked parameters to the list
@@ -468,7 +462,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         print("The least estimable parameters are as follows: ")
         if len(self.unranked_params) == 0:
             print("All parameters ranked")
-
+            
         for i in self.unranked_params:
             count+=1
             print("unranked ", (count), "is ", self.unranked_params[i])
@@ -482,7 +476,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         for i in self.unranked_params:
             self.ordered_params.append(self.unranked_params[i])
             count += 1
-        print(self.param_ranks)
+        
         return self.ordered_params
 
     def run_analyzer(self, method = None, parameter_rankings = None, meas_scaling = None, variances = None):
@@ -616,35 +610,13 @@ class EstimabilityAnalyzer(ParameterEstimator):
             # We then solve the Parameter estimaion problem for the SM
             options = dict()            
             cloned_pestim[count] = ParameterEstimator(cloned_full_model[count])
-            if count>=2:
-                if hasattr(results[count-1], 'Y'):
-                    cloned_pestim[count].initialize_from_trajectory('Y', results[count - 1].Y)
-                    cloned_pestim[count].scale_variables_from_trajectory('Y', results[count - 1].Y)
-                if hasattr(results[count-1], 'X'):
-                    cloned_pestim[count].initialize_from_trajectory('X', results[count - 1].X)
-                    cloned_pestim[count].scale_variables_from_trajectory('X', results[count - 1].X)
-                if hasattr(results[count-1], 'C'):
-                    cloned_pestim[count].initialize_from_trajectory('C', results[count - 1].C)
-                    cloned_pestim[count].scale_variables_from_trajectory('C', results[count - 1].C)
-                # if hasattr(results[count-1], 'S'):
-                #     cloned_pestim[count].initialize_from_trajectory('S', results[count-1].S)
-                #     cloned_pestim[count].scale_variables_from_trajectory('S', results[count-1].S)
-                cloned_pestim[count].initialize_from_trajectory('Z', results[count-1].Z)
-                cloned_pestim[count].scale_variables_from_trajectory('Z', results[count - 1].Z)
-                cloned_pestim[count].initialize_from_trajectory('dZdt', results[count - 1].dZdt)
-                cloned_pestim[count].scale_variables_from_trajectory('dZdt', results[count - 1].dZdt)
-
             results[count] = cloned_pestim[count].run_opt('ipopt',
-                                        tee=True,#False,
+                                        tee=False,
                                         solver_opts = options,
-                                        variances=sigmas, symbolic_solver_labels=True
+                                        variances=sigmas
                                         )
-
-            # print('TC',TerminationCondition.optimal)
-            # print('selfterm',self.termination_condition)
-
-            for v,k in six.iteritems(results[count].P):
-                print(v,k)
+            #for v,k in six.iteritems(results[count].P):                
+                #print(v,k)
             # Then compute the scaled residuals to obtain the Jk in the Wu et al paper   
             J [count] = self._compute_scaled_residuals(results[count], meas_scaling)
             count += 1            
@@ -739,3 +711,360 @@ class EstimabilityAnalyzer(ParameterEstimator):
                 E += self.residuals[t, c] / (meas_scaling ** 2)
 
         return E
+    
+    def obtain_estimable_params(self, epsilon1 = None, epsilon2 = None, eta = None, **kwds):
+        '''
+        Computes which parameters should be estimable based off of the method from Chen which
+        uses the reduced Hessian to obtain the estimability.
+        
+        Args:
+            epsilon1 (float): the "tentative" threshold value for eigenvalues for which we
+                    expect corresponding parameters to be estimable
+            epsilon2 (float): the "defensive" threshold where if the eigenvalue is less than
+                    this value then it is likely to be a dependent parameter (inestimable)
+            eta: the tolerance in relation to r_p (ratio of standard deviations)
+        
+        Returns:
+            list of estimable parameters
+        '''
+        solver_opts = kwds.pop('solver_opts', dict())
+        sigmas = kwds.pop('sigmas', dict())
+        tee = kwds.pop('tee', False)
+        seed = kwds.pop('seed', None)
+
+        if not self.model.alltime.get_discretization_info():
+            raise RuntimeError('apply discretization first before runing simulation')
+        
+        #NEEDS ERROR MESSAGES AND WARNINGS REGARDING THE INPUTS
+        # First we run the problem with fixed parameters in order to obtain the reduced hessian
+        list_components = [k for k in self._mixture_components]
+
+        # Run this problem using a clone so as not to store the results, bounds, objective etc.
+        init_hess = self.model.clone()        
+        def rule_objective(m):
+            obj = 0
+            for t in m.allmeas_times:
+                # if t in m.meas_times:
+                obj += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigmas[k] for k in list_components)
+            return obj
+            
+        init_hess.objective = Objective(rule=rule_objective)
+        
+        #Here we just give the parameters some very small bounds to run the parameter estimation
+        for v,k in six.iteritems(init_hess.P):
+            #self.model.P[v].fix()
+            ub = value(init_hess.P[v])
+            lb = ub
+            lb = lb - 1e-12            
+            init_hess.P[v].setlb(lb)
+            init_hess.P[v].setub(ub)
+            #print(v,k)
+            #print(init_hess.P[v]._lb)
+            #print(init_hess.P[v]._ub)
+        optimizer = SolverFactory('ipopt_sens')
+        if not 'compute_red_hessian' in solver_opts.keys():
+            solver_opts['compute_red_hessian'] = 'yes'
+        for key, val in solver_opts.items():
+            optimizer.options[key] = val
+        
+        init_hess.red_hessian = Suffix(direction=Suffix.IMPORT_EXPORT)
+        count_vars = 1
+        for v in six.itervalues(init_hess.P):
+            self._idx_to_variable[count_vars] = v
+            init_hess.red_hessian[v] = count_vars
+            #print(v,count_vars)
+            count_vars += 1
+            
+        self._tmpfile = "ipopt_hess"
+        solver_results = optimizer.solve(init_hess, tee=False,
+                                         logfile=self._tmpfile,
+                                         report_timing=True)
+
+        #init_hess.red_hessian.pprint
+        print("Done solving building reduce hessian")
+        output_string = ''
+        with open(self._tmpfile, 'r') as f:
+            output_string = f.read()
+        if os.path.exists(self._tmpfile):
+            os.remove(self._tmpfile)
+        # output_string = f.getvalue()
+        ipopt_output, hessian_output = split_sipopt_string(output_string)
+        #print(hessian_output)
+        #print("build strings")
+
+        #print(ipopt_output)
+
+        n_vars = len(self._idx_to_variable)
+        # print('n_vars', n_vars)
+        hessian = read_reduce_hessian2(hessian_output, n_vars)
+        
+        print(hessian.size, "hessian size")
+        print("The reduced Hessian")
+        print(hessian)
+        #v, w, ut = np.linalg.svd(hessian)
+        w1,u = np.linalg.eig(hessian)
+        print("U.T")
+        print(u.T)
+        print("eigenvalues:")
+        print(w1)
+        #print("ranking")
+        temp = np.argsort(np.argsort(w1))
+        #UTarranged = np.zeros_like(ut)
+        UT2arranged = np.zeros_like(u.T)
+        #temp = np.flip(temp)
+        #print(temp)
+        count = 0
+        for a in range(len(w1),0,-1):
+            #print("a",a-1)
+            cor= np.where(temp == a-1)
+            #print(cor)
+            #print(ut[cor,:] )
+            UT2arranged[count,:] = u.T[cor,:] 
+            #print(u.T[cor,:] )
+            count +=1
+        #print("SORTED U")
+        #print(UT2arranged)
+        #print(temp)
+        # print(w1)
+        #print("SORTED EIG")
+        earr = np.sort(w1)
+        #print("eaar:", earr)
+        eig_arranged = earr[::-1]
+        #for a in range(len(w1)):
+        #    b = temp[a]
+        #    eig_arranged.append(w1[b])
+        #print(eig_arranged)    
+        #print(self._idx_to_variable)
+        
+        x, sig = gaussian_elim(UT2arranged, eig_arranged)
+        #S, sig  = gaussian_elim(u.T, w)
+        print(x)
+        print(sig)
+            
+        for i in temp:
+            #print(i)
+            a = temp[i]
+            b = w1[i]
+            #print(b, self._idx_to_variable[i+1])
+            #print(b, self._idx_to_variable[i+1].name)
+        #print("Results from Gaussian elim:")
+        #print(S)
+        
+        #print(w1)
+        for i in range(len(w1)):
+            #print(i)
+            #a = temp[i]
+            b = w1[i]
+            #print(b, self._idx_to_variable[i+1])
+        # stack containing inestimable parameters
+        stack1 = list()
+        # stack containing estimable parameters
+        stack2 = list()
+        for i in range(len(w1)):
+            if w1[i] <= epsilon1:
+                stack1.append(w1[i])
+            else:
+                stack2.append(w1[i])
+        print("eigenvalues of inestimable params:", stack1)
+        print("eigenvalues of estimable params:", stack2)
+        ineststack = list()
+        eststack = list()
+        for i in temp:
+            #print(i)
+            for j in stack1:
+                #print(j)
+                if j == w1[i]:
+                    #print("jitty", self._idx_to_variable[i+1].name)
+                    ineststack.append(self._idx_to_variable[i+1].name)
+            for k in stack2:
+                #print(k)
+                if k ==w1[i]:
+                    #print(type(self._idx_to_variable[i+1].name))
+                    eststack.append(self._idx_to_variable[i+1].name)
+            #print(i)
+            a = temp[i]
+            b = w1[i]
+            #print(b, self._idx_to_variable[i+1])
+            
+        print("estimable params:", eststack)
+        print("inestimable params:", ineststack)
+        
+        for v,k in six.iteritems(self.model.P):
+            print(v,k.value)
+        first_solve = self.model.clone()
+        
+        def rule_objective(m):
+            obj = 0
+            for t in m.allmeas_times:
+                # if t in m.meas_times:
+                obj += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigmas[k] for k in list_components)
+            return obj
+            
+        first_solve.objective = Objective(rule=rule_objective)
+        
+        for v,k in six.iteritems(self.model.P):
+            #print(v,k.value, type(k.value), k, type(k))
+            if self.model.P[v].name in ineststack:
+                #print("do we get here?", k.value)               
+                ub = value(first_solve.P[v])
+                lb = ub
+                lb = lb - 1e-12            
+                first_solve.P[v].setlb(lb)
+                first_solve.P[v].setub(ub)
+                #print(v,k)
+                #print(first_solve.P[v]._lb)
+                #print(first_solve.P[v]._ub)
+        optimizer = SolverFactory('ipopt')
+        solver_results = optimizer.solve(first_solve, tee=True,
+                                         logfile=self._tmpfile,
+                                         report_timing=True)
+        #solver_results = opt.solve(self.model, tee=True, symbolic_solver_labels=True)
+        #sim = PyomoSimulator(m)
+    
+        # defines the discrete points wanted in the concentration profile
+    
+        #this will allow for the fe_factory to run the element by element march forward along 
+        #the elements and also automatically initialize the PyomoSimulator model, allowing
+        #for the use of the run_sim() function as before. We only need to provide the inputs 
+        #to this function as an argument dictionary
+        for v,k in six.iteritems(first_solve.P):
+            print(v,k.value)
+        #    m.P[v].fix()
+        active_bounds = False
+        for v,k in six.iteritems(self.model.P):
+            #print(v,k.value, type(k.value), k, type(k))
+            if self.model.P[v].name in eststack:
+                #print("do we get here?", k.value)               
+                ub = value(first_solve.P[v])
+                lb = ub
+                lb = lb - 1e-12            
+                if value(first_solve.P[v]) == first_solve.P[v]._lb:
+                    print("Active bounds on:", self.model.P[v].name)
+                    active_bounds = True
+                elif value(first_solve.P[v]) == first_solve.P[v]._ub:
+                    print("Active bounds on:", self.model.P[v].name)
+                    active_bounds = True
+                #print(v,k)
+                #print(first_solve.P[v]._lb)
+                #print(first_solve.P[v]._ub)
+        
+        #init = sim.run_sim(solver = 'ipopt', tee = True)
+        results = ResultsObject()
+
+        # activates objective functions that were deactivated
+        if self.model.nobjectives():
+            active_objectives_names = []
+            objectives_map = self.model.component_map(ctype=Objective)
+            for name in active_objectives_names:
+                objectives_map[name].activate()
+
+        # retriving solutions to results object
+        results.load_from_pyomo_model(first_solve,
+                                      to_load=['Z','C', 'dZdt', 'X', 'dXdt', 'Y'])    
+        results.Z.plot.line(legend=True)
+        plt.xlabel("time (min)")
+        plt.ylabel("Concentration ((mol /cm3))")
+        plt.title("Concentration  Profile")
+        plt.show()
+        results.C.plot.line(legend=True)
+        plt.xlabel("time (min)")
+        plt.ylabel("Concentration ((mol /cm3))")
+        plt.title("Concentration  Profile")
+        plt.show()
+            
+        print("Simulation is done")
+
+def read_reduce_hessian(hessian_string, n_vars):
+    hessian = np.zeros((n_vars, n_vars))
+    for i, line in enumerate(hessian_string.split('\n')):
+        if i > 0:  # ignores header
+            if line not in ['', ' ', '\t']:
+                hess_line = line.split(']=')
+                if len(hess_line) == 2:
+                    value = float(hess_line[1])
+                    column_line = hess_line[0].split(',')
+                    col = int(column_line[1])
+                    row_line = column_line[0].split('[')
+                    row = int(row_line[1])
+                    hessian[row, col] = float(value)
+                    hessian[col, row] = float(value)
+    return hessian  
+      
+def read_reduce_hessian2(hessian_string, n_vars):
+    hessian_string = re.sub('RedHessian unscaled\[', '', hessian_string)
+    hessian_string = re.sub('\]=', ',', hessian_string)
+
+    hessian = np.zeros((n_vars, n_vars))
+    for i, line in enumerate(hessian_string.split('\n')):
+        if i > 0:
+            hess_line = line.split(',')
+            if len(hess_line) == 3:
+                row = int(hess_line[0])
+                col = int(hess_line[1])
+                hessian[row, col] = float(hess_line[2])
+                hessian[col, row] = float(hess_line[2])
+    return hessian
+
+def gaussian_elim(UT,sig):
+    """
+    Function to perform the gaussian elimination required for the ranking of parameters
+    """
+    #pl, u = scipy.linalg.lu(UT, permute_l=True)
+    #print(pl)
+    #print(u)
+    #print(len(UT))
+    cols = len(UT)
+    rows = len(UT[0])
+    #print(cols, rows)
+    
+    for row in range(rows):
+        #print(row)
+        #find the maximum value
+        cont = 0
+        for v in range(cols):
+            #print(v)
+            #print("compare",abs(UT[row][v]), abs(cont))
+            if abs(UT[row][v]) > abs(cont):
+                cont = UT[row][v]
+                piv = v
+                #print(cont, piv)
+            else:
+                pass
+        #print(piv, cont)
+        # Now we have the pivot so perform guassian elim
+        for r in range(rows):
+            if r == row:
+                pass
+            else:
+                #print(rows)
+                #print(r,row)
+                #print("UT[r][piv]", UT[r][piv])
+                #print("UT[row][piv]",UT[row][piv])
+                multiplier = UT[r][piv]/UT[row][piv]
+                #the only one in this column since the rest are zero
+                #print("multiplier",multiplier)
+                UT[r][piv] = multiplier
+                for col in range(cols):
+                    #print(UT[r][col])
+                    #print(UT[row][col])
+                    #print("the sub", multiplier*UT[row][col])
+                    if UT[row][piv] < 0:
+                        UT[r][col] = UT[r][col] + multiplier*UT[row][col]
+                    else:
+                        UT[r][col] = UT[r][col] - multiplier*UT[row][col]
+                    
+                    if abs(UT[r][col]) < 1e-25:
+                        UT[r][col] = 0
+                    #print(r,col,row)
+                    #print(UT[r][col])
+                #Equation solution column
+                #print(sig[r])
+                if UT[row][piv] < 0:
+                    sig[r] = sig[r] + multiplier*sig[piv]
+                else:
+                    sig[r] = sig[r] - multiplier*sig[piv]
+                #print(sig[r])
+        #print(UT)
+        #print(sig)
+    
+    return UT, sig

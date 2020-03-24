@@ -489,7 +489,7 @@ class PyomoSimulator(Simulator):
 
         for key, val in solver_opts.items():
             opt.options[key] = val
-
+            
         solver_results = opt.solve(self.model, tee=tee, symbolic_solver_labels=True)
         results = ResultsObject()
 
