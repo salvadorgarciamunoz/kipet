@@ -120,6 +120,12 @@ class TemplateBuilder(object):
         self._estim_init = False
         self._allinitcomponents=dict()
         self._initextra_est_list = None
+        
+        # bounds and init for unwanted contributions KH.L
+        self._qr_bounds = None
+        self._qr_init = None
+        self._g_bounds = None
+        self._g_init = None
 
 
         components = kwargs.pop('concentrations', dict())
@@ -626,6 +632,21 @@ class TemplateBuilder(object):
             else:
                 raise RuntimeError('To add an algebraic please pass name')
 
+    # read bounds and initialize for qr and g (unwanted contri variables) from users KH.L
+    def add_qr_bounds_init(self, **kwds):
+        bounds = kwds.pop('bounds', None)
+        init = kwds.pop('init', None)
+        
+        self._qr_bounds = bounds
+        self._qr_init = init
+        
+    def add_g_bounds_init(self, **kwds):
+        bounds = kwds.pop('bounds', None)
+        init = kwds.pop('init', None)
+        
+        self._g_bounds = bounds
+        self._g_init = init
+    
     def set_odes_rule(self, rule):
         """Set the ode expressions.
 
@@ -1112,6 +1133,38 @@ class TemplateBuilder(object):
             pyomo_model.D = Param(pyomo_model.meas_times,
                                   pyomo_model.meas_lambdas,
                                   initialize=s_data_dict)
+        
+        # unwanted contributions: create variables qr and g KH.L
+        if self._qr_bounds is not None:
+            qr_bounds = self._qr_bounds
+        elif self._qr_bounds is None:
+            qr_bounds = None
+            
+        if self._qr_init is not None:
+            qr_init = self._qr_init
+        elif self._qr_init is None:
+            qr_init = 1.0
+            
+        pyomo_model.qr = Var(pyomo_model.alltime, bounds=qr_bounds, initialize=qr_init)
+        
+        #endpoint_constraint for qr to avoid nonunique solution KH.L
+        def _qr_end_constraint(pyomo_model):
+            return pyomo_model.qr[pyomo_model.alltime[-1]] == 1.0
+        pyomo_model.qr_end_cons = Constraint(rule = _qr_end_constraint)
+        
+        
+        if self._g_bounds is not None:
+            g_bounds = self._g_bounds
+        elif self._g_bounds is None:
+            g_bounds = None
+            
+        if self._g_init is not None:
+            g_init = self._g_init
+        elif self._g_init is None:
+            g_init = 0.1
+            
+        pyomo_model.g = Var(pyomo_model.meas_lambdas, bounds=g_bounds, initialize=g_init)
+        
         ####### Added for new add data CS:
         if self._huplc_data is not None and self._is_huplc_abs_set:
             self.set_huplc_absorbing_species(pyomo_model, self._huplc_absorbing, self._vol, self._solid_spec, check=False)
