@@ -1147,11 +1147,6 @@ class TemplateBuilder(object):
             
         pyomo_model.qr = Var(pyomo_model.alltime, bounds=qr_bounds, initialize=qr_init)
         
-        #endpoint_constraint for qr to avoid nonunique solution KH.L
-        def _qr_end_constraint(pyomo_model):
-            return pyomo_model.qr[pyomo_model.alltime[-1]] == 1.0
-        pyomo_model.qr_end_cons = Constraint(rule = _qr_end_constraint)
-        
         
         if self._g_bounds is not None:
             g_bounds = self._g_bounds

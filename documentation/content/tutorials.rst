@@ -1145,6 +1145,112 @@ This will output a number of difference model variances and parameter estimates 
 
 Note here, importantly, that the “delta” argument is the squared variance of the device and that the resultsvest returns a dictionary of the sigmas including the device variance that you have inputted. After this you may solve the parameter estimation problem as before. 
 Included in this tutorial problem is the ability to compare solutions with the standard Chen approach as well as to compare the solutions to the generated data. One can see that both approaches do give differing solutions. And that, in this case, the new variance estimator gives superior solutions.
+
+Tutorial 15 – Unwanted Contribuions in Spectroscopic data
+---------------------------------
+In many cases, there may be unwanted contributions in the measured spectra, which may come from instrumental variations (such as the baseline shift or distortion) or from the presence of inert absorbing interferences with no kinetic behavior. Based on the paper of Chen, et al. (2019), we added an new function to KIPET in order to deal with these unwanted contributions.
+
+The unwanted contributions can be divided into the time invariant and the time variant instrumental variations. The time invariant unwanted contributions include baseline shift, distortion and presence of inert absorbing interferences without kinetic behavior. The main time variant unwanted contributions come from data drifting in the spectroscopic data. Beer-Lambert’s law can be modified as,
+
+.. figure:: Regular_G_BLaw.JPG
+   :width: 200px
+   :align: center
+
+where G is the unwanted contribution term.
+
+The time invariant unwanted contributions can be uniformly described as the addition of a rank-1 matrix G, given by the outer product,
+
+.. figure:: Time_invariant_G_expression.JPG
+   :width: 700px
+   :align: center
+
+where the vector g represents the unwanted contribution at each sampling time. According to Chen’s paper, the choices of objective function to deal with time invariant unwanted contributions depends on the rank of kernel of Ω_sub matrix (rko), which is composed of stoichiometric coefficient matrix St and dosing concentration matirx Z_in. (detailed derivation is omitted.) If rko > 0, G can be decomposed as,
+
+.. figure:: Decomposed_G.JPG
+   :width: 400px
+   :align: center
+
+Then the Beer-Lambert’s law can be rewritten as,
+
+.. figure:: Time_invariant_estimated_S.png
+   :width: 200px
+   :align: center
+
+Thus, the original objective function of the parameter estimation problem doesn’t need to change while the estimated absorbance matrix would be S+Sg and additional information is needed to separate S and Sg.
+
+If rko = 0, G cannot to decomposed. Therefore, the objective function of the parameter estimation problem should be modified as,
+
+.. figure:: Cannot_decompose_obj.JPG
+   :width: 400px
+   :align: center
+
+For time variant unwanted contributions, G can be expressed as a rank-1 matrix as well,
+
+.. figure:: Time_variant_G_expression.JPG
+   :width: 700px
+   :align: center
+
+and the objective of problem is modified as follows, 
+
+.. figure:: Time_variant_obj.JPG
+   :width: 500px
+   :align: center
+
+where the time variant unwanted contributions are considered as a function of time and wavelength. In addition, since there are no constraints except bounds to restrict qr(i) and g(l), this will lead to nonunique values of these two variables and convergence difficulty in solving optimization problem. Therefore, we force qr(t_ntp) to be 1.0 under the assumption that qr(t_ntp) is not equal to zero to resolve the convergence problem.
+
+Users who want to deal with unwanted contributions can follow the following algorithm based on how they know about the unwanted contributions. If they know the type of the unwanted contributions is time variant, assign time_variant_G = True. On the other hand, if the type of the unwanted contributions is time invariant, users should set time_invariant_G = True and provide the information of St and/or Z_in to check rko. However, if the user have no idea about what type of unwanted contributions is, assign unwanted_G = True and then KIPET will assume it’s time variant.
+
+.. figure:: Algorithm_unwanted_contribution_KIPET.png
+   :width: 700px
+   :align: center
+
+Please see the following two examples for detailed implementation. The model for these two example is the same as "Ex_2_estimation.py" with initial concentration: A = 0.01, B = 0.0,and C = 0.0.
+
+The first example, "Ex_15_time_invariant_unwanted_contribution.py" shows how to estimate the parameters with "time invariant" unwanted contributions. Assuming the users know the time invariant unwanted contributions are involved, information of St and/or Z_in should be inputed as follows,
+::
+
+    St = dict()
+    St["r1"] = [-1,1,0]
+    St["r2"] = [0,-1,0]
+
+::
+
+    # In this case, there is no dosing time. 
+    # Therefore, the following expression is just an input example.
+    Z_in = dict()
+    Z_in["t=5"] = [0,0,5]
+
+Next, add the option "time_invariant_G = True" and transmit the St and Z_in (if users have Z_in in their model) matrix when calling the .run_opt function to solve the optimization problem.
+
+::
+
+    results_pyomo = p_estimator.run_opt('ipopt',
+                                      tee=True,
+                                      solver_opts = options,
+                                      variances=sigmas,
+                                      time_invariant_G=True,
+                                      St=St)
+                                      #Z_in=Z_in)
+
+
+The next example, "Ex_15_time_variant_unwanted_contribution.py" shows how to solve the parameter estimation problem with "time variant" unwanted contribution in the spectra data. During building the kinetic model, if users know the bounds and the initial values for qr(i) and g(l), they can provide them by using the following founctions,
+::
+
+    builder.add_qr_bounds_init(bounds=(0,None),init=1.1)
+    builder.add_g_bounds_init(bounds=(0,None))
+
+Then, add the option "time_variant_G=True" to the arguments before solving the parameter estimation problem.
+::
+
+    results_pyomo = p_estimator.run_opt('ipopt',
+                                      tee=True,
+                                      solver_opts = options,
+                                      variances=sigmas,
+                                      time_variant_G=True)
+
+As mentioned before, if users don't know what type of unwanted contributions is, set "unwanted_G = True" and KIPET will assume it's time variant.
+
+
 This concludes the last of the tutorial examples. This hopefully provides a good overview of the capabilities of the package and we look forward to getting feedback once these have been applied to your own problems. Table 2 on the following page provides a complete list of all of the example problems in the KIPET package, with some additional explanations.
 
 The next section of the documentation provides more detailed and miscellaneous functions from within KIPET that were not demonstrated in the tutorials.
@@ -1286,6 +1392,14 @@ The next section of the documentation provides more detailed and miscellaneous f
    | Ex_13_alt_variance_tutorial.py                 | Tutorial 14 problem with generated data to show how to|
    |						    | use the new method for obtaining overall and/or       |
    |						    | individual model variances using the secant method.   | 
+   +------------------------------------------------+-------------------------------------------------------+
+   | Ex_15_time_invariant_unwanted_contribution.py  | Tutorial 15 problem shows how to solve the parameter  |
+   |                                                | estimation problem with "time invariant" unwanted     |
+   |                                                | contributions.                                        |
+   +------------------------------------------------+-------------------------------------------------------+
+   | Ex_15_time_variant_unwanted_contribution.py    | Tutorial 15 problem shows how to solve the parameter  |
+   |                                                | estimation problem with "time variant" unwanted       |
+   |                                                | contributions.                                        |
    +------------------------------------------------+-------------------------------------------------------+
    | Ad_1_estimation.py                             | Additional parameter estimation problem with known    |
    |						    | variances, but with a least squares optimization run  |

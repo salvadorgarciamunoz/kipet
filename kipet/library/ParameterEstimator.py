@@ -163,10 +163,15 @@ class ParameterEstimator(Optimizer):
             #     else:
             #         return m.qr[i] == 1.0
             # m.qr_constraint = Constraint(m.alltime, rule=_qr_constraint)
-            m.qr_end_cons.deactivate()
+            # m.qr_end_cons.deactivate()
             for i in m.alltime:
                 m.qr[i] = 1.0
-            m.qr.fix()               
+            m.qr.fix()     
+
+        def _qr_end_constraint(m):
+            return m.qr[m.alltime[-1]] == 1.0
+        if self.time_variant_G or self.unwanted_G:
+            m.qr_end_cons = Constraint(rule = _qr_end_constraint)
 
         if with_d_vars and self.model_variance:
             m.D_bar = Var(m.meas_times,
@@ -634,7 +639,7 @@ class ParameterEstimator(Optimizer):
                 self._compute_covariance_no_model_variance(hessian, sigma_sq)
         else:
             # with open("testmodel.txt","w") as f:
-            #     m.pprint(ostream=f)
+               # m.pprint(ostream=f)
             solver_results = optimizer.solve(m, tee=tee)
 
         if with_d_vars:
