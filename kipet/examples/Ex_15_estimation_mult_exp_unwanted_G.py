@@ -118,8 +118,6 @@ if __name__ == "__main__":
     
     # Finally we run the parameter estimation. This solves each dataset separately first and then
     # links the models and solves it simultaneously
-    # variances = {'Exp1': {'B': 1.0e-8, 'C': 1.0e-8, 'A': 1.0e-8, 'device': 1.0e-8}, 
-    #               'Exp2': {'B': 1.0e-8, 'C': 1.0e-8, 'A': 1.0e-8, 'device': 1.0e-8}}
     
     Ex1_St = dict()
     Ex1_St["r1"] = [-1,1,0]
