@@ -1281,13 +1281,13 @@ Then this unwanted_G_info is transmitted to the function run_parameter_estimatio
 
 Note that the last line of the above codes allows users to solve the estimation problem with scaled variances. For example, if the estimated variances are {"A": 1e-8, "B": 2e-8, "device": 4e-8} with the objective function,
 
-.. figure:: obj_b4_scaled_variance.JPG
+.. figure:: obj_b4_scaled_variance.jpg
    :width: 500px
    :align: center
 
 this option will scale the variances with the maximum variance (i.e. 4e-8 in this case) and thus the scaled variances become {"A": 0.25, "B": 0.5, "device": 1,0} with modified objective function,
 
-.. figure:: obj_after_scaled_variance.JPG
+.. figure:: obj_after_scaled_variance.jpg
    :width: 500px
    :align: center
 
