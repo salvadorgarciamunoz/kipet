@@ -1,33 +1,37 @@
 from __future__ import print_function
 from __future__ import division
-from pyomo.environ import *
-from pyomo.dae import *
-from pyomo.core import *
-from pyomo.opt import (ReaderFactory,
-                       ResultsFormat)
-from kipet.library.Optimizer import *
-from scipy.optimize import least_squares
-from scipy.sparse import coo_matrix
-#import pyutilib.subprocess
-import matplotlib.pylab as plt
-import subprocess
-import time
+
 import copy
-import sys
 import os
-import re
 import math
+import pdb
+import re
+import six
+import subprocess
+import sys
+import time
+
+import matplotlib.pylab as plt
 from pyomo.core.expr import current as EXPR
 from pyomo.core.expr.numvalue import NumericConstant
+from scipy.optimize import least_squares
+from scipy.sparse import coo_matrix
+
+from pyomo.core import *
+from pyomo.dae import *
+from pyomo.environ import *
+from pyomo.opt import (ReaderFactory,
+                       ResultsFormat)
+
 try:
     from StringIO import StringIO
 except ImportError:
     from io import StringIO
-import six
 
-import pdb
+from kipet.library.Optimizer import *
 
-
+    
+    
 class VarianceEstimator(Optimizer):
     """Optimizer for variance estimation.
 

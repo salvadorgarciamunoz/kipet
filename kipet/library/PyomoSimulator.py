@@ -1,12 +1,40 @@
-from pyomo.environ import *
-from pyomo.dae import *
-from kipet.library.ResultsObject import *
-from kipet.library.Simulator import *
-import warnings
 import six
 import sys
+import warnings
 
+from pyomo.core.expr import current as EXPR
+from pyomo.dae import *
+from pyomo.environ import *
 
+from kipet.library.ResultsObject import *
+from kipet.library.Simulator import *
+
+class ScalingVisitor(EXPR.ExpressionReplacementVisitor):
+
+    def __init__(self, scale):
+        super(ScalingVisitor, self).__init__()
+        self.scale = scale
+
+    def visiting_potential_leaf(self, node):
+      
+        if node.__class__ in native_numeric_types:
+            return True, node
+
+        if node.is_variable_type():
+           
+            return True, self.scale[id(node)]*node
+
+        if isinstance(node, EXPR.LinearExpression):
+            node_ = copy.deepcopy(node)
+            node_.constant = node.constant
+            node_.linear_vars = copy.copy(node.linear_vars)
+            node_.linear_coefs = []
+            for i,v in enumerate(node.linear_vars):
+                node_.linear_coefs.append( node.linear_coefs[i]*self.scale[id(v)] )
+            return True, node_
+
+        return False, None
+    
 class PyomoSimulator(Simulator):
     """Simulator based on pyomo.dae discretization strategies.
 
@@ -42,6 +70,7 @@ class PyomoSimulator(Simulator):
         self._ipopt_scaled = False
         self._spectra_given = hasattr(self.model, 'D')
         self._concentration_given = hasattr(self.model, 'C')
+        self._conplementary_states_given = hasattr(self.model, 'U')
         self._absorption_given = hasattr(self.model,
                                          'S')  # added for special case of absorption data available but not concentration data CS
         self._huplc_given = hasattr(self.model, 'Chat')
@@ -61,9 +90,18 @@ class PyomoSimulator(Simulator):
         Returns:
             None
         """
+        # Additional keyword - not to use alltimes as the basis for the finite elements.
+        
+        fixed_times = kwargs.pop('fixed_times', None)
+        
         if not self.model.alltime.get_discretization_info():
+            
             discretizer = TransformationFactory(transformation)
-            discretizer.apply_to(self.model, wrt=self.model.alltime, **kwargs)
+            
+            if fixed_times == None:
+                discretizer.apply_to(self.model, wrt=self.model.alltime, **kwargs)
+            else:
+                discretizer.apply_to(self.model, wrt=fixed_times, **kwargs)
             self._alltimes = sorted(self.model.alltime)
             self._n_alltimes = len(self._alltimes)
 
@@ -98,8 +136,44 @@ class PyomoSimulator(Simulator):
                             dfallpsall.loc[ti] = float(dfallps[p][ti])
 
             self._default_initialization()
+            
+            if hasattr(self.model, 'K'):
+                print('Scaling the parameters')
+                self.scale_parameters()
         else:
             print('***WARNING: Model already discretized. Ignoring second discretization')
+            
+    def scale_parameters(self):
+        """If scaling, this multiplies the constants in model.K to each
+        parameter in model.P.
+        
+        I am not sure if this is necessary and will look into its importance.
+        """
+        #if self.model.K is not None:
+        self.scale = {}
+        for i in self.model.P:
+            self.scale[id(self.model.P[i])] = self.model.K[i]
+
+        for i in self.model.Z:
+            self.scale[id(self.model.Z[i])] = 1
+            
+        for i in self.model.dZdt:
+            self.scale[id(self.model.dZdt[i])] = 1
+            
+        for i in self.model.X:
+            self.scale[id(self.model.X[i])] = 1
+    
+        for i in self.model.dXdt:
+            self.scale[id(self.model.dXdt[i])] = 1
+    
+        for k, v in self.model.odes.items(): 
+            scaled_expr = self.scale_expression(v.body, self.scale)
+            self.model.odes[k] = scaled_expr == 0
+            
+    def scale_expression(self, expr, scale):
+        
+        visitor = ScalingVisitor(scale)
+        return visitor.dfs_postorder_stack(expr)
 
     def fix_from_trajectory(self, variable_name, variable_index, trajectories):
 
@@ -225,6 +299,9 @@ class PyomoSimulator(Simulator):
         elif variable_name == 'X':
             var = self.model.X
             inner_set = self.model.alltime
+        elif variable_name == 'U':
+            var = self.model.U
+            inner_set = self._allmeas_times
         elif variable_name == 'dXdt':
             var = self.model.dXdt
             inner_set = self.model.alltime
@@ -286,7 +363,7 @@ class PyomoSimulator(Simulator):
                     to_initialize.append(component)
 
 
-        if variable_name in ['X', 'dXdt']:
+        if variable_name in ['X', 'dXdt', 'U']:
             for component in columns:
                 if component not in self._complementary_states:
                     print('WARNING: State {} is not in model complementary_states. initialization ignored'.format(
@@ -378,6 +455,9 @@ class PyomoSimulator(Simulator):
         elif variable_name == 'X':
             var = self.model.X
             inner_set = self.model.alltime
+        elif variable_name == 'U':
+            var = self.model.U
+            inner_set = self._allmeas_times
         elif variable_name == 'dXdt':
             var = self.model.dXdt
             inner_set = self.model.alltime
@@ -398,7 +478,7 @@ class PyomoSimulator(Simulator):
                 if component not in self._mixture_components:
                     raise RuntimeError('Mixture component {} is not in model mixture components'.format(component))
 
-        if variable_name in ['X', 'dXdt']:
+        if variable_name in ['X', 'dXdt', 'U']:
             for component in columns:
                 nominal_vals[component] = abs(trajectories[component].max())
                 if component not in self._complementary_states:
@@ -461,6 +541,7 @@ class PyomoSimulator(Simulator):
         dZ_var = self.model.dZdt
         P_var = self.model.P
         X_var = self.model.X
+        U_var = self.model.U
         dX_var = self.model.dXdt
         C_var = self.model.C  # added for estimation with inputs and conc data CS
         if self._huplc_given: #added for additional data CS
@@ -489,7 +570,7 @@ class PyomoSimulator(Simulator):
 
         for key, val in solver_opts.items():
             opt.options[key] = val
-
+            
         solver_results = opt.solve(self.model, tee=tee, symbolic_solver_labels=True)
         results = ResultsObject()
 

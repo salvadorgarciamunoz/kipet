@@ -1,16 +1,20 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function
 from __future__ import division
-from pyomo.environ import *
-from pyomo.dae import *
-from kipet.library.ResultsObject import *
-from kipet.library.PyomoSimulator import *
-from scipy.optimize import least_squares
-from contextlib import contextmanager
-import scipy
+
 import copy
-import sys
+import scipy
 import six
+import sys
+
+from contextlib import contextmanager
+from pyomo.dae import *
+from pyomo.environ import *
+from scipy.optimize import least_squares
+
+from kipet.library.PyomoSimulator import *
+from kipet.library.ResultsObject import *
+
 class Optimizer(PyomoSimulator):
     """Base optimizer class.
 
