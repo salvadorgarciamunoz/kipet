@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
  
 Kipet: Kinetic parameter estimation toolkit
@@ -21,6 +19,7 @@ from kipet.library.data_tools import (
     add_noise_to_signal,
     read_concentration_data,
     )
+
 from kipet.library.EstimationPotential import EstimationPotential
 from kipet.library.FESimulator import FESimulator
 from kipet.library.PyomoSimulator import PyomoSimulator

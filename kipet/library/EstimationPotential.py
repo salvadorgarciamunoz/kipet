@@ -1,19 +1,6 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 A new estimation class for KIPET that gives me the flexibility to do what I
 need in order for it to work properly.
-
-This should allow one to add a builder template and use it for further purposes
-so that it does not screw up when trying to use simulation for the reduced
-hessian calculation and then performing the parameter fitting. The issue arose 
-because what I need is an abstract model, not a concrete one. It is too much
-effort to try and replace the current TemplateBuilder.create_pyomo_model for
-this purpose (or is it?).
-
-TODO: Make different sized exp data for each component fit into the
-framework somehow. Perhaps a mixed finite element arrangement with specific
-properties showing up at the right places in the objective function?
 
 @author: Kevin McBride
 """
@@ -593,7 +580,7 @@ class EstimationPotential(ParameterEstimator):
         
         TODO:
             I think this needs to be changed - there must be an easier way
-            (Abstract model?) than by generated a new Concrete model each time
+            (Abstract model?) than by generating a new Concrete model each time
             the reduced hessian needs to be calculated.
         
         Args:

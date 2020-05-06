@@ -1075,7 +1075,7 @@ class TemplateBuilder(object):
                 for param, bounds in self._parameters_bounds.items():
                     lb = bounds[0]
                     ub = bounds[1]
-                    p_dict[p] = (ub - lb) / 2 + lb
+                    p_dict[param] = (ub - lb) / 2 + lb
 
         if self._scale_parameters:
             pyomo_model.P = Var(pyomo_model.parameter_names,
