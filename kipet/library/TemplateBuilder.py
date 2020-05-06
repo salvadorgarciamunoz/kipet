@@ -143,9 +143,10 @@ class TemplateBuilder(object):
         self._is_U_deriv = False
         self._is_Dhat_deriv = False
         self._state_sigmas = None # Need to put sigmas into the pyomo model as params
-        self._model_constants = None # Used in EstimabilityAnalyzer
-        self._scale_parameters = False # Should be True for Estimability
+        self._model_constants = None # Used in EstimaationPotential
+        self._scale_parameters = False # Should be True for EstimationPotential (automatic)
         self._times = None
+        self._all_state_data = list()
 
 
         components = kwargs.pop('concentrations', dict())
@@ -187,9 +188,6 @@ class TemplateBuilder(object):
 
         else:
             raise RuntimeError('concentrations must be an dictionary component_name:init_condition')
-
-        # Added specific state information (such as A or T)
-        self._all_state_data = []
         
     def set_parameter_scaling(self, use_scaling: bool):
         """Makes an option to use the scaling method implemented for estimability
@@ -363,7 +361,6 @@ class TemplateBuilder(object):
                     if not isinstance(val, numbers.Number):
                         raise RuntimeError('The init condition must be a number. Try str, float')
                     getattr(self, f'_{built_in_data_types[data_type][0]}').add(key)
-                    #self._component_names.add(key)
                     self._init_conditions[key] = val
             else:
                 raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try dict[str]=float')
@@ -376,7 +373,6 @@ class TemplateBuilder(object):
 
             if isinstance(name, six.string_types):
                 getattr(self, f'_{built_in_data_types[data_type][0]}').add(name)
-                #self._component_names.add(name)
                 self._init_conditions[name] = init_condition
             else:
                 raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try str, float')
@@ -477,20 +473,22 @@ class TemplateBuilder(object):
         if isinstance(data, pd.DataFrame):
             dfc = pd.DataFrame(index=self._feed_times, columns=data.columns)
             for t in self._feed_times:
-                if t not in data.index:  # for points that are the same in original meas times and feed times
+                if t not in data.index:
                     dfc.loc[t] = [0.0 for n in range(len(data.columns))]
+                    
             dfallc = data.append(dfc)
             dfallc.sort_index(inplace=True)
             dfallc.index = dfallc.index.to_series().apply(
-                lambda x: np.round(x, 6))  # time from data rounded to 6 digits
-            ##############Filter out NaN###############
+                lambda x: np.round(x, 6))
+
             count = 0
             for j in dfallc.index:
                 if count >= 1 and count < len(dfallc.index):
                     if dfallc.index[count] == dfallc.index[count - 1]:
                         dfallc = dfallc.dropna()
+                        
                 count += 1
-            ###########################################
+
             setattr(self, f'_{data_type}_data', dfallc)
             if label in state_data:
                 self._all_state_data += list(data.columns)
@@ -1310,7 +1308,7 @@ class TemplateBuilder(object):
     def create_casadi_model(self, start_time, end_time):
         """Create a casadi model.
 
-        Casadi models are for simulation purpuses mainly
+        Casadi models are for simulation purposes mainly
 
         Args:
             start_time (float): initial time considered in the model
@@ -1474,7 +1472,6 @@ class TemplateBuilder(object):
     def has_concentration_data(self):
         return self._concentration_data is not None
 
-# These functions are dumb - why do I reference a model that has yet to be buil
 
     def optional_warmstart(self, model):
         if hasattr(model, 'dual') and hasattr(model, 'ipopt_zL_out') and hasattr(model, 'ipopt_zU_out') and hasattr(
