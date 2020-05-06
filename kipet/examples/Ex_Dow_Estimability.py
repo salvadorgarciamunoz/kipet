@@ -15,6 +15,7 @@ import sys
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from pathlib import Path
 
 from kipet.library.data_tools import (
     add_noise_to_signal,
@@ -137,14 +138,14 @@ if __name__ == "__main__":
 
     
     # create instance of simulator with the created pyomo_model as input
-    times = (0.0, 35.0)
+    times = (0.0, 300.0)
     builder.set_model_times(times)
     pyomo_model = builder.create_pyomo_model()
     simulator = FESimulator(pyomo_model)
     
     simulator.apply_discretization('dae.collocation',
-                                   ncp = 3,
-                                   nfe = 20,
+                                   ncp = 5,
+                                   nfe = 2000,
                                    scheme = 'LAGRANGE-RADAU')
     
     simulator.call_fe_factory()
@@ -152,21 +153,21 @@ if __name__ == "__main__":
     Z_data, X_data, results = run_simulation(simulator)
 
     #Make some data points
-    ncp = 3
-    nfe = 20
-    measurements = 11
+    # ncp = 3
+    # nfe = 20
+    # measurements = 11
     
-    t = np.linspace(0, ncp*nfe, measurements).astype(int)
-    Z_data = Z_data.iloc[t, :]
-    Z_data.drop(index=0, inplace=True)
+    # t = np.linspace(0, ncp*nfe, measurements).astype(int)
+    # Z_data = Z_data.iloc[t, :]
+    # Z_data.drop(index=0, inplace=True)
     
-    # Use the experimental data from the paper: too stiff at the moment
+    # Use the experimental data from the paper: too stiff at the moment - need a good initialization
         
-    # data_directory = 'data_sets'
-    # data_filename = 'dow_data.csv'
-    # dataDirectory = Path(Path(__file__).resolve().parent, data_directory)
-    # filename = dataDirectory.joinpath(data_filename)
-    # Z_data = read_concentration_data(filename)
+    data_directory = 'data_sets'
+    data_filename = 'dow_data.csv'
+    dataDirectory = Path(Path(__file__).resolve().parent, data_directory)
+    filename = dataDirectory.joinpath(data_filename)
+    Z_data = read_concentration_data(filename)
     
     factor = 1.2
     builder_est = TemplateBuilder() 
