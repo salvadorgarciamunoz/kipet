@@ -86,7 +86,7 @@ class EstimationPotential(ParameterEstimator):
             any additional arguments
         
     """
-    
+
     def __init__(self, model_builder, exp_data, times=None, nfe=None,
                  ncp=None, bound_approach=1e-2, rho=10, epsilon=1e-16, eta=0.1,
                  max_iter_limit=20, verbose=False, debug=False, 
@@ -454,12 +454,12 @@ class EstimationPotential(ParameterEstimator):
                     if col in dfc.columns:
                         plt.plot(dfc[col], 'o', label=col + ' (exp)')
                     
-                plt.xlabel("time")
-                plt.ylabel("Concentration (mol/L)")
-                plt.title("Concentration Profile")
-                
-                plt.legend()
-                plt.show()
+            plt.xlabel("time")
+            plt.ylabel("Concentration (mol/L)")
+            plt.title("Concentration Profile")
+            
+            plt.legend()
+            plt.show()
             
         if len(self.model.complementary_states.value) > 0:
             dfx = self._get_simulated_data(state='X')
