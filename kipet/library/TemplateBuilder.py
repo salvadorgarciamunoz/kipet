@@ -524,7 +524,7 @@ class TemplateBuilder(object):
                     if C[t, l] >= 0:
                         pass
                     else:
-                        setattr(sefl, f'_is_{label}_deriv', True)
+                        setattr(self, f'_is_{label}_deriv', True)
                         #self._is_C_deriv = True
             if getattr(self, f'_is_{label}_deriv') == True:
                 print(
@@ -737,7 +737,7 @@ class TemplateBuilder(object):
             raise RuntimeError('The rule should have two inputs')
         self._algebraic_constraints = rule
 
-    def bound_profile(self, var, bounds, component=None, profile_range=None):
+    def bound_profile(self, var, bounds, comp=None, profile_range=None):
         """function that allows the user to bound a certain profile to some value
 
         Args:
@@ -756,10 +756,10 @@ class TemplateBuilder(object):
         if var not in ['C', 'U', 'S']:
             raise RuntimeError('var argument needs to be either C, U, or S')
 
-        if component is not None:
-            if not isinstance(component, str):
+        if comp is not None:
+            if not isinstance(comp, str):
                 raise RuntimeError('comp argument needs to be type string')
-            if component not in self._component_names:
+            if comp not in self._component_names:
                 raise RuntimeError('comp needs to be one of the components')
 
         if profile_range is not None:
@@ -771,7 +771,7 @@ class TemplateBuilder(object):
         if not isinstance(bounds, tuple):
             raise RuntimeError('bounds needs to be a tuple')
 
-        self._prof_bounds.append([var, component, profile_range, bounds])
+        self._prof_bounds.append([var, comp, profile_range, bounds])
 
     def _validate_data(self, model, start_time, end_time):
         """Verify all inputs to the model make sense.
