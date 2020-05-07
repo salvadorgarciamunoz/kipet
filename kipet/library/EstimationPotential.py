@@ -420,6 +420,24 @@ class EstimationPotential(ParameterEstimator):
             None
             
         """
+        line_options = {
+            'linewidth' : 3,
+            }
+        
+        marker_options = {
+            'linewidth' : 1,
+            'markersize' : 10,
+            'alpha' : 0.5,
+            }
+        
+        title_options = {
+            'fontsize' : 18,
+            }
+        
+        axis_options = {
+            'fontsize' : 16,
+            }
+        
         exp_data = list(self.model.measured_data.keys())
         
         if len(self.model.mixture_components.value) > 0:
@@ -433,17 +451,19 @@ class EstimationPotential(ParameterEstimator):
                     if col not in exp_data:
                         dfc.drop(columns=[col], inplace=True)
             
-            plt.figure()
+            plt.figure(figsize=(4,3))
             
             for col in dfz.columns:
-                plt.plot(dfz[col], label=col + ' (pred)')
+                plt.plot(dfz[col], label=col + ' (pred)', **line_options)
                 if dfc is not None:
                     if col in dfc.columns:
-                        plt.plot(dfc[col], 'o', label=col + ' (exp)')
+                        plt.plot(dfc[col], 'o', label=col + ' (exp)', **marker_options)
                     
-            plt.xlabel("time")
-            plt.ylabel("Concentration (mol/L)")
-            plt.title("Concentration Profile")
+            plt.xlabel("Time [h]", **axis_options)
+            plt.ylabel("Concentration (mol/L)", **axis_options)
+            plt.title("Concentration Profile", **title_options)
+            plt.xticks(fontsize=14)
+            plt.yticks(fontsize=14)
             
             plt.legend()
             plt.show()
@@ -462,14 +482,16 @@ class EstimationPotential(ParameterEstimator):
             plt.figure()
             
             for col in dfx.columns:
-                plt.plot(dfx[col], label=col + ' (pred)')
+                plt.plot(dfx[col], label=col + ' (pred)', **line_options)
                 if dfu is not None:
                     if col in dfu.columns:
-                        plt.plot(dfu[col], 'o', label=col + ' (exp)')
+                        plt.plot(dfu[col], 'o', label=col + ' (exp)', **marker_options)
             
-            plt.xlabel("time")
-            plt.ylabel("State Values")       
-            plt.title("Complementary State Profiles")
+            plt.xlabel("Time [h]", **axis_options)
+            plt.ylabel("Temperature [K]", **axis_options)       
+            plt.title("Complementary State Profiles", **title_options)
+            plt.xticks(fontsize=14)
+            plt.yticks(fontsize=14)
         
             plt.legend()
             plt.show()

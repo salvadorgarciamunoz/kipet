@@ -1149,17 +1149,20 @@ Included in this tutorial problem is the ability to compare solutions with the s
 
 Tutorial 16 – Simultaneous Parameter Selection and Estimation
 --------------------------------------------------------------------------------
-This tutorial introduces an recently developed method for parameter subset selection developed by Chen and Biegler (2020).
-One of the benefits of the methodology is that it reduces the difficulty in selecting which parameters to fix and which to estimate.
-This is achieved by ranking parameter estimabilty based on the ratio of their standard deviation to estimated value.
 
-The core of the method lies in the use of the reduced hessian matrix, owing to its direct relationship to the covariance matrix of the estimated parameters.
-A Gauss-Jordan elimination approach is used to rank the parameters by estimability, which has been shown to be less computationally demanding than previous methods based on eigenvalues.
+The complex models used in reaction kinetic models require accurate parameter estimates.
+However, it may not be difficult to make accurate estimates for all of the parameters.
+To this end, various techniques have been developed to identify parameter subsets that can best be estimated while the remaining parameters are fixed to some initial value.
+The selection of this subset is still a challenge.
 
-The EstimationPotential module is used for the simultaneous method described here and is currently separate from the EstimabilityAnalyzer module used otherwise for estimability (see Tutorial 12).
-This module can be used with all forms of complementary state data, such as temperature and pressure, which can now be included in the anayysis.
-The methods rely on k_aug to obtain sensitivities, so will only work if k_aug is installed and added to the path.
-The example from the example directory is “Ex_16_estimability_cstr.py”.
+One such method for parameter subset selection was recently developed by Chen and Biegler (2020).
+This method uses a reduced hessian approach to select parameters and estimate their values simultaneously using a collocation approach.
+Parameter estimabilty is based on the ratio of their standard deviation to estimated value, and a Gauss-Jordan elimination method strategy is used to rank parameter estimability.
+This has been shown to be less computationally demanding than previous methods based on eigenvalues.
+For more details about how the algorithm works, the user is recommended to read the article "Reduced Hessian Based Parameter Selection and Estimation with Simultaneous Collocation Approach" by Weifeng Chen and Lorenz T. Biegler, AIChE 2020.
+
+In Kipet, this method is implemented using the EstimationPotential module. It is currently separate from the EstimabilityAnalyzer module used otherwise for estimability (see Tutorial 12).
+Kipet can now handle complementary state data, such as temperature and pressure, in its analysis. This should improve the user experience and lead to more robust results.
 
 This module is used in a slightly different manner than other modules in Kipet. The EstimationPotential class requires
 the TemplateBuilder instance of the model as the first argument (the models are declared internally). This is followed by the experimental data. Yes, this form of
@@ -1167,10 +1170,27 @@ estimability analysis requires experimental data because the analysis depends on
 the example CSTR problem in this example includes simulated data at the "true" parameter values. Optional arguments include
 simulation_data, which takes a Results instance as input. This is recommended for complex systems that require good initilizations.
 If no simulation data is provided, the user can use the argument simulate_start to select whether a simulation should be performed internally; performance may vary here, so it is usually better to provide your own simulated data as above.
+As before, the simultaneous parameter selection and estimation method relies on the reduced hessian and therefore the method relies on k_aug to obtain sensitivities,
+and will only work if k_aug is installed and added to the path.
+
+This tutorial has two examples based on the CSTR example from the paper by Chen and Biegler.
+
+The first example from the example directory is “Ex_16_CSTR_estimability_temperature.py”. A new method for TemplateBuilder (set_model_times) has been implemented
+for entering the start and end times for the pyomo model as an attribute of the TemplateBuilder. The previous API still works, and if using this format, a time attribute
+needs to be provided to EstimationPotential.
+
+The option verbose allows one to display the output of the various steps in the algorithm.
 
 ::
 
+    builder_est.set_model_times((0.0, 5.0))
     est_param = EstimationPotential(builder_est, exp_data, simulation_data=results, verbose=True)
+
+or similarily:
+
+::
+
+    est_param = EstimationPotential(builder_est, exp_data, time=(0.0, 5.0) simulation_data=results, verbose=True)
 
 To start the simultaneous parameter selection and estimation routine, simply use the estimate method. 
 Optionally, using the plot_results method, you can see separate plots for the concentration and complementary states data, if provided.
@@ -1204,6 +1224,7 @@ discrepancies in measurement times.
 
 ::
 
+    # Three randomly chosen values from the concentration index
     conc_measurement_index = [7, 57, 99]
     Z_data = results.Z.iloc[conc_measurement_index, :]
 
@@ -1211,6 +1232,8 @@ discrepancies in measurement times.
     X_data['T'] = add_noise_to_signal(X_data['T'], noise['T'])
 
     exp_data = pd.concat([X_data['T'], Z_data], axis=1)
+    
+    est_param = EstimationPotential(builder_est, exp_data, time=(0.0, 5.0) simulation_data=results, verbose=True)
 
 Compare the results with those from previously.
     
@@ -1368,6 +1391,13 @@ The next section of the documentation provides more detailed and miscellaneous f
    | Ex_13_alt_variance_tutorial.py                 | Tutorial 14 problem with generated data to show how to|
    |						    | use the new method for obtaining overall and/or       |
    |						    | individual model variances using the secant method.   | 
+   +------------------------------------------------+-------------------------------------------------------+
+   | Ex_16_CSTR_estimability_temperature.py         | Tutorial 16 problem with the CSTR problem from the    | 
+   |                                                | paper by Chen and Biegler                             | 
+   +------------------------------------------------+-------------------------------------------------------+
+   | Ex_16_CSTR_estimability_temperature_concentration.py   | Tutorial 16 problem with the CSTR problem from the | 
+   |                                                        | paper by Chen and Biegler with temperature and     |
+   |                                                        | concentration data                                 | 
    +------------------------------------------------+-------------------------------------------------------+
    | Ad_1_estimation.py                             | Additional parameter estimation problem with known    |
    |						    | variances, but with a least squares optimization run  |
