@@ -1145,6 +1145,88 @@ This will output a number of difference model variances and parameter estimates 
 
 Note here, importantly, that the “delta” argument is the squared variance of the device and that the resultsvest returns a dictionary of the sigmas including the device variance that you have inputted. After this you may solve the parameter estimation problem as before. 
 Included in this tutorial problem is the ability to compare solutions with the standard Chen approach as well as to compare the solutions to the generated data. One can see that both approaches do give differing solutions. And that, in this case, the new variance estimator gives superior solutions.
+
+
+Tutorial 16 – Simultaneous Parameter Selection and Estimation
+--------------------------------------------------------------------------------
+This tutorial introduces an recently developed method for parameter subset selection developed by Chen and Biegler (2020).
+One of the benefits of the methodology is that it reduces the difficulty in selecting which parameters to fix and which to estimate.
+This is achieved by ranking parameter estimabilty based on the ratio of their standard deviation to estimated value.
+
+The core of the method lies in the use of the reduced hessian matrix, owing to its direct relationship to the covariance matrix of the estimated parameters.
+A Gauss-Jordan elimination approach is used to rank the parameters by estimability, which has been shown to be less computationally demanding than previous methods based on eigenvalues.
+
+The EstimationPotential module is used for the simultaneous method described here and is currently separate from the EstimabilityAnalyzer module used otherwise for estimability (see Tutorial 12).
+This module can be used with all forms of complementary state data, such as temperature and pressure, which can now be included in the anayysis.
+The methods rely on k_aug to obtain sensitivities, so will only work if k_aug is installed and added to the path.
+The example from the example directory is “Ex_16_estimability_cstr.py”.
+
+This module is used in a slightly different manner than other modules in Kipet. The EstimationPotential class requires
+the TemplateBuilder instance of the model as the first argument (the models are declared internally). This is followed by the experimental data. Yes, this form of
+estimability analysis requires experimental data because the analysis depends on the outputs. For illustration purposes,
+the example CSTR problem in this example includes simulated data at the "true" parameter values. Optional arguments include
+simulation_data, which takes a Results instance as input. This is recommended for complex systems that require good initilizations.
+If no simulation data is provided, the user can use the argument simulate_start to select whether a simulation should be performed internally; performance may vary here, so it is usually better to provide your own simulated data as above.
+
+::
+
+    est_param = EstimationPotential(builder_est, exp_data, simulation_data=results, verbose=True)
+
+To start the simultaneous parameter selection and estimation routine, simply use the estimate method. 
+Optionally, using the plot_results method, you can see separate plots for the concentration and complementary states data, if provided.
+The experimental data is also shown on these plots.
+
+::
+
+    est_param.estimate()
+    est_param.plot_results()
+
+
+.. figure:: ex16result1.png
+   :width: 400px
+   :align: center
+
+   Concentration profiles for the tutorial example 16
+
+.. figure:: ex16result2.png
+   :width: 400px
+   :align: center
+
+   Complementary state (here temperature) profiles for the tutorial example 16
+
+The next example shows how to include additional experimental data. In this case, a few concentration measurements
+are added to the data set. This is shown in "Ex_16_CSTR_estimability_temperature_concentration.py". In this example, the experimental
+data is again simulated, but the same method applies to real experimental data. For example, the simulation is 
+performed with 50 finite elements and 3 collocation points. Thus, there are 151 potential times for a measurement.
+Three points are chosen and the concentration data (Z_data) is limited to these three points. The complete experimental
+data (50 temperature points and three concentration measurements) are concatenated together. Kipet can handle the
+discrepancies in measurement times.
+
+::
+
+    conc_measurement_index = [7, 57, 99]
+    Z_data = results.Z.iloc[conc_measurement_index, :]
+
+    Z_data['A'] = add_noise_to_signal(Z_data['A'], noise['A'])
+    X_data['T'] = add_noise_to_signal(X_data['T'], noise['T'])
+
+    exp_data = pd.concat([X_data['T'], Z_data], axis=1)
+
+Compare the results with those from previously.
+    
+.. figure:: ex16result3.png
+   :width: 400px
+   :align: center
+
+   Concentration profiles for the tutorial example 16. Noitce the addition of the three "experimental" points.
+
+.. figure:: ex16result4.png
+   :width: 400px
+   :align: center
+
+   Complementary state (here temperature) profiles for the tutorial example 16
+
+
 This concludes the last of the tutorial examples. This hopefully provides a good overview of the capabilities of the package and we look forward to getting feedback once these have been applied to your own problems. Table 2 on the following page provides a complete list of all of the example problems in the KIPET package, with some additional explanations.
 
 The next section of the documentation provides more detailed and miscellaneous functions from within KIPET that were not demonstrated in the tutorials.
