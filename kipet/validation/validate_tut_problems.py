@@ -20,11 +20,6 @@ examplesMainDir = os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(inspect.getfile(
         inspect.currentframe()))), '..','examples'))
 
-
-my_env = os.environ.copy()
-#my_env["PATH"] = "/usr/sbin:/sbin:" + my_env["PATH"]
-#subprocess.Popen(my_command, env=my_env)
-
 class TestExamples(unittest.TestCase):
 
     @classmethod
@@ -49,16 +44,7 @@ class TestExamples(unittest.TestCase):
         countpy = 0
         flagps = 0
         for n, f in enumerate(examples_tutorial):
-            my_env = os.environ.copy()
-            print(f'Here is the current path: {my_env["PYTHONPATH"]}')
             print(f'Running tutorial example ({n + 1}/{number_of_examples}): {f}')
-            
-            # if f not in ['Ex_CSTR_Estimability.py', 'Ex_4_sim_aspirin.py']: #, 'Ex_Dow_Estimability.py']:
-            #     continue
-        
-            if f in ['Ex_11_estimation_mult_exp_conf.py']:
-                print(f'\n\t #### {f} SKIPPED ####\n')
-                continue
             
             flagpy = subprocess.call([sys.executable,os.path.join(examples_tutorial_dir,f),'1'],
                                 stdout=self.std_out,
