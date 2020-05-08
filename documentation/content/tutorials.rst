@@ -1173,7 +1173,9 @@ If no simulation data is provided, the user can use the argument simulate_start 
 As before, the simultaneous parameter selection and estimation method relies on the reduced hessian and therefore the method relies on k_aug to obtain sensitivities,
 and will only work if k_aug is installed and added to the path.
 
-This tutorial has two examples based on the CSTR example from the paper by Chen and Biegler.
+This tutorial has two examples based on the CSTR example from the paper by Chen and Biegler. This includes a single reaction rate for component A and energy balances for the reactor and cooling water temperatures.'
+The interesting thing about this problem as it relates to Kipet, is that the data used in parameter estimation is based on reaction temperature measurements, something not yet encountered in Kipet.
+Thus additional support for complementary state data has been added to EstimationPotential to handle such data and include it into the objective function.
 
 The first example from the example directory is “Ex_16_CSTR_estimability_temperature.py”. A new method for TemplateBuilder (set_model_times) has been implemented
 for entering the start and end times for the pyomo model as an attribute of the TemplateBuilder. The previous API still works, and if using this format, a time attribute
@@ -1235,7 +1237,7 @@ discrepancies in measurement times.
     
     est_param = EstimationPotential(builder_est, exp_data, time=(0.0, 5.0) simulation_data=results, verbose=True)
 
-Compare the results with those from previously.
+Compare the results with those from previously. With only three concentration points, a much better profile for concentration can be predicted using the model.
     
 .. figure:: ex16result3.png
    :width: 400px
