@@ -848,7 +848,7 @@ class MultipleExperimentsEstimator(object):
         ind_p_est = dict()
 
         for l in self.experiments:
-            print("solving for dataset ", l)
+            print("\nsolving for dataset ", l)
             self.builder[l] = builder[l]
             # if spectra_problem==True:
             #     self._spectra_given=True
@@ -1032,7 +1032,7 @@ class MultipleExperimentsEstimator(object):
         sigmas = dict()
         print("SOLVING VARIANCE ESTIMATION FOR INDIVIDUAL DATASETS")
         for l in self.experiments:
-            print("solving for dataset ", l)
+            print("\nsolving for dataset ", l)
             self.builder[l] = builder[l]
             self.builder[l].add_spectral_data(self.datasets[l])
             self.opt_model[l] = self.builder[l].create_pyomo_model(start_time[l],end_time[l])
@@ -1488,8 +1488,8 @@ class MultipleExperimentsEstimator(object):
         covariance = kwds.pop('covariance', False)
         
         spectra_problem = kwds.pop('spectra_problem', True)
-
-
+        
+        
         #init from file:
         init_files = kwds.pop('init_files', False)
         resultY = kwds.pop('resultY', dict())
@@ -1503,7 +1503,15 @@ class MultipleExperimentsEstimator(object):
         # self.lbZ = kwds.pop('lbZ', False)
         
         spectra_shared = kwds.pop('shared_spectra', False)
-
+        
+        #read info of unwanted G for each experiment KH.L
+        unwanted_G_info = kwds.pop("unwanted_G_info", dict())
+        
+        # scale variances for sovling parameter estimation problem.
+        # sometimes the problem will be much easiler to be solved
+        # aspecially when solving multiply experiment problem with unwanted G. KH.L
+        scaled_variance = kwds.pop("scaled_variance", False)
+        
         if covariance:
             if solver != 'ipopt_sens' and solver != 'k_aug':
                 raise RuntimeError('To get covariance matrix the solver needs to be ipopt_sens or k_aug')
@@ -1565,7 +1573,7 @@ class MultipleExperimentsEstimator(object):
                 keys = sigma_sq[key].keys()
                 expsigma = sigma_sq[key]
                 
-                for k in list_components:
+                for k in list_components[key]:
                     if k not in keys:
                         self.all_sigma_specified = False
                         expsigma[k] = max(expsigma.values())
@@ -1573,12 +1581,12 @@ class MultipleExperimentsEstimator(object):
                 if not 'device' in val.keys():
                     self.all_sigma_specified = False
                     expsigma['device'] = 1.0
-                
-                
+
+
         if self._variance_solved == False:
             self.variances = sigma_sq
             
-        print("SOLVING PARAMETER ESTIMATION FOR INDIVIDUAL DATASETS - For initialization")
+        print("\nSOLVING PARAMETER ESTIMATION FOR INDIVIDUAL DATASETS - For initialization")
 
         def is_empty(any_structure): #function for cases below to check if dict is empty!
             if any_structure:
@@ -1597,12 +1605,78 @@ class MultipleExperimentsEstimator(object):
         global_waves = list()
         all_species = list()
         shared_species = list()
+        
+        if unwanted_G_info:
+            # check which experiments have unwanted G and which don't have. KH.L
+            exps_w_G = list()
+            exps_wo_G = list()
+            for i in self.experiments:
+                if i in unwanted_G_info.keys():
+                    exps_w_G.append(i)
+                else:
+                    exps_wo_G.append(i)
+            # print(exps_w_G,exps_wo_G,"line1616")           
+            
+            # categorize different types of G and write in detailed_G_type. KH.L
+            detailed_G_type = dict()
+            unwanted_G = dict()
+            time_variant_G = dict()
+            time_invariant_G = dict()
+            St_dict = dict()
+            Z_in_dict = dict()
+            for i in exps_w_G:
+                if unwanted_G_info[i]["type"] == "unwanted_G":
+                    detailed_G_type[i] = "time_variant_G"
+                    unwanted_G[i] =  True
+                    time_variant_G[i] = False
+                    time_invariant_G[i]  = False
+                    St_dict[i] = dict()
+                    Z_in_dict[i] = dict()
+                elif unwanted_G_info[i]["type"] == "time_variant_G":
+                    detailed_G_type[i] = "time_variant_G"
+                    unwanted_G[i] =  False
+                    time_variant_G[i] = True
+                    time_invariant_G[i]  = False
+                    St_dict[i] = dict()
+                    Z_in_dict[i] = dict()
+                elif unwanted_G_info[i]["type"] == "time_invariant_G":                    
+                    unwanted_G[i] =  False
+                    time_variant_G[i] = False
+                    time_invariant_G[i]  = True
+                    if "St" in unwanted_G_info[i].keys() and "Z_in" in unwanted_G_info[i].keys():
+                        St_dict[i] = unwanted_G_info[i]["St"]
+                        Z_in_dict[i] = unwanted_G_info[i]["Z_in"]
+                    elif "St" in unwanted_G_info[i].keys() and "Z_in" not in unwanted_G_info[i].keys():
+                        St_dict[i] = unwanted_G_info[i]["St"]
+                        Z_in_dict[i] = dict()
+                    elif "St" not in unwanted_G_info[i].keys() and "Z_in" in unwanted_G_info[i].keys():
+                        St_dict[i] = dict()
+                        Z_in_dict[i] = unwanted_G_info[i]["Z_in"]
+                        
+                    omega_list = list()
+                    for s in St_dict[i].keys():
+                        omega_list.append(St_dict[i][s])
+                    for t in Z_in_dict[i].keys():
+                        omega_list.append(Z_in_dict[i][t])
+                    omega_sub = np.array(omega_list)
+                    rank = np.linalg.matrix_rank(omega_sub)
+                    sha = omega_sub.shape
+                    cols = sha[1]
+                    rko = cols - rank
+                    # print(omega_sub, rko)
+                    if rko > 0:
+                        detailed_G_type[i] = "time_invariant_G_decompose"
+                    else:
+                        detailed_G_type[i] = "time_invariant_G_no_decompose"
+
         for l in self.experiments:
-            print("Solving for DATASET ", l)
+            print("\nSolving for DATASET ", l)
             if spectra_problem == True:
                 if self._variance_solved == True:
                     # then we already have inits
                     ind_p_est[l] = ParameterEstimator(self.opt_model[l])
+                    
+                    # if unwanted_G_info == dict() or detailed_G_type[l] != "time_variant_G":
                     ind_p_est[l].apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
                     ind_p_est[l].initialize_from_trajectory('Z', self.variance_results[l].Z)
                     if hasattr(ind_p_est[l], 'S'):
@@ -1614,11 +1688,41 @@ class MultipleExperimentsEstimator(object):
                     ind_p_est[l].scale_variables_from_trajectory('S', self.variance_results[l].S)
                     ind_p_est[l].scale_variables_from_trajectory('C', self.variance_results[l].C)
 
-                    results_pest[l] = ind_p_est[l].run_opt('ipopt',
-                                                           tee=tee,
-                                                           solver_opts=solver_opts,
-                                                           variances=self.variances[l])
+                    if unwanted_G_info:
+                        if l in exps_w_G:
+                            results_pest[l] = ind_p_est[l].run_opt('ipopt',
+                                                                   tee=tee,
+                                                                   solver_opts=solver_opts,
+                                                                   variances=self.variances[l],
+                                                                   unwanted_G = unwanted_G[l],
+                                                                   time_variant_G = time_variant_G[l],
+                                                                   time_invariant_G = time_invariant_G[l],
+                                                                   St = St_dict[l],
+                                                                   Z_in = Z_in_dict[l])
+                        elif l in exps_wo_G:
+                            results_pest[l] = ind_p_est[l].run_opt('ipopt',
+                                                                   tee=tee,
+                                                                   solver_opts=solver_opts,
+                                                                   variances=self.variances[l])
+                            
+                    else:
+                        results_pest[l] = ind_p_est[l].run_opt('ipopt',
+                                                               tee=tee,
+                                                               solver_opts=solver_opts,
+                                                               variances=self.variances[l])
 
+                    # # plot individual result
+                    # results_pest[l].Z.plot.line(legend=True)
+                    # plt.xlabel("time (s)")
+                    # plt.ylabel("Concentration (mol/L)")
+                    # plt.title("Concentration Profile")
+                    
+                    # results_pest[l].S.plot.line(legend=True)
+                    # plt.xlabel("Wavelength (cm)")
+                    # plt.ylabel("Absorbance (L/(mol cm))")
+                    # plt.title("Absorbance  Profile")
+                    # plt.show()
+                    
                     self.initialization_model[l] = ind_p_est[l]
 
                     print("The estimated parameters are:")
@@ -1645,16 +1749,72 @@ class MultipleExperimentsEstimator(object):
                             if k not in list_params_across_blocks:
                                 list_params_across_blocks.append(k)
 
+                else:
+                    self._spectra_given = True
+                    self.builder[l]=builder[l]
+                    self.builder[l].add_spectral_data(self.datasets[l])
+                    self.opt_model[l] = self.builder[l].create_pyomo_model(start_time[l],end_time[l])
+                    ind_p_est[l] = ParameterEstimator(self.opt_model[l])
+                    ind_p_est[l].apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
+                    
+                    if unwanted_G_info:
+                        if l in exps_w_G:
+                            results_pest[l] = ind_p_est[l].run_opt('ipopt',
+                                                                   tee=tee,
+                                                                   solver_opts=solver_opts,
+                                                                   variances = sigma_sq[l],
+                                                                   unwanted_G = unwanted_G[l],
+                                                                   time_variant_G = time_variant_G[l],
+                                                                   time_invariant_G = time_invariant_G[l],
+                                                                   St = St_dict[l],
+                                                                   Z_in = Z_in_dict[l])
+                        elif l in exps_wo_G:
+                            results_pest[l] = ind_p_est[l].run_opt('ipopt',
+                                                                   tee=tee,
+                                                                   solver_opts = solver_opts,
+                                                                   variances = sigma_sq[l])
+                            
+                    else:
+                        results_pest[l] = ind_p_est[l].run_opt('ipopt',
+                                                               tee=tee,
+                                                               solver_opts = solver_opts,
+                                                               variances = sigma_sq[l])
+
+                    self.initialization_model[l] = ind_p_est[l]
+
+                    print("The estimated parameters are:")
+                    for k, v in six.iteritems(results_pest[l].P):
+                        print(k, v)
+                        if k not in all_params:
+                            all_params.append(k)
+                        else:
+                            global_params.append(k)
+
+                        if k not in list_params_across_blocks:
+                            list_params_across_blocks.append(k)
+
+                    if hasattr(results_pest[l],
+                               'Pinit'):  # added for the estimation of initial conditions which have to be complementary state vars CS
+                        print("The estimated parameters are:")
+                        for k, v in six.iteritems(results_pest[l].Pinit):
+                            print(k, v)
+                            if k not in all_params:
+                                all_params.append(k)
+                            else:
+                                global_params.append(k)
+
+                            if k not in list_params_across_blocks:
+                                list_params_across_blocks.append(k)
+                
                 if spectra_shared ==True:
                     for wa in ind_p_est[l].model.meas_lambdas:
-                        if k not in all_waves:
+                        if wa not in all_waves:
                             all_waves.append(wa)
                         else:
                             global_waves.append(wa)
 
                         if wa not in list_waves_across_blocks:
                             list_waves_across_blocks.append(wa)
-
                 if spectra_shared ==True:
                     for sp in ind_p_est[l].model.mixture_components:
                         if sp not in all_species:
@@ -1667,44 +1827,6 @@ class MultipleExperimentsEstimator(object):
                 #print("all_species:" , all_species)
                 #print("shared species:", shared_species)
                 #print("list_species_across_blocks", list_species_across_blocks)
-                else:
-                    self._spectra_given = True
-                    self.builder[l]=builder[l]
-                    self.builder[l].add_spectral_data(self.datasets[l])
-                    self.opt_model[l] = self.builder[l].create_pyomo_model(start_time[l],end_time[l])
-                    ind_p_est[l] = ParameterEstimator(self.opt_model[l])
-                    ind_p_est[l].apply_discretization('dae.collocation',nfe=nfe,ncp=ncp,scheme='LAGRANGE-RADAU')
-
-                    results_pest[l] = ind_p_est[l].run_opt('ipopt',
-                                                         tee=tee,
-                                                          solver_opts = solver_opts,
-                                                          variances = sigma_sq[l])
-
-                    self.initialization_model[l] = ind_p_est[l]
-
-                    print("The estimated parameters are:")
-                    for k, v in six.iteritems(results_pest[l].P):
-                        print(k, v)
-                        if k not in all_params:
-                            all_params.append(k)
-                        else:
-                            global_params.append(k)
-
-                        if k not in list_params_across_blocks:
-                            list_params_across_blocks.append(k)
-
-                    if hasattr(results_pest[l],
-                               'Pinit'):  # added for the estimation of initial conditions which have to be complementary state vars CS
-                        print("The estimated parameters are:")
-                        for k, v in six.iteritems(results_pest[l].Pinit):
-                            print(k, v)
-                            if k not in all_params:
-                                all_params.append(k)
-                            else:
-                                global_params.append(k)
-
-                            if k not in list_params_across_blocks:
-                                list_params_across_blocks.append(k)
 
             else:
                 if self._sim_solved == True:# and spectra_problem == False:
@@ -1904,12 +2026,23 @@ class MultipleExperimentsEstimator(object):
                 #print("shared species:", shared_species)
                 #print("list_species_across_blocks", list_species_across_blocks)
                 #print("list_waves_across_blocks", list_waves_across_blocks)
-
+        
+        print("\nSOLVING PARAMETER ESTIMATION FOR MULTIPLE DATASETS\n")
         #Now that we have all our datasets solved individually we can build our blocks and use
         #these solutions to initialize
         m = ConcreteModel()
         m.solver_opts = solver_opts
         m.tee = tee
+        
+        if scaled_variance == True:
+            var_scaled = dict()
+            for s,t in self.variances.items():
+                maxx = max(list(t.values()))
+                ind_var = dict()
+                for i,j in t.items():
+                    ind_var[i] = j/maxx
+                var_scaled[s] = ind_var
+            self.variances = var_scaled
         
         def build_individual_blocks(m, exp):
             """This function forms the rule for the construction of the individual blocks 
@@ -1952,7 +2085,7 @@ class MultipleExperimentsEstimator(object):
                 m.D_bar_constraint = Constraint(m.meas_times,
                                                 m.meas_lambdas,
                                                 rule=rule_D_bar)
-                
+            
             m.error = Var(bounds = (0, None))
             
             if self._spectra_given:
@@ -1961,10 +2094,40 @@ class MultipleExperimentsEstimator(object):
                     for t in m.meas_times:
                         for l in m.meas_lambdas:
                             if with_d_vars:
-                                expr += (m.D[t, l] - m.D_bar[t, l]) ** 2 / (self.variances[exp]['device'])
+                                if unwanted_G_info:
+                                    if exp in exps_w_G:
+                                        if detailed_G_type[exp] == "time_variant_G":
+                                            expr += (m.D[t, l] - m.D_bar[t, l] - m.qr[t]*m.g[l]) ** 2 / (self.variances[exp]['device'])
+                                        elif detailed_G_type[exp] == "time_invariant_G_decompose" or detailed_G_type[exp] == "time_invariant_G_no_decompose":
+                                            if spectra_shared == True:
+                                                expr += (m.D[t, l] - m.D_bar[t, l] - m.g[l]) ** 2 / (self.variances[exp]['device'])
+                                            elif spectra_shared == False:
+                                                if detailed_G_type[exp] == "time_invariant_G_decompose":
+                                                    expr += (m.D[t, l] - m.D_bar[t, l]) ** 2 / (self.variances[exp]['device'])
+                                                elif detailed_G_type[exp] == "time_invariant_G_no_decompose":
+                                                    expr += (m.D[t, l] - m.D_bar[t, l] - m.g[l]) ** 2 / (self.variances[exp]['device'])
+                                    elif exp in exps_wo_G:
+                                        expr += (m.D[t, l] - m.D_bar[t, l]) ** 2 / (self.variances[exp]['device'])
+                                else:
+                                    expr += (m.D[t, l] - m.D_bar[t, l]) ** 2 / (self.variances[exp]['device'])
                             else:
                                 D_bar = sum(m.C[t, k] * m.S[l, k] for k in list_components)
-                                expr += (m.D[t, l] - D_bar) ** 2 / (self.variances[exp]['device'])
+                                if unwanted_G_info:
+                                    if exp in exps_w_G:
+                                        if detailed_G_type[exp] == "time_variant_G":
+                                            expr += (m.D[t, l] - D_bar - m.qr[t]*m.g[l]) ** 2 / (self.variances[exp]['device'])
+                                        elif detailed_G_type_G_type[exp] == "time_invariant_G_decompose" or detailed_G_type[exp] == "time_invariant_G_no_decompose":
+                                            if spectra_shared == True:
+                                                expr += (m.D[t, l] - D_bar - m.g[l]) ** 2 / (self.variances[exp]['device'])
+                                            elif spectra_shared == False:
+                                                if detailed_G_type[exp] == "time_invariant_G_decompose":
+                                                    expr += (m.D[t, l] - D_bar) ** 2 / (self.variances[exp]['device'])
+                                                elif detailed_G_type[exp] == "time_invariant_G_no_decompose":
+                                                    expr += (m.D[t, l] - D_bar - m.g[l]) ** 2 / (self.variances[exp]['device'])
+                                    elif exp in exps_wo_G:
+                                        expr += (m.D[t, l] - D_bar) ** 2 / (self.variances[exp]['device'])            
+                                else:
+                                    expr += (m.D[t, l] - D_bar) ** 2 / (self.variances[exp]['device'])
                     
                     #If we require weights then we would add them back in here
                     #expr *= weights[0]
@@ -2028,7 +2191,7 @@ class MultipleExperimentsEstimator(object):
                         list_fixed_params.append(param)
                     # else:
                     #     print('WARNING: The fixed parameters across experiments do not match.')
-        print(list_fixed_params)
+        print("Fixed parameters are: ", list_fixed_params)
         for k in list_params_across_blocks:
             if k not in list_fixed_params:
                 new_list_params_across_blocks.append(k)
@@ -2063,7 +2226,7 @@ class MultipleExperimentsEstimator(object):
             #print(self.experiments)
             #print(list_species_across_blocks)
             m.spectra_linking = Constraint(self.experiments, list_waves_across_blocks, list_species_across_blocks, rule = wavelength_linking_rule)
-
+        
         m.obj = Objective(sense = minimize, expr=sum(b.error for b in m.experiment[:]))
         self.model = m
         
@@ -2081,9 +2244,12 @@ class MultipleExperimentsEstimator(object):
             
         elif self._spectra_given:
             #Working
+            # with open("multimodel_E2E5.txt","w") as f:
+            #     m.pprint(ostream = f)
+            # print('line2203')
             optimizer = SolverFactory('ipopt')
             solver_results = optimizer.solve(m, options = solver_opts,tee=tee)
-        
+
         elif covariance and solver == 'k_aug' and self._concentration_given:   
             self.solve_conc_full_problem(solver, covariance = covariance, tee=True, solver_opts=solver_opts)
             

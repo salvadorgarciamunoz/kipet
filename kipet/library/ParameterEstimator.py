@@ -44,6 +44,12 @@ class ParameterEstimator(Optimizer):
         self._n_actual = self._n_components
         self.model_variance = True
         self.termination_condition = None
+        
+        self.unwanted_G = False
+        self.time_variant_G = False
+        self.time_invariant_G = False
+        self.time_invariant_G_decompose = False
+        self.time_invariant_G_no_decompose = False
 
         if hasattr(self.model, 'non_absorbing'):
             warnings.warn("Overriden by non_absorbing")
@@ -153,7 +159,26 @@ class ParameterEstimator(Optimizer):
             sigma_sq['device'] = sigma_dev
 
         m = self.model
+        
+        # When G is time-invariant and cannot be decomposed, problem (19) should be called.
+        # Instead of calling (19), (24) is called but all qr[i] are fixed at 1.0. KH.L
+        if self.time_invariant_G_no_decompose:
+            # def _qr_constraint(m,i):
+            #     if i == m.alltime[-1]:
+            #         return Constraint.Skip
+            #     else:
+            #         return m.qr[i] == 1.0
+            # m.qr_constraint = Constraint(m.alltime, rule=_qr_constraint)
+            # m.qr_end_cons.deactivate()
+            for i in m.alltime:
+                m.qr[i] = 1.0
+            m.qr.fix()
 
+        def _qr_end_constraint(m):
+            return m.qr[m.alltime[-1]] == 1.0
+        if self.time_variant_G or self.unwanted_G:
+            m.qr_end_cons = Constraint(rule = _qr_end_constraint)
+            
         if with_d_vars and self.model_variance:
             m.D_bar = Var(m.meas_times,
                           m.meas_lambdas)
@@ -198,7 +223,12 @@ class ParameterEstimator(Optimizer):
             for t in m.meas_times:
                 for l in m.meas_lambdas:
                     if with_d_vars:
-                        expr += (m.D[t, l] - m.D_bar[t, l]) ** 2 / (sigma_sq['device'])
+                        if self.unwanted_G or self.time_variant_G:
+                            expr += (m.D[t, l] - m.D_bar[t, l] - m.qr[t]*m.g[l]) ** 2 / (sigma_sq['device'])
+                        elif self.time_invariant_G_no_decompose:
+                            expr += (m.D[t, l] - m.D_bar[t, l] - m.g[l]) ** 2 / (sigma_sq['device'])
+                        else:
+                            expr += (m.D[t, l] - m.D_bar[t, l]) ** 2 / (sigma_sq['device'])
                     else:
                         # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
                         if hasattr(m, '_abs_components'):
@@ -207,14 +237,24 @@ class ParameterEstimator(Optimizer):
                                     m.Cs[t, k] * m.S[l, k] for k in m._abs_components if k not in m.solid_spec_arg1)
                             else:
                                 D_bar = sum(m.Cs[t, k] * m.S[l, k] for k in m._abs_components)
-                            expr += (m.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
+                            if self.unwanted_G or self.time_variant_G:
+                                expr += (m.D[t, l] - D_bar - m.qr[t]*m.g[l]) ** 2 / (sigma_sq['device'])
+                            elif self.time_invariant_G_no_decompose:
+                                expr += (m.D[t, l] - D_bar - m.g[l]) ** 2 / (sigma_sq['device'])
+                            else:
+                                expr += (m.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
                         else:
                             if hasattr(m, 'huplc_absorbing') and hasattr(m, 'solid_spec_arg1'):
                                 D_bar = sum(
                                     m.C[t, k] * m.S[l, k] for k in list_components if k not in m.solid_spec_arg1)
                             else:
                                 D_bar = sum(m.C[t, k] * m.S[l, k] for k in list_components)
-                            expr += (m.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
+                            if self.unwanted_G or self.time_variant_G:
+                                expr += (m.D[t, l] - D_bar - m.qr[t]*m.g[l]) ** 2 / (sigma_sq['device'])
+                            elif self.time_invariant_G_no_decompose:
+                                expr += (m.D[t, l] - D_bar - m.g[l]) ** 2 / (sigma_sq['device'])
+                            else:
+                                expr += (m.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
 
             expr *= weights[0]
             second_term = 0.0
@@ -334,7 +374,12 @@ class ParameterEstimator(Optimizer):
             for t in m.meas_times:
                 for l in m.meas_lambdas:
                     if with_d_vars:
-                        expr += (m.D[t, l] - m.D_bar[t, l]) ** 2 / (sigma_sq['device'])
+                        if self.unwanted_G or self.time_variant_G:
+                            expr += (m.D[t, l] - m.D_bar[t, l] - m.qr[t]*m.g[l]) ** 2 / (sigma_sq['device'])
+                        elif self.time_invariant_G_no_decompose:
+                            expr += (m.D[t, l] - m.D_bar[t, l] - m.g[l]) ** 2 / (sigma_sq['device'])
+                        else:
+                            expr += (m.D[t, l] - m.D_bar[t, l]) ** 2 / (sigma_sq['device'])
                     else:
                         # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
                         if hasattr(m, '_abs_components'):
@@ -343,15 +388,24 @@ class ParameterEstimator(Optimizer):
                                     m.Z[t, k] * m.S[l, k] for k in m._abs_components if k not in m.solid_spec_arg1)
                             else:
                                 D_bar = sum(m.Z[t, k] * m.S[l, k] for k in m._abs_components)
-                            expr += (m.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
+                            if self.unwanted_G or self.time_variant_G:
+                                expr += (m.D[t, l] - D_bar - m.qr[t]*m.g[l]) ** 2 / (sigma_sq['device'])
+                            elif self.time_invariant_G_no_decompose:
+                                expr += (m.D[t, l] - D_bar - m.g[l]) ** 2 / (sigma_sq['device'])
+                            else:
+                                expr += (m.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
                         else:
                             if hasattr(m, 'huplc_absorbing'):
                                 D_bar = sum(
                                     m.Z[t, k] * m.S[l, k] for k in list_components if k not in m.solid_spec_arg1)
                             else:
                                 D_bar = sum(m.Z[t, k] * m.S[l, k] for k in list_components)
-                            expr += (m.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
-
+                            if self.unwanted_G or self.time_variant_G:
+                                expr += (m.D[t, l] - D_bar - m.qr[t]*m.g[l]) ** 2 / (sigma_sq['device'])
+                            elif self.time_invariant_G_no_decompose:
+                                expr += (m.D[t, l] - D_bar - m.g[l]) ** 2 / (sigma_sq['device'])
+                            else:
+                                expr += (m.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
             # for new huplc structure CS:
             if hasattr(m, 'huplc_absorbing'):
                 third_term = 0.0
@@ -433,19 +487,20 @@ class ParameterEstimator(Optimizer):
         # m.pprint()
         # m.display()
 
-        if self.model_variance == False:
-            ip = SolverFactory('ipopt')
-            solver_results = ip.solve(m, tee=True,
-                                      # logfile=self._tmpfile,
-                                      report_timing=True)
+        # if self.model_variance == False:
+        #     ip = SolverFactory('ipopt')
+        #     solver_results = ip.solve(m, tee=True,
+        #                               # logfile=self._tmpfile,
+        #                               report_timing=True)
 
-            for l in m.meas_lambdas:
-                if hasattr(self, '_abs_components'):
-                    for k in self._abs_components:
-                        m.S[l, k].fix()
-                else:
-                    for k in list_components:
-                        m.S[l, k].fix()
+        #     for l in m.meas_lambdas:
+        #         if hasattr(self, '_abs_components'):
+        #             for k in self._abs_components:
+        #                 m.S[l, k].fix()
+        #         else:
+        #             for k in list_components:
+        #                 m.S[l, k].fix()
+            
 
         if covariance and self.solver == 'ipopt_sens':
             if self.model_variance == False:
@@ -601,7 +656,11 @@ class ParameterEstimator(Optimizer):
             else:
                 self._compute_covariance_no_model_variance(hessian, sigma_sq)
         else:
+            # with open("b4model.txt","w") as f:
+            #     m.pprint(ostream=f)
             solver_results = optimizer.solve(m, tee=tee)
+            # with open("aftermodel.txt","w") as f2:
+            #     m.pprint(ostream=f2)
 
         if with_d_vars:
             m.del_component('D_bar')
@@ -2111,8 +2170,20 @@ class ParameterEstimator(Optimizer):
         var_dic = kwds.pop("jump_states", None)
         jump_times = kwds.pop("jump_times", None)
         feed_times = kwds.pop("feed_times", None)
+        
+        # user should input if the unwanted contribuiton is involved, and what type it is.
+        # If it's time_invariant, St or Z_in should be inputed to check the rank of kernal of Omega matrix. KH.L
+        unwanted_G = kwds.pop('unwanted_G', False)
+        time_variant_G = kwds.pop('time_variant_G', False)
+        time_invariant_G = kwds.pop('time_invariant_G', False)
+        St = kwds.pop('St', dict())
+        Z_in = kwds.pop('Z_in', dict())
 
         self.solver = solver
+        
+        self.unwanted_G = unwanted_G
+        self.time_variant_G = time_variant_G
+        self.time_invariant_G = time_invariant_G
 
         if model_variance:
             self.model_variance = model_variance
@@ -2126,6 +2197,48 @@ class ParameterEstimator(Optimizer):
             start = time.time()
         # Look at the output in results
         opt = SolverFactory(self.solver)
+        
+        # Options for unwanted contribution cannot be True at the same time. KH.L
+        if self.unwanted_G and self.time_variant_G:
+            raise RuntimeError('unwanted_G and time_variant_G cannot be assigned at the same time. If it is time-variant, please only assign time_variant_G=True.')
+        elif self.unwanted_G and self.time_invariant_G:
+            raise RuntimeError('unwanted_G and time_invariant_G cannot be assigned at the same time. If it is time-invariant, please only assign time_invariant_G=True.')
+        elif self.time_variant_G and self.time_invariant_G:
+            raise RuntimeError('time_variant_G and time_invariant_G cannot be assigned at the same time.Please only assign one of them to be True.') 
+            
+        # For time-invariant G, build omega matrix from St and Z_in,
+        # and check rko to see whether or not G can be decomposed. KH.L
+        if self.time_invariant_G:
+            if St==dict() and Z_in==dict():
+                raise RuntimeError('Because time-invariant unwanted contribution is chosen, please provide information of St or Z_in to build omega matrix.')
+            omega_list = list()
+            for i in St.keys():
+                omega_list.append(St[i])
+            for j in Z_in.keys():
+                omega_list.append(Z_in[j])
+            omega_sub = np.array(omega_list)
+            rank = np.linalg.matrix_rank(omega_sub)
+            sha = omega_sub.shape
+            cols = sha[1]
+            rko = cols - rank
+            # print(omega_sub, rko)
+            if rko > 0:
+                self.time_invariant_G_decompose = True
+            else:
+                self.time_invariant_G_no_decompose = True
+        
+        # print(self.unwanted_G)
+        # print(self.time_variant_G)
+        # print(self.time_invariant_G_decompose)
+        # print(self.time_invariant_G_no_decompose)
+        if self.unwanted_G:
+            print("\nType of unwanted contributions not set, so assumed that it is time-variant.\n")
+        elif self.time_variant_G:
+            print("\nTime-variant unwanted contribution is involved.\n")
+        elif self.time_invariant_G_decompose:
+            print("\nTime-invariant unwanted contribution is involved and G can be decomposed.\n")
+        elif self.time_invariant_G_no_decompose:
+            print("\nTime-invariant unwanted contribution is involved but G cannot be decomposed.\n")
 
         def rule_Pinit(mod, k):#added for the estimation of initial conditions which have to be complementary state vars CS
             # st = mod.start_time.value
