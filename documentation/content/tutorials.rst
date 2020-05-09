@@ -1151,7 +1151,7 @@ Tutorial 16 – Simultaneous Parameter Selection and Estimation
 --------------------------------------------------------------------------------
 
 The complex models used in reaction kinetic models require accurate parameter estimates.
-However, it may not be difficult to make accurate estimates for all of the parameters.
+However, it may be difficult to make accurate estimates for all of the parameters.
 To this end, various techniques have been developed to identify parameter subsets that can best be estimated while the remaining parameters are fixed to some initial value.
 The selection of this subset is still a challenge.
 
@@ -1170,10 +1170,10 @@ estimability analysis requires experimental data because the analysis depends on
 the example CSTR problem in this example includes simulated data at the "true" parameter values. Optional arguments include
 simulation_data, which takes a Results instance as input. This is recommended for complex systems that require good initilizations.
 If no simulation data is provided, the user can use the argument simulate_start to select whether a simulation should be performed internally; performance may vary here, so it is usually better to provide your own simulated data as above.
-As before, the simultaneous parameter selection and estimation method relies on the reduced hessian and therefore the method relies on k_aug to obtain sensitivities,
+As stated before, the simultaneous parameter selection and estimation method relies on the reduced hessian and therefore the method relies on k_aug to obtain sensitivities,
 and will only work if k_aug is installed and added to the path.
 
-This tutorial has two examples based on the CSTR example from the paper by Chen and Biegler.
+This tutorial has two examples based on the CSTR example from the paper by Chen and Biegler (2020).
 
 The first example from the example directory is “Ex_16_CSTR_estimability_temperature.py”. A new method for TemplateBuilder (set_model_times) has been implemented
 for entering the start and end times for the pyomo model as an attribute of the TemplateBuilder. The previous API still works, and if using this format, a time attribute

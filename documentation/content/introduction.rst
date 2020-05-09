@@ -37,6 +37,16 @@ Additionally, KIPET can be used to obtain a better understanding of a chemical r
 
 In the sections that follow, this document provides guidelines on how to make use of KIPET. A detailed installation guide is provided, including a list of all packages required to use KIPET. Some background theory into how KIPET works, as well as the structure of KIPET is then explained in Section 3. A guide for using some of the various capabilities is then provided in the form of tutorial examples (Section 4).  In Section 5 a more detailed look into some of the classes and functions that are not explicitly explained in Section 4 is provided. Finally, in Section 6, the documentation provides references and further reading that provides more detail on the theory behind the numerical techniques implemented in KIPET.
 
-KIPET is made available under the GNU General Public License, GPL-3. For more details on this  license please review the terms on the Github page or at this link.
-The KIPET team involves Salvador Garcia-Munoz (Eli Lilly), Santiago Rodriguez (Purdue University),  Lorenz T. Biegler, David M. Thierry, Christina Schenk, and Michael Short (all Carnegie Mellon University).
+KIPET is made available under the GNU General Public License, GPL-3. For more details on this  license please review the terms on the Github page.
+The KIPET team involves Salvador Garcia-Munoz (Eli Lilly), Santiago Rodriguez (Purdue University), Christina Schenk (Basque Center for Applied Mathematics), Michael Short (University of Surrey), Lorenz T. Biegler, David M. Thierry, Kevin McBride, and Kuan-Han Lin (all Carnegie Mellon University).
 
+When using KIPET please cite:
+
+C. Schenk, M. Short, J.S. Rodriguez, D. Thierry, L.T. Biegler, S. García-Muñoz, W. Chen (2020)
+Introducing KIPET: A novel open-source software package for kinetic parameter estimation from experimental datasets including spectra, Computers & Chemical Engineering, 134, 106716. https://doi.org/10.1016/j.compchemeng.2019.106716
+
+M. Short, L.T. Biegler, S. García-Muñoz, W. Chen (2020)
+Estimating variances and kinetic parameters from spectra across multiple datasets using KIPET, Chemometrics and Intelligent Laboratory Systems, https://doi.org/10.1016/j.chemolab.2020.104012
+
+M. Short, C. Schenk, D. Thierry, J.S. Rodriguez, L.T. Biegler, S. García-Muñoz (2019)
+KIPET–An Open-Source Kinetic Parameter Estimation Toolkit, Computer Aided Chemical Engineering, 47, 299-304.
