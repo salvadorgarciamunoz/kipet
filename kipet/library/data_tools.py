@@ -1,11 +1,12 @@
-# from kipet.model.TemplateBuilder import *
-import pandas as pd
+import scipy
+import six
+
+import matplotlib as cm
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d
 import numpy as np
-import scipy
-import matplotlib as cm
-import six
+import pandas as pd
+from pathlib import Path
 
 #=============================================================================
 #-----------------------DATA READING AND WRITING TOOLS------------------------
@@ -107,6 +108,17 @@ def write_concentration_data_to_txt(filename,dataframe):
             f.write("{0} {1} {2}\n".format(i,j,dataframe[j][i]))
     f.close()
 
+
+def read_concentration_data(filename):
+    
+    print(filename)
+    if filename.suffix == '.csv':
+        return read_concentration_data_from_csv(filename)
+    elif filename.suffix == '.txt':
+        return read_concentration_data_from_txt(filename)
+    else:
+        raise ValueError('Filetype not csv or txt.')
+        return None
 
 def read_concentration_data_from_txt(filename):
     """ Reads txt with concentration data

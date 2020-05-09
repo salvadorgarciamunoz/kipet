@@ -1,6 +1,8 @@
 References
 ==========
 
+Chen, W., Biegler, L.T., 2020, Reduced Hessian based parameter selection and estimation with simultaneous collocation approach, AIChE Journal, 16242.
+
 Hart, W.E., Laird, C., Watson, J.P., Woodruff, D.L., 2012, Pyomo: Optimization Modeling in Python, volume 67, Springer Verlag.
 
 HSL, 2013, A collection of Fortran codes for large scale scientific  computation. http://www.hsl.rl.ac.uk
@@ -15,7 +17,11 @@ Puxty, G., Maeder, M., Hungerbuhler, K., 2006, Tutorial on the fitting of kineti
 
 Sawall, M., Boerner, A., Kubis, C., Selent, D., Ludwig, R., Neymeyr, K., 2012, Model-free multivariate curve resolution combined with model-based kinetics: algorithm and applications. J. Chemometrics, 26: 538–548.
 
+Schenk, C., Short, M., Rodriguez, J.S., Thierry, D.M., Biegler, L.T., García-Muñoz, S., Chen, W., 2020, Introducing KIPET: A novel open-source software package for kinetic parameter estimation from experimental datasets including spectra, Computers & Chemical Engineering, 134, 106716. https://doi.org/10.1016/j.compchemeng.2019.106716
+
 Short, M., Schenk, C., Thierry, D.M., Rodriguez, J.S., Biegler, L.T., Garcia-Munoz, S., 2019, KIPET – An Open-Source Kinetic Parameter Estimation Toolkit, Computer-Aided Chemical Engineering, 47, 299-304
+
+Short, M., Biegler, L.T., García-Muñoz, S., Chen, W., 2020, Estimating variances and kinetic parameters from spectra across multiple datasets using KIPET, Chemometrics and Intelligent Laboratory Systems, https://doi.org/10.1016/j.chemolab.2020.104012
 
 van der Walt, S., Colbert, C., Varoquaux, G., 2011, The NumPy Array: A Structure for Efficient Numerical Computation, Computing in Science & Engineering, 13, 22-30, DOI:10.1109/MCSE.2011.37
 
