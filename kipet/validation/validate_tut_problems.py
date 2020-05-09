@@ -20,7 +20,6 @@ examplesMainDir = os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(inspect.getfile(
         inspect.currentframe()))), '..','examples'))
 
-
 class TestExamples(unittest.TestCase):
 
     @classmethod
@@ -36,7 +35,7 @@ class TestExamples(unittest.TestCase):
     def _schedule(self, examples_dir):
         examples_tutorial_dir = os.path.join(examples_dir)
         examples_tutorial=[f for f in os.listdir(examples_dir) if os.path.isfile(os.path.join(examples_tutorial_dir,f)) and f.endswith('.py')]
-        
+        number_of_examples = len(examples_tutorial)
         #####################################
         ###Tutorial-Examples:##
         #####################################
@@ -44,18 +43,20 @@ class TestExamples(unittest.TestCase):
         flagpy = 0
         countpy = 0
         flagps = 0
-        for f in examples_tutorial:
+        for n, f in enumerate(examples_tutorial):
+            print(f'Running tutorial example ({n + 1}/{number_of_examples}): {f}')
+            
             flagpy = subprocess.call([sys.executable,os.path.join(examples_tutorial_dir,f),'1'],
                                 stdout=self.std_out,
                                 stderr=subprocess.STDOUT)
             if flagpy!=0: 
-                print("running tutorial examples:",f,"failed")
+                print(f"\n\t #### {f} FAILED ####\n")
                 countpy = countpy + 1
                 flagpy=1
                 flagps=1
 
             else:
-                print("running tutorial examples:",f,"passed")
+                print(f"\n\t #### {f} PASSED ####\n")
             continue
         print(countpy,"files in",examples_tutorial_dir,"failed")
         return {self.assertEqual(int(flagpy),0),self.assertEqual(int(flagps),0)}

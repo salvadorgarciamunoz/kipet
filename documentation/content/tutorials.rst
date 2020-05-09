@@ -1146,6 +1146,7 @@ This will output a number of difference model variances and parameter estimates 
 Note here, importantly, that the “delta” argument is the squared variance of the device and that the resultsvest returns a dictionary of the sigmas including the device variance that you have inputted. After this you may solve the parameter estimation problem as before. 
 Included in this tutorial problem is the ability to compare solutions with the standard Chen approach as well as to compare the solutions to the generated data. One can see that both approaches do give differing solutions. And that, in this case, the new variance estimator gives superior solutions.
 
+
 Tutorial 15 – Unwanted Contributions in Spectroscopic data
 ---------------------------------
 In many cases, there may be unwanted contributions in the measured spectra, which may come from instrumental variations (such as the baseline shift or distortion) or from the presence of inert absorbing interferences with no kinetic behavior. Based on the paper of Chen, et al. (2019), we added an new function to KIPET in order to deal with these unwanted contributions.
@@ -1292,6 +1293,7 @@ this option will scale the variances with the maximum variance (i.e. 4e-8 in thi
    :align: center
 
 This scaled_variance option is not necessary but it helps solve the estimation problem for multiple datasets. It's worth trying when ipopt gets stuck at certain iteration. 
+
 
 Tutorial 16 – Simultaneous Parameter Selection and Estimation
 --------------------------------------------------------------------------------

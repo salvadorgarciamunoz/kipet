@@ -1,9 +1,11 @@
-from pyomo.environ import *
-from pyomo.dae import *
-from kipet.library.ResultsObject import *
-import numpy as np
 import math
+
+import numpy as np
 import scipy
+
+from pyomo.dae import *
+from pyomo.environ import *
+from kipet.library.ResultsObject import *
 
 # need to move this two functions to utils
 def find_nearest(array,value):

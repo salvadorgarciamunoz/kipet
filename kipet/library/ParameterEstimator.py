@@ -2,22 +2,28 @@
 
 from __future__ import print_function
 from __future__ import division
-from pyomo.environ import *
-from pyomo.dae import *
-from kipet.library.Optimizer import *
-from kipet.library.TemplateBuilder import *
-import matplotlib.pyplot as plt
-from pyomo import *
-import numpy as np
-import six
+
 import copy
-import re
 import os
+import re
+import six
 import time
+
+import matplotlib.pyplot as plt
+import numpy as np
+from pyomo import *
 from pyomo.core.expr import current as EXPR
 from pyomo.core.expr.numvalue import NumericConstant
-from pyomo.opt import SolverFactory, ProblemFormat, TerminationCondition
+from pyomo.dae import *
+from pyomo.environ import *
+from pyomo.opt import (
+    ProblemFormat,
+    SolverFactory, 
+    TerminationCondition,
+)
 
+from kipet.library.Optimizer import *
+from kipet.library.TemplateBuilder import *
 
 class ParameterEstimator(Optimizer):
     """Optimizer for parameter estimation.
