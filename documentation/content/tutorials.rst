@@ -1146,7 +1146,7 @@ This will output a number of difference model variances and parameter estimates 
 Note here, importantly, that the “delta” argument is the squared variance of the device and that the resultsvest returns a dictionary of the sigmas including the device variance that you have inputted. After this you may solve the parameter estimation problem as before. 
 Included in this tutorial problem is the ability to compare solutions with the standard Chen approach as well as to compare the solutions to the generated data. One can see that both approaches do give differing solutions. And that, in this case, the new variance estimator gives superior solutions.
 
-Tutorial 15 – Unwanted Contribuions in Spectroscopic data
+Tutorial 15 – Unwanted Contributions in Spectroscopic data
 ---------------------------------
 In many cases, there may be unwanted contributions in the measured spectra, which may come from instrumental variations (such as the baseline shift or distortion) or from the presence of inert absorbing interferences with no kinetic behavior. Based on the paper of Chen, et al. (2019), we added an new function to KIPET in order to deal with these unwanted contributions.
 
@@ -1292,6 +1292,109 @@ this option will scale the variances with the maximum variance (i.e. 4e-8 in thi
    :align: center
 
 This scaled_variance option is not necessary but it helps solve the estimation problem for multiple datasets. It's worth trying when ipopt gets stuck at certain iteration. 
+
+Tutorial 16 – Simultaneous Parameter Selection and Estimation
+--------------------------------------------------------------------------------
+
+The complex models used in reaction kinetic models require accurate parameter estimates.
+However, it may be difficult to make accurate estimates for all of the parameters.
+To this end, various techniques have been developed to identify parameter subsets that can best be estimated while the remaining parameters are fixed to some initial value.
+The selection of this subset is still a challenge.
+
+One such method for parameter subset selection was recently developed by Chen and Biegler (2020).
+This method uses a reduced hessian approach to select parameters and estimate their values simultaneously using a collocation approach.
+Parameter estimabilty is based on the ratio of their standard deviation to estimated value, and a Gauss-Jordan elimination method strategy is used to rank parameter estimability.
+This has been shown to be less computationally demanding than previous methods based on eigenvalues.
+For more details about how the algorithm works, the user is recommended to read the article "Reduced Hessian Based Parameter Selection and Estimation with Simultaneous Collocation Approach" by Weifeng Chen and Lorenz T. Biegler, AIChE 2020.
+
+In Kipet, this method is implemented using the EstimationPotential module. It is currently separate from the EstimabilityAnalyzer module used otherwise for estimability (see Tutorial 12).
+Kipet can now handle complementary state data, such as temperature and pressure, in its analysis. This should improve the user experience and lead to more robust results.
+
+This module is used in a slightly different manner than other modules in Kipet. The EstimationPotential class requires
+the TemplateBuilder instance of the model as the first argument (the models are declared internally). This is followed by the experimental data. Yes, this form of
+estimability analysis requires experimental data because the analysis depends on the outputs. For illustration purposes,
+the example CSTR problem in this example includes simulated data at the "true" parameter values. Optional arguments include
+simulation_data, which takes a Results instance as input. This is recommended for complex systems that require good initilizations.
+If no simulation data is provided, the user can use the argument simulate_start to select whether a simulation should be performed internally; performance may vary here, so it is usually better to provide your own simulated data as above.
+As stated before, the simultaneous parameter selection and estimation method relies on the reduced hessian and therefore the method relies on k_aug to obtain sensitivities,
+and will only work if k_aug is installed and added to the path.
+
+This tutorial has two examples based on the CSTR example from the paper by Chen and Biegler (2020).
+
+The first example from the example directory is “Ex_16_CSTR_estimability_temperature.py”. A new method for TemplateBuilder (set_model_times) has been implemented
+for entering the start and end times for the pyomo model as an attribute of the TemplateBuilder. The previous API still works, and if using this format, a time attribute
+needs to be provided to EstimationPotential.
+
+The option verbose allows one to display the output of the various steps in the algorithm.
+
+::
+
+    builder_est.set_model_times((0.0, 5.0))
+    est_param = EstimationPotential(builder_est, exp_data, simulation_data=results, verbose=True)
+
+or similarily:
+
+::
+
+    est_param = EstimationPotential(builder_est, exp_data, time=(0.0, 5.0) simulation_data=results, verbose=True)
+
+To start the simultaneous parameter selection and estimation routine, simply use the estimate method. 
+Optionally, using the plot_results method, you can see separate plots for the concentration and complementary states data, if provided.
+The experimental data is also shown on these plots.
+
+::
+
+    est_param.estimate()
+    est_param.plot_results()
+
+
+.. figure:: ex16result1.png
+   :width: 400px
+   :align: center
+
+   Concentration profiles for the tutorial example 16
+
+.. figure:: ex16result2.png
+   :width: 400px
+   :align: center
+
+   Complementary state (here temperature) profiles for the tutorial example 16
+
+The next example shows how to include additional experimental data. In this case, a few concentration measurements
+are added to the data set. This is shown in "Ex_16_CSTR_estimability_temperature_concentration.py". In this example, the experimental
+data is again simulated, but the same method applies to real experimental data. For example, the simulation is 
+performed with 50 finite elements and 3 collocation points. Thus, there are 151 potential times for a measurement.
+Three points are chosen and the concentration data (Z_data) is limited to these three points. The complete experimental
+data (50 temperature points and three concentration measurements) are concatenated together. Kipet can handle the
+discrepancies in measurement times.
+
+::
+
+    # Three randomly chosen values from the concentration index
+    conc_measurement_index = [7, 57, 99]
+    Z_data = results.Z.iloc[conc_measurement_index, :]
+
+    Z_data['A'] = add_noise_to_signal(Z_data['A'], noise['A'])
+    X_data['T'] = add_noise_to_signal(X_data['T'], noise['T'])
+
+    exp_data = pd.concat([X_data['T'], Z_data], axis=1)
+    
+    est_param = EstimationPotential(builder_est, exp_data, time=(0.0, 5.0) simulation_data=results, verbose=True)
+
+Compare the results with those from previously.
+    
+.. figure:: ex16result3.png
+   :width: 400px
+   :align: center
+
+   Concentration profiles for the tutorial example 16. Noitce the addition of the three "experimental" points.
+
+.. figure:: ex16result4.png
+   :width: 400px
+   :align: center
+
+   Complementary state (here temperature) profiles for the tutorial example 16
+
 
 This concludes the last of the tutorial examples. This hopefully provides a good overview of the capabilities of the package and we look forward to getting feedback once these have been applied to your own problems. Table 2 on the following page provides a complete list of all of the example problems in the KIPET package, with some additional explanations.
 
@@ -1446,6 +1549,13 @@ The next section of the documentation provides more detailed and miscellaneous f
    | Ex_15_estimation_mult_exp_unwanted_G.py        | Tutorial 15 problem shows how to solve the parameter  |
    |                                                | estimation problem for multiple experiments with      |
    |                                                | different types of unwanted contributions.            |
+   +------------------------------------------------+-------------------------------------------------------+
+   | Ex_16_CSTR_estimability_temperature.py         | Tutorial 16 problem with the CSTR problem from the    | 
+   |                                                | paper by Chen and Biegler                             | 
+   +------------------------------------------------+-------------------------------------------------------+
+   | Ex_16_CSTR_estimability_temperature_concentration.py   | Tutorial 16 problem with the CSTR problem from the | 
+   |                                                        | paper by Chen and Biegler with temperature and     |
+   |                                                        | concentration data                                 |
    +------------------------------------------------+-------------------------------------------------------+
    | Ad_1_estimation.py                             | Additional parameter estimation problem with known    |
    |						    | variances, but with a least squares optimization run  |
