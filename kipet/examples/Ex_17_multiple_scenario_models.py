@@ -27,7 +27,7 @@ import numpy as np
 import pandas as pd
 
 from kipet.library.data_tools import add_noise_to_signal
-from kipet.library.NestedSchurDecompositionModels import NestedSchurDecomposition as NSD    
+from kipet.library.NestedSchurDecompositionModelsPyNumero import NestedSchurDecomposition as NSD    
 
 from kipet.library.PyomoSimulator import PyomoSimulator
 from kipet.library.TemplateBuilder import TemplateBuilder
@@ -214,7 +214,7 @@ if __name__ == "__main__":
     
     conc_measurement_index3 = [12, 30, 50, 70, 82, 140]
     Z_data3 = results3.Z.iloc[conc_measurement_index3, :]
-    Z_data3 = add_noise_to_signal(Z_data3, 1e-5)
+    #Z_data3 = add_noise_to_signal(Z_data3, 1e-5)
     
     #build.add_global_parameters({k: v[0] for k, v in zip(build._parameters.keys(), d_init_guess.values())})
     build._parameters_init = {k: v[0] for k, v in zip(build._parameters.keys(), d_init_guess.values())}
@@ -237,7 +237,7 @@ if __name__ == "__main__":
     
     conc_measurement_index4 = [12, 30, 50, 70, 82, 140]
     Z_data4 = results4.Z.iloc[conc_measurement_index4, :]
-    Z_data4 = add_noise_to_signal(Z_data4, 1e-5)
+    #Z_data4 = add_noise_to_signal(Z_data4, 1e-5)
     
     #build.add_global_parameters({k: v[0] for k, v in zip(build._parameters.keys(), d_init_guess.values())})
     build._parameters_init = {k: v[0] for k, v in zip(build._parameters.keys(), d_init_guess.values())}
