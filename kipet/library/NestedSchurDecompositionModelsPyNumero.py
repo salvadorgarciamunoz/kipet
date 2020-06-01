@@ -266,7 +266,7 @@ class NestedSchurDecomposition():
                        )
         
         d_vals = pd.DataFrame(self.d_iter)
-        plot_convergence_results(d_vals.values, self.models_dict, d_bounds)
+        #plot_convergence_results(d_vals.values, self.models_dict, d_bounds)
         
         # Clean up the k_aug and pyomo files
         if self.remove_files:
