@@ -308,11 +308,11 @@ class NestedSchurDecomposition():
             
             if max(d_step) <= tol:
                 
-                print('Terminating sequence: minimum tolerance in step size reached ({tol}).')
+                print(f'Terminating sequence: minimum tolerance in step size reached ({tol}).')
                 break
             
             if counter == max_iter:
-                print('Terminating sequence: maximum number of iterations reached ({max_iter})')
+                print(f'Terminating sequence: maximum number of iterations reached ({max_iter})')
                 break
             
             counter += 1
