@@ -303,7 +303,7 @@ class NestedSchurDecomposition():
             M = opt_dict[opt_count]['M']
             m = opt_dict[opt_count]['m']
             d_step = np.linalg.inv(M).dot(-m)
-            d_init = [d_init[i] + 0.4*d_step[i] for i, v in enumerate(d_init)]
+            d_init = [d_init[i] + alpha*d_step[i] for i, v in enumerate(d_init)]
             self.d_iter.append(d_init)
             
             if max(d_step) <= tol:
