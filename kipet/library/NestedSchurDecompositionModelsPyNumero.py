@@ -292,7 +292,6 @@ class NestedSchurDecomposition():
         """This runs a basic Newton step algorithm - use a decent alpha!"""
         
         tol = 1e-6
-        steps = 10
         alpha = 0.4
         max_iter = 40
         counter = 0
@@ -430,13 +429,6 @@ def _optimize(model, d_vals, verbose=False):
     model.ipopt_zL_in.update(model.ipopt_zL_out)
     model.ipopt_zU_in.update(model.ipopt_zU_out)
     
-    # kaug.options['dsdp_mode'] = ""  
-    # kaug.solve(model, tee=verbose)
-    
-    # logfile = Path(tmpfile_i)
-    # kr = KR(name='scenario', verbose=False, pyomo_file=tmpfile_i)
-    # setattr(model, 'k_aug_data', kr)
-    
     return  model
 
 def _inner_problem(d_init_list, models, generate_gradients=False, initialize=False):
@@ -494,12 +486,7 @@ def _inner_problem(d_init_list, models, generate_gradients=False, initialize=Fal
         # Optimize the inner problem
         model_opt = _optimize(model, d_init)
         
-        # Gather the needed data from k_aug and the solution
-        #kkt_df = model_opt.k_aug_data.kkt_df
-        
         kkt_df, var_ind, con_ind_new = _JH(model_opt)
-        
-        #var_ind = model_opt.k_aug_data.variable_index
         duals = [model_opt.dual[getattr(model_opt, global_constraint_name)[key]] for key, val in getattr(model_opt, global_param_name).items()]
         col_ind  = [var_ind.loc[var_ind[0] == f'{parameter_var_name}[{v}]'].index[0] for v in valid_parameters]
         dummy_constraints = _get_dummy_constraints(model_opt)
@@ -547,18 +534,8 @@ def _KKT_mat(H, A):
 def _JH(model):
     
     nlp = PyomoNLP(model)
-   # objective = getattr(model, model_component)
-    # Get the list of vars in the objective - how can you turn this into a KKT matrix?
     varList = nlp.get_pyomo_variables()
     conList = nlp.get_pyomo_constraints()
-    
-    # Get the first derivatives 
-    # firstDerivs = differentiate(objective.expr, wrt_list=varList, mode=diffs.Modes.sympy)
-    # secondDerivs = [ differentiate(firstDerivs[i], wrt_list=varList, mode=diffs.Modes.sympy) for i,v in enumerate(varList) ]
-    # indecies = [v.name for v in varList]
-    
-    # J = pd.DataFrame(firstDerivs, columns=[f'{model_component}'], index=indecies)
-    # H = pd.DataFrame(secondDerivs, columns=indecies, index=indecies)
     duals = nlp.get_duals()
     
     J = nlp.extract_submatrix_jacobian(pyomo_variables=varList, pyomo_constraints=conList)
@@ -571,7 +548,6 @@ def _JH(model):
     H_df = pd.DataFrame(H.todense(), columns=var_index_names, index=var_index_names)
     
     var_index_names = pd.DataFrame(var_index_names)
-    
     KKT = _KKT_mat(H_df, J_df)
     
     return KKT, var_index_names, con_index_names
