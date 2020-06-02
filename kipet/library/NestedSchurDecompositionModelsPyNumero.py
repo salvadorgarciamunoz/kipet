@@ -246,27 +246,36 @@ class NestedSchurDecomposition():
         def callback(x, *args):
             self.d_iter.append(x)
     
+    
+        if self.method in ['trust-exact', 'trust-constr']:
         # The args for scipy.optimize.minimize
-        fun = _inner_problem
-        x0 = list(d_init.values()) #list(d_init.values()) if isinstance(d_init, dict) else d_init
-        args = (self.models_dict,)
-        jac = _calculate_m
-        hess = _calculate_M
-        
-        callback(x0)
-        results = minimize(fun, x0, args=args, method=self.method,
-                       jac=jac,
-                       hess=hess,
-                       callback=callback,
-                       bounds=d_bounds,
-                       options=dict(gtol=1e-10,
-                                  #  initial_tr_radius=0.1,
-                                  #  max_tr_radius=0.1
-                                    ),
-                       )
+            fun = _inner_problem
+            x0 = list(d_init.values()) #list(d_init.values()) if isinstance(d_init, dict) else d_init
+            args = (self.models_dict,)
+            jac = _calculate_m
+            hess = _calculate_M
+            
+            callback(x0)
+            results = minimize(fun, x0, args=args, method=self.method,
+                           jac=jac,
+                           hess=hess,
+                           callback=callback,
+                           bounds=d_bounds,
+                           options=dict(gtol=1e-10,
+                                      #  initial_tr_radius=0.1,
+                                      #  max_tr_radius=0.1
+                                        ),
+                           )
+            self.parameters_opt = {k: results.x[i] for i, k in enumerate(self.d_init.keys())}
+            
+            
+        if self.method in ['newton']:
+            x0 = list(d_init.values())
+            results = self._run_newton_step(x0, self.models_dict)
+            self.parameters_opt = {k: results[i] for i, k in enumerate(self.d_init.keys())}
         
         d_vals = pd.DataFrame(self.d_iter)
-        #plot_convergence_results(d_vals.values, self.models_dict, d_bounds)
+        plot_convergence_results(d_vals.values, self.models_dict, d_bounds)
         
         # Clean up the k_aug and pyomo files
         if self.remove_files:
@@ -275,9 +284,42 @@ class NestedSchurDecomposition():
                 if file.is_dir():
                     shutil.rmtree(file)
         
-        self.parameters_opt = {k: results.x[i] for i, k in enumerate(self.d_init.keys())}
+        
         
         return results, opt_dict
+    
+    def _run_newton_step(self, d_init, models):
+        """This runs a basic Newton step algorithm - use a decent alpha!"""
+        
+        tol = 1e-6
+        steps = 10
+        alpha = 0.4
+        max_iter = 40
+        counter = 0
+        self.d_iter.append(d_init)
+        
+        while True:   
+        
+            _inner_problem(d_init, models, generate_gradients=False)
+            M = opt_dict[opt_count]['M']
+            m = opt_dict[opt_count]['m']
+            d_step = np.linalg.inv(M).dot(-m)
+            d_init = [d_init[i] + 0.4*d_step[i] for i, v in enumerate(d_init)]
+            self.d_iter.append(d_init)
+            
+            if max(d_step) <= tol:
+                
+                print('Terminating sequence: minimum tolerance in step size reached ({tol}).')
+                break
+            
+            if counter == max_iter:
+                print('Terminating sequence: maximum number of iterations reached ({max_iter})')
+                break
+            
+            counter += 1
+            
+        return d_init
+            
 
     def _rule_objective(self, model):
         """This function defines the objective function for the estimability

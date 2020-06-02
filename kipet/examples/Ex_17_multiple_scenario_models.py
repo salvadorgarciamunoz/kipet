@@ -248,6 +248,7 @@ if __name__ == "__main__":
     
     # specify the parameter name in your model (required!)
     options = {'parameter_var_name': 'P',
+               'method': 'newton',
          #      'objective_name' : 'name_of_objective_attribute', # I will find a cleaner method than this! (not tested)
                }
     
