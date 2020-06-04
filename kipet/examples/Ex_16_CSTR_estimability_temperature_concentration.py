@@ -17,7 +17,7 @@ import pandas as pd
 import pyomo.core as pyomo
 
 from kipet.library.data_tools import add_noise_to_signal
-from kipet.library.EstimationPotential_PN import EstimationPotential
+from kipet.library.EstimationPotential import EstimationPotential
 from kipet.library.PyomoSimulator import PyomoSimulator
 from kipet.library.TemplateBuilder import (
         TemplateBuilder,
