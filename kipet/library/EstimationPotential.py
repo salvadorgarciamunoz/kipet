@@ -13,6 +13,7 @@ import warnings
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from pyomo.contrib.pynumero.interfaces.pyomo_nlp import PyomoNLP
 from scipy.sparse import coo_matrix
 from scipy.sparse.linalg import spsolve
 
@@ -20,6 +21,9 @@ from pyomo.environ import (
     Objective,
     SolverFactory,
     Suffix,
+    Constraint,
+    Param,
+    Set,
     )
 
 from kipet.library.ParameterEstimator import ParameterEstimator
@@ -243,7 +247,7 @@ class EstimationPotential(ParameterEstimator):
                 ipopt.solve(self.model, tee=self.verbose)
                 if self.verbose:
                     self.model.P.display()
-                
+                    
                 # Step 6 - Check for active bounds
                 number_of_active_bounds = 0
                 
@@ -293,7 +297,7 @@ class EstimationPotential(ParameterEstimator):
         
             if ratios_satisfied:
                 if self.verbose:
-                    print('Step 7 passed, all paramater ratios are less than provided tolerance {self.eta}, moving to Step 10')
+                    print(f'Step 7 passed, all paramater ratios are less than provided tolerance {self.eta}, moving to Step 10')
                     if self.debug:
                         input("Press Enter to continue...")
 
@@ -521,7 +525,6 @@ class EstimationPotential(ParameterEstimator):
      
         self.model = self.model_builder.create_pyomo_model(self.start_time, self.end_time)
         sim_model = copy.deepcopy(self.model)
-        self._prep_model_for_optimization(self.model)
         self.model.objective = self._rule_objective(self.model, self.model_builder)
         self.parameter_order = {i : name for i, name in enumerate(self.model.P)}
         
@@ -628,10 +631,12 @@ class EstimationPotential(ParameterEstimator):
                                            nfe = self.nfe,
                                            scheme = 'LAGRANGE-RADAU')
             
-        results_pyomo = rh_sim.run_sim('ipopt_sens',
+        # Sense or not does not seem to matter here anymore
+        results_pyomo = rh_sim.run_sim('ipopt',
                                           tee=False,
                                           solver_options={},
                                           )
+        print('position relative to error message')
                 
         self.rh_model = rh_model
         t = np.linspace(self.start_time, self.end_time, self.nfe + 1)
@@ -664,7 +669,6 @@ class EstimationPotential(ParameterEstimator):
                     self.rh_model.C[(fe, data_set)].fix()
     
         self.rh_model.objective = self._rule_objective(self.rh_model, self.rh_model_builder)
-        self._prep_model_for_optimization(self.rh_model)
     
         return None
         
@@ -704,37 +708,75 @@ class EstimationPotential(ParameterEstimator):
                 obj += 0.5*(model.X[t] - model.U[t]) ** 2 / model.sigma[k]**2      
     
         return Objective(expr=obj)
-    
-    def _prep_model_for_optimization(self, model):
-        """This function prepares the optimization models with required
-        suffixes. This is here because I don't know if this is already in 
-        KIPET somewhere else.
+   
+    def _get_kkt_info(self, model):
+        """Takes the model and uses PyNumero to get the jacobian and Hessian
+        information as dataframes
         
         Args:
-            model (pyomo model): The model of the system
+            model (pyomo ConcreteModel): A pyomo model instance of the current
+            problem (used in calculating the reduced Hessian)
+    
+        Returns:
             
-        Retuns:
-            None
+            KKT (pd.DataFrame): the KKT matrix as a dataframe
+            
+            H_df (pd.DataFrame): the Hessian as a dataframe
+            
+            J_df (pd.DataFrame): the jacobian as a dataframe
+            
+            var_index_names (list): the index of variables
+            
+            con_index_names (list): the index of constraints
             
         """
-        model.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
-        model.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
-        model.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
-        model.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
-        model.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
-        model.red_hessian = Suffix(direction=Suffix.EXPORT)
-        model.dof_v = Suffix(direction=Suffix.EXPORT)
-        model.rh_name = Suffix(direction=Suffix.IMPORT)
+    
+        nlp = PyomoNLP(model)
+        varList = nlp.get_pyomo_variables()
+        conList = nlp.get_pyomo_constraints()
+        duals = nlp.get_duals()
         
-        count_vars = 1
-        for k, v in model.P.items():
-            model.dof_v[k] = 1
-            count_vars += 1
+        J = nlp.extract_submatrix_jacobian(pyomo_variables=varList, pyomo_constraints=conList)
+        H = nlp.extract_submatrix_hessian_lag(pyomo_variables_rows=varList, pyomo_variables_cols=varList)
         
-        model.npdp = Suffix(direction=Suffix.EXPORT)
+        var_index_names = [v.name for v in varList]
+        con_index_names = [v.name for v in conList]
+    
+        J_df = pd.DataFrame(J.todense(), columns=var_index_names, index=con_index_names)
+        H_df = pd.DataFrame(H.todense(), columns=var_index_names, index=var_index_names)
         
-        return None
+        var_index_names = pd.DataFrame(var_index_names)
         
+        KKT_up = pd.merge(H_df, J_df.transpose(), left_index=True, right_index=True)
+        KKT = pd.concat((KKT_up, J_df))
+        KKT = KKT.fillna(0)
+        
+        return KKT, H_df, J_df, var_index_names, con_index_names
+    
+    def _add_global_constraints(self, model, Se):
+        """This adds the dummy constraints to the model forcing the local
+        parameters to equal the current global parameter values
+        
+        """
+        global_param_name = 'd'
+        global_constraint_name = 'fix_params_to_global'
+        param_set_name = 'parameter_names'
+        
+        setattr(model, 'current_p_set', Set(initialize=Se))
+
+
+        setattr(model, global_param_name, Param(getattr(model, param_set_name),
+                              initialize=1,
+                              mutable=True,
+                              ))
+        
+        def rule_fix_global_parameters(m, k):
+            
+            return getattr(m, 'P')[k] - getattr(m, global_param_name)[k] == 0
+            
+        setattr(model, global_constraint_name, 
+        Constraint(getattr(model, 'current_p_set'), rule=rule_fix_global_parameters))
+    
     def _calculate_reduced_hessian(self, Se, Sf, verbose=False):
         """This function solves an optimization with very restrictive bounds
         on the paramters in order to get the reduced hessian at fixed 
@@ -755,14 +797,18 @@ class EstimationPotential(ParameterEstimator):
         delta = 1e-12
         n_free = len(Se)
         ipopt = SolverFactory('ipopt')
-        kaug = SolverFactory('k_aug')
         tmpfile_i = "ipopt_output"
         
         self._run_simulation()
         
+        if hasattr(self.rh_model, 'fix_params_to_global'):
+            self.rh_model.del_component('fix_params_to_global')
+        
+        self._add_global_constraints(self.rh_model, Se)
+        
         for k, v in self.rh_model.P.items():
-            ub = self.rh_model.P[k].value
-            lb = self.rh_model.P[k].value - delta
+            ub = self.rho
+            lb = 1/self.rho
             self.rh_model.P[k].setlb(lb)
             self.rh_model.P[k].setub(ub)
             self.rh_model.P[k].unfix()
@@ -770,10 +816,10 @@ class EstimationPotential(ParameterEstimator):
         for fixed_param in Sf:
             self.rh_model.P[fixed_param].fix(1)
         
-        self.rh_model.ipopt_zL_in.update(self.rh_model.ipopt_zL_out)
-        self.rh_model.ipopt_zU_in.update(self.rh_model.ipopt_zU_out)
         
-        ipopt.solve(self.rh_model, symbolic_solver_labels=True, keepfiles=True, tee=verbose, logfile=tmpfile_i)
+        print('Error start')
+        ipopt.solve(self.rh_model, symbolic_solver_labels=True, keepfiles=True, tee=True, logfile=tmpfile_i)
+        print('Error End')
 
         with open(tmpfile_i, 'r') as f:
             output_string = f.read()
@@ -781,31 +827,18 @@ class EstimationPotential(ParameterEstimator):
         stub = output_string.split('\n')[0].split(',')[1][2:-4]
         col_file = Path(stub + '.col')
         
-        kaug.options["deb_kkt"] = ""  
-        kaug.solve(self.rh_model, tee=verbose)
-        
-        hess = pd.read_csv('hess_debug.in', delim_whitespace=True, header=None, skipinitialspace=True)
-        hess.columns = ['irow', 'jcol', 'vals']
-        hess.irow -= 1
-        hess.jcol -= 1
-        
-        jac = pd.read_csv('jacobi_debug.in', delim_whitespace=True, header=None, skipinitialspace=True)
-        m = jac.iloc[0,0]
-        n = jac.iloc[0,1]
-        jac.drop(index=[0], inplace=True)
-        jac.columns = ['irow', 'jcol', 'vals']
-        jac.irow -= 1
-        jac.jcol -= 1
-        
-        Jac_coo = coo_matrix((jac.vals, (jac.irow, jac.jcol)), shape=(m, n)) 
-        Hess_coo = coo_matrix((hess.vals, (hess.irow, hess.jcol)), shape=(n, n)) 
+        kkt_df, hess, jac, var_ind, con_ind_new = self._get_kkt_info(self.rh_model)
+       
+        dummy_constraints = [f'fix_params_to_global[{k}]' for k in Se]
+        jac = jac.drop(index=dummy_constraints)
+        col_ind  = [var_ind.loc[var_ind[0] == f'P[{v}]'].index[0] for v in Se]
+        Jac_coo = coo_matrix(jac.values)
+        Hess_coo = coo_matrix(hess.values)
         Jac = Jac_coo.todense()
-        
-        var_ind = pd.read_csv(col_file, sep = ';', header=None) # dummy sep
-        col_ind = [var_ind.loc[var_ind[0] == f'P[{v}]'].index[0] for v in Se]
-        
         Jac_f = Jac[:, col_ind]
         Jac_l = np.delete(Jac, col_ind, axis=1)
+        
+        m, n = jac.shape
         X = spsolve(coo_matrix(np.mat(Jac_l)).tocsc(), coo_matrix(np.mat(-Jac_f)).tocsc())
         
         col_ind_left = list(set(range(n)).difference(set(col_ind)))
