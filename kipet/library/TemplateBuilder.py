@@ -154,7 +154,7 @@ class TemplateBuilder(object):
         self._times = None
         self._all_state_data = list()
 
-  #New for estimate initial conditions of complementary states CS:
+        #New for estimate initial conditions of complementary states CS:
         self._estim_init = False
         self._allinitcomponents=dict()
         self._initextra_est_list = None
@@ -536,6 +536,23 @@ class TemplateBuilder(object):
                 print(
                     "Warning! Since {label}-matrix contains negative values Kipet is assuming a derivative of {label} has been inputted")
 
+        return None
+    
+    def add_experimental_data(self, data):
+        """Generic function to add all data at once if in the same dataframe.
+        At the moment this works for concentration and complementary states
+        """
+        
+        exp_data = pd.DataFrame(data)
+     
+        conc_state_headers = self._component_names & set(exp_data.columns)
+        if len(conc_state_headers) > 0:
+            self.add_concentration_data(pd.DataFrame(exp_data[conc_state_headers].dropna()))
+        
+        comp_state_headers = self._complementary_states & set(exp_data.columns)
+        if len(comp_state_headers) > 0:
+            self.add_complementary_states_data(pd.DataFrame(exp_data[comp_state_headers].dropna()))
+        
         return None
         
     def add_concentration_data(self, data):

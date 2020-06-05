@@ -70,25 +70,6 @@ def run_simulation(simulator, nfe=50, ncp=3, use_only_FE=True):
         
     return Z_data, X_data, results_pyomo
 
-# Move this func to TemplateBuilder
-# self.add_exp_data(exp_data) - it should automate data additions
-def add_exp_data_and_make_model(build, data):
-
-    exp_data = pd.DataFrame(data)
-    model_builder = copy.copy(build)
- 
-    conc_state_headers = model_builder._component_names & set(exp_data.columns)
-    if len(conc_state_headers) > 0:
-        model_builder.add_concentration_data(pd.DataFrame(exp_data[conc_state_headers].dropna()))
-    
-    comp_state_headers = model_builder._complementary_states & set(exp_data.columns)
-    if len(comp_state_headers) > 0:
-        model_builder.add_complementary_states_data(pd.DataFrame(exp_data[comp_state_headers].dropna()))
-        
-    model = model_builder.create_pyomo_model()
-    
-    return model
-
 if __name__ == "__main__":
 
     with_plots = False
@@ -158,7 +139,7 @@ if __name__ == "__main__":
     Z_data, X_data, results = run_simulation(simulator)
 
     # End of the simulation stages - this is not necessary when using actual data
-
+    
     noise = {
             'T' : 0.25,
             }
@@ -166,12 +147,10 @@ if __name__ == "__main__":
     X_data['T'] = add_noise_to_signal(X_data['T'], noise['T'])
     exp_data = pd.DataFrame(X_data['T'])
 
-    # This is the 20% increase from the original parameter values - not needed in real cases
+    # This is the 20% increase from the original parameter values for simulation
     factor = 1.2
     
     builder_est = TemplateBuilder() 
-    
-    # Should write a function that automates this when all info is inserted
     
     builder_est.add_complementary_state_variable('T',  293.15)
     builder_est.add_complementary_state_variable('Tc', 293.15)
@@ -189,16 +168,25 @@ if __name__ == "__main__":
     
     # New method to add times like everything else
     builder_est.set_model_times(times)
+    
     # This is required for estimability
     builder_est.set_parameter_scaling(True)
-    # Make the model
-    model = add_exp_data_and_make_model(builder_est, exp_data)
     
-    # Now it should work only using the model
+    # Add experimental data to the model (new method takes both concentration
+    # and complementary state data and separates them out based on variables
+    # You need to declare the variables beforehand as usual
+    builder_est.add_experimental_data(exp_data)
+    # Build the model
+    model = builder_est.create_pyomo_model()
+    
+    # Declare the options (see EstimationPotential for more info)
     options = {
         'verbose' : True,
                }
     
+    # Declare the EsimationPotential instance
     est_param = EstimationPotential(model, simulation_data=results, options=options)
+    # Call the estimate() method to start the algorithm
     est_param.estimate()
+    # Optional plotting of the experimental data against the fitted models
     est_param.plot_results()
