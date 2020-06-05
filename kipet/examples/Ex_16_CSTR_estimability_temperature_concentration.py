@@ -7,7 +7,7 @@ Example from Chen and Biegler, Reduced Hessian Based Parameter Selection and
     Estimation with Simultaneous Collocation Approach (AIChE 2020) paper with
     a CSTR for a simple reaction.
 """
-
+import copy
 import sys
 
 import matplotlib.pyplot as plt
@@ -68,6 +68,23 @@ def run_simulation(simulator, nfe=50, ncp=3, use_only_FE=True):
         X_data.drop(index=0, inplace=True)
         
     return Z_data, X_data, results_pyomo
+
+def add_exp_data_and_make_model(build, data):
+
+    exp_data = pd.DataFrame(data)
+    model_builder = copy.copy(build)
+ 
+    conc_state_headers = model_builder._component_names & set(exp_data.columns)
+    if len(conc_state_headers) > 0:
+        model_builder.add_concentration_data(pd.DataFrame(exp_data[conc_state_headers].dropna()))
+    
+    comp_state_headers = model_builder._complementary_states & set(exp_data.columns)
+    if len(comp_state_headers) > 0:
+        model_builder.add_complementary_states_data(pd.DataFrame(exp_data[comp_state_headers].dropna()))
+        
+    model = model_builder.create_pyomo_model()
+    
+    return model
 
 
 if __name__ == "__main__":
@@ -176,7 +193,15 @@ if __name__ == "__main__":
     
     # New method to add times like everything else
     builder_est.set_model_times(times)
+    # This is required for estimability
+    builder_est.set_parameter_scaling(True)
+    # Make the model
+    model = add_exp_data_and_make_model(builder_est, exp_data)
     
-    est_param = EstimationPotential(builder_est, exp_data, simulation_data=results, verbose=True)
+    options = {
+        'verbose' : True,
+               }
+    
+    est_param = EstimationPotential(model, simulation_data=results, options=options)
     est_param.estimate()
     est_param.plot_results()

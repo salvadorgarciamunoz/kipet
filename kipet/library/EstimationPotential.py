@@ -39,100 +39,60 @@ class EstimationPotential(ParameterEstimator):
 
     Attributes:
     
-        model_builder (TemplateBuilder): The template for the model (do not use
-        created model!).
-        
-        exp_data (pandas.DataFrame): The experimental data as a dataframe with
-            the column headers as the variable name.
-            
-        times (Array-like): The start and the end times for the system.
-        
-        nfe (int): The number of finite elements to use in the collocation.
-        
-        ncp (int): The number of collocation points per finite element.
-        
-        bound_approach (float): The accepted relative difference for
-            determining whether or not a bound is considered active (Step 6).
-            
-        rho (float): Factor used to determine the lower and upper bounds for
-            each parameter in fitting (Step 5).
-            
-        epsilon (float): The minimum value for parameter values
-        
-        eta (float): Predetermined cut-off value for accepted std/parameter
-            ratios.
-            
-        max_iter_limit (int): Iteration limits for the estimability algorithm.
-        
-        verbose (bool): Defaults to False, option to display the progress of
-            the algorihm.
-            
-        debug (bool): Defaults to False, option to ask for user input to 
-            proceed during the algorithm.
-            
+        model_builder (pyomo ConcreteModel): The pyomo model 
+    
         simulation_data (pandas.DataFrame): Optional simulation data to use for
             warm starting (Needs testing!)
+        
+        options (dict): Various options for the esimability algorithm:
+        
+            nfe (int): The number of finite elements to use in the collocation.
             
-        kwargs (dict): Optional arguments, at the moment there is no use for
-            any additional arguments
+            ncp (int): The number of collocation points per finite element.
+            
+            bound_approach (float): The accepted relative difference for
+                determining whether or not a bound is considered active (Step 6).
+                
+            rho (float): Factor used to determine the lower and upper bounds for
+                each parameter in fitting (Step 5).
+                
+            epsilon (float): The minimum value for parameter values
+            
+            eta (float): Predetermined cut-off value for accepted std/parameter
+                ratios.
+                
+            max_iter_limit (int): Iteration limits for the estimability algorithm.
+            
+            verbose (bool): Defaults to False, option to display the progress of
+                the algorihm.
+                
+            debug (bool): Defaults to False, option to ask for user input to 
+                proceed during the algorithm.
+                
+            simulate_start (bool): Option to simulate using the model to 
+                warm start the optimization
         
     """
 
-    def __init__(self, model_builder, exp_data, times=None, nfe=None,
-                 ncp=None, bound_approach=1e-2, rho=10, epsilon=1e-16, eta=0.1,
-                 max_iter_limit=20, verbose=False, debug=False, 
-                 simulation_data=None, simulate_start=False, kwargs=None):
+    def __init__(self, model, simulation_data=None, options=None):
         
-        if not isinstance(model_builder, TemplateBuilder):
-            raise TypeError('A TemplateBuilder instance is required as the first argument.')
-            
-        if not isinstance(exp_data, pd.DataFrame):
-            raise TypeError('Experimental data needs to be a pandas DataFrame object')
-            
-        model_builder.set_parameter_scaling(True)
-        self.model_builder = copy.deepcopy(model_builder)
-        self.rh_model_builder = copy.deepcopy(model_builder)
+        # Options handling
+        self.options = {} if options is None else options.copy()
         
-        self.debug = debug
-        self.verbose = verbose if not self.debug else True
-        self.kwargs = {} if kwargs is None else kwargs.copy()
+        self.debug = self.options.pop('debug', False)
+        self.verbose = self.options.pop('verbose', False)
+        self.nfe = self.options.pop('nfe', 50)
+        self.ncp = self.options.pop('ncp', 3)
+        self.bound_approach = self.options.pop('bound_approach', 1e-2)
+        self.rho = self.options.pop('rho', 10)
+        self.epsilon = self.options.pop('epsilon', 1e-16)
+        self.eta = self.options.pop('eta', 0.1)
+        self.max_iter_limit = self.options.pop('max_iter_limit', 20)
+        self.simulate_start = self.options.pop('sim_start', False)
         
-        if nfe is None:
-            self.nfe = 50
-            msg = (f'The number of finite elements was not defined, setting nfe = {self.nfe}')
-            warnings.warn(msg, UserWarning)
-        else:
-            self.nfe = nfe
-            
-        if ncp is None:
-            self.ncp = 3
-            msg = (f'The number of collocation points was not defined, setting ncp = {self.ncp}')
-            warnings.warn(msg, UserWarning)
-        else:
-            self.ncp = ncp
-            
-        if self.model_builder._times is not None:
-            self.times = self.model_builder._times
-        else:
-            if times is not None:
-                try:
-                    _ = (t for t in times)
-                except TypeError:
-                    print(f'The "times" attribute is not iterable')
-                self.times = times
-            else:
-                raise ValueError('A start and end time must be provided')
-        
-        self.start_time = self.times[0]
-        self.end_time = self.times[1]
-        self.bound_approach = bound_approach
-        self.rho = rho
-        self.epsilon = epsilon
-        self.eta = eta
-        self.max_iter_limit = max_iter_limit
-        self.exp_data = exp_data
+        # Copy the model
+        self.model = copy.deepcopy(model)
         self.simulation_data = simulation_data
-        self.simulate_start = simulate_start
         
     def __repr__(self):
         
@@ -281,10 +241,6 @@ class EstimationPotential(ParameterEstimator):
                 self.model.P.display()
                 self.model.K.display()
   
-            for k, v in self.model.K.items():
-                self.rh_model.K[k] = self.model.K[k] * self.model.P[k].value
-                self.rh_model.P[k].set_value(1)
-          
             reduced_hessian = self._calculate_reduced_hessian(Se, Sf, verbose=False)
             
             # Step 7 - Check the ratios of the parameter std to value
@@ -372,12 +328,7 @@ class EstimationPotential(ParameterEstimator):
                             if self.debug:
                                 print(f'Input model:\n')
                                 self.model.P.display()
-                                # model.P.display()
-
-                        for k, v in self.model.K.items():
-                            self.rh_model.K[k] = self.model.K[k] * self.model.P[k].value
-                            self.rh_model.P[k].set_value(1)
-                
+                  
                         reduced_hessian = self._calculate_reduced_hessian(Se, Sf, verbose=False)
                         
                         if self.debug:
@@ -509,25 +460,13 @@ class EstimationPotential(ParameterEstimator):
         reduced hessian model with "fake data", and discretizes all models
 
         """
-        # Setup the model for parameter fitting
-        self.exp_data = pd.DataFrame(self.exp_data)
-        
-        model_builder = copy.copy(self.model_builder)
-        rh_model_builder = copy.copy(self.rh_model_builder)
-     
-        conc_state_headers = self.model_builder._component_names & set(self.exp_data.columns)
-        if len(conc_state_headers) > 0:
-            self.model_builder.add_concentration_data(pd.DataFrame(self.exp_data[conc_state_headers].dropna()))
-        
-        comp_state_headers = self.model_builder._complementary_states & set(self.exp_data.columns)
-        if len(comp_state_headers) > 0:
-            self.model_builder.add_complementary_states_data(pd.DataFrame(self.exp_data[comp_state_headers].dropna()))
-     
-        self.model = self.model_builder.create_pyomo_model(self.start_time, self.end_time)
         sim_model = copy.deepcopy(self.model)
-        self.model.objective = self._rule_objective(self.model, self.model_builder)
-        self.parameter_order = {i : name for i, name in enumerate(self.model.P)}
         
+        if not hasattr(self.model, 'objective'):
+            self.model.objective = self._rule_objective(self.model)
+        
+        #self.model.objective = self._rule_objective(self.model, self.model_builder)
+        self.parameter_order = {i : name for i, name in enumerate(self.model.P)}
         
         simulation_data = self.simulation_data
         if simulation_data is None and self.simulate_start:
@@ -548,15 +487,14 @@ class EstimationPotential(ParameterEstimator):
                                               tee=True,
                                               solver_options=options,
                                               )
-        #print(f'self.simulation_data:\n{simulation_data}')
-    
+        
+        # The model needs to be discretized
         model_pe = ParameterEstimator(self.model)
         model_pe.apply_discretization('dae.collocation',
                                             ncp = self.ncp,
                                             nfe = self.nfe,
                                             scheme = 'LAGRANGE-RADAU')
         
-        # Take the sim data and acutally make it work here
         
         if hasattr(simulation_data, 'X'):
             #print(f'Here is the X data:\n{simulation_data.X}')
@@ -574,105 +512,10 @@ class EstimationPotential(ParameterEstimator):
             self.model.P[k].setlb(lb)
             self.model.P[k].setub(ub)
             self.model.P[k].unfix()
-        
-        # Setup the model for calculating the reduced hessian
-        t = np.linspace(self.start_time, self.end_time, self.nfe + 1)
-        t = [round(i, 6) for i in t]
-        # At the moment, this uses fake data for the indexing - something cleaner?
-        fake_data = pd.DataFrame(t, columns=['indx'])
-        fake_data.drop(index=[0], inplace=True)
-        fake_data.index=fake_data.indx
-        fake_data.drop(columns=['indx'], inplace=True)
-        
-        for state in self.exp_data.columns:
-            fake_data[state] = 1
-        
-        if len(conc_state_headers) > 0:
-            self.rh_model_builder.add_concentration_data(pd.DataFrame(fake_data[conc_state_headers]))
-            
-        if len(comp_state_headers) > 0:
-            self.rh_model_builder.add_complementary_states_data(pd.DataFrame(fake_data[comp_state_headers]))
-    
-        self.rh_model = self.rh_model_builder.create_pyomo_model(self.start_time, self.end_time) 
-        self._run_simulation()
      
         return None
     
-    def _run_simulation(self):
-        """You need to run the simulation of the model to get data equal to 
-        the current parameter set. The opt will be zero, but the reduced
-        hessian should be correct.
-        
-        TODO:
-            I think this needs to be changed - there must be an easier way
-            (Abstract model?) than by generating a new Concrete model each time
-            the reduced hessian needs to be calculated.
-        
-        Args:
-            None
-                
-        Returns:
-            None
-            
-        """
-        print('*'*20 + ' Running Simulation ' + '*'*20)
-        
-        rh_model_builder = copy.copy(self.rh_model_builder)
-        rh_model = rh_model_builder.create_pyomo_model(self.start_time, self.end_time)
-        
-        rh_sim = PyomoSimulator(rh_model)
-            
-        for k, v in rh_sim.model.P.items():
-            rh_sim.model.P[k].fix(1)
-            rh_sim.model.K[k] = self.rh_model.K[k]
-
-        rh_sim.apply_discretization('dae.collocation',
-                                           ncp = self.ncp,
-                                           nfe = self.nfe,
-                                           scheme = 'LAGRANGE-RADAU')
-            
-        # Sense or not does not seem to matter here anymore
-        results_pyomo = rh_sim.run_sim('ipopt',
-                                          tee=False,
-                                          solver_options={},
-                                          )
-        print('position relative to error message')
-                
-        self.rh_model = rh_model
-        t = np.linspace(self.start_time, self.end_time, self.nfe + 1)
-        t = [round(i, 6) for i in t]
-        
-        all_data = pd.DataFrame(index=t[1:])
-        
-        if len(self.model_builder._component_names) > 0:
-            Z_data_full = pd.DataFrame(results_pyomo.Z)
-            Z_data_fe = Z_data_full.loc[t, :]
-            Z_data_fe.drop(index=0, inplace=True)
-            all_data = all_data.merge(Z_data_fe, right_index=True, left_index=True)
-        
-        if len(self.model_builder._complementary_states) > 0:
-            X_data_full = pd.DataFrame(results_pyomo.X)
-            X_data_fe = X_data_full.loc[t, :]
-            X_data_fe.drop(index=0, inplace=True)
-            all_data = all_data.merge(X_data_fe, right_index=True, left_index=True)
-        
-        for data_set in self.model.measured_data.value:
-            if data_set in self.model_builder._complementary_states:
-                for fe in all_data.index:
-                    
-                    self.rh_model.U[(fe, data_set)].set_value(float(all_data.loc[fe, data_set]))
-                    self.rh_model.U[(fe, data_set)].fix()
-            
-            if data_set in self.model_builder._component_names:
-                for fe in all_data.index:
-                    self.rh_model.C[(fe, data_set)].set_value(float(all_data.loc[fe, data_set]))
-                    self.rh_model.C[(fe, data_set)].fix()
-    
-        self.rh_model.objective = self._rule_objective(self.rh_model, self.rh_model_builder)
-    
-        return None
-        
-    def _rule_objective(self, model, builder):
+    def _rule_objective(self, model):
         """This function defines the objective function for the estimability
         
         This is equation 5 from Chen and Biegler 2020. It has the following
@@ -730,7 +573,6 @@ class EstimationPotential(ParameterEstimator):
             con_index_names (list): the index of constraints
             
         """
-    
         nlp = PyomoNLP(model)
         varList = nlp.get_pyomo_variables()
         conList = nlp.get_pyomo_constraints()
@@ -799,27 +641,24 @@ class EstimationPotential(ParameterEstimator):
         ipopt = SolverFactory('ipopt')
         tmpfile_i = "ipopt_output"
         
-        self._run_simulation()
+        rh_model = copy.deepcopy(self.model)
         
-        if hasattr(self.rh_model, 'fix_params_to_global'):
-            self.rh_model.del_component('fix_params_to_global')
+        if hasattr(rh_model, 'fix_params_to_global'):
+            rh_model.del_component('fix_params_to_global')
         
-        self._add_global_constraints(self.rh_model, Se)
+        self._add_global_constraints(rh_model, Se)
         
-        for k, v in self.rh_model.P.items():
+        for k, v in rh_model.P.items():
             ub = self.rho
             lb = 1/self.rho
-            self.rh_model.P[k].setlb(lb)
-            self.rh_model.P[k].setub(ub)
-            self.rh_model.P[k].unfix()
+            rh_model.P[k].setlb(lb)
+            rh_model.P[k].setub(ub)
+            rh_model.P[k].unfix()
         
         for fixed_param in Sf:
-            self.rh_model.P[fixed_param].fix(1)
+            rh_model.P[fixed_param].fix(1)
         
-        
-        print('Error start')
-        ipopt.solve(self.rh_model, symbolic_solver_labels=True, keepfiles=True, tee=True, logfile=tmpfile_i)
-        print('Error End')
+        ipopt.solve(rh_model, symbolic_solver_labels=True, keepfiles=True, tee=True, logfile=tmpfile_i)
 
         with open(tmpfile_i, 'r') as f:
             output_string = f.read()
@@ -827,7 +666,7 @@ class EstimationPotential(ParameterEstimator):
         stub = output_string.split('\n')[0].split(',')[1][2:-4]
         col_file = Path(stub + '.col')
         
-        kkt_df, hess, jac, var_ind, con_ind_new = self._get_kkt_info(self.rh_model)
+        kkt_df, hess, jac, var_ind, con_ind_new = self._get_kkt_info(rh_model)
        
         dummy_constraints = [f'fix_params_to_global[{k}]' for k in Se]
         jac = jac.drop(index=dummy_constraints)
