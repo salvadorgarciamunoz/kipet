@@ -577,7 +577,6 @@ class EstimationPotential(ParameterEstimator):
         nlp = PyomoNLP(model)
         varList = nlp.get_pyomo_variables()
         conList = nlp.get_pyomo_constraints()
-        duals = nlp.get_duals()
         
         J = nlp.extract_submatrix_jacobian(pyomo_variables=varList, pyomo_constraints=conList)
         H = nlp.extract_submatrix_hessian_lag(pyomo_variables_rows=varList, pyomo_variables_cols=varList)
