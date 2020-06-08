@@ -78,17 +78,18 @@ class EstimationPotential(ParameterEstimator):
         
         # Options handling
         self.options = {} if options is None else options.copy()
+        self._options = options.copy()
         
-        self.debug = self.options.pop('debug', False)
-        self.verbose = self.options.pop('verbose', False)
-        self.nfe = self.options.pop('nfe', 50)
-        self.ncp = self.options.pop('ncp', 3)
-        self.bound_approach = self.options.pop('bound_approach', 1e-2)
-        self.rho = self.options.pop('rho', 10)
-        self.epsilon = self.options.pop('epsilon', 1e-16)
-        self.eta = self.options.pop('eta', 0.1)
-        self.max_iter_limit = self.options.pop('max_iter_limit', 20)
-        self.simulate_start = self.options.pop('sim_start', False)
+        self.debug = self._options.pop('debug', False)
+        self.verbose = self._options.pop('verbose', False)
+        self.nfe = self._options.pop('nfe', 50)
+        self.ncp = self._options.pop('ncp', 3)
+        self.bound_approach = self._options.pop('bound_approach', 1e-2)
+        self.rho = self._options.pop('rho', 10)
+        self.epsilon = self._options.pop('epsilon', 1e-16)
+        self.eta = self._options.pop('eta', 0.1)
+        self.max_iter_limit = self._options.pop('max_iter_limit', 20)
+        self.simulate_start = self._options.pop('sim_start', False)
         
         # Copy the model
         self.model = copy.deepcopy(model)
@@ -96,7 +97,7 @@ class EstimationPotential(ParameterEstimator):
         
     def __repr__(self):
         
-        repr_str = (f'EstimationPotential({self.model_builder}, {self.exp_data}, {self.times}, nfe={self.nfe}, ncp={self.ncp}, bound_approach={self.bound_approach}, rho={self.rho}, epsilon={self.epsilon}, eta={self.eta}, max_iter_limit={self.max_iter_limit}, verbose={self.verbose}, debug={self.debug}, kwargs={self.kwargs})')
+        repr_str = (f'EstimationPotential({self.model}, simulation_data={"Provided" if self.simulation_data is not None else "None"}, options={self.options})')
         
         return repr_str
         
