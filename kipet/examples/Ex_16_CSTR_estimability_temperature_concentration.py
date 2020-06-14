@@ -7,7 +7,7 @@ Example from Chen and Biegler, Reduced Hessian Based Parameter Selection and
     Estimation with Simultaneous Collocation Approach (AIChE 2020) paper with
     a CSTR for a simple reaction.
 """
-
+import copy
 import sys
 
 import matplotlib.pyplot as plt
@@ -68,7 +68,6 @@ def run_simulation(simulator, nfe=50, ncp=3, use_only_FE=True):
         X_data.drop(index=0, inplace=True)
         
     return Z_data, X_data, results_pyomo
-
 
 if __name__ == "__main__":
 
@@ -177,6 +176,24 @@ if __name__ == "__main__":
     # New method to add times like everything else
     builder_est.set_model_times(times)
     
-    est_param = EstimationPotential(builder_est, exp_data, simulation_data=results, verbose=True)
+    # This is required for estimability
+    builder_est.set_parameter_scaling(True)
+
+    # Add experimental data to the model (new method takes both concentration
+    # and complementary state data and separates them out based on variables
+    # You need to declare the variables beforehand as usual
+    builder_est.add_experimental_data(exp_data)
+    # Build the model
+    model = builder_est.create_pyomo_model()
+    
+    # Declare the options (see EstimationPotential for more info)
+    options = {
+        'verbose' : True,
+               }
+    
+    # Declare the EsimationPotential instance
+    est_param = EstimationPotential(model, simulation_data=results, options=options)
+    # Call the estimate() method to start the algorithm
     est_param.estimate()
+    # Optional plotting of the experimental data against the fitted models
     est_param.plot_results()

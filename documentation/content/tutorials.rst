@@ -1318,8 +1318,6 @@ estimability analysis requires experimental data because the analysis depends on
 the example CSTR problem in this example includes simulated data at the "true" parameter values. Optional arguments include
 simulation_data, which takes a Results instance as input. This is recommended for complex systems that require good initilizations.
 If no simulation data is provided, the user can use the argument simulate_start to select whether a simulation should be performed internally; performance may vary here, so it is usually better to provide your own simulated data as above.
-As stated before, the simultaneous parameter selection and estimation method relies on the reduced hessian and therefore the method relies on k_aug to obtain sensitivities,
-and will only work if k_aug is installed and added to the path.
 
 This tutorial has two examples based on the CSTR example from the paper by Chen and Biegler (2020).
 
