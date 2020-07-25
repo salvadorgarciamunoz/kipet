@@ -738,16 +738,16 @@ class ParameterEstimator(Optimizer):
                 obj=0
                 rho = 100
                 sumpen = 0.0
-                for k in m.mixture_components & m.measured_data:
-                    for t, v in m.C.items():
-                        sumpen = sumpen + m.Y[t, 'npen']
-                        fifth_term =  rho * sumpen
-                        obj += 0.5*(m.C[t] - m.Z[t]) ** 2 / m.sigma[k]**2 + fifth_term
+                for t, v in m.C.items():
+                    k = t[1]
+                    sumpen = sumpen + m.Y[t, 'npen']
+                    fifth_term =  rho * sumpen
+                    obj += 0.5*(m.C[t] - m.Z[t]) ** 2 / m.sigma[k]**2 + fifth_term
             else:
                 obj = 0
-                for k in m.mixture_components & m.measured_data:
-                    for t, v in m.C.items():
-                        obj += 0.5*(m.C[t] - m.Z[t]) ** 2 / m.sigma[k]**2
+                for t, v in m.C.items():
+                    k = t[1]
+                    obj += 0.5*(m.C[t] - m.Z[t]) ** 2 / m.sigma[k]**2
             return obj
 
         m.objective = Objective(rule=rule_objective)
