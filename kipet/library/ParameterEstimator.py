@@ -734,17 +734,17 @@ class ParameterEstimator(Optimizer):
 
         # estimation
         def rule_objective(m):
+            obj=0
             if penaltyparamcon == True: #added for optional penalty term related to constraint CS
-                obj=0
                 rho = 100
                 sumpen = 0.0
                 for t, v in m.C.items():
                     k = t[1]
                     sumpen = sumpen + m.Y[t, 'npen']
-                    fifth_term =  rho * sumpen
-                    obj += 0.5*(m.C[t] - m.Z[t]) ** 2 / m.sigma[k]**2 + fifth_term
+                    obj += 0.5*(m.C[t] - m.Z[t]) ** 2 / m.sigma[k]**2
+                fifth_term = rho * sumpen
+                obj += fifth_term
             else:
-                obj = 0
                 for t, v in m.C.items():
                     k = t[1]
                     obj += 0.5*(m.C[t] - m.Z[t]) ** 2 / m.sigma[k]**2
