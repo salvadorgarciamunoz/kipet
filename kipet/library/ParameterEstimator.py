@@ -740,8 +740,9 @@ class ParameterEstimator(Optimizer):
                 sumpen = 0.0
                 for t, v in m.C.items():
                     k = t[1]
-                    sumpen = sumpen + m.Y[t, 'npen']
                     obj += 0.5*(m.C[t] - m.Z[t]) ** 2 / m.sigma[k]**2
+                for t in m.allmeas_times:
+                    sumpen += m.Y[t, 'npen']
                 fifth_term = rho * sumpen
                 obj += fifth_term
             else:
