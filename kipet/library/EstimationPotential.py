@@ -543,13 +543,15 @@ class EstimationPotential(ParameterEstimator):
         obj = 0
 
         # This can be cleaned up
-        for k in model.mixture_components & model.measured_data:
-            for t, v in model.C.items():
-                obj += 0.5*(model.C[t] - model.Z[t]) ** 2 / model.sigma[k]**2
+        #for k in model.mixture_components & model.measured_data:
+        for t, v in model.C.items():
+            k = t[1]
+            obj += 0.5*(model.C[t] - model.Z[t]) ** 2 / model.sigma[k]**2
         
-        for k in model.complementary_states & model.measured_data:
-            for t, v in model.U.items():
-                obj += 0.5*(model.X[t] - model.U[t]) ** 2 / model.sigma[k]**2      
+        #for k in model.complementary_states & model.measured_data:
+        for t, v in model.U.items():
+            k = t[1]
+            obj += 0.5*(model.X[t] - model.U[t]) ** 2 / model.sigma[k]**2      
     
         return Objective(expr=obj)
    
