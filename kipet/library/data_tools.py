@@ -4,7 +4,6 @@ import six
 import re
 import matplotlib as cm
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import axes3d
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -115,169 +114,6 @@ def read_spectral_data_from_csv(filename, instrument = False, negatives_to_zero 
     return data
 
 #=============================================================================
-#-----------------------OLD FUNCS SO NOT TO BREAK API-------------------------
-#=============================================================================
-
-# These should be removed at some point...
-
-def write_spectral_data_to_csv(filename, dataframe):
-    """ Write spectral data Dij to csv file.
-    
-        Args:
-            filename (str): name of output file
-          
-            dataframe (DataFrame): pandas DataFrame
-        
-        Returns:
-            None
-
-    """
-    write_file(filename, dataframe, 'csv')
-    return None
-
-def write_spectral_data_to_txt(filename,dataframe):
-    """ Write spectral data Dij to txt file.
-    
-        Args:
-            filename (str): name of output file
-          
-            dataframe (DataFrame): pandas DataFrame
-        
-        Returns:
-            None
-    
-    """
-    write_file(filename, dataframe, 'txt')
-    return None
-
-def write_absorption_data_to_csv(filename,dataframe):
-    """ Write absorption data Sij to csv file.
-    
-        Args:
-            filename (str): name of output file
-          
-            dataframe (DataFrame): pandas DataFrame
-        
-        Returns:
-            None
-
-    """
-    write_file(filename, dataframe, 'csv')
-    return None
-
-def write_absorption_data_to_txt(filename,dataframe):
-    """ Write absorption data Sij to txt file.
-    
-        Args:
-            filename (str): name of output file
-          
-            dataframe (DataFrame): pandas DataFrame
-        
-        Returns:
-            None
-
-    """
-    write_file(filename, dataframe, 'txt')
-    return None
-
-def write_concentration_data_to_csv(filename,dataframe):
-    """ Write concentration data Cij to csv file.
-    
-        Args:
-            filename (str): name of output file
-          
-            dataframe (DataFrame): pandas DataFrame
-        
-        Returns:
-            None
-
-    """
-    write_file(filename, dataframe, 'csv')
-    return None
-
-def write_concentration_data_to_txt(filename,dataframe):
-    """ Write concentration data Cij to txt file.
-    
-        Args:
-            filename (str): name of output file
-          
-            dataframe (DataFrame): pandas DataFrame
-        
-        Returns:
-            None
-
-    """
-    write_file(filename, dataframe, 'txt')
-    return None
-
-
-def read_concentration_data(filename):
-    """A general wrapper for concentration data"""
-    return read_file(filename)
-
-def read_concentration_data_from_txt(filename):
-    """ Reads txt with concentration data
-    
-        Args:
-            filename (str): name of input file
-          
-        Returns:
-            DataFrame
-
-    """
-    return read_file(filename)
-
-  
-def read_concentration_data_from_csv(filename):
-    """ Reads csv with concentration data
-    
-        Args:
-            filename (str): name of input file
-         
-        Returns:
-            DataFrame
-
-    """
-    return read_file(filename)
-
-def read_absorption_data_from_csv(filename):
-    """ Reads csv with spectral data
-    
-        Args:
-            filename (str): name of input file
-          
-        Returns:
-            DataFrame
-
-    """
-    return read_file(filename)
-
-def read_spectral_data_from_txt(filename):
-    """ Reads txt with spectral data
-    
-        Args:
-            filename (str): name of input file
-          
-        Returns:
-            DataFrame
-
-    """
-    return read_file(filename)
-
-def read_absorption_data_from_txt(filename):
-    """ Reads txt with absorption data
-    
-        Args:
-            filename (str): name of input file
-          
-        Returns:
-            DataFrame
-
-    """
-    return read_file(filename)
-
-
-#=============================================================================
 #---------------------------- DATA CONVERSION TOOLS --------------------------
 #=============================================================================
 
@@ -295,6 +131,24 @@ def is_float_re(str):
     """Checks if a value is a float or not"""
     _float_regexp = re.compile(r"^[-+]?(?:\b[0-9]+(?:\.[0-9]*)?|\.[0-9]+\b)(?:[eE][-+]?[0-9]+\b)?$").match
     return True if _float_regexp(str) else False
+
+def df_from_pyomo_data(varobject):
+
+    val = []
+    ix = []
+    for index in varobject:
+        ix.append(index)
+        val.append(varobject[index].value)
+    
+    a = pd.Series(index=ix, data=val)
+    dfs = pd.DataFrame(a)
+    index = pd.MultiIndex.from_tuples(dfs.index)
+   
+    dfs = dfs.reindex(index)
+    dfs = dfs.unstack()
+    dfs.columns = [v[1] for v in dfs.columns]
+
+    return dfs
 
 #=============================================================================
 #--------------------------- DIAGNOSTIC TOOLS ------------------------
@@ -805,39 +659,3 @@ def decrease_wavelengths(original_dataset, A_set = 2, specific_subset = None):
             count+=1
         new_D = original_dataset[original_dataset.columns[::A_set]]     
     return new_D
-
-def plot_spectral_data(dataFrame,dimension='2D'):
-    """ Plots spectral data
-    
-        Args:
-            dataFrame (DataFrame): spectral data
-          
-        Returns:
-            None
-
-    """
-    if dimension=='3D':
-        lambdas = dataFrame.columns
-        times = dataFrame.index
-        D = np.array(dataFrame)
-        L, T = np.meshgrid(lambdas, times)
-        fig = plt.figure()
-        #ax = fig.add_subplot(111, projection='3d')
-        #ax.plot_wireframe(L, T, D, rstride=10, cstride=10)
-        ax = fig.gca(projection='3d')
-        ax.plot_surface(L, T, D, rstride=10, cstride=10, alpha=0.2)
-        #cset = ax.contour(L, T, D, zdir='z',offset=-10)
-        cset = ax.contour(L, T, D, zdir='x',offset=-20,cmap='coolwarm')
-        cset = ax.contour(L, T, D, zdir='y',offset=times[-1]*1.1,cmap='coolwarm')
-        
-        ax.set_xlabel('Wavelength')
-        ax.set_xlim(lambdas[0]-20, lambdas[-1])
-        ax.set_ylabel('time')
-        ax.set_ylim(0, times[-1]*1.1)
-        ax.set_zlabel('Spectra')
-        #ax.set_zlim(-10, )
-
-
-    else:
-        plt.figure()
-        plt.plot(dataFrame)

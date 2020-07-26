@@ -12,8 +12,8 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 from pyomo import *
-from pyomo.core.expr import current as EXPR
-from pyomo.core.expr.numvalue import NumericConstant
+# from pyomo.core.expr import current as EXPR
+# from pyomo.core.expr.numvalue import NumericConstant
 from pyomo.dae import *
 from pyomo.environ import *
 from pyomo.opt import (
@@ -25,6 +25,7 @@ from pyomo.opt import (
 from kipet.library.Optimizer import *
 from kipet.library.TemplateBuilder import *
 from kipet.library.common.objectives import get_objective, conc_objective
+from kipet.library.mixins.VisitorMixins import ReplacementVisitor
 
 class ParameterEstimator(Optimizer):
     """Optimizer for parameter estimation.
@@ -2889,40 +2890,6 @@ def fe_cp(time_set, feedtime):
             break
         j += 1
     return fe, cp
-
-
-#: This class can replace variables from an expression
-class ReplacementVisitor(EXPR.ExpressionReplacementVisitor):
-    def __init__(self):
-        super(ReplacementVisitor, self).__init__()
-        self._replacement = None
-        self._suspect = None
-
-    def change_suspect(self, suspect_):
-        self._suspect = suspect_
-
-    def change_replacement(self, replacement_):
-        self._replacement = replacement_
-
-    def visiting_potential_leaf(self, node):
-        #
-        # Clone leaf nodes in the expression tree
-        #
-        if node.__class__ in native_numeric_types:
-            return True, node
-
-        if node.__class__ is NumericConstant:
-            return True, node
-
-        if node.is_variable_type():
-            if id(node) == self._suspect:
-                d = self._replacement
-                return True, d
-            else:
-                return True, node
-
-        return False, None
-
 
 ################################################
 

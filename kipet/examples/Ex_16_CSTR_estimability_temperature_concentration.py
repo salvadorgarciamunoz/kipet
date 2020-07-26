@@ -182,7 +182,7 @@ if __name__ == "__main__":
     # Add experimental data to the model (new method takes both concentration
     # and complementary state data and separates them out based on variables
     # You need to declare the variables beforehand as usual
-    builder_est.add_experimental_data(exp_data)
+    builder_est.add_data(exp_data)
     # Build the model
     model = builder_est.create_pyomo_model()
     

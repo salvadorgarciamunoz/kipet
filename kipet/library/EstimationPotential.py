@@ -26,6 +26,7 @@ from pyomo.environ import (
     Set,
     )
 
+from kipet.library.data_tools import df_from_pyomo_data
 from kipet.library.ParameterEstimator import ParameterEstimator
 from kipet.library.PyomoSimulator import PyomoSimulator
 from kipet.library.TemplateBuilder import TemplateBuilder
@@ -401,11 +402,11 @@ class EstimationPotential(ParameterEstimator):
         exp_data = list(self.model.measured_data.keys())
         
         if len(self.model.mixture_components.value) > 0:
-            dfz = self._get_simulated_data(state='Z')       
+            dfz = df_from_pyomo_data(self.model.Z)       
             dfc = None
         
             if len(self.model.mixture_components.value & self.model.measured_data.value) > 0:        
-                dfc = self._get_simulated_data(state='C')
+                dfc = df_from_pyomo_data(self.model.C)
             
                 for col in dfc.columns:
                     if col not in exp_data:
@@ -429,11 +430,11 @@ class EstimationPotential(ParameterEstimator):
             plt.show()
             
         if len(self.model.complementary_states.value) > 0:
-            dfx = self._get_simulated_data(state='X')
+            dfx = df_from_pyomo_data(self.model.X)  
             dfu = None
             
             if len(self.model.complementary_states.value & self.model.measured_data.value) > 0:
-                dfu = self._get_simulated_data(state='U')  
+                dfu = df_from_pyomo_data(self.model.U)  
             
                 for col in dfu.columns:
                     if col not in exp_data:
@@ -715,24 +716,24 @@ class EstimationPotential(ParameterEstimator):
         
         return rp, eigenvalues
     
-    def _get_simulated_data(self, state='C'):
+    # def df_from_pyomo_data(self, state='C'):
     
-        val = []
-        ix = []
-        varobject = getattr(self.model, state)
-        for index in varobject:
-            ix.append(index)
-            val.append(varobject[index].value)
+    #     val = []
+    #     ix = []
+    #     varobject = getattr(self.model, state)
+    #     for index in varobject:
+    #         ix.append(index)
+    #         val.append(varobject[index].value)
         
-        a = pd.Series(index=ix, data=val)
-        dfs = pd.DataFrame(a)
-        index = pd.MultiIndex.from_tuples(dfs.index)
+    #     a = pd.Series(index=ix, data=val)
+    #     dfs = pd.DataFrame(a)
+    #     index = pd.MultiIndex.from_tuples(dfs.index)
        
-        dfs = dfs.reindex(index)
-        dfs = dfs.unstack()
-        dfs.columns = [v[1] for v in dfs.columns]
+    #     dfs = dfs.reindex(index)
+    #     dfs = dfs.unstack()
+    #     dfs.columns = [v[1] for v in dfs.columns]
     
-        return dfs
+    #     return dfs
         
     def _rank_parameters(self, reduced_hessian, param_list):
         """Performs the parameter ranking based using the Gauss-Jordan

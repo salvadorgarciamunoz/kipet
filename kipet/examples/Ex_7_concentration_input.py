@@ -30,6 +30,7 @@ if __name__ == "__main__":
     #################################################################################
     data_dir = Path.cwd().joinpath('data_sets')
     filename = data_dir.joinpath(Path('issue_data', 'missing_data.txt'))
+    
     # New generic data read method
     C_frame = read_file(filename)
     
@@ -41,7 +42,9 @@ if __name__ == "__main__":
     builder.add_mixture_component(components)
     builder.add_parameter('k1',bounds=(0.0,5.0))
     builder.add_parameter('k2',bounds=(0.0,1.0))
-    builder.add_concentration_data(C_frame)
+    
+    # New generic method to add data - add the type as arg (or not)
+    builder.add_data(C_frame) #, 'concentration')
 
     # define explicit system of ODEs
     def rule_odes(m,t):

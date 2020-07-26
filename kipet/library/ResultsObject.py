@@ -6,6 +6,8 @@ from pyomo.core import *
 from pyomo.environ import *
 import six
 
+from kipet.library.data_tools import df_from_pyomo_data
+
 class ResultsObject(object):
     def __init__(self):
         """
@@ -87,7 +89,7 @@ class ResultsObject(object):
                     d = v.get_values()
                     keys = d.keys()
                     if keys:
-                        data_frame = _get_pyomo_data(v)
+                        data_frame = df_from_pyomo_data(v)
                     else:
                         data_frame = pd.DataFrame(data=[],
                                                   columns = [],
@@ -96,22 +98,4 @@ class ResultsObject(object):
                 else:
                     raise RuntimeError('load_from_pyomo_model function not supported for models with variables with dimension>2')
                 
-
-def _get_pyomo_data(varobject):
-
-    val = []
-    ix = []
-    for index in varobject:
-        ix.append(index)
-        val.append(varobject[index].value)
-    
-    a = pd.Series(index=ix, data=val)
-    dfs = pd.DataFrame(a)
-    index = pd.MultiIndex.from_tuples(dfs.index)
-   
-    dfs = dfs.reindex(index)
-    dfs = dfs.unstack()
-    dfs.columns = [v[1] for v in dfs.columns]
-
-    return dfs
 

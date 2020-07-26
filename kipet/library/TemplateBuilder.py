@@ -462,6 +462,15 @@ class TemplateBuilder(object):
         
         return None
     
+    def add_data(self, data, data_type=None, label=None):
+        
+        if data_type is not None:
+            self._add_state_data(data, data_type, label=label)
+        
+        else:
+            self.add_experimental_data(data)
+
+        return None
 
     def _add_state_data(self, data, data_type, label=None):
         """Generic method for adding data (concentration or complementary 

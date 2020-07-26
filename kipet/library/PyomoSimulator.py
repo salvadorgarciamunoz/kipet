@@ -8,32 +8,8 @@ from pyomo.environ import *
 
 from kipet.library.ResultsObject import *
 from kipet.library.Simulator import *
+from kipet.library.mixins.VisitorMixins import ScalingVisitor
 
-class ScalingVisitor(EXPR.ExpressionReplacementVisitor):
-
-    def __init__(self, scale):
-        super(ScalingVisitor, self).__init__()
-        self.scale = scale
-
-    def visiting_potential_leaf(self, node):
-      
-        if node.__class__ in native_numeric_types:
-            return True, node
-
-        if node.is_variable_type():
-           
-            return True, self.scale[id(node)]*node
-
-        if isinstance(node, EXPR.LinearExpression):
-            node_ = copy.deepcopy(node)
-            node_.constant = node.constant
-            node_.linear_vars = copy.copy(node.linear_vars)
-            node_.linear_coefs = []
-            for i,v in enumerate(node.linear_vars):
-                node_.linear_coefs.append( node.linear_coefs[i]*self.scale[id(v)] )
-            return True, node_
-
-        return False, None
     
 class PyomoSimulator(Simulator):
     """Simulator based on pyomo.dae discretization strategies.
