@@ -12,7 +12,6 @@ import sys
 import time
 
 import matplotlib.pylab as plt
-from pyomo.core.expr import current as EXPR
 from pyomo.core.expr.numvalue import NumericConstant
 from scipy.optimize import least_squares
 from scipy.sparse import coo_matrix
@@ -29,6 +28,8 @@ except ImportError:
     from io import StringIO
 
 from kipet.library.Optimizer import *
+from kipet.library.mixins.VisitorMixins import ReplacementVisitor
+from kipet.library.common.objectives import get_objective, conc_objective, spectra_objective
 
     
     
@@ -47,6 +48,13 @@ class VarianceEstimator(Optimizer):
         if not self._spectra_given:
             raise NotImplementedError("Variance estimator requires spectral data in model as model.D[ti,lj]")
         self._is_D_deriv = False
+
+        # if hasattr(self, '_abs_components'):
+        #     self.component_set = self._abs_components
+        # else:
+        #     self.component_set = self._sublist_components
+
+
     def run_sim(self, solver, **kwds):
         raise NotImplementedError("VarianceEstimator object does not have run_sim method. Call run_opt")
 
@@ -265,32 +273,19 @@ class VarianceEstimator(Optimizer):
                                        index=self._meas_lambdas)
                 # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
                 if hasattr(self, '_abs_components'):
-                    for l in self._meas_lambdas:
-                        for k in self._abs_components:
-                            self.model.S[l, k].value = S_frame[k][l]  # 1e-2
-                            #: Some of these are gonna be non-zero
-                            # if hasattr(self.model, 'non_absorbing'):
-                            #     if k in self.model.non_absorbing:
-                            #         self.model.S[l, k].value = 0.0
-    
-                            if hasattr(self.model, 'known_absorbance'):
-                                if k in self.model.known_absorbance:
-                                    self.model.S[l, k].value = self.model.known_absorbance_data[k][l]
+                    component_set = self._abs_components
                 else:
-                    for l in self._meas_lambdas:
-                        for k in self._mixture_components:
-                            self.model.S[l, k].value = S_frame[k][l]  # 1e-2
-                            #: Some of these are gonna be non-zero
-                            # if hasattr(self.model, 'non_absorbing'):
-                            #     if k in self.model.non_absorbing:
-                            #         self.model.S[l, k].value = 0.0
-    
-                            if hasattr(self.model, 'known_absorbance'):
-                                if k in self.model.known_absorbance:
-                                    self.model.S[l, k].value = self.model.known_absorbance_data[k]
-    
-            #start looping
-            #print("{: >11} {: >20} {: >16} {: >16}".format('Iter','|Zi-Zi+1|','|Ci-Ci+1|','|Si-Si+1|'))
+                    component_set = self._mixture_components
+                     
+                for l in self._meas_lambdas:
+                    for k in self._abs_components:
+                        self.model.S[l, k].value = S_frame[k][l]  # 1e-2
+            
+                        if hasattr(self.model, 'known_absorbance'):
+                            if k in self.model.known_absorbance:
+                                self.model.S[l, k].value = self.model.known_absorbance_data[k][l]
+                                                                                # If not working, remove [l]
+                
             print("{: >11} {: >20}".format('Iter', '|Zi-Zi+1|'))
             logiterfile = "iterations.log"
             if os.path.isfile(logiterfile):
@@ -326,23 +321,17 @@ class VarianceEstimator(Optimizer):
                     solved_s = self._solve_s_scipy()
                     solved_c = self._solve_c_scipy()
                     
-                #pdb.set_trace()
                 
                 ra=ResultsObject()    
-                # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
                 if hasattr(self, '_abs_components'):
                     ra.load_from_pyomo_model(self.model, to_load=['Z','C','Cs','S'])
                 else:
                     ra.load_from_pyomo_model(self.model, to_load=['Z', 'C', 'S'])
                 
                 r_diff = compute_diff_results(rb,ra)
-    
-                
                 Z_norm = r_diff.compute_var_norm('Z',norm_order)
-                #C_norm = r_diff.compute_var_norm('C',norm_order)
-                #S_norm = r_diff.compute_var_norm('S',norm_order)
-                if it>0:
-                    #print("{: >11} {: >20} {: >16} {: >16}".format(it,Z_norm,C_norm,S_norm))
+                
+                if it > 0:
                     print("{: >11} {: >20}".format(it, Z_norm))
                 self._log_iterations(logiterfile, it)
                 if Z_norm<tol and it >= 1:
@@ -350,8 +339,6 @@ class VarianceEstimator(Optimizer):
                     
             results = ResultsObject()
             
-            # retriving solutions to results object  
-            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
             if hasattr(self, '_abs_components'):
                 results.load_from_pyomo_model(self.model,
                                           to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y'])
@@ -360,9 +347,7 @@ class VarianceEstimator(Optimizer):
                                               to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
     
             print('Iterative optimization converged. Estimating variances now')
-            # compute variances
             solved_variances = self._solve_variances(results, fixed_dev_var = fixed_device_var)
-            
             self.compute_D_given_SC(results)
             
             param_vals = dict()
@@ -408,61 +393,41 @@ class VarianceEstimator(Optimizer):
                 new_delta = self._solve_delta_given_sigma('ipopt', tee = tee, subset_lambdas = A, solver_opts = solver_opts, init_sigmas = itersigma[count])
                 print("new delta_sq val: ", new_delta)
                 iterdelta[count] = new_delta
-
+                
                 if hasattr(self, '_abs_components'):
-                    def func1(nu_squared, new_delta, init_sigmas):
-                        sigmult = 0
-                        nwp = len(self._meas_lambdas)
-                        for l in self._meas_lambdas:
-                            for k in self._abs_components:
-                               sigmult += value(self.model.S[l, k])
-                        #print("sum of absorbances: ",sigmult)
-                        funcval = nu_squared - new_delta - init_sigmas*(sigmult/nwp)
-                        return funcval, sigmult
+                    component_set = self._abs_components
                 else:
-                    def func1(nu_squared, new_delta, init_sigmas):
-                        sigmult = 0
-                        nwp = len(self._meas_lambdas)
-                        for l in self._meas_lambdas:
-                            for k in self._sublist_components:
-                               sigmult += value(self.model.S[l, k])
-                        #print("sum of absorbances: ",sigmult)
-                        funcval = nu_squared - new_delta - init_sigmas*(sigmult/nwp)
-                        return funcval, sigmult
+                    component_set = self._mixture_components
 
-                if hasattr(self, '_abs_components'):
-                    def func2(nu_squared, new_delta, init_sigmas):
-                        sigmult = 0
-                        nwp = len(self._meas_lambdas)
-                        for l in self._meas_lambdas:
-                            for k in self._abs_components:
-                                sigmult += value(self.model.S[l, k])
-                        funcval = nu_squared - new_delta - init_sigmas * (sigmult / nwp)
-                        return funcval
+                
+                def func1(nu_squared, new_delta, init_sigmas, component_set):
+                    sigmult = 0
+                    nwp = len(self._meas_lambdas)
+                    for l in self._meas_lambdas:
+                        for k in component_set:
+                           sigmult += value(self.model.S[l, k])
+                    #print("sum of absorbances: ",sigmult)
+                    funcval = nu_squared - new_delta - init_sigmas*(sigmult/nwp)
+                    return funcval, sigmult
+               
 
-                else:
-                    def func2(nu_squared, new_delta, init_sigmas):
-                        sigmult = 0
-                        nwp = len(self._meas_lambdas)
-                        for l in self._meas_lambdas:
-                            for k in self._sublist_components:
-                               sigmult += value(self.model.S[l, k])
-                        funcval = nu_squared - new_delta - init_sigmas*(sigmult/nwp)
-                        return funcval
+              
+                def func2(nu_squared, new_delta, init_sigmas, component_set):
+                    sigmult = 0
+                    nwp = len(self._meas_lambdas)
+                    for l in self._meas_lambdas:
+                        for k in component_set:
+                            sigmult += value(self.model.S[l, k])
+                    funcval = nu_squared - new_delta - init_sigmas * (sigmult / nwp)
+                    return funcval
 
-                funcval, sigmult = func1(nu_squared, new_delta, itersigma[count])
+                funcval, sigmult = func1(nu_squared, new_delta, itersigma[count], component_set)
 
                 if abs(funcval) <= tol:
                     break
                 else:
-                    #print("continue")
-                    #print("damp*init_sigmas:", damp*init_sigmas)
-                    #print("(1 - damp)*nwp*(nu_squared - new_delta)/(sigmult)",(1 - damp)*nwp*(nu_squared - new_delta)/(sigmult))
-                    #itersigma[count + 1] = damp*itersigma[count] + (1 - damp)*nwp*(nu_squared - new_delta)/(sigmult)
-                    #numerator_secant = itersigma[count-1]*(func2(nu_squared, new_delta, itersigma[count])) - itersigma[count]*(func2(nu_squared, iterdelta[count-1], itersigma[count - 1]))
-                    denom_secant = func2(nu_squared, new_delta, itersigma[count]) - func2(nu_squared, iterdelta[count-1], itersigma[count - 1])
-                    #itersigma1= numerator_secant/denom_secant
-                    itersigma[count + 1] = itersigma[count] - func2(nu_squared, new_delta, itersigma[count])*((itersigma[count]-itersigma[count-1])/denom_secant)
+                    denom_secant = func2(nu_squared, new_delta, itersigma[count], component_set) - func2(nu_squared, iterdelta[count-1], itersigma[count - 1], component_set)
+                    itersigma[count + 1] = itersigma[count] - func2(nu_squared, new_delta, itersigma[count], component_set)*((itersigma[count]-itersigma[count-1])/denom_secant)
                     if itersigma[count + 1] < 0:
                         itersigma[count + 1] = -1*itersigma[count + 1]
                     count += 1
@@ -472,13 +437,10 @@ class VarianceEstimator(Optimizer):
             else:
                 print("The overall model variance is: ", itersigma[count])
                 sigma_vals = {}
-                if hasattr(self, '_abs_components'):
-                    for k in self._abs_components:
-                        sigma_vals[k] = abs(itersigma[count])
-                else:
-                    for k in self._sublist_components:
-                        sigma_vals[k] = abs(itersigma[count])
-            #print("residuals:",max_likelihood_val )
+                
+                for k in component_set:
+                    sigma_vals[k] = abs(itersigma[count])
+                
             results = ResultsObject()
             if hasattr(self, '_abs_components'):
                 results.load_from_pyomo_model(self.model,
@@ -596,6 +558,19 @@ class VarianceEstimator(Optimizer):
             print("Total execution time in seconds for variance estimation:", end - start)
         
         return results
+    
+    def _warn_if_D_negative(self):
+    
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                if self.model.D[t, l] >= 0:
+                    pass
+                else:
+                    self._is_D_deriv = True
+        if self._is_D_deriv == True:
+            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
+
+        return None
 
     def _solve_initalization(self, solver, **kwds):
         """Solves formulation 19 in weifengs paper
@@ -630,65 +605,26 @@ class VarianceEstimator(Optimizer):
         
         keys = sigmas_sq.keys()
         # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-        if hasattr(self, '_abs_components'):
-            for k in self._abs_components:
-                if k not in keys:
-                    sigmas_sq[k] = 0.0
-        else:
-            for k in self._sublist_components:
-                if k not in keys:
-                    sigmas_sq[k] = 0.0
+        
+        for k in self._component_set:
+            if k not in keys:
+                sigmas_sq[k] = 0.0
 
         print("Solving Initialization Problem\n")
-        
-        # Need to check whether we have negative values in the D-matrix so that we do not have
-        #non-negativity on S
 
-        for t in self._meas_times:
-            for l in self._meas_lambdas:
-                if self.model.D[t, l] >= 0:
-                    pass
-                else:
-                    self._is_D_deriv = True
-        if self._is_D_deriv == True:
-            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
+        self._warn_if_D_negative()        
 
-        # the ones that are not in set_A are going to be stale and wont go to the optimizer
-
-        # build objective
-        #
-        # def Dbarfunc(m,t,l):
-        #     D_bar = sum(m.model.Z[t, k] * m.model.S[l, k] for k in m._abs_components)
-        #     return D_bar
-        # # build objective
-        # obj = 0.0
-        # # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-        # if hasattr(self, '_abs_components'):
-        #     for t in self._meas_times:
-        #         for l in set_A:
-        #             #if t in self._meas_times:
-        #             D_bar=Dbarfunc(self,t,l)
-        #             obj += (self.model.D[t, l] - D_bar) ** 2
-
-        obj = 0.0
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self, '_abs_components'):
-            # print([(i, k) for i, k in enumerate(self._allmeas_times)])
-            # sys.exit()
-            for t in self._meas_times:
-                for l in set_A:
-                    # if t in self._meas_times:
-                    D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self._abs_components)
-                    obj += (self.model.D[t, l] - D_bar) ** 2
+            component_set = self._abs_components
         else:
-            # print([(i, k) for i, k in enumerate(self._allmeas_times)])
-            # sys.exit()
-            for t in self._meas_times:
-                for l in set_A:
-                    # if t in self._meas_times:
-                        # print('here')
-                    D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self._sublist_components)
-                    obj += (self.model.D[t, l] - D_bar) ** 2
+            component_set = self._sublist_components
+            
+        obj = 0.0
+        for t in self._meas_times:
+            for l in set_A:
+                D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in component_set)
+                obj += (self.model.D[t, l] - D_bar) ** 2
+                    
         self.model.init_objective = Objective(expr=obj)
         
         opt = SolverFactory(solver)
@@ -707,6 +643,8 @@ class VarianceEstimator(Optimizer):
                     self.model.C[t, k].value = self.model.Z[t, k].value
                 
         self.model.del_component('init_objective')
+        
+        return None
 
     def solve_max_device_variance(self, solver, **kwds):
         """Solves the maximum likelihood formulation with (C-Z) = 0. solves ntp/2*log(eTe/ntp)
@@ -749,35 +687,22 @@ class VarianceEstimator(Optimizer):
             
         print("Solving For the worst possible device variance\n")
         
-        # Need to check whether we have negative values in the D-matrix so that we do not have
-        # non-negativity on S
-
-        for t in self._meas_times:
-            for l in self._meas_lambdas:
-                if self.model.D[t, l] >= 0:
-                    pass
-                else:
-                    self._is_D_deriv = True
-        if self._is_D_deriv == True:
-            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
+        self._warn_if_D_negative()
         
         obj = 0.0
         ntp = len(self._meas_times)
         nwp = len(self._meas_lambdas)
         
         if hasattr(self, '_abs_components'):
-            for t in self._meas_times:
-                for l in set_A:
-                    D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self._abs_components)
-                    obj += (self.model.D[t, l] - D_bar)**2
+            component_set = self._abs_components
         else:
-            for t in self._meas_times:
-                for l in set_A:
-                    D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self._sublist_components)
-                    obj += (self.model.D[t, l] - D_bar)**2
-               
-        #newobj = ntp*nwp/2*log(obj/(ntp*nwp))   
-         
+            component_set = self._sublist_components
+        
+        for t in self._meas_times:
+            for l in set_A:
+                D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in component_set)
+                obj += (self.model.D[t, l] - D_bar)**2
+       
         self.model.init_objective = Objective(expr=obj)
         
         opt = SolverFactory(solver)
@@ -792,16 +717,10 @@ class VarianceEstimator(Optimizer):
             print(k, v.value)
         
         etaTeta = 0
-        if hasattr(self, '_abs_components'):
-            for t in self._meas_times:
-                for l in set_A:
-                    D_bar = sum(value(self.model.Z[t, k]) * value(self.model.S[l, k]) for k in self._abs_components)
-                    etaTeta += (value(self.model.D[t, l])- D_bar)**2
-        else:
-            for t in self._meas_times:
-                for l in set_A:
-                    D_bar = sum(value(self.model.Z[t, k]) * value(self.model.S[l, k]) for k in self._sublist_components)
-                    etaTeta += (value(self.model.D[t, l]) - D_bar)**2
+        for t in self._meas_times:
+            for l in set_A:
+                D_bar = sum(value(self.model.Z[t, k]) * value(self.model.S[l, k]) for k in component_set)
+                etaTeta += (value(self.model.D[t, l])- D_bar)**2
 
         deltasq = etaTeta/(ntp*nwp)
         
@@ -844,68 +763,46 @@ class VarianceEstimator(Optimizer):
         if not set_A:
             set_A = self._meas_lambdas
             
+        if hasattr(self, '_abs_components'):
+            component_set = self._abs_components
+        else:
+            component_set = self._sublist_components
+        
         if isinstance(sigmas, float):
-            if hasattr(self, '_abs_components'):
-                for k in self._abs_components:
-                    sigmas_sq[k] = sigmas
-            else:
-                for k in self._sublist_components:
-                    sigmas_sq[k] = sigmas
+            for k in component_set:
+                sigmas_sq[k] = sigmas
         
         elif isinstance(sigmas, dict):
             keys = sigmas.keys()
-            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-            if hasattr(self, '_abs_components'):
-                for k in self._abs_components:
-                    if k not in keys:
-                        sigmas_sq[k] = sigmas
-            else:
-                for k in self._sublist_components:
-                    if k not in keys:
-                        sigmas_sq[k] = sigmas
-
+            for k in component_set:
+                if k not in keys:
+                    sigmas_sq[k] = sigmas
+           
         print("Solving delta from given sigmas\n")
         print(sigmas_sq)
-        # Need to check whether we have negative values in the D-matrix so that we do not have
-        #non-negativity on S
-
-        for t in self._meas_times:
-            for l in self._meas_lambdas:
-                if self.model.D[t, l] >= 0:
-                    pass
-                else:
-                    self._is_D_deriv = True
-        if self._is_D_deriv == True:
-            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
-  
+       
+        self._warn_if_D_negative()  
+       
         obj = 0.0
         # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         ntp = len(self._meas_times)
         nwp = len(self._meas_lambdas) 
         inlog = 0
-        #self.model.deltasq_inv = Var(within = NonNegativeReals)
-        if hasattr(self, '_abs_components'):
-            nc = len(self._abs_components)
-            for t in self._meas_times:
-                for l in set_A:
-                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._sublist_components)
-                    inlog += (self.model.D[t, l] - D_bar)**2
+        nc = len(component_set)
+        for t in self._meas_times:
+            for l in set_A:
+                D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in component_set)
+                #D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._sublist_components)
+                inlog += (self.model.D[t, l] - D_bar)**2
+        # Orig had sublist in both parts - is this an error?
 
-        else:
-            nc = len(self._sublist_components)
-            for t in self._meas_times:
-                for l in set_A:
-                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._sublist_components)
-                    inlog += (self.model.D[t, l] - D_bar)**2
-                  
-        
+        # Concentration - correct
         for t in self._meas_times:
             for k in self._sublist_components:
+                #obj += conc_objective(self.model, sigma=sigmas_sq)
                 obj += 0.5*((self.model.C[t, k] - self.model.Z[t, k])**2)/(sigmas_sq[k])
                 
         obj += (nwp)*log((inlog)+1e-12)     
-        #obj += (ntp*nwp/2)*log((inlog/(ntp*nwp))+1e-12)        
-        #obj += (ntp*nc/2)*log((inlog/(ntp*nc))+self.model.eps)              
         self.model.init_objective = Objective(expr=obj)
         
         opt = SolverFactory(solver)
@@ -919,24 +816,16 @@ class VarianceEstimator(Optimizer):
         
         print("residuals: ", residuals)
 
-        for k,v in six.iteritems(self.model.P):
-            print(k, v)
-            print(v.value)
+        for k, v in self.model.P.items():
+            print(k, v.value)
             
         etaTeta = 0
-        if hasattr(self, '_abs_components'):
-            for t in self._meas_times:
-                for l in set_A:
-                    D_bar = sum(value(self.model.C[t, k]) * value(self.model.S[l, k]) for k in self._abs_components)
-                    etaTeta += (value(self.model.D[t, l])- D_bar)**2
-        else:
-            for t in self._meas_times:
-                for l in set_A:
-                    D_bar = sum(value(self.model.C[t, k]) * value(self.model.S[l, k]) for k in self._sublist_components)
-                    etaTeta += (value(self.model.D[t, l]) - D_bar)**2
-
+        for t in self._meas_times:
+            for l in set_A:
+                D_bar = sum(value(self.model.C[t, k]) * value(self.model.S[l, k]) for k in component_set)
+                etaTeta += (value(self.model.D[t, l]) - D_bar)**2
+        
         deltasq = etaTeta/(ntp*nwp)  
-        print(deltasq)
         self.model.del_component('init_objective')
        
         return deltasq
@@ -997,110 +886,58 @@ class VarianceEstimator(Optimizer):
                         warnings.warn("Ignored {} since is not a mixture component of the model".format(k))
     
             self._sublist_components = list_components
-        # Need to check whether we have negative values in the D-matrix so that we do not have
-        #non-negativity on S
-
-        for t in self._meas_times:
-            for l in self._meas_lambdas:
-                if self.model.D[t, l] >= 0:
-                    pass
-                else:
-                    self._is_D_deriv = True
-        if self._is_D_deriv == True:
-            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
+        
+        self._warn_if_D_negative()  
         ntp = len(self._meas_times)
-       
         m = self.model.clone()
         obj = 0.0
    
         if hasattr(self, '_abs_components'):
-            nc = len(self._abs_components)
-            for t in self._meas_times:
-                for l in set_A:
-                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._abs_components)
-                    obj += 1/(2*delta)*(self.model.D[t, l] - D_bar)**2
+            component_set = self._abs_components
         else:
-            nc = len(self._sublist_components)
-            for t in self._meas_times:
-                for l in set_A:
-                    D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._sublist_components)
-                    obj += 1/(2*delta)*(self.model.D[t, l] - D_bar)**2
+            component_set = self._sublist_components
+    
+        for t in self._meas_times:
+            for l in set_A:
+                D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._abs_components)
+                obj += 1/(2*delta)*(self.model.D[t, l] - D_bar)**2
 
-
-        if hasattr(self, '_abs_components'):
-            inlog = dict()
-            for k in self._abs_components:
-                inlog[k] = 0
-        else:
-            inlog = dict()
-            for k in self._sublist_components:
-                inlog[k] = 0
-
+        inlog = {k: 0 for k in component_set}
         self.model.eps = Param(initialize = 1e-8)  
-
-        if hasattr(self, '_abs_components'):
-            variancesdict = dict()
-            for k in self._abs_components:
-                variancesdict[k] = 0
-        else:
-            variancesdict = dict()
-            for k in self._sublist_components:
-                variancesdict[k] = 0
-
-        if hasattr(self, '_abs_components'):
-            for t in self._meas_times:
-                for k in self._abs_components:
-                    inlog[k] += ((self.model.C[t, k] - self.model.Z[t, k])**2)
-        else:
-            for t in self._meas_times:
-                for k in self._sublist_components:
-                    inlog[k] += ((self.model.C[t, k] - self.model.Z[t, k]) ** 2)
-
-        if hasattr(self, '_abs_components'):
-            for k in self._abs_components:
-                obj += (ntp/2)*log((inlog[k]/(ntp))+self.model.eps)
-        else:
-            for k in self._sublist_components:
-                obj += (ntp/2)*log((inlog[k]/(ntp))+self.model.eps)
+        variance_dict = {k: 0 for k in compnent_set}
+                
+        for t in self._meas_times:
+            for k in component_set:
+                inlog[k] += ((self.model.C[t, k] - self.model.Z[t, k])**2)
         
-        #obj += (ntp*nc/2)*log((inlog/(ntp*nc))+self.model.eps)
-                       
+        for k in component_set:
+            obj += (ntp/2)*log((inlog[k]/(ntp))+self.model.eps)
+        
         self.model.init_objective = Objective(expr=obj)
 
         opt = SolverFactory(solver)
 
         for key, val in solver_opts.items():
             opt.options[key]=val
+        
         try:
             solver_results = opt.solve(self.model,
                                    tee=tee,
                                    report_timing=profile_time)
 
             residuals = (value(self.model.init_objective))
-
-            if hasattr(self, '_abs_components'):
-                for t in self._allmeas_times:
-                    for k in self._abs_components:
-                        variancesdict[k] += 1/ntp*((value(self.model.C[t, k]) - value(self.model.Z[t, k]))**2)
-            else:
-                for t in self._meas_times:
-                    for k in self._sublist_components:
-                        variancesdict[k] += 1 / ntp * ((value(self.model.C[t, k]) - value(self.model.Z[t, k])) ** 2)
-
-
+            for t in self._allmeas_times:
+                for k in component_set:
+                    variancesdict[k] += 1 / ntp*((value(self.model.C[t, k]) - value(self.model.Z[t, k]))**2)
+            
             print("Variances")
-            if hasattr(self, '_abs_components'):
-                for k in self._abs_components:
-                    print(k, variancesdict[k])
-            else:
-                for k in self._sublist_components:
-                    print(k, variancesdict[k])
+            for k in component_set:
+                print(k, variancesdict[k])
             
             print("Parameter estimates")
-            for k,v in six.iteritems(self.model.P):
+            for k, v in self.model.P.items():
                 print(k, v.value)
-                #print(v.value)
-
+               
             stop_it = False
             
         except:
@@ -1109,10 +946,10 @@ class VarianceEstimator(Optimizer):
             residuals = 0
             stop_it = True
             solver_results = None
-            for k,v in six.iteritems(self.model.P):
+            for k, v in self.model.P.items():
                 print(k, v.value)
             self.model = m
-            for k,v in six.iteritems(self.model.P):
+            for k, v in self.model.P.items():
                 print(k, v.value)
         self.model.del_component('init_objective')
         self.model.del_component('eps')
@@ -1192,68 +1029,51 @@ class VarianceEstimator(Optimizer):
         
         keys = sigmas_sq.keys()
         print(keys)
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        
         if hasattr(self, '_abs_components'):
-            for k in self._abs_components:
-                print(k)
-                if k not in keys:
-                    sigmas_sq[k] = 0.0
+            component_set = self._abs_components
+            component_var = 'Cs'
         else:
-            for k in self._sublist_components:
-                if k not in keys:
-                    sigmas_sq[k] = 0.0
-        # Need to check whether we have negative values in the D-matrix so that we do not have
-        #non-negativity on S
-
-        for t in self._meas_times:
-            for l in self._meas_lambdas:
-                if self.model.D[t, l] >= 0:
-                    pass
-                else:
-                    self._is_D_deriv = True
-        if self._is_D_deriv == True:
-            print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
+            component_set = self._sublist_components
+            component_var = 'C'
             
-        list_components = []
-
+        for k in componet_set:
+            print(k)
+            if k not in keys:
+                sigmas_sq[k] = 0.0
+        
+        self._warn_if_D_negative()
         list_components = [k for k in self._mixture_components]
-        #print(sigmas_sq)                    
+                 
         print("Solving Initialization Problem with fixed parameters\n")
         original_bounds = dict()
-        for v,k in six.iteritems(self.model.P):
+        for v, k in self.model.P.items():
             low = value(self.model.P[v].lb)
             high = value(self.model.P[v].ub)
             original_bounds[v] = (low, high)
-            #print(original_bounds)
             ub = value(self.model.P[v])
             lb = ub
             self.model.P[v].setlb(lb)
             self.model.P[v].setub(ub)
-        # build objective
+       
         obj = 0.0
         # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-        if hasattr(self, '_abs_components'):
-            for t in self._meas_times:
-                for l in set_A:
-                    D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self._abs_components)
-                    obj += (self.model.D[t, l] - D_bar) ** 2
-        else:
-            for t in self._meas_times:
-                for l in set_A:
-                    D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self._sublist_components)
-                    obj += (self.model.D[t, l] - D_bar) ** 2
-        self.model.init_objective = Objective(expr=obj)
+    
+        for t in self._meas_times:
+            for l in set_A:
+                D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in component_set)
+                obj += (self.model.D[t, l] - D_bar) ** 2
         
+        self.model.init_objective = Objective(expr=obj)
         opt = SolverFactory(solver)
-
         for key, val in solver_opts.items():
             opt.options[key]=val
         solver_results = opt.solve(self.model,
                                    tee=tee,
                                    report_timing=profile_time)
-        for k,v in six.iteritems(self.model.P):
+        
+        for k, v in self.model.P.items():
             print(k, v.value)
-            #print(v.value)
         
         for t in self._allmeas_times:
             for k in self._mixture_components:
@@ -1264,10 +1084,7 @@ class VarianceEstimator(Optimizer):
                 
         self.model.del_component('init_objective')
         
-        for v,k in six.iteritems(self.model.P):
-            #print(self.model.P[v].lb, self.model.P[v].ub)
-            print(k,v)
-            print(type(original_bounds[v][1]))
+        for v, k in self.model.P.items():
             ub = original_bounds[v][1]
             lb = original_bounds[v][0]
             self.model.P[v].setlb(lb)
@@ -1277,14 +1094,10 @@ class VarianceEstimator(Optimizer):
 
         m.D_bar = Var(m.meas_times,
                       m.meas_lambdas)
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-        if hasattr(self, '_abs_components'):
-            def rule_D_bar(m, t, l):
-                return m.D_bar[t, l] == sum(m.Cs[t, k] * m.S[l, k] for k in self._abs_components)
-        else:
-            def rule_D_bar(m, t, l):
-                return m.D_bar[t, l] == sum(m.C[t, k] * m.S[l, k] for k in self._sublist_components)
-
+        
+        def rule_D_bar(m, t, l):
+            return m.D_bar[t, l] == sum(getattr(m, component_var)[t, k] * m.S[l, k] for k in component_set)
+        
         m.D_bar_constraint = Constraint(m.meas_times,
                                         m.meas_lambdas,
                                         rule=rule_D_bar)
@@ -1297,10 +1110,12 @@ class VarianceEstimator(Optimizer):
 
                     expr += (m.D[t, l] - m.D_bar[t, l]) ** 2 / (sigmas_sq['device'])
 
-            second_term = 0.0
-            for t in m.meas_times:
-                second_term += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigmas_sq[k] for k in list_components)
+            #expr = spectra_objective(m)
 
+            # This part is not even used????
+            # second_term = 0.0
+            # for t in m.meas_times:
+            #     second_term += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigmas_sq[k] for k in list_components)
             return expr
 
         m.objective = Objective(rule=rule_objective) 
@@ -1315,15 +1130,13 @@ class VarianceEstimator(Optimizer):
                                    tee=tee,
                                    report_timing=profile_time)
         
-        for k,v in six.iteritems(self.model.P):
+        for k, v in self.model.P.items():
             print(k, v.value)      
-            #print(value(v.ub))
-            #print(value(v.lb))
-        
+
         m.del_component('objective')
         self.model = m
         
-            
+        
     def _solve_Z(self, solver, **kwds):
         """Solves formulation 20 in weifengs paper
 
@@ -1420,7 +1233,6 @@ class VarianceEstimator(Optimizer):
             None
 
         """
-        
         method = kwds.pop('method','trf')
         def_tol = 1.4901161193847656e-07
         ftol = kwds.pop('ftol', def_tol)
@@ -1438,34 +1250,23 @@ class VarianceEstimator(Optimizer):
             print('-----------------Solve_S--------------------')
             t0 = time.time()
 
-        # assumes S has been computed in the model                
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self, '_abs_components'):
             n = self._nabs_components
-            for j, l in enumerate(self._meas_lambdas):
-                for k, c in enumerate(self._abs_components):
-                    if self.model.S[l, c].value < 0.0 and self._is_D_deriv == False:  #: only less thant zero for non-absorbing
-                        self._s_array[j * n + k] = 1e-2
-                    else:
-                        self._s_array[j * n + k] = self.model.S[l, c].value
-
-            for j, t in enumerate(self._allmeas_times):
-                #if t in self._meas_times:
-                for k, c in enumerate(self._abs_components):
-                    self._z_array[j * n + k] = self.model.Z[t, c].value
+            component_set = self._abs_components
         else:
             n = self._n_components
-            for j, l in enumerate(self._meas_lambdas):
-                for k, c in enumerate(self._mixture_components):
-                    if self.model.S[l, c].value < 0.0 and self._is_D_deriv == False:  #: only less thant zero for non-absorbing
-                        self._s_array[j * n + k] = 1e-2
-                    else:
-                        self._s_array[j * n + k] = self.model.S[l, c].value
-                        
-            for j, t in enumerate(self._allmeas_times):
-                # if t in self._meas_times:
-                for k, c in enumerate(self._mixture_components):
-                    self._z_array[j * n + k] = self.model.Z[t, c].value
+            component_set = self._mixture_components
+
+        for j, l in enumerate(self._meas_lambdas):
+            for k, c in enumerate(component_set):
+                if self.model.S[l, c].value < 0.0 and self._is_D_deriv == False:  #: only less thant zero for non-absorbing
+                    self._s_array[j * n + k] = 1e-2
+                else:
+                    self._s_array[j * n + k] = self.model.S[l, c].value
+
+        for j, t in enumerate(self._allmeas_times):
+            for k, c in enumerate(component_set):
+                self._z_array[j * n + k] = self.model.Z[t, c].value
 
         def F(x, z_array, d_array, nl, nt, nc):
             diff = np.zeros(nt*nl)
@@ -1487,141 +1288,69 @@ class VarianceEstimator(Optimizer):
             return coo_matrix((data, (row, col)),
                               shape=(nt*nl, nc*nl))
 
-        # solve
-        if tee:
-            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-            if hasattr(self, '_abs_components'):
-                if self._is_D_deriv == False:
-                    res = least_squares(F,self._s_array,JF,
-                                    (0.0,np.inf),method,
-                                    ftol,xtol,gtol,
-                                    x_scale,loss,f_scale,
-                                    max_nfev=max_nfev,
-                                    verbose=verbose,
-                                    args=(self._z_array,
-                                          self._d_array,
-                                          self._n_meas_lambdas,
-                                          self._n_allmeas_times,
-                                          self._nabs_components))
-                else:
-                    res = least_squares(F,self._s_array,JF,
-                                    (-np.inf,np.inf),method,
-                                    ftol,xtol,gtol,
-                                    x_scale,loss,f_scale,
-                                    max_nfev=max_nfev,
-                                    verbose=verbose,
-                                    args=(self._z_array,
-                                          self._d_array,
-                                          self._n_meas_lambdas,
-                                          self._n_allmeas_times,
-                                          self._nabs_components))
-            else:
-                if self._is_D_deriv == False:
-                    res = least_squares(F,self._s_array,JF,
-                                    (0.0,np.inf),method,
-                                    ftol,xtol,gtol,
-                                    x_scale,loss,f_scale,
-                                    max_nfev=max_nfev,
-                                    verbose=verbose,
-                                    args=(self._z_array,
-                                          self._d_array,
-                                          self._n_meas_lambdas,
-                                          self._n_allmeas_times,
-                                          self._n_components))
-                else:
-                    res = least_squares(F,self._s_array,JF,
-                                    (-np.inf,np.inf),method,
-                                    ftol,xtol,gtol,
-                                    x_scale,loss,f_scale,
-                                    max_nfev=max_nfev,
-                                    verbose=verbose,
-                                    args=(self._z_array,
-                                          self._d_array,
-                                          self._n_meas_lambdas,
-                                          self._n_allmeas_times,
-                                          self._n_components))
+
+        if self._is_D_deriv == False:
+            lower_bound = 0.0
         else:
-            if hasattr(self, '_abs_components'):
-                f = StringIO()
-                with stdout_redirector(f):
-                    if self._is_D_deriv == False: 
-                        res = least_squares(F,self._s_array,JF,
-                                        (0.0,np.inf),method,
-                                        ftol,xtol,gtol,
-                                        x_scale,loss,f_scale,
-                                        max_nfev=max_nfev,
-                                        verbose=verbose,
-                                        args=(self._z_array,
-                                              self._d_array,
-                                              self._n_meas_lambdas,
-                                              self._n_allmeas_times,
-                                              self._nabs_components))
-                    else: 
-                        res = least_squares(F,self._s_array,JF,
-                                        (-np.inf,np.inf),method,
-                                        ftol,xtol,gtol,
-                                        x_scale,loss,f_scale,
-                                        max_nfev=max_nfev,
-                                        verbose=verbose,
-                                        args=(self._z_array,
-                                              self._d_array,
-                                              self._n_meas_lambdas,
-                                              self._n_allmeas_times,
-                                              self._nabs_components))
-
-                with open(self._tmp3,'w') as tf:
-                    tf.write(f.getvalue())
-            else:
-                f = StringIO()
-                with stdout_redirector(f):
-                    if self._is_D_deriv == False: 
-                        res = least_squares(F, self._s_array, JF,
-                                        (0.0, np.inf), method,
-                                        ftol, xtol, gtol,
-                                        x_scale, loss, f_scale,
-                                        max_nfev=max_nfev,
-                                        verbose=verbose,
-                                        args=(self._z_array,
-                                              self._d_array,
-                                              self._n_meas_lambdas,
-                                              self._n_allmeas_times,
-                                              self._n_components))
-                    else:
-                        res = least_squares(F, self._s_array, JF,
-                                        (-np.inf, np.inf), method,
-                                        ftol, xtol, gtol,
-                                        x_scale, loss, f_scale,
-                                        max_nfev=max_nfev,
-                                        verbose=verbose,
-                                        args=(self._z_array,
-                                              self._d_array,
-                                              self._n_meas_lambdas,
-                                              self._n_allmeas_times,
-                                              self._n_components))
-
-                with open(self._tmp3, 'w') as tf:
-                    tf.write(f.getvalue())
+            lower_bound = -np.inf
+                
+        if tee:
+            res = least_squares(F,
+                                self._s_array,
+                                JF,
+                                (lower_bound ,np.inf),
+                                method,
+                                ftol,
+                                xtol,
+                                gtol,
+                                x_scale,
+                                loss,
+                                f_scale,
+                                max_nfev=max_nfev,
+                                verbose=verbose,
+                                args=(self._z_array,
+                                      self._d_array,
+                                      self._n_meas_lambdas,
+                                      self._n_allmeas_times,
+                                      n)
+                                )
+            
+        else:
+            f = StringIO()
+            with stdout_redirector(f):
+                res = least_squares(F,
+                                    self._s_array,
+                                    JF,
+                                    (lower_bound ,np.inf),
+                                    method,
+                                    ftol,
+                                    xtol,
+                                    gtol,
+                                    x_scale,
+                                    loss,
+                                    f_scale,
+                                    max_nfev=max_nfev,
+                                    verbose=verbose,
+                                    args=(self._z_array,
+                                          self._d_array,
+                                          self._n_meas_lambdas,
+                                          self._n_allmeas_times,
+                                          n)
+                                    )
+                
+            with open(self._tmp3,'w') as tf:
+                tf.write(f.getvalue())
         
         if profile_time:
             t1 = time.time()
             print("Scipy.optimize.least_squares time={:.3f} seconds".format(t1-t0))
 
-        # retrive solution to pyomo model
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-        if hasattr(self, '_abs_components'):
-            for j, l in enumerate(self._meas_lambdas):
-                for k, c in enumerate(self._abs_components):
-                    self.model.S[l, c].value = res.x[j * n + k]  #: Some of these are not gonna be zero
-                    if hasattr(self.model, 'known_absorbance'):
-                        if c in self.model.known_absorbance:
-                            self.model.S[l, c].set_value(self.model.known_absorbance_data[c][l])
-        else:
-            for j,l in enumerate(self._meas_lambdas):
-                for k,c in enumerate(self._mixture_components):
-                    self.model.S[l,c].value = res.x[j*n+k]  #: Some of these are not gonna be zero
-                    if hasattr(self.model, 'known_absorbance'):
-                        if c in self.model.known_absorbance:
-                            self.model.S[l, c].set_value(self.model.known_absorbance_data[c][l])
+        for j, l in enumerate(self._meas_lambdas):
+            for k, c in enumerate(component_set):
+                self.model.S[l, c].value = res.x[j * n + k]
+                if hasattr(self.model, 'known_absorbance'):
+                    if c in self.model.known_absorbance:
+                        self.model.S[l, c].set_value(self.model.known_absorbance_data[c][l])
 
         return res.success
 
@@ -1661,7 +1390,6 @@ class VarianceEstimator(Optimizer):
             None
 
         """
-        
         method = kwds.pop('method','trf')
         def_tol = 1.4901161193847656e-07
         ftol = kwds.pop('ftol',def_tol)
@@ -1678,32 +1406,27 @@ class VarianceEstimator(Optimizer):
         if profile_time:
             print('-----------------Solve_C--------------------')
             t0 = time.time()
-        # assumes S have been computed in the model
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+       
         if hasattr(self, '_abs_components'):
             n = self._nabs_components
-            for i, t in enumerate(self._allmeas_times):
-                for k, c in enumerate(self._abs_components):
-                    if self.model.Cs[t, c].value <= 0.0:
-                        self._c_array[i * n + k] = 1e-15
-                    else:
-                        self._c_array[i * n + k] = self.model.Cs[t, c].value
-
-            for j, l in enumerate(self._meas_lambdas):
-                for k, c in enumerate(self._abs_components):
-                    self._s_array[j * n + k] = self.model.S[l, c].value
+            component_set = self._abs_components
+            component_var = 'Cs'
         else:
             n = self._n_components
-            for i, t in enumerate(self._allmeas_times):
-                for k, c in enumerate(self._mixture_components):
-                    if self.model.C[t, c].value <= 0.0:
-                        self._c_array[i * n + k] = 1e-15
-                    else:
-                        self._c_array[i * n + k] = self.model.C[t, c].value
+            component_set = self._mixture_components
+            component_var = 'C'
+            
+        for i, t in enumerate(self._allmeas_times):
+            for k, c in enumerate(component_set):
+                if getattr(self.model, component_var)[t, c].value <= 0.0:
+                    self._c_array[i * n + k] = 1e-15
+                else:
+                    self._c_array[i * n + k] = getattr(self.model, component_var)[t, c].value
 
-            for j, l in enumerate(self._meas_lambdas):
-                for k, c in enumerate(self._mixture_components):
-                    self._s_array[j * n + k] = self.model.S[l, c].value
+        for j, l in enumerate(self._meas_lambdas):
+            for k, c in enumerate(component_set):
+                self._s_array[j * n + k] = self.model.S[l, c].value
+
 
         def F(x,s_array,d_array,nl,nt,nc):
             diff = np.zeros(nt*nl)
@@ -1726,85 +1449,61 @@ class VarianceEstimator(Optimizer):
             return coo_matrix((data, (row, col)),
                               shape=(nt*nl,nc*nt))
 
-        # solve
         if tee:
-            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-            if hasattr(self, '_abs_components'):
-                res = least_squares(F, self._c_array, JF,
-                                    (0.0, np.inf), method,
-                                    ftol, xtol, gtol,
-                                    x_scale, loss, f_scale,
-                                    max_nfev=max_nfev,
-                                    verbose=verbose,
-                                    args=(self._s_array,
-                                          self._d_array,
-                                          self._n_meas_lambdas,
-                                          self._n_allmeas_times,
-                                          self._nabs_components))
-            else:
-                res = least_squares(F,self._c_array,JF,
-                                    (0.0,np.inf),method,
-                                    ftol,xtol,gtol,
-                                    x_scale,loss,f_scale,
-                                    max_nfev=max_nfev,
-                                    verbose=verbose,
-                                    args=(self._s_array,
-                                          self._d_array,
-                                          self._n_meas_lambdas,
-                                          self._n_allmeas_times,
-                                          self._n_components))
+            res = least_squares(F, 
+                                self._c_array, 
+                                JF,
+                                (0.0, np.inf), 
+                                method,
+                                ftol, 
+                                xtol, 
+                                gtol,
+                                x_scale, 
+                                loss, 
+                                f_scale,
+                                max_nfev=max_nfev,
+                                verbose=verbose,
+                                args=(self._s_array,
+                                      self._d_array,
+                                      self._n_meas_lambdas,
+                                      self._n_allmeas_times,
+                                      n)
+                                )
+            
         else:
-            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-            if hasattr(self, '_abs_components'):
-                f = StringIO()
-                with stdout_redirector(f):
-                    res = least_squares(F, self._c_array, JF,
-                                        (0.0, np.inf), method,
-                                        ftol, xtol, gtol,
-                                        x_scale, loss, f_scale,
-                                        max_nfev=max_nfev,
-                                        verbose=verbose,
-                                        args=(self._s_array,
-                                              self._d_array,
-                                              self._n_meas_lambdas,
-                                              self._n_allmeas_times,
-                                              self._nabs_components))
-
-                with open(self._tmp4, 'w') as tf:
-                    tf.write(f.getvalue())
-            else:
-                f = StringIO()
-                with stdout_redirector(f):
-                    res = least_squares(F, self._c_array, JF,
-                                        (0.0, np.inf), method,
-                                        ftol, xtol, gtol,
-                                        x_scale, loss, f_scale,
-                                        max_nfev=max_nfev,
-                                        verbose=verbose,
-                                        args=(self._s_array,
-                                              self._d_array,
-                                              self._n_meas_lambdas,
-                                              self._n_allmeas_times,
-                                              self._n_components))
-
-                with open(self._tmp4, 'w') as tf:
-                    tf.write(f.getvalue())
+            f = StringIO()
+            with stdout_redirector(f):
+                res = least_squares(F, 
+                                    self._c_array, 
+                                    JF,
+                                    (0.0, np.inf), 
+                                    method,
+                                    ftol, 
+                                    xtol, 
+                                    gtol,
+                                    x_scale, 
+                                    loss, 
+                                    f_scale,
+                                    max_nfev=max_nfev,
+                                    verbose=verbose,
+                                    args=(self._s_array,
+                                          self._d_array,
+                                          self._n_meas_lambdas,
+                                          self._n_allmeas_times,
+                                          n)
+                                    )
+                    
+            with open(self._tmp4, 'w') as tf:
+                tf.write(f.getvalue())
 
         if profile_time:
             t1 = time.time()
             print("Scipy.optimize.least_squares time={:.3f} seconds".format(t1-t0))
 
-        # retrive solution
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-        if hasattr(self, '_abs_components'):
-            for j,t in enumerate(self._allmeas_times):
-                for k,c in enumerate(self._abs_components):
-                    self.model.Cs[t,c].value = res.x[j*n+k]
-        else:
-            for j, t in enumerate(self._allmeas_times):
-                for k, c in enumerate(self._mixture_components):
-                    self.model.C[t, c].value = res.x[j*n + k]
-
+        for j, t in enumerate(self._allmeas_times):
+            for k,c in enumerate(component_set):
+                gettattr(self.model, component_var)[t,c].value = res.x[j*n+k]
+       
         return res.success
 
     def _solve_variances(self, results, fixed_dev_var = None):
@@ -1827,165 +1526,90 @@ class VarianceEstimator(Optimizer):
 
         variance_dict = dict()
 
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as s
         if hasattr(self,'_abs_components'):
-            nabs=len(self._abs_components)
-            A = np.ones((nl, nabs + 1))
-            reciprocal_nt = 1.0 / nt
-            for i, l in enumerate(self._meas_lambdas):
-                for j, t in enumerate(self._meas_times):
-                    D_bar = 0.0
-                    for w, k in enumerate(self._abs_components):
-                        A[i, w] = results.S[k][l] ** 2
-                        D_bar += results.S[k][l] * results.Z[k][t]
-                    b[i] += (self.model.D[t, l] - D_bar) ** 2
-                b[i] *= reciprocal_nt
-
-            if fixed_dev_var == None:
-                # try with a simple numpy without bounds first
-                res_lsq = np.linalg.lstsq(A, b, rcond=None)
-                all_nonnegative = True
-                n_vars = nabs + 1
-
-                for i in range(n_vars):
-                    if res_lsq[0][i] < 0.0:
-                        if res_lsq[0][i] < -1e-5:
-                            all_nonnegative = False
-                        else:
-                            res_lsq[0][i] = abs(res_lsq[0][i])
-                    res_lsq[0][i]
-
-                if not all_nonnegative:
-                    x0 = np.zeros(nabs + 1) + 1e-2
-                    bb = np.zeros(nl)
-                    for i in range(nl):
-                        bb[i] = b[i]
-
-                    def F(x, M, rhs):
-                        return rhs - M.dot(x)
-
-                    def JF(x, M, rhs):
-                        return -M
-
-                    res_lsq = least_squares(F, x0, JF,
-                                            bounds=(0.0, np.inf),
-                                            verbose=2, args=(A, bb))
-                    for i, k in enumerate(self._abs_components):
-                        variance_dict[k] = res_lsq.x[i]
-                    variance_dict['device'] = res_lsq.x[nabs]
-                    results.sigma_sq = variance_dict
-                    return res_lsq.success
-
-                else:
-                    for i, k in enumerate(self._abs_components):
-                        variance_dict[k] = res_lsq[0][i][0]
-                    variance_dict['device'] = res_lsq[0][nabs][0]
-                    results.sigma_sq = variance_dict
-
-            if fixed_dev_var:
-                bp = np.zeros((nl, 1))
-                for i, l in enumerate(self._meas_lambdas):
-                    bp[i] = b[i] - fixed_dev_var
-                Ap = np.zeros((nl, nabs))
-                for i, l in enumerate(self._meas_lambdas):
-                    for j, t in enumerate(self._meas_times):
-                        for w, k in enumerate(self._abs_components):
-                            Ap[i, w] = results.S[k][l] ** 2
-
-                res_lsq = np.linalg.lstsq(Ap, bp, rcond=None)
-                all_nonnegative = True
-                n_vars = nabs
-                for i in range(n_vars):
-                    if res_lsq[0][i] < 0.0:
-                        if res_lsq[0][i] < -1e-5:
-                            all_nonnegative = False
-                        else:
-                            res_lsq[0][i] = abs(res_lsq[0][i])
-                    res_lsq[0][i]
-
-                for i, k in enumerate(self._abs_components):
-                    variance_dict[k] = res_lsq[0][i][0]
-                variance_dict['device'] = fixed_dev_var
-                results.sigma_sq = variance_dict
+            component_set = self._abs_components
         else:
-            nc = len(self._sublist_components)
-            A = np.ones((nl, nc + 1))
-            reciprocal_nt = 1.0/nt
+            component_set = self._sublist_components
+        
+        n_val = len(component_set)
+            
+        A = np.ones((nl, n_val + 1))
+        reciprocal_nt = 1.0/nt
+        for i, l in enumerate(self._meas_lambdas):
+            for j, t in enumerate(self._meas_times):
+                D_bar = 0.0
+                for w, k in enumerate(component_set):
+                    A[i, w] = results.S[k][l]**2
+                    D_bar += results.S[k][l]*results.Z[k][t]
+                b[i] += (self.model.D[t, l] - D_bar)**2
+            b[i] *= reciprocal_nt
+
+        if fixed_dev_var == None:
+            res_lsq = np.linalg.lstsq(A, b, rcond=None)
+            all_nonnegative = True
+            n_vars = n_val + 1
+
+            for i in range(n_vars):
+                if res_lsq[0][i] < 0.0:
+                    if res_lsq[0][i] < -1e-5:
+                        all_nonnegative = False
+                    else:
+                        res_lsq[0][i] = abs(res_lsq[0][i])
+                res_lsq[0][i]
+
+            if not all_nonnegative:
+                x0 = np.zeros(n_val + 1) + 1e-2
+                bb = np.zeros(nl)
+                for i in range(nl):
+                    bb[i] = b[i]
+
+                def F(x, M, rhs):
+                    return rhs - M.dot(x)
+
+                def JF(x, M, rhs):
+                    return -M
+
+                res_lsq = least_squares(F, x0, JF,
+                                        bounds=(0.0, np.inf),
+                                        verbose=2, args=(A, bb))
+                for i, k in enumerate(component_set):
+                    variance_dict[k] = res_lsq.x[i]
+                variance_dict['device'] = res_lsq.x[n_val]
+                results.sigma_sq = variance_dict
+                return res_lsq.success
+
+            else:
+                for i, k in enumerate(component_set):
+                    variance_dict[k] = res_lsq[0][i][0]
+                variance_dict['device'] = res_lsq[0][n_val][0]
+                results.sigma_sq = variance_dict
+
+        if fixed_dev_var:
+            bp = np.zeros((nl, 1))
+            for i, l in enumerate(self._meas_lambdas):
+                bp[i] = b[i] - fixed_dev_var
+            Ap = np.zeros((nl, n_val))
             for i, l in enumerate(self._meas_lambdas):
                 for j, t in enumerate(self._meas_times):
-                    D_bar = 0.0
-                    for w, k in enumerate(self._sublist_components):
-                        A[i, w] = results.S[k][l]**2
-                        D_bar += results.S[k][l]*results.Z[k][t]
-                    b[i] += (self.model.D[t, l]-D_bar)**2
-                b[i] *= reciprocal_nt
+                    for w, k in enumerate(component_set):
+                        Ap[i, w] = results.S[k][l] ** 2
 
-            if fixed_dev_var == None:
-                # try with a simple numpy without bounds first
-                res_lsq = np.linalg.lstsq(A, b, rcond=None)
-                all_nonnegative = True
-                n_vars = nc + 1
+            res_lsq = np.linalg.lstsq(Ap, bp, rcond=None)
+            all_nonnegative = True
+            n_vars = n_val
+            for i in range(n_vars):
+                if res_lsq[0][i] < 0.0:
+                    if res_lsq[0][i] < -1e-5:
+                        all_nonnegative = False
+                    else:
+                        res_lsq[0][i] = abs(res_lsq[0][i])
+                res_lsq[0][i]
 
-                for i in range(n_vars):
-                    if res_lsq[0][i] < 0.0:
-                        if res_lsq[0][i] < -1e-5:
-                            all_nonnegative = False
-                        else:
-                            res_lsq[0][i] = abs(res_lsq[0][i])
-                    res_lsq[0][i]
-
-                if not all_nonnegative:
-                    x0 = np.zeros(nc + 1) + 1e-2
-                    bb = np.zeros(nl)
-                    for i in range(nl):
-                        bb[i] = b[i]
-
-                    def F(x, M, rhs):
-                        return rhs - M.dot(x)
-
-                    def JF(x, M, rhs):
-                        return -M
-
-                    res_lsq = least_squares(F, x0, JF,
-                                            bounds=(0.0, np.inf),
-                                            verbose=2, args=(A, bb))
-                    for i, k in enumerate(self._sublist_components):
-                        variance_dict[k] = res_lsq.x[i]
-                    variance_dict['device'] = res_lsq.x[nc]
-                    results.sigma_sq = variance_dict
-                    return res_lsq.success
-
-                else:
-                    for i, k in enumerate(self._sublist_components):
-                        variance_dict[k] = res_lsq[0][i][0]
-                    variance_dict['device'] = res_lsq[0][nc][0]
-                    results.sigma_sq = variance_dict
-
-            if fixed_dev_var:
-                bp = np.zeros((nl, 1))
-                for i, l in enumerate(self._meas_lambdas):
-                    bp[i] = b[i] - fixed_dev_var
-                Ap = np.zeros((nl, nc))
-                for i, l in enumerate(self._meas_lambdas):
-                    for j, t in enumerate(self._meas_times):
-                        for w, k in enumerate(self._sublist_components):
-                            Ap[i, w] = results.S[k][l] ** 2
-
-                res_lsq = np.linalg.lstsq(Ap, bp, rcond=None)
-                all_nonnegative = True
-                n_vars = nc
-                for i in range(n_vars):
-                    if res_lsq[0][i] < 0.0:
-                        if res_lsq[0][i] < -1e-5:
-                            all_nonnegative = False
-                        else:
-                            res_lsq[0][i] = abs(res_lsq[0][i])
-                    res_lsq[0][i]
-
-                for i, k in enumerate(self._sublist_components):
-                    variance_dict[k] = res_lsq[0][i][0]
-                variance_dict['device'] = fixed_dev_var
-                results.sigma_sq = variance_dict
+            for i, k in enumerate(component_set):
+                variance_dict[k] = res_lsq[0][i][0]
+            variance_dict['device'] = fixed_dev_var
+            results.sigma_sq = variance_dict
+        
         return 1
 
     def _build_scipy_lsq_arrays(self):
@@ -1999,21 +1623,22 @@ class VarianceEstimator(Optimizer):
             None
 
         """
-        self._d_array = np.zeros((self._n_meas_times,self._n_meas_lambdas))
-        for i,t in enumerate(self._meas_times):
-            for j,l in enumerate(self._meas_lambdas):
+        self._d_array = np.zeros((self._n_meas_times, self._n_meas_lambdas))
+        for i, t in enumerate(self._meas_times):
+            for j, l in enumerate(self._meas_lambdas):
                 self._d_array[i,j] = self.model.D[t,l]
 
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self,'_abs_components'):
-            self._s_array = np.ones(self._n_meas_lambdas * self._nabs_components)
-            self._z_array = np.ones(self._n_allmeas_times * self._nabs_components)
-            self._c_array = np.ones(self._n_allmeas_times * self._nabs_components)
+            n_val = self._nabs_components
         else:
-            self._s_array = np.ones(self._n_meas_lambdas*self._n_components)
-            self._z_array = np.ones(self._n_allmeas_times*self._n_components)
-            self._c_array = np.ones(self._n_allmeas_times*self._n_components)
-
+            n_val = self._n_components
+            
+        self._s_array = np.ones(self._n_meas_lambdas * n) 
+        self._z_array = np.ones(self._n_allmeas_times * n)
+        self._c_array = np.ones(self._n_allmeas_times * n)
+ 
+        return None
+    
     def _create_tmp_outputs(self):
         """Creates temporary files for loging solutions of each optimization problem
 
@@ -2072,48 +1697,30 @@ class VarianceEstimator(Optimizer):
             None
 
         """
-        # initialization
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self, '_abs_components'):
-            self.S_model = ConcreteModel()
-            if self._is_D_deriv:
-                self.S_model.S = Var(self._meas_lambdas,
-                                     self._abs_components,
-                                     bounds=(None, None),
-                                     initialize=1.0)
-            else:
-                self.S_model.S = Var(self._meas_lambdas,
-                                     self._abs_components,
-                                     bounds=(0.0, None),
-                                     initialize=1.0)
-            for l in self._meas_lambdas:
-                for k in self._abs_components:
-                    self.S_model.S[l, k].value = self.model.S[l, k].value
-                    if hasattr(self.model, 'known_absorbance'):
-                        if k in self.model.known_absorbance:
-                            if self.model.S[l, k].value != self.model.known_absorbance_data[k][l]:
-                                self.model.S[l, k].set_value(self.model.known_absorbance_data[k][l])
-                                self.S_model.S[l, k].fix()
+            component_set = self._abs_components
         else:
-            self.S_model = ConcreteModel()
-            if self._is_D_deriv:
-                self.S_model.S = Var(self._meas_lambdas,
-                                     self._sublist_components,
-                                     bounds=(None, None),
-                                     initialize=1.0)
-            else:
-                self.S_model.S = Var(self._meas_lambdas,
-                                     self._sublist_components,
-                                     bounds=(0.0, None),
-                                     initialize=1.0)
-            for l in self._meas_lambdas:
-                for k in self._sublist_components:
-                    self.S_model.S[l, k].value = self.model.S[l, k].value
-                    if hasattr(self.model, 'known_absorbance'):
-                        if k in self.model.known_absorbance:
-                            if self.model.S[l, k].value != self.model.known_absorbance_data[k][l]:
-                                self.model.S[l, k].set_value(self.model.known_absorbance_data[k][l])
-                                self.S_model.S[l, k].fix()
+            component_set = self._sublist_components
+            
+        self.S_model = ConcreteModel()
+        if self._is_D_deriv:
+            self.S_model.S = Var(self._meas_lambdas,
+                                 component_set,
+                                 bounds=(None, None),
+                                 initialize=1.0)
+        else:
+            self.S_model.S = Var(self._meas_lambdas,
+                                 component_set,
+                                 bounds=(0.0, None),
+                                 initialize=1.0)
+        for l in self._meas_lambdas:
+            for k in component_set:
+                self.S_model.S[l, k].value = self.model.S[l, k].value
+                if hasattr(self.model, 'known_absorbance'):
+                    if k in self.model.known_absorbance:
+                        if self.model.S[l, k].value != self.model.known_absorbance_data[k][l]:
+                            self.model.S[l, k].set_value(self.model.known_absorbance_data[k][l])
+                            self.S_model.S[l, k].fix()
 
     def _solve_S(self, solver, **kwds):
         """Solves formulation 23 from Weifengs procedure with ipopt
@@ -2131,47 +1738,26 @@ class VarianceEstimator(Optimizer):
         update_nl = kwds.pop('update_nl', False)
         profile_time = kwds.pop('profile_time', False)
 
-        # initialize
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self, '_abs_components'):
-            for l in self._meas_lambdas:
-                for c in self._abs_components:
-                    self.S_model.S[l, c].value = self.model.S[l, c].value
-                    # if hasattr(self.model, 'non_absorbing'):
-                    #     if c in self.model.non_absorbing:
-                    #         if self.model.S[l, c].value != 0.0:
-                    #             # print("non_zero 800")
-                    #             self.S_model.S[l, c].set_value(0.0)
-                    #             self.S_model.S[l, c].fix()
-
-                    if hasattr(self.model, 'known_absorbance'):
-                        if c in self.model.known_absorbance:
-                            if self.model.S[l, c].value != self.model.known_absorbance_data[c][l]:
-                                self.model.S[l, c].set_value(self.model.known_absorbance_data[c][l])
-                                self.S_model.S[l, c].fix()
+            component_set = self._abs_components
         else:
-            for l in self._meas_lambdas:
-                for c in self._sublist_components:
-                    self.S_model.S[l, c].value = self.model.S[l, c].value
-
-                    if hasattr(self.model, 'known_absorbance'):
-                        if c in self.model.known_absorbance:
-                            if self.model.S[l, c].value != self.model.known_absorbance_data[c][l]:
-                                self.model.S[l, c].set_value(self.model.known_absorbance_data[c][l])
-                                self.S_model.S[l, c].fix()
+            component_set = self._sublist_components
+            
+        for l in self._meas_lambdas:
+            for c in component_set:
+                self.S_model.S[l, c].value = self.model.S[l, c].value
+              
+                if hasattr(self.model, 'known_absorbance'):
+                    if c in self.model.known_absorbance:
+                        if self.model.S[l, c].value != self.model.known_absorbance_data[c][l]:
+                            self.model.S[l, c].set_value(self.model.known_absorbance_data[c][l])
+                            self.S_model.S[l, c].fix()
+        
         obj = 0.0
-        # asumes base model has been solved already for Z
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-        if hasattr(self, '_abs_components'):
-            for t in self._meas_times:
-                for l in self._meas_lambdas:
-                    D_bar = sum(self.S_model.S[l, k] * self.model.Z[t, k].value for k in self._abs_components)
-                    obj += (D_bar - self.model.D[t, l]) ** 2
-        else:
-            for t in self._meas_times:
-                for l in self._meas_lambdas:
-                    D_bar = sum(self.S_model.S[l, k] * self.model.Z[t, k].value for k in self._sublist_components)
-                    obj += (D_bar - self.model.D[t, l]) ** 2
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                D_bar = sum(self.S_model.S[l, k] * self.model.Z[t, k].value for k in component_set)
+                obj += (D_bar - self.model.D[t, l]) ** 2
                     
         self.S_model.objective = Objective(expr=obj)
 
@@ -2191,27 +1777,15 @@ class VarianceEstimator(Optimizer):
 
         self.S_model.del_component('objective')
         
-        #update values in main model
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-        if hasattr(self, '_abs_components'):
-            for l in self._meas_lambdas:
-                for c in self._abs_components:
-                    self.model.S[l, c].value = self.S_model.S[l, c].value
-                    if hasattr(self.model, 'known_absorbance'):
-                        if c in self.model.known_absorbance:
-                            if self.model.S[l, c].value != self.model.known_absorbance_data[c][l]:
-                                self.model.S[l, c].set_value(self.model.known_absorbance_data[c][l])
-                                self.S_model.S[l, c].fix()
-        else:
-            for l in self._meas_lambdas:
-                for c in self._sublist_components:
-                    self.model.S[l, c].value = self.S_model.S[l, c].value
-                    if hasattr(self.model, 'known_absorbance'):
-                        if c in self.model.known_absorbance:
-                            if self.model.S[l, c].value != self.model.known_absorbance_data[c][l]:
-                                self.model.S[l, c].set_value(self.model.known_absorbance_data[c][l])
-                                self.S_model.S[l, c].fix()
-                            
+        for l in self._meas_lambdas:
+            for c in component_set:
+                self.model.S[l, c].value = self.S_model.S[l, c].value
+                if hasattr(self.model, 'known_absorbance'):
+                    if c in self.model.known_absorbance:
+                        if self.model.S[l, c].value != self.model.known_absorbance_data[c][l]:
+                            self.model.S[l, c].set_value(self.model.known_absorbance_data[c][l])
+                            self.S_model.S[l, c].fix()
+                   
     def _build_c_model(self):
         """Builds s_model to solve formulation 25 with ipopt
 
@@ -2229,14 +1803,11 @@ class VarianceEstimator(Optimizer):
                              bounds=(0.0, None),
                              initialize=1.0)
 
-        #add_warm_start_suffixes(self.C_model)
-        #self.C_model.scaling_factor = Suffix(direction=Suffix.EXPORT)
-
         for l in self._allmeas_times:
             for k in self._sublist_components:
                 self.C_model.C[l, k].value = self.model.C[l, k].value
                 if hasattr(self.model, 'non_absorbing'):
-                    self.C_model.C[l, k].fix()  #: this variable does not need to be part of the optimization
+                    self.C_model.C[l, k].fix()
         
     def _solve_C(self,solver,**kwds):
         """Solves formulation 23 from Weifengs procedure with ipopt
@@ -2254,22 +1825,17 @@ class VarianceEstimator(Optimizer):
         update_nl = kwds.pop('update_nl', False)
         profile_time = kwds.pop('profile_time', False)
         
-        obj = 0.0
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS)
-        # equality constraint in TemplateBuilder makes Cs subset of C:
         if hasattr(self, '_abs_components'):
-            # assumes that s model has been solved first
-            for t in self._meas_times:
-                for l in self._meas_lambdas:
-                    D_bar = sum(self.model.S[l, k].value*self.C_model.C[t, k] for k in self._abs_components)
-                    obj += (self.model.D[t, l]-D_bar)**2
+            component_set = self._abs_components
         else:
-            # assumes that s model has been solved first
-            for t in self._meas_times:
-                for l in self._meas_lambdas:
-                    D_bar = sum(self.model.S[l, k].value*self.C_model.C[t, k] for k in self._sublist_components)
-                    obj += (self.model.D[t, l]-D_bar)**2
-
+            component_set = self._sublist_components
+        
+        obj = 0.0
+        for t in self._meas_times:
+            for l in self._meas_lambdas:
+                D_bar = sum(self.model.S[l, k].value*self.C_model.C[t, k] for k in component_set)
+                obj += (self.model.D[t, l]-D_bar)**2
+        
         self.C_model.objective = Objective(expr=obj)
                 
         if profile_time:
@@ -2287,19 +1853,11 @@ class VarianceEstimator(Optimizer):
 
         self.C_model.del_component('objective')
         
-
-        #updates values in main model
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-        if hasattr(self, '_abs_components'):
-            for t in self._allmeas_times:
-                for c in self._abs_components:
-                    self.model.C[t, c].value = self.C_model.C[t, c].value  #: does not matter for non_abs
-        else:
-            for t in self._allmeas_times:
-                for c in self._sublist_components:
-                    self.model.C[t, c].value = self.C_model.C[t, c].value  #: does not matter for non_abs
-        #############################################################################
-    # additional for the use of model with inputs for variance estimation, CS
+        for t in self._allmeas_times:
+            for c in component_set:
+                self.model.C[t, c].value = self.C_model.C[t, c].value  #: does not matter for non_abs
+         
+    
     def load_discrete_jump(self):
         self.jump = True
 
@@ -2470,37 +2028,3 @@ def fe_cp(time_set, feedtime):
             break
         j += 1
     return fe, cp
-###########################################################
-
-#: This class can replace variables from an expression
-class ReplacementVisitor(EXPR.ExpressionReplacementVisitor):
-    def __init__(self):
-        super(ReplacementVisitor, self).__init__()
-        self._replacement = None
-        self._suspect = None
-
-    def change_suspect(self, suspect_):
-        self._suspect = suspect_
-
-    def change_replacement(self, replacement_):
-        self._replacement = replacement_
-
-    def visiting_potential_leaf(self, node):
-        #
-        # Clone leaf nodes in the expression tree
-        #
-        if node.__class__ in native_numeric_types:
-            return True, node
-
-        if node.__class__ is NumericConstant:
-            return True, node
-
-
-        if node.is_variable_type():
-            if id(node) == self._suspect:
-                d = self._replacement
-                return True, d
-            else:
-                return True, node
-
-        return False, None

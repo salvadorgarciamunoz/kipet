@@ -1406,29 +1406,6 @@ class TemplateBuilder(object):
                         getattr(pyomo_model, var)[time, comp].setlb(lower_bound)
                         getattr(pyomo_model, var)[time, comp].setub(upper_bound)
 
-        ### Original replaced by above
-        # This section provides bounds if user used bound_profile (MS)
-        # for i in self._prof_bounds:
-        #     if i[0] == 'C':
-        #         for t, c in pyomo_model.C:
-        #             if i[1] == c:
-        #                 if i[2]:
-        #                     if t >= i[2][0] and t < i[2][1]:
-        #                         pyomo_model.C[t, c].setlb(i[3][0])
-        #                         pyomo_model.C[t, c].setub(i[3][1])
-        #                 else:
-        #                     pyomo_model.C[t, c].setlb(i[3][0])
-        #                     pyomo_model.C[t, c].setub(i[3][1])
-
-        #             elif i[1] == None:
-        #                 if i[2]:
-        #                     if t >= i[2][0] and t < i[2][1]:
-        #                         pyomo_model.C[t, c].setlb(i[3][0])
-        #                         pyomo_model.C[t, c].setub(i[3][1])
-        #                 else:
-        #                     pyomo_model.C[t, c].setlb(i[3][0])
-        #                     pyomo_model.C[t, c].setub(i[3][1])
-      
         #: in case of a second call after known_absorbing has been declared
         if self._is_known_abs_set:  
             self.set_known_absorbing_species(pyomo_model,
