@@ -52,7 +52,10 @@ class ResultsObject(object):
         var_array = np.array(var)
         return np.linalg.norm(var_array,norm_type)
     
-    def load_from_pyomo_model(self,instance,to_load=[]):
+    def load_from_pyomo_model(self, instance, to_load=None):
+
+        if to_load is None:
+            to_load = []
 
         model_variables = set()
         for block in instance.block_data_objects():
@@ -77,40 +80,14 @@ class ResultsObject(object):
             for name in variables_to_load:
                 v = block_map[name]
                 if v.dim()==0:
-                    setattr(self,name,v.value)
+                    setattr(self, name, v.value)
                 elif v.dim()==1:
-                    setattr(self,name,pd.Series(v.get_values()))
+                    setattr(self, name, pd.Series(v.get_values()))
                 elif v.dim()==2:
                     d = v.get_values()
                     keys = d.keys()
                     if keys:
-                        # split_keys = v._implicit_subsets
-                        # print(v._implicit_subsets)
-                        # # split_keys = zip(*keys)
-                        # # print(split_keys)
-                        # first_set = set(split_keys[0])
-                        # second_set = set(split_keys[1])
-                        first_key_list = []
-                        second_key_list = []
-                        for i in list(keys):
-                            first_key_list.append(i[0])
-                            second_key_list.append(i[1])
-                        first_set = set(first_key_list)    
-                        second_set = set(second_key_list)
-                        
-                        s_first_set = sorted(first_set)
-                        s_second_set = sorted(second_set)
-                        m = len(first_set)
-                        n = len(second_set)
-
-                        v_values = np.zeros((m,n))
-                        for i,w in enumerate(s_first_set):
-                            for j,k in enumerate(s_second_set):
-                                v_values[i,j] = d[w,k]
-
-                        data_frame = pd.DataFrame(data=v_values,
-                                                  columns = s_second_set,
-                                                  index=s_first_set)
+                        data_frame = _get_pyomo_data(v)
                     else:
                         data_frame = pd.DataFrame(data=[],
                                                   columns = [],
@@ -119,3 +96,22 @@ class ResultsObject(object):
                 else:
                     raise RuntimeError('load_from_pyomo_model function not supported for models with variables with dimension>2')
                 
+
+def _get_pyomo_data(varobject):
+
+    val = []
+    ix = []
+    for index in varobject:
+        ix.append(index)
+        val.append(varobject[index].value)
+    
+    a = pd.Series(index=ix, data=val)
+    dfs = pd.DataFrame(a)
+    index = pd.MultiIndex.from_tuples(dfs.index)
+   
+    dfs = dfs.reindex(index)
+    dfs = dfs.unstack()
+    dfs.columns = [v[1] for v in dfs.columns]
+
+    return dfs
+

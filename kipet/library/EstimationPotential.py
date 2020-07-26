@@ -29,6 +29,10 @@ from pyomo.environ import (
 from kipet.library.ParameterEstimator import ParameterEstimator
 from kipet.library.PyomoSimulator import PyomoSimulator
 from kipet.library.TemplateBuilder import TemplateBuilder
+from kipet.library.common.objectives import (
+    conc_objective,
+    comp_objective,
+    )
 
 __author__ = 'Kevin McBride'  #: April 2020
     
@@ -541,17 +545,8 @@ class EstimationPotential(ParameterEstimator):
         
         """
         obj = 0
-
-        # This can be cleaned up
-        #for k in model.mixture_components & model.measured_data:
-        for t, v in model.C.items():
-            k = t[1]
-            obj += 0.5*(model.C[t] - model.Z[t]) ** 2 / model.sigma[k]**2
-        
-        #for k in model.complementary_states & model.measured_data:
-        for t, v in model.U.items():
-            k = t[1]
-            obj += 0.5*(model.X[t] - model.U[t]) ** 2 / model.sigma[k]**2      
+        obj += conc_objective(model)
+        obj += comp_objective(model)  
     
         return Objective(expr=obj)
    

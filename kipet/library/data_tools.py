@@ -1,6 +1,7 @@
 import scipy
 import six
 
+import re
 import matplotlib as cm
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d
@@ -12,164 +13,71 @@ from pathlib import Path
 #-----------------------DATA READING AND WRITING TOOLS------------------------
 #=============================================================================
 
-def write_spectral_data_to_csv(filename,dataframe):
-    """ Write spectral data Dij to csv file.
+def read_file(filename):       
+    """ Reads data from a csv or txt file and converts it to a DataFrame
     
         Args:
-            filename (str): name of output file
+            filename (str): name of input file
           
-            dataframe (DataFrame): pandas DataFrame
-        
         Returns:
-            None
+            DataFrame
 
     """
-    dataframe.to_csv(filename)
-
-def write_spectral_data_to_txt(filename,dataframe):
-    """ Write spectral data Dij to txt file.
+    filename = Path(filename)
+    data_dict = {}
+    if filename.suffix == '.txt':
     
-        Args:
-            filename (str): name of output file
-          
-            dataframe (DataFrame): pandas DataFrame
+        with open(filename, 'r') as f:
+            for line in f:
+                if line not in ['','\n','\t','\t\n']:
+                    l = line.split()
+                    if is_float_re(l[1]):
+                        l[1] = float(l[1])
+                    data_dict[float(l[0]), l[1]] = float(l[2])
         
-        Returns:
-            None
-    
-    """
-    f = open(filename,'w')
-    for i in dataframe.index:
-        for j in dataframe.columns:
-            f.write("{0} {1} {2}\n".format(i,j,dataframe[j][i]))
-    f.close()
+        df_data = dict_to_df(data_dict)
+        df_data.sort_index(ascending=True, inplace=True)
+        return df_data
 
-def write_absorption_data_to_csv(filename,dataframe):
-    """ Write absorption data Sij to csv file.
-    
-        Args:
-            filename (str): name of output file
-          
-            dataframe (DataFrame): pandas DataFrame
+    elif filename.suffix == '.csv':
         
-        Returns:
-            None
+        df_data = pd.read_csv(filename, index_col=0)
+        return df_data   
 
-    """
-    dataframe.to_csv(filename)
-
-def write_absorption_data_to_txt(filename,dataframe):
-    """ Write absorption data Sij to txt file.
-    
-        Args:
-            filename (str): name of output file
-          
-            dataframe (DataFrame): pandas DataFrame
-        
-        Returns:
-            None
-
-    """
-    f = open(filename,'w')
-    for i in dataframe.index:
-        for j in dataframe.columns:
-            f.write("{0} {1} {2}\n".format(i,j,dataframe[j][i]))
-    f.close()
-
-def write_concentration_data_to_csv(filename,dataframe):
-    """ Write concentration data Cij to csv file.
-    
-        Args:
-            filename (str): name of output file
-          
-            dataframe (DataFrame): pandas DataFrame
-        
-        Returns:
-            None
-
-    """
-    dataframe.to_csv(filename)
-
-def write_concentration_data_to_txt(filename,dataframe):
-    """ Write concentration data Cij to txt file.
-    
-        Args:
-            filename (str): name of output file
-          
-            dataframe (DataFrame): pandas DataFrame
-        
-        Returns:
-            None
-
-    """
-    f = open(filename,'w')
-    for i in dataframe.index:
-        for j in dataframe.columns:
-            f.write("{0} {1} {2}\n".format(i,j,dataframe[j][i]))
-    f.close()
-
-
-def read_concentration_data(filename):
-    
-    print(filename)
-    if filename.suffix == '.csv':
-        return read_concentration_data_from_csv(filename)
-    elif filename.suffix == '.txt':
-        return read_concentration_data_from_txt(filename)
     else:
-        raise ValueError('Filetype not csv or txt.')
+        raise ValueError(f'The file extension {filename.suffix} is currently not supported')
         return None
 
-def read_concentration_data_from_txt(filename):
-    """ Reads txt with concentration data
+def write_file(filename, dataframe, filetype='csv'):
+    """ Write data to file.
     
         Args:
-            filename (str): name of input file
+            filename (str): name of output file
           
+            dataframe (DataFrame): pandas DataFrame
+        
+            filetype (str): choice of output (csv, txt)
+        
         Returns:
-            DataFrame
+            None
 
     """
+    if filetype == 'csv':
+        dataframe.to_csv(filename + '.csv')
 
-    f = open(filename,'r')
-    data_dict = dict()
-    set_index = set()
-    set_columns = set()
+    elif filetype == 'txt':    
+        with open(filename + '.txt', 'w') as f:
+            for i in dataframe.index:
+                for j in dataframe.columns:
+                    if not np.isnan(dataframe[j][i]):
+                        f.write("{0} {1} {2}\n".format(i,j,dataframe[j][i]))
+                        
+    else:
+        print('Data can only be stored as CSV or TXT, defaulting to CSV.')
+        dataframe.to_csv(filename + '.csv')
 
-    for line in f:
-        if line not in ['','\n','\t','\t\n']:
-            l=line.split()
-            i = float(l[0])
-            j = l[1]
-            k = float(l[2])
-            set_index.add(i)
-            set_columns.add(j)
-            data_dict[i,j] = k
-    f.close()
-    
-    data_array = np.zeros((len(set_index),len(set_columns)))
-    sorted_index = sorted(set_index)
-    sorted_columns = set_columns
-
-    for i,idx in enumerate(sorted_index):
-        for j,jdx in enumerate(sorted_columns):
-            data_array[i,j] = data_dict[idx,jdx]
-
-    return pd.DataFrame(data=data_array,columns=sorted_columns,index=sorted_index)
- 
-def read_concentration_data_from_csv(filename):
-    """ Reads csv with concentration data
-    
-        Args:
-            filename (str): name of input file
-         
-        Returns:
-            DataFrame
-
-    """
-    data = pd.read_csv(filename,index_col=0)
-    data.columns = [n for n in data.columns]
-    return data    
+    print(f'Data successfully saved as {filename}.{filetype}')
+    return None
 
 def read_spectral_data_from_csv(filename, instrument = False, negatives_to_zero = False):
     """ Reads csv with spectral data
@@ -184,7 +92,6 @@ def read_spectral_data_from_csv(filename, instrument = False, negatives_to_zero 
             DataFrame
 
     """
-
     data = pd.read_csv(filename,index_col=0)
     if instrument:
         #this means we probably have a date/timestamp on the columns
@@ -207,6 +114,132 @@ def read_spectral_data_from_csv(filename, instrument = False, negatives_to_zero 
 
     return data
 
+#=============================================================================
+#-----------------------OLD FUNCS SO NOT TO BREAK API-------------------------
+#=============================================================================
+
+# These should be removed at some point...
+
+def write_spectral_data_to_csv(filename, dataframe):
+    """ Write spectral data Dij to csv file.
+    
+        Args:
+            filename (str): name of output file
+          
+            dataframe (DataFrame): pandas DataFrame
+        
+        Returns:
+            None
+
+    """
+    write_file(filename, dataframe, 'csv')
+    return None
+
+def write_spectral_data_to_txt(filename,dataframe):
+    """ Write spectral data Dij to txt file.
+    
+        Args:
+            filename (str): name of output file
+          
+            dataframe (DataFrame): pandas DataFrame
+        
+        Returns:
+            None
+    
+    """
+    write_file(filename, dataframe, 'txt')
+    return None
+
+def write_absorption_data_to_csv(filename,dataframe):
+    """ Write absorption data Sij to csv file.
+    
+        Args:
+            filename (str): name of output file
+          
+            dataframe (DataFrame): pandas DataFrame
+        
+        Returns:
+            None
+
+    """
+    write_file(filename, dataframe, 'csv')
+    return None
+
+def write_absorption_data_to_txt(filename,dataframe):
+    """ Write absorption data Sij to txt file.
+    
+        Args:
+            filename (str): name of output file
+          
+            dataframe (DataFrame): pandas DataFrame
+        
+        Returns:
+            None
+
+    """
+    write_file(filename, dataframe, 'txt')
+    return None
+
+def write_concentration_data_to_csv(filename,dataframe):
+    """ Write concentration data Cij to csv file.
+    
+        Args:
+            filename (str): name of output file
+          
+            dataframe (DataFrame): pandas DataFrame
+        
+        Returns:
+            None
+
+    """
+    write_file(filename, dataframe, 'csv')
+    return None
+
+def write_concentration_data_to_txt(filename,dataframe):
+    """ Write concentration data Cij to txt file.
+    
+        Args:
+            filename (str): name of output file
+          
+            dataframe (DataFrame): pandas DataFrame
+        
+        Returns:
+            None
+
+    """
+    write_file(filename, dataframe, 'txt')
+    return None
+
+
+def read_concentration_data(filename):
+    """A general wrapper for concentration data"""
+    return read_file(filename)
+
+def read_concentration_data_from_txt(filename):
+    """ Reads txt with concentration data
+    
+        Args:
+            filename (str): name of input file
+          
+        Returns:
+            DataFrame
+
+    """
+    return read_file(filename)
+
+  
+def read_concentration_data_from_csv(filename):
+    """ Reads csv with concentration data
+    
+        Args:
+            filename (str): name of input file
+         
+        Returns:
+            DataFrame
+
+    """
+    return read_file(filename)
+
 def read_absorption_data_from_csv(filename):
     """ Reads csv with spectral data
     
@@ -217,8 +250,7 @@ def read_absorption_data_from_csv(filename):
             DataFrame
 
     """
-    data = pd.read_csv(filename,index_col=0)
-    return data
+    return read_file(filename)
 
 def read_spectral_data_from_txt(filename):
     """ Reads txt with spectral data
@@ -230,32 +262,7 @@ def read_spectral_data_from_txt(filename):
             DataFrame
 
     """
-
-    f = open(filename,'r')
-    data_dict = dict()
-    set_index = set()
-    set_columns = set()
-
-    for line in f:
-        if line not in ['','\n','\t','\t\n']:
-            l=line.split()
-            i = float(l[0])
-            j = float(l[1])
-            k = float(l[2])
-            set_index.add(i)
-            set_columns.add(j)
-            data_dict[i,j] = k
-    f.close()
-    
-    data_array = np.zeros((len(set_index),len(set_columns)))
-    sorted_index = sorted(set_index)
-    sorted_columns = sorted(set_columns)
-
-    for i,idx in enumerate(sorted_index):
-        for j,jdx in enumerate(sorted_columns):
-            data_array[i,j] = data_dict[idx,jdx]
-
-    return pd.DataFrame(data=data_array,columns=sorted_columns,index=sorted_index)
+    return read_file(filename)
 
 def read_absorption_data_from_txt(filename):
     """ Reads txt with absorption data
@@ -267,69 +274,27 @@ def read_absorption_data_from_txt(filename):
             DataFrame
 
     """
+    return read_file(filename)
 
-    f = open(filename,'r')
-    data_dict = dict()
-    set_index = set()
-    set_columns = set()
 
-    for line in f:
-        if line not in ['','\n','\t','\t\n']:
-            l=line.split()
-            i = float(l[0])
-            j = l[1]
-            k = float(l[2])
-            set_index.add(i)
-            set_columns.add(j)
-            data_dict[i,j] = k
-    f.close()
+#=============================================================================
+#---------------------------- DATA CONVERSION TOOLS --------------------------
+#=============================================================================
+
+def dict_to_df(data_dict):
+
+    """Takes a dictionary of typical pyomo data and converts it to a dataframe
     
-    data_array = np.zeros((len(set_index),len(set_columns)))
-    sorted_index = sorted(set_index)
-    sorted_columns = set_columns
-
-    for i,idx in enumerate(sorted_index):
-        for j,jdx in enumerate(sorted_columns):
-            data_array[i,j] = data_dict[idx,jdx]
-
-    return pd.DataFrame(data=data_array,columns=sorted_columns,index=sorted_index)
+    """    
+    dfs_stacked = pd.Series(index=data_dict.keys(), data=list(data_dict.values()))
+    dfs = dfs_stacked.unstack()
+    return dfs
 
 
-def plot_spectral_data(dataFrame,dimension='2D'):
-    """ Plots spectral data
-    
-        Args:
-            dataFrame (DataFrame): spectral data
-          
-        Returns:
-            None
-
-    """
-    if dimension=='3D':
-        lambdas = dataFrame.columns
-        times = dataFrame.index
-        D = np.array(dataFrame)
-        L, T = np.meshgrid(lambdas, times)
-        fig = plt.figure()
-        #ax = fig.add_subplot(111, projection='3d')
-        #ax.plot_wireframe(L, T, D, rstride=10, cstride=10)
-        ax = fig.gca(projection='3d')
-        ax.plot_surface(L, T, D, rstride=10, cstride=10, alpha=0.2)
-        #cset = ax.contour(L, T, D, zdir='z',offset=-10)
-        cset = ax.contour(L, T, D, zdir='x',offset=-20,cmap='coolwarm')
-        cset = ax.contour(L, T, D, zdir='y',offset=times[-1]*1.1,cmap='coolwarm')
-        
-        ax.set_xlabel('Wavelength')
-        ax.set_xlim(lambdas[0]-20, lambdas[-1])
-        ax.set_ylabel('time')
-        ax.set_ylim(0, times[-1]*1.1)
-        ax.set_zlabel('Spectra')
-        #ax.set_zlim(-10, )
-
-
-    else:
-        plt.figure()
-        plt.plot(dataFrame)
+def is_float_re(str):
+    """Checks if a value is a float or not"""
+    _float_regexp = re.compile(r"^[-+]?(?:\b[0-9]+(?:\.[0-9]*)?|\.[0-9]+\b)(?:[eE][-+]?[0-9]+\b)?$").match
+    return True if _float_regexp(str) else False
 
 #=============================================================================
 #--------------------------- DIAGNOSTIC TOOLS ------------------------
@@ -840,3 +805,39 @@ def decrease_wavelengths(original_dataset, A_set = 2, specific_subset = None):
             count+=1
         new_D = original_dataset[original_dataset.columns[::A_set]]     
     return new_D
+
+def plot_spectral_data(dataFrame,dimension='2D'):
+    """ Plots spectral data
+    
+        Args:
+            dataFrame (DataFrame): spectral data
+          
+        Returns:
+            None
+
+    """
+    if dimension=='3D':
+        lambdas = dataFrame.columns
+        times = dataFrame.index
+        D = np.array(dataFrame)
+        L, T = np.meshgrid(lambdas, times)
+        fig = plt.figure()
+        #ax = fig.add_subplot(111, projection='3d')
+        #ax.plot_wireframe(L, T, D, rstride=10, cstride=10)
+        ax = fig.gca(projection='3d')
+        ax.plot_surface(L, T, D, rstride=10, cstride=10, alpha=0.2)
+        #cset = ax.contour(L, T, D, zdir='z',offset=-10)
+        cset = ax.contour(L, T, D, zdir='x',offset=-20,cmap='coolwarm')
+        cset = ax.contour(L, T, D, zdir='y',offset=times[-1]*1.1,cmap='coolwarm')
+        
+        ax.set_xlabel('Wavelength')
+        ax.set_xlim(lambdas[0]-20, lambdas[-1])
+        ax.set_ylabel('time')
+        ax.set_ylim(0, times[-1]*1.1)
+        ax.set_zlabel('Spectra')
+        #ax.set_zlim(-10, )
+
+
+    else:
+        plt.figure()
+        plt.plot(dataFrame)

@@ -503,8 +503,11 @@ class TemplateBuilder(object):
             for t in self._feed_times:
                 if t not in data.index:
                     dfc.loc[t] = [0.0 for n in range(len(data.columns))]
-                    
+      
+            
+            print(dfc)
             dfallc = data.append(dfc)
+            print(dfallc)
             dfallc.sort_index(inplace=True)
             dfallc.index = dfallc.index.to_series().apply(
                 lambda x: np.round(x, 6))
@@ -517,7 +520,12 @@ class TemplateBuilder(object):
                         
                 count += 1
 
-            setattr(self, f'_{data_type}_data', dfallc)
+            if hasattr(self, f'_{data_type}_data'):
+                df_data = getattr(self, f'_{data_type}_data')
+                df_data = pd.concat([df_data, dfallc], axis=1)
+                setattr(self, f'_{data_type}_data', df_data)
+            else:
+                setattr(self, f'_{data_type}_data', dfallc)
             if label in state_data:
                 self._all_state_data += list(data.columns)
         else:
@@ -534,7 +542,7 @@ class TemplateBuilder(object):
                         #self._is_C_deriv = True
             if getattr(self, f'_is_{label}_deriv') == True:
                 print(
-                    "Warning! Since {label}-matrix contains negative values Kipet is assuming a derivative of {label} has been inputted")
+                    f"Warning! Since {label}-matrix contains negative values Kipet is assuming a derivative of {label} has been inputted")
 
         return None
     
@@ -542,16 +550,17 @@ class TemplateBuilder(object):
         """Generic function to add all data at once if in the same dataframe.
         At the moment this works for concentration and complementary states
         """
-        
         exp_data = pd.DataFrame(data)
-     
+        
         conc_state_headers = self._component_names & set(exp_data.columns)
         if len(conc_state_headers) > 0:
-            self.add_concentration_data(pd.DataFrame(exp_data[conc_state_headers].dropna()))
+            for c in conc_state_headers:
+                self.add_concentration_data(pd.DataFrame(exp_data[c].dropna()))
         
         comp_state_headers = self._complementary_states & set(exp_data.columns)
         if len(comp_state_headers) > 0:
-            self.add_complementary_states_data(pd.DataFrame(exp_data[comp_state_headers].dropna()))
+            for c in comp_state_headers:
+                self.add_complementary_states_data(pd.DataFrame(exp_data[c].dropna()))
         
         return None
         
@@ -1091,8 +1100,8 @@ class TemplateBuilder(object):
     
             if data is not None:    
                 for i, row in data.iterrows():
-                    c_dict.update({(i, col): float(row[col]) for col in data.columns})
-                
+                     c_dict.update({(i, col): float(row[col]) for col in data.columns if not np.isnan(float(row[col]))})
+            
                 setattr(pyomo_model, f'{var}_indx', Set(initialize=c_dict.keys(), ordered=True))
                 setattr(pyomo_model, var, Var(getattr(pyomo_model, f'{var}_indx'),
                                               bounds=c_bounds,
