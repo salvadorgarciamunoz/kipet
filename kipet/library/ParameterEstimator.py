@@ -1282,245 +1282,47 @@ class ParameterEstimator(Optimizer):
         Returns:
             None
         """
-
-        # add check for model already solved
+        nt = self._n_meas_times
+        nw = self._n_meas_lambdas
         row = []
         col = []
         data = []
-        nt = self._n_meas_times
-        nw = self._n_meas_lambdas
+        nd = nt * nw
+        v_device = variances['device']
 
-        """
-        for i,t in enumerate(self.model.meas_times):
-            for j,l in enumerate(self.model.meas_lambdas):
-                for q,tt in enumerate(self.model.meas_times):
-                    for p,ll in enumerate(self.model.meas_lambdas):
-                        if i==q and j!=p:
-                            val = sum(variances[c]*self.model.S[l,c].value*self.model.S[ll,c].value for c in self.model.mixture_components)
-                            row.append(i*nw+j)
-                            col.append(q*nw+p)
-                            data.append(val)
-                        if i==q and j==p:
-                            val = sum(variances[c]*self.model.S[l,c].value**2 for c in self.model.mixture_components)+variances['device']
-                            row.append(i*nw+j)
-                            col.append(q*nw+p)
-                            data.append(val)
-        """
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         if hasattr(self, '_abs_components'):
-            nabs = self._nabs_components
-            s_array = np.zeros(nw * nabs)
-            v_array = np.zeros(nabs)
-            for k, c in enumerate(self._abs_components):
-                v_array[k] = variances[c]
-
-            for j, l in enumerate(self.model.meas_lambdas):
-                for k, c in enumerate(self._abs_components):
-                    s_array[j * nabs + k] = self.model.S[l, c].value
-
-            row = []
-            col = []
-            data = []
-            nd = nt * nw
-            # Vd_dense = np.zeros((nd,nd))
-            v_device = variances['device']
-            for i in range(nt):
-                for j in range(nw):
-                    val = sum(v_array[k] * s_array[j * nabs + k] ** 2 for k in range(nabs)) + v_device
-                    row.append(i * nw + j)
-                    col.append(i * nw + j)
-                    data.append(val)
-                    # Vd_dense[i*nw+j,i*nw+j] = val
-                    for p in range(nw):
-                        if j != p:
-                            val = sum(v_array[k] * s_array[j * nabs + k] * s_array[p * nabs + k] for k in range(nabs))
-                            row.append(i * nw + j)
-                            col.append(i * nw + p)
-                            data.append(val)
-            self.Vd_matrix = scipy.sparse.coo_matrix((data, (row, col)),
-                                                     shape=(nd, nd)).tocsr()
+            n_val = self._nabs_components
+            component_list = self._abs_components
         else:
-            nc = self._n_actual
-            s_array = np.zeros(nw * nc)
-            v_array = np.zeros(nc)
-            for k, c in enumerate(self._sublist_components):
-                v_array[k] = variances[c]
+            n_val = self._n_actual
+            component_list = self._sublist_components
 
-            for j, l in enumerate(self.model.meas_lambdas):
-                for k, c in enumerate(self._sublist_components):
-                    s_array[j * nc + k] = self.model.S[l, c].value
+        s_array = np.zeros(nw * n_val)
+        v_array = np.zeros(n_val)
+        
+        for k, c in enumerate(component_list):
+            v_array[k] = variances[c]
 
-            row = []
-            col = []
-            data = []
-            nd = nt * nw
-            # Vd_dense = np.zeros((nd,nd))
-            v_device = variances['device']
-            for i in range(nt):
-                for j in range(nw):
-                    val = sum(v_array[k] * s_array[j * nc + k] ** 2 for k in range(nc)) + v_device
-                    row.append(i * nw + j)
-                    col.append(i * nw + j)
-                    data.append(val)
-                    # Vd_dense[i*nw+j,i*nw+j] = val
-                    for p in range(nw):
-                        if j != p:
-                            val = sum(v_array[k] * s_array[j * nc + k] * s_array[p * nc + k] for k in range(nc))
-                            row.append(i * nw + j)
-                            col.append(i * nw + p)
-                            data.append(val)
-                            # Vd_dense[i*nw+j,i*nw+p] = val
+        for j, l in enumerate(self.model.meas_lambdas):
+            for k, c in enumerate(component_list):
+                s_array[j * n_val + k] = self.model.S[l, c].value
 
-            self.Vd_matrix = scipy.sparse.coo_matrix((data, (row, col)),
-                                                     shape=(nd, nd)).tocsr()
-        # self.Vd_matrix = Vd_dense
+        for i in range(nt):
+            for j in range(nw):
+                val = sum(v_array[k] * s_array[j * n_val + k] ** 2 for k in range(n_val)) + v_device
+                row.append(i * nw + j)
+                col.append(i * nw + j)
+                data.append(val)
 
-    ####More technical way but still needs to be refined:
-    # def _compute_Vd_matrix_no_model_variance(self, variance, **kwds):
-    #     """Builds d covariance matrix
-    #
-    #        This method is not intended to be used by users directly
-    #
-    #     Args:
-    #         variances (dict): variances
-    #
-    #     Returns:
-    #         None
-    #     """
-    #
-    #     # add check for model already solved
-    #     row = []
-    #     col = []
-    #     data = []
-    #     nt = self._n_alltimes
-    #     nw = self._n_meas_lambdas
-    #
-    #     """
-    #     for i,t in enumerate(self.model.meas_times):
-    #         for j,l in enumerate(self.model.meas_lambdas):
-    #             for q,tt in enumerate(self.model.meas_times):
-    #                 for p,ll in enumerate(self.model.meas_lambdas):
-    #                     if i==q and j!=p:
-    #                         val = sum(variances[c]*self.model.S[l,c].value*self.model.S[ll,c].value for c in self.model.mixture_components)
-    #                         row.append(i*nw+j)
-    #                         col.append(q*nw+p)
-    #                         data.append(val)
-    #                     if i==q and j==p:
-    #                         val = sum(variances[c]*self.model.S[l,c].value**2 for c in self.model.mixture_components)+variances['device']
-    #                         row.append(i*nw+j)
-    #                         col.append(q*nw+p)
-    #                         data.append(val)
-    #     """
-    #     # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-    #     if hasattr(self, '_abs_components'):
-    #         nabs = self._nabs_components
-    #         s_array = np.zeros(nw * nabs)
-    #         z_array = np.zeros(nt * nabs)
-    #         # for k, c in enumerate(self._abs_components):
-    #         #     v_array[k] = variances[c]
-    #         for j, l in enumerate(self.model.alltime):
-    #             for k, c in enumerate(self._abs_components):
-    #                 z_array[j * nabs + k] = self.model.Z[l, c].value
-    #
-    #         for j, l in enumerate(self.model.meas_lambdas):
-    #             for k, c in enumerate(self._abs_components):
-    #                 s_array[j * nabs + k] = self.model.S[l, c].value
-    #
-    #         row = []
-    #         col = []
-    #         data = []
-    #         nd = nt * nw
-    #         # Vd_dense = np.zeros((nd,nd))
-    #         v_device = variance['device']
-    #         for i in range(nt):
-    #             for q in range(nt):
-    #                 for j in range(nw):
-    #                     for p in range(nw):
-    #                         if q == i and p == j:
-    #                             val = sum((z_array[i * nabs + k]**2) * (s_array[j * nabs + k] ** 2) for k in range(nabs)) + v_device
-    #                             row.append(i * nw + j)
-    #                             col.append(i * nw + j)
-    #                             data.append(val)
-    #                         elif q!=i and p!=j:
-    #                             val = sum(
-    #                                 z_array[i * nabs + k]* z_array[q * nabs + k] * (s_array[j * nabs + k] * s_array[p * nabs + k]) for k in range(nabs))
-    #                             row.append(i * nw + j)
-    #                             col.append(q * nw + p)
-    #                             data.append(val)
-    #                         elif q==i and p!=j:
-    #                             val = sum(z_array[i * nabs + k]**2 * (
-    #                                             s_array[j * nabs + k] * s_array[p * nabs + k])
-    #                                 for k in range(nabs))
-    #                             row.append(i * nw + j)
-    #                             col.append(i * nw + p)
-    #                             data.append(val)
-    #                         else:
-    #                             val = sum(z_array[i * nabs + k] * z_array[q * nabs + k] *
-    #                                     s_array[j * nabs + k]**2
-    #                                       for k in range(nabs))
-    #                             row.append(i * nw + j)
-    #                             col.append(q * nw + j)
-    #                             data.append(val)
-    #
-    #         self.Vd_matrix = scipy.sparse.coo_matrix((data, (row, col)),
-    #                                                  shape=(nd, nd)).tocsr()
-    #     else:
-    #         nc = self._n_actual
-    #         s_array = np.zeros(nw * nc)
-    #         z_array = np.zeros(nt * nc)
-    #         # v_array = np.zeros(nc)
-    #         # for k, c in enumerate(self._sublist_components):
-    #         #     v_array[k] = variance[c]
-    #         variance=variance['device']
-    #         for j, l in enumerate(self.model.alltime):
-    #             for k, c in enumerate(self._sublist_components):
-    #                 z_array[j * nc + k] = self.model.Z[l, c].value
-    #
-    #         for j, l in enumerate(self.model.meas_lambdas):
-    #             for k, c in enumerate(self._sublist_components):
-    #                 s_array[j * nc + k] = self.model.S[l, c].value
-    #
-    #         row = []
-    #         col = []
-    #         data = []
-    #         nd = nt * nw
-    #         # Vd_dense = np.zeros((nd,nd))
-    #         v_device = variance
-    #
-    #         for i in range(nt):
-    #             for j in range(nw):
-    #                 for q in range(nt):
-    #                     for p in range(nw):
-    #                         if q!=i and p!=j:
-    #                             val = sum(
-    #                                 z_array[i * nc + k]* z_array[q * nc + k] * (s_array[j * nc + k] * s_array[p * nc + k])
-    #                                 for k in range(nc))
-    #                             row.append(i * nw + j)
-    #                             col.append(q * nw + p)
-    #                             data.append(val)
-    #                         elif q==i and p!=j:
-    #                             val = sum(z_array[i * nc + k]**2 * (
-    #                                             s_array[j * nc + k] * s_array[p * nc + k])
-    #                                 for k in range(nc))
-    #                             #row.append(i * nw + j)
-    #                             col.append(i * nw + p)
-    #                             data.append(val)
-    #                         elif q!=i and p==j:
-    #                             val = sum(z_array[i * nc + k] * z_array[q * nc + k] *
-    #                                     s_array[j * nc + k]**2
-    #                                       for k in range(nc))
-    #                             #row.append(i * nw + j)
-    #                             col.append(q * nw + j)
-    #                             data.append(val)
-    #                         else:
-    #                             val = sum((z_array[i * nc + k]**2) * (s_array[j * nc + k] ** 2) for k in range(nc)) + v_device
-    #                             #row.append(i * nw + j)
-    #                             col.append(i * nw + j)
-    #                             data.append(val)
-    #
-    #         self.Vd_matrix = scipy.sparse.coo_matrix((data, (row, col)),
-    #                                                  shape=(nd, nd)).tocsr()
+                for p in range(nw):
+                    if j != p:
+                        val = sum(v_array[k] * s_array[j * n_val + k] * s_array[p * n_val + k] for k in range(n_val))
+                        row.append(i * nw + j)
+                        col.append(i * nw + p)
+                        data.append(val)
 
+        self.Vd_matrix = scipy.sparse.coo_matrix((data, (row, col)), shape=(nd, nd)).tocsr()
+      
     def _compute_residuals(self):
         """
         Computes the square of residuals between the optimal solution (Z) and the concentration data (C)
