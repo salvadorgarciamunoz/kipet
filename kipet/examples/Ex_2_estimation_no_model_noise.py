@@ -45,7 +45,7 @@ if __name__ == "__main__":
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
             inspect.currentframe() ) ) ), 'data_sets'))
     filename =  os.path.join(dataDirectory,'Dij.txt')
-    D_frame = read_spectral_data_from_txt(filename)
+    D_frame = read_file(filename)
 
     # Then we build dae block for as described in the section 4.2.1. Note the addition
     # of the data using .add_spectral_data
@@ -145,241 +145,241 @@ if __name__ == "__main__":
         plt.title("Absorbance  Profile")
         plt.show()
         
-        #%%
-def rule_objective(model):
-    """This function defines the objective function for the estimability
+#         #%%
+# def rule_objective(model):
+#     """This function defines the objective function for the estimability
     
-    This is equation 5 from Chen and Biegler 2020. It has the following
-    form:
+#     This is equation 5 from Chen and Biegler 2020. It has the following
+#     form:
         
-    .. math::
-        \min J = \frac{1}{2}(\mathbf{w}_m - \mathbf{w})^T V_{\mathbf{w}}^{-1}(\mathbf{w}_m - \mathbf{w})
+#     .. math::
+#         \min J = \frac{1}{2}(\mathbf{w}_m - \mathbf{w})^T V_{\mathbf{w}}^{-1}(\mathbf{w}_m - \mathbf{w})
         
-    Originally KIPET was designed to only consider concentration data in
-    the estimability, but this version now includes complementary states
-    such as reactor and cooling temperatures. If complementary state data
-    is included in the model, it is detected and included in the objective
-    function.
+#     Originally KIPET was designed to only consider concentration data in
+#     the estimability, but this version now includes complementary states
+#     such as reactor and cooling temperatures. If complementary state data
+#     is included in the model, it is detected and included in the objective
+#     function.
     
-    Args:
-        model (pyomo.core.base.PyomoModel.ConcreteModel): This is the pyomo
-        model instance for the estimability problem.
+#     Args:
+#         model (pyomo.core.base.PyomoModel.ConcreteModel): This is the pyomo
+#         model instance for the estimability problem.
             
-    Returns:
-        obj (pyomo.environ.Objective): This returns the objective function
-        for the estimability optimization.
+#     Returns:
+#         obj (pyomo.environ.Objective): This returns the objective function
+#         for the estimability optimization.
     
-    """
-    obj = 0
+#     """
+#     obj = 0
 
-    for k in set(model.mixture_components.value_list) & set(model.measured_data.value_list):
-        for t, v in model.C.items():
-            obj += 0.5*(model.C[t] - model.Z[t]) ** 2 / model.sigma[k]**2
+#     for k in set(model.mixture_components.value_list) & set(model.measured_data.value_list):
+#         for t, v in model.C.items():
+#             obj += 0.5*(model.C[t] - model.Z[t]) ** 2 / model.sigma[k]**2
     
-    for k in set(model.complementary_states.value_list) & set(model.measured_data.value_list):
-        for t, v in model.U.items():
-            obj += 0.5*(model.X[t] - model.U[t]) ** 2 / model.sigma[k]**2      
+#     for k in set(model.complementary_states.value_list) & set(model.measured_data.value_list):
+#         for t, v in model.U.items():
+#             obj += 0.5*(model.X[t] - model.U[t]) ** 2 / model.sigma[k]**2      
 
-    return Objective(expr=obj)
+#     return Objective(expr=obj)
 
     
-    #%%
+#     #%%
     
-# Still does not converge - why?
-# Add the sigmas to the problem to get it working!
+# # Still does not converge - why?
+# # Add the sigmas to the problem to get it working!
     
-import numpy as np
-import pandas as pd
+# import numpy as np
+# import pandas as pd
 
-from kipet.library.NestedSchurDecomposition import NestedSchurDecomposition as NSD
-#from kipet.examples.Ex_17_CSTR_setup import make_model_dict
+# from kipet.library.NestedSchurDecomposition import NestedSchurDecomposition as NSD
+# #from kipet.examples.Ex_17_CSTR_setup import make_model_dict
 
-# For simplicity, all of the models and simulated data are generated in
-# the following function
+# # For simplicity, all of the models and simulated data are generated in
+# # the following function
 
-# models, parameters = make_model_dict() 
-builder = TemplateBuilder()
-components = {'A': 1e-3, 'B': 0, 'C': 0}
-builder.add_mixture_component(components)
-builder.add_parameter('k1', init=p_estimator.model.P['k1'].value, bounds=(0, 5))
-# There is also the option of providing initial values: Just add init=... as additional argument as above.
-builder.add_parameter('k2', init=p_estimator.model.P['k2'].value, bounds=(0, 1))
-#builder.add_spectral_data(D_frame)
+# # models, parameters = make_model_dict() 
+# builder = TemplateBuilder()
+# components = {'A': 1e-3, 'B': 0, 'C': 0}
+# builder.add_mixture_component(components)
+# builder.add_parameter('k1', init=p_estimator.model.P['k1'].value, bounds=(0, 5))
+# # There is also the option of providing initial values: Just add init=... as additional argument as above.
+# builder.add_parameter('k2', init=p_estimator.model.P['k2'].value, bounds=(0, 1))
+# #builder.add_spectral_data(D_frame)
 
-builder.set_odes_rule(rule_odes)
-builder.set_model_times((0, 10))
-
-
-times = list()
-species = list()
-for k, v in p_estimator.model.Z.items():
-    if k[0] not in times:
-        times.append(k[0])
-    if k[1] not in species:
-        species.append(k[1])
-
-Z_data = pd.DataFrame(np.zeros((len(times), len(species))), index=times, columns=species)
-
-for r in times:
-    for c in species:
-        Z_data.loc[r, c] = pm.Z[r,c].value
+# builder.set_odes_rule(rule_odes)
+# builder.set_model_times((0, 10))
 
 
-builder.add_concentration_data(pd.DataFrame(Z_data))
+# times = list()
+# species = list()
+# for k, v in p_estimator.model.Z.items():
+#     if k[0] not in times:
+#         times.append(k[0])
+#     if k[1] not in species:
+#         species.append(k[1])
+
+# Z_data = pd.DataFrame(np.zeros((len(times), len(species))), index=times, columns=species)
+
+# for r in times:
+#     for c in species:
+#         Z_data.loc[r, c] = pm.Z[r,c].value
+
+
+# builder.add_concentration_data(pd.DataFrame(Z_data))
         
-#builder.bound_profile(var='S', bounds=(0, 200))
-nsd_model = builder.create_pyomo_model()
+# #builder.bound_profile(var='S', bounds=(0, 200))
+# nsd_model = builder.create_pyomo_model()
 
 
-models = {1: nsd_model}
+# models = {1: nsd_model}
 
 
-for k, model in models.items():
+# for k, model in models.items():
     
-     model.measured_data = Set(initialize=model.mixture_components)
-     model.sigma = Param(model.measured_data, initialize=1)
-     model.objective = rule_objective(model)
+#      model.measured_data = Set(initialize=model.mixture_components)
+#      model.sigma = Param(model.measured_data, initialize=1)
+#      model.objective = rule_objective(model)
 
-     if not model.alltime.get_discretization_info():
+#      if not model.alltime.get_discretization_info():
         
-        model_pe = ParameterEstimator(model)
-        model_pe.apply_discretization('dae.collocation',
-                                        ncp = 3,
-                                        nfe = 50,
-                                        scheme = 'LAGRANGE-RADAU')
+#         model_pe = ParameterEstimator(model)
+#         model_pe.apply_discretization('dae.collocation',
+#                                         ncp = 3,
+#                                         nfe = 50,
+#                                         scheme = 'LAGRANGE-RADAU')
 
-# This is still needed and should include the union of all parameters in all
-# models
+# # This is still needed and should include the union of all parameters in all
+# # models
 
-#factor = np.random.uniform(low=0.8, high=1.2, size=len(parameters))
+# #factor = np.random.uniform(low=0.8, high=1.2, size=len(parameters))
 
-p_init = {k: v.value for k, v in models[1].P.items()}
+# p_init = {k: v.value for k, v in models[1].P.items()}
 
-d_init_guess = {k: (1*p_init[k], p.bounds) for k, p in nsd_model.P.items()}
-#d_init_guess = {p.name: (p.init, p.bounds) for i, p in enumerate(parameters)}
-
-
-# NSD routine
-
-# If there is only one parameter it does not really update - it helps if you
-# let the other infomation "seep in" from the other experiments.
-
-# This is very slow and takes a long time for spectra problems
-# I need to try this with multiple data sets.
-
-parameter_var_name = 'P'
-options = {
-    'method': 'trust-constr',
-    'use_est_param': False,   # Use this to reduce model based on EP
-    'use_scaling' : True,
-    'cross_updating' : True,
-    }
-
-print(d_init_guess)
-
-nsd = NSD(models, d_init_guess, parameter_var_name, options)
-results, od = nsd.nested_schur_decomposition(debug=True)
+# d_init_guess = {k: (1*p_init[k], p.bounds) for k, p in nsd_model.P.items()}
+# #d_init_guess = {p.name: (p.init, p.bounds) for i, p in enumerate(parameters)}
 
 
-print(f'\nThe final parameter values are:\n{nsd.parameters_opt}')
+# # NSD routine
+
+# # If there is only one parameter it does not really update - it helps if you
+# # let the other infomation "seep in" from the other experiments.
+
+# # This is very slow and takes a long time for spectra problems
+# # I need to try this with multiple data sets.
+
+# parameter_var_name = 'P'
+# options = {
+#     'method': 'trust-constr',
+#     'use_est_param': False,   # Use this to reduce model based on EP
+#     'use_scaling' : True,
+#     'cross_updating' : True,
+#     }
+
+# print(d_init_guess)
+
+# nsd = NSD(models, d_init_guess, parameter_var_name, options)
+# results, od = nsd.nested_schur_decomposition(debug=True)
+
+
+# print(f'\nThe final parameter values are:\n{nsd.parameters_opt}')
         
-nsd.plot_paths('')
+# nsd.plot_paths('')
 
-#%%
+# #%%
 
-builder = TemplateBuilder()
-components = {'A': 1e-3, 'B': 0, 'C': 0}
-builder.add_mixture_component(components)
-builder.add_parameter('k1', init=nsd.parameters_opt['k1'])
-# There is also the option of providing initial values: Just add init=... as additional argument as above.
-builder.add_parameter('k2', init=nsd.parameters_opt['k2'])
-#builder.add_spectral_data(D_frame)
-
-
-# define explicit system of ODEs
-def rule_odes(m, t):
-    exprs = dict()
-    exprs['A'] = -m.P['k1'] * m.Z[t, 'A']
-    exprs['B'] = m.P['k1'] * m.Z[t, 'A'] - m.P['k2'] * m.Z[t, 'B']
-    exprs['C'] = m.P['k2'] * m.Z[t, 'B']
-    return exprs
+# builder = TemplateBuilder()
+# components = {'A': 1e-3, 'B': 0, 'C': 0}
+# builder.add_mixture_component(components)
+# builder.add_parameter('k1', init=nsd.parameters_opt['k1'])
+# # There is also the option of providing initial values: Just add init=... as additional argument as above.
+# builder.add_parameter('k2', init=nsd.parameters_opt['k2'])
+# #builder.add_spectral_data(D_frame)
 
 
-builder.set_odes_rule(rule_odes)
-builder.set_model_times((0, 10))
-#builder.bound_profile(var='S', bounds=(0, 200))
-sim_model = builder.create_pyomo_model()
-
-simulator = PyomoSimulator(sim_model)
-
-for k, v in simulator.model.P.items():
-
-    simulator.model.P[k].fix()
-
-simulator.apply_discretization('dae.collocation',
-                                ncp = 3,
-                                nfe = 50,
-                                scheme = 'LAGRANGE-RADAU')
-
-options = {'solver_opts' : dict(linear_solver='ma57')}
-
-results_pyomo_sim1 = simulator.run_sim('ipopt',
-                                  tee=False,
-                                  solver_options=options,
-                                  )
-
-results_pyomo_sim1.Z.plot.line(legend=True)
-plt.xlabel("time (s)")
-plt.ylabel("Concentration (mol/L)")
-plt.title("NSD Concentration Profile")
-
-builder = TemplateBuilder()
-components = {'A': 1e-3, 'B': 0, 'C': 0}
-builder.add_mixture_component(components)
-builder.add_parameter('k1', init=p_estimator.model.P['k1'].value)
-# There is also the option of providing initial values: Just add init=... as additional argument as above.
-builder.add_parameter('k2', init=p_estimator.model.P['k2'].value)
-#builder.add_spectral_data(D_frame)
+# # define explicit system of ODEs
+# def rule_odes(m, t):
+#     exprs = dict()
+#     exprs['A'] = -m.P['k1'] * m.Z[t, 'A']
+#     exprs['B'] = m.P['k1'] * m.Z[t, 'A'] - m.P['k2'] * m.Z[t, 'B']
+#     exprs['C'] = m.P['k2'] * m.Z[t, 'B']
+#     return exprs
 
 
-# define explicit system of ODEs
-def rule_odes(m, t):
-    exprs = dict()
-    exprs['A'] = -m.P['k1'] * m.Z[t, 'A']
-    exprs['B'] = m.P['k1'] * m.Z[t, 'A'] - m.P['k2'] * m.Z[t, 'B']
-    exprs['C'] = m.P['k2'] * m.Z[t, 'B']
-    return exprs
+# builder.set_odes_rule(rule_odes)
+# builder.set_model_times((0, 10))
+# #builder.bound_profile(var='S', bounds=(0, 200))
+# sim_model = builder.create_pyomo_model()
+
+# simulator = PyomoSimulator(sim_model)
+
+# for k, v in simulator.model.P.items():
+
+#     simulator.model.P[k].fix()
+
+# simulator.apply_discretization('dae.collocation',
+#                                 ncp = 3,
+#                                 nfe = 50,
+#                                 scheme = 'LAGRANGE-RADAU')
+
+# options = {'solver_opts' : dict(linear_solver='ma57')}
+
+# results_pyomo_sim1 = simulator.run_sim('ipopt',
+#                                   tee=False,
+#                                   solver_options=options,
+#                                   )
+
+# results_pyomo_sim1.Z.plot.line(legend=True)
+# plt.xlabel("time (s)")
+# plt.ylabel("Concentration (mol/L)")
+# plt.title("NSD Concentration Profile")
+
+# builder = TemplateBuilder()
+# components = {'A': 1e-3, 'B': 0, 'C': 0}
+# builder.add_mixture_component(components)
+# builder.add_parameter('k1', init=p_estimator.model.P['k1'].value)
+# # There is also the option of providing initial values: Just add init=... as additional argument as above.
+# builder.add_parameter('k2', init=p_estimator.model.P['k2'].value)
+# #builder.add_spectral_data(D_frame)
 
 
-builder.set_odes_rule(rule_odes)
-builder.set_model_times((0, 10))
-#builder.bound_profile(var='S', bounds=(0, 200))
-sim_model = builder.create_pyomo_model()
+# # define explicit system of ODEs
+# def rule_odes(m, t):
+#     exprs = dict()
+#     exprs['A'] = -m.P['k1'] * m.Z[t, 'A']
+#     exprs['B'] = m.P['k1'] * m.Z[t, 'A'] - m.P['k2'] * m.Z[t, 'B']
+#     exprs['C'] = m.P['k2'] * m.Z[t, 'B']
+#     return exprs
 
-simulator = PyomoSimulator(sim_model)
 
-for k, v in simulator.model.P.items():
+# builder.set_odes_rule(rule_odes)
+# builder.set_model_times((0, 10))
+# #builder.bound_profile(var='S', bounds=(0, 200))
+# sim_model = builder.create_pyomo_model()
 
-    simulator.model.P[k].fix()
+# simulator = PyomoSimulator(sim_model)
 
-simulator.apply_discretization('dae.collocation',
-                                ncp = 3,
-                                nfe = 50,
-                                scheme = 'LAGRANGE-RADAU')
+# for k, v in simulator.model.P.items():
 
-options = {'solver_opts' : dict(linear_solver='ma57')}
+#     simulator.model.P[k].fix()
 
-results_pyomo_sim2 = simulator.run_sim('ipopt',
-                                  tee=False,
-                                  solver_options=options,
-                                  )
+# simulator.apply_discretization('dae.collocation',
+#                                 ncp = 3,
+#                                 nfe = 50,
+#                                 scheme = 'LAGRANGE-RADAU')
 
-results_pyomo_sim2.Z.plot.line(legend=True)
-plt.xlabel("time (s)")
-plt.title('p_estimator')
-plt.ylabel("Concentration (mol/L)")
-plt.title("Kipet Concentration Profile")
-plt.show()
+# options = {'solver_opts' : dict(linear_solver='ma57')}
+
+# results_pyomo_sim2 = simulator.run_sim('ipopt',
+#                                   tee=False,
+#                                   solver_options=options,
+#                                   )
+
+# results_pyomo_sim2.Z.plot.line(legend=True)
+# plt.xlabel("time (s)")
+# plt.title('p_estimator')
+# plt.ylabel("Concentration (mol/L)")
+# plt.title("Kipet Concentration Profile")
+# plt.show()
 
 
 

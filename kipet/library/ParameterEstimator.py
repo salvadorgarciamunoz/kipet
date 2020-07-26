@@ -6,7 +6,6 @@ from __future__ import division
 import copy
 import os
 import re
-import six
 import time
 
 import matplotlib.pyplot as plt
@@ -350,18 +349,6 @@ class ParameterEstimator(Optimizer):
 
                 expr += weights[2] * third_term
 
-                # if m.algebraics is not None:
-                #     print('here')
-                #     fourth_term=0.0
-                #     for k in m.solid_spec_arg1:
-                #         for j in m.algebraics:
-                #             for t in m.huplctime:
-                #                 if j == k:
-                #                     fourth_term += sum((m.C[t, k] - m.Y[t, k]) ** 2 / sigma_sq[k])
-                #                 else:
-                #                     fourth_term = 0.0
-                #                     #weights[3] = 0.0
-                #     expr += weights[3] * fourth_term
                 if penaltyparamcon == True: #added for optional penalty term related to constraint CS
                     #if ppenalty_weights is None:
                     # fifth_term = 0.0
@@ -467,18 +454,7 @@ class ParameterEstimator(Optimizer):
                             third_term += (m.Dhat[t, k] - m.Dhat_bar[t, k]) ** 2 / sigma_sq['device-huplc']
 
                 expr += weights[2] * third_term
-                # if m.algebraics is not None:
-                #     print('here')
-                #     fourth_term=0.0
-                #     for k in m.solid_spec_arg1:
-                #         for j in m.algebraics:
-                #             for t in m.huplctime:
-                #                 if j == k:
-                #                     fourth_term += sum((m.C[t, k] - m.Y[t, k]) ** 2 / sigma_sq[k])
-                #                 else:
-                #                     fourth_term = 0.0
-                #                     #weights[3] = 0.0
-                #     expr += weights[3] * fourth_term
+             
             return expr
 
         if self.model_variance == True:
@@ -487,25 +463,7 @@ class ParameterEstimator(Optimizer):
             #m.del_component('C')
             m.objective = Objective(rule=rule_objective_device_only)
 
-        # solver_results = optimizer.solve(m,tee=True,
-        #                                 report_timing=True)
-        # m.pprint()
-        # m.display()
-
-        # if self.model_variance == False:
-        #     ip = SolverFactory('ipopt')
-        #     solver_results = ip.solve(m, tee=True,
-        #                               # logfile=self._tmpfile,
-        #                               report_timing=True)
-
-        #     for l in m.meas_lambdas:
-        #         if hasattr(self, '_abs_components'):
-        #             for k in self._abs_components:
-        #                 m.S[l, k].fix()
-        #         else:
-        #             for k in list_components:
-        #                 m.S[l, k].fix()
-            
+       
 
         if covariance and self.solver == 'ipopt_sens':
             if self.model_variance == False:
@@ -602,14 +560,14 @@ class ParameterEstimator(Optimizer):
                             m.S[l, c].set_suffix_value(m.dof_v, count_vars)
                             count_vars += 1
 
-            for v in six.itervalues(m.P):
+            for v in m.P.values():
                 if v.is_fixed():
                     continue
                 m.P.set_suffix_value(m.dof_v, count_vars)
                 count_vars += 1
 
             if hasattr(m,'Pinit'):
-                for k, v in six.iteritems(self.model.Pinit):
+                for k, v in self.model.Pinit.items():
                     m.init_conditions[k].set_suffix_value(m.dof_v, count_vars)
                     count_vars += 1
 
@@ -635,7 +593,7 @@ class ParameterEstimator(Optimizer):
             print("n_vars", n_vars)
             #m.rh_name.pprint()
             var_loc = m.rh_name
-            for v in six.itervalues(self._idx_to_variable):
+            for v in self._idx_to_variable.values():
                 try:
                     var_loc[v]
                 except:
@@ -831,7 +789,7 @@ class ParameterEstimator(Optimizer):
                         m.S[l, c].set_suffix_value(m.dof_v, count_vars)
                         count_vars += 1
 
-            for v in six.itervalues(m.P):
+            for v in m.P.values():
                 if v.is_fixed():
                     continue
                 m.P.set_suffix_value(m.dof_v, count_vars)
@@ -887,7 +845,7 @@ class ParameterEstimator(Optimizer):
             # m.rh_name.pprint()
             
             var_loc = m.rh_name
-            for v in six.itervalues(self._idx_to_variable):
+            for v in self._idx_to_variable.values():
                 try:
                     var_loc[v]
                 except:
@@ -938,7 +896,28 @@ class ParameterEstimator(Optimizer):
                         raise Exception("The current iteration was unsuccessful.")
         m.del_component('objective')
 
+
+    def set_up_reduced_hessian(self, time_set, component_set, var_name, index):
+            
+        print('\n\n\n\n THIS IS BEING USED BEER TIME\n\n\n\n\n')
+        for t in time_set:
+            for c in component_set:
+                v = getattr(self.model, var_name)[t, c]
+                self._idx_to_variable[count_vars] = v
+                self.model.red_hessian[v] = index
+                    
+    # def spectra_roll(self):
+    
+    # You need to test this - but which one?
     def _define_reduce_hess_order_new(self):
+        """
+        How about a doc string?
+
+        Returns
+        -------
+        None.
+
+        """
         self.model.red_hessian = Suffix(direction=Suffix.IMPORT_EXPORT)
         count_vars = 1
 
@@ -947,76 +926,38 @@ class ParameterEstimator(Optimizer):
         else:
             # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
             if hasattr(self, '_abs_components') and self.model_variance:  # added for removing non absorbing ones from first term in obj
-                for t in self._allmeas_times:
-                    for c in self._abs_components:
-                        v = self.model.Cs[t, c]
-                        self._idx_to_variable[count_vars] = v
-                        self.model.red_hessian[v] = count_vars
-                        count_vars += 1
+                self.set_up_reduced_hessian(self._allmeas_times, self._abs_components, 'Cs', count_vars)
+                count_vars += 1
             elif self.model_variance and hasattr(self, '_abs_components')==False:
-                for t in self._allmeas_times:
-                    for c in self._sublist_components:
-                        v = self.model.C[t, c]
-                        self._idx_to_variable[count_vars] = v
-                        self.model.red_hessian[v] = count_vars
-                        count_vars += 1
+                self.set_up_reduced_hessian(self._allmeas_times, self._sublist_components, 'C', count_vars)
+                count_vars += 1
             elif self.model_variance==False and hasattr(self, '_abs_components'):
-                for t in self._alltimes:
-                    for c in self._abs_components:
-                        v = self.model.Z[t, c]
-                        self._idx_to_variable[count_vars] = v
-                        self.model.red_hessian[v] = count_vars
-                        count_vars += 1
-            elif self.model_variance==False and hasattr(self,
-                       '_abs_components')==False:
-                for t in self._alltimes:
-                    for c in self._sublist_components:
-                        v = self.model.Z[t, c]
-                        self._idx_to_variable[count_vars] = v
-                        self.model.red_hessian[v] = count_vars
-                        count_vars += 1
+                self.set_up_reduced_hessian(self._alltimes, self._abs_components, 'Z', count_vars)
+                count_vars += 1
+            elif self.model_variance==False and hasattr(self, '_abs_components') == False:
+                self.set_up_reduced_hessian(self._alltimes, self._sublist_components, 'Z', count_vars)
+                count_vars += 1
             else:
                 pass
-
 
             if not self._spectra_given:
                 pass
-
             else:
                 # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-                if hasattr(self,
-                           '_abs_components') and self.model_variance:  # added for removing non absorbing ones from first term in obj
-                    for l in self._meas_lambdas:
-                        for c in self._abs_components:
-                            v = self.model.S[l, c]
-                            self._idx_to_variable[count_vars] = v
-                            self.model.red_hessian[v] = count_vars
-                            count_vars += 1
+                if hasattr(self, '_abs_components') and self.model_variance:  # added for removing non absorbing ones from first term in obj
+                    self.set_up_reduced_hessian(self._meas_lambdas, self._abs_components, 'S', count_vars)
+                    count_vars += 1
                 elif self.model_variance and hasattr(self, '_abs_components')==False:
-                    for l in self._meas_lambdas:
-                        for c in self._sublist_components:
-                            v = self.model.S[l, c]
-                            self._idx_to_variable[count_vars] = v
-                            self.model.red_hessian[v] = count_vars
-                            count_vars += 1
-                elif hasattr(self,
-                           '_abs_components') and self.model_variance==False:  # added for removing non absorbing ones from first term in obj
-                    for l in self._meas_lambdas:
-                        for c in self._abs_components:
-                            v = self.model.S[l, c]
-                            self._idx_to_variable[count_vars] = v
-                            self.model.red_hessian[v] = count_vars
-                            count_vars += 1
-                elif self.model_variance==False and hasattr(self,
-                           '_abs_components')==False:
-                    for l in self._meas_lambdas:
-                        for c in self._sublist_components:
-                            v = self.model.S[l, c]
-                            self._idx_to_variable[count_vars] = v
-                            self.model.red_hessian[v] = count_vars
-                            count_vars += 1
-
-        for v in six.itervalues(self.model.P):
+                    self.set_up_reduced_hessian(self._meas_lambdas, self._sublist_components, 'S', count_vars)
+                    count_vars += 1
+                elif hasattr(self, '_abs_components') and self.model_variance==False:  # added for removing non absorbing ones from first term in obj
+                    self.set_up_reduced_hessian(self._meas_lambdas, self._abs_components, 'S', count_vars)
+                    count_vars += 1
+                elif self.model_variance==False and hasattr(self,  '_abs_components') == False:
+                    self.set_up_reduced_hessian(self._meas_lambdas, self._sublist_components, 'S', count_vars)
+                    count_vars += 1
+                    
+        for v in self.model.P.values():
             if v.is_fixed():
                 print(v, end='\t')
                 print("is fixed")
@@ -1026,13 +967,16 @@ class ParameterEstimator(Optimizer):
             count_vars += 1
 
         if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-            for k, v in six.iteritems(self.model.Pinit):
+            for k, v in self.model.Pinit.items():
                 v = self.model.init_conditions[k]
                 self._idx_to_variable[count_vars] = v
                 self.model.red_hessian[v] = count_vars
                 count_vars += 1
 
     def _define_reduce_hess_order(self):
+        """
+        How about a doc string?
+        """
         self.model.red_hessian = Suffix(direction=Suffix.IMPORT_EXPORT)
         count_vars = 1
 
@@ -1041,19 +985,11 @@ class ParameterEstimator(Optimizer):
         else:
             # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
             if hasattr(self, '_abs_components') and self.model_variance:  # added for removing non absorbing ones from first term in obj
-                for t in self._meas_times:#to filter out huplc times
-                    for c in self._abs_components:
-                        v = self.model.Cs[t, c]
-                        self._idx_to_variable[count_vars] = v
-                        self.model.red_hessian[v] = count_vars
-                        count_vars += 1
+                self.set_up_reduced_hessian(self._meas_times, self._abs_components, 'Cs', count_vars)
+                count_vars += 1
             elif self.model_variance:
-                for t in self._meas_times:#to filter out huplc times
-                    for c in self._sublist_components:
-                        v = self.model.C[t, c]
-                        self._idx_to_variable[count_vars] = v
-                        self.model.red_hessian[v] = count_vars
-                        count_vars += 1
+                self.set_up_reduced_hessian(self._meas_times, self._sublist_components, 'C', count_vars)
+                count_vars += 1
             else:
                 pass
 
@@ -1063,21 +999,13 @@ class ParameterEstimator(Optimizer):
         else:
             # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
             if hasattr(self,'_abs_components') and self.model_variance: #added for removing non absorbing ones from first term in obj
-                for l in self._meas_lambdas:
-                    for c in self._abs_components:
-                        v = self.model.S[l, c]
-                        self._idx_to_variable[count_vars] = v
-                        self.model.red_hessian[v] = count_vars
-                        count_vars += 1
+                self.set_up_reduced_hessian(self._meas_lambdas, self._abs_components, 'S', count_vars)
+                count_vars += 1
             elif self.model_variance:
-                for l in self._meas_lambdas:
-                    for c in self._sublist_components:
-                        v = self.model.S[l, c]
-                        self._idx_to_variable[count_vars] = v
-                        self.model.red_hessian[v] = count_vars
-                        count_vars += 1
-
-        for v in six.itervalues(self.model.P):
+                self.set_up_reduced_hessian(self._meas_lambdas, self._sublist_components, 'S', count_vars)
+                count_vars += 1
+    
+        for v in self.model.P.values():
             if v.is_fixed():
                 print(v, end='\t')
                 print("is fixed")
@@ -1087,7 +1015,7 @@ class ParameterEstimator(Optimizer):
             count_vars += 1
 
         if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-            for k, v in six.iteritems(self.model.Pinit):
+            for k, v in self.model.Pinit.items():
                 v = self.model.init_conditions[k]
                 self._idx_to_variable[count_vars] = v
                 self.model.red_hessian[v] = count_vars
@@ -1097,24 +1025,30 @@ class ParameterEstimator(Optimizer):
 
         nt = self._n_allmeas_times
         nw = self._n_meas_lambdas
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        
         if hasattr(self, '_abs_components'):
-            nabs = self._nabs_components  # number of absorbing components (CS)
+            n_val = self._nabs_components
+            isSkipFixed = True
+        else:
+            n_val = self._n_actual
+            isSkipFixed = False
+
+            nabs = n_val
             nparams = 0
-            for v in six.itervalues(self.model.P):
+            for v in self.model.P.values():
                 if v.is_fixed():  #: Skip the fixed ones
                     print(str(v) + '\has been skipped for covariance calculations')
                     continue
                 nparams += 1
             if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-                for v in six.itervalues(self.model.Pinit):
+                for v in self.model.Pinit.values():
                     if v.is_fixed():  #: Skip the fixed ones
                         print(str(v) + '\has been skipped for covariance calculations')
                         continue
                     nparams += 1
-            # nparams = len(self.model.P)
+
             nd = nw * nt
-            ntheta = nabs * (nw + nt) + nparams
+            ntheta = n_val * (nw + nt) + nparams
 
             print("Computing H matrix\n shape ({},{})".format(nparams, ntheta))
             all_H = hessian
@@ -1126,19 +1060,7 @@ class ParameterEstimator(Optimizer):
             print("Computing Vd matrix\n shape ({},{})".format(nd, nd))
             self._compute_Vd_matrix(variances)
             Vd = self.Vd_matrix
-            """
-            Vd_dense = Vd.toarray()
-            print("multiplying H*B")
-            M1 = H.dot(B)
-            print("multiplying H*B*Vd")
-            M2 = M1.dot(Vd_dense)
-            print("multiplying H*B*Vd*Bt")
-            M3 = M2.dot(B.T)
-            print("multiplying H*B*Vd*Bt*Ht")
-            V_theta = M3.dot(H)
-            """
-
-            # R = B.T.dot(H)
+            
             R = B.T.dot(H.T)
             A = Vd.dot(R)
             L = H.dot(B)
@@ -1154,22 +1076,23 @@ class ParameterEstimator(Optimizer):
 
             nt = self._n_allmeas_times
             nw = self._n_meas_lambdas
-            nabs = self._nabs_components  # #number of absorbing components (CS)
+            #nabs = self._nabs_components  # #number of absorbing components (CS)
             nparams = 0
-            for v in six.itervalues(self.model.P):
+            for v in self.model.P.values():
                 if v.is_fixed():  #: Skip the fixed ones ;)
                     continue
                 nparams += 1
             if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-                for v in six.itervalues(self.model.Pinit):
-                    if v.is_fixed():  #: Skip the fixed ones
-                        print(str(v) + '\has been skipped for covariance calculations')
-                        continue
+                for v in self.model.Pinit.values():
+                    if isSkipFixed:
+                        if v.is_fixed():  #: Skip the fixed ones
+                            print(str(v) + '\has been skipped for covariance calculations')
+                            continue
                     nparams += 1
 
             # this changes depending on the order of the suffixes passed to sipopt
             nd = nw * nt
-            ntheta = nabs * (nw + nt)
+            ntheta = n_val * (nw + nt)
             # V_param = V_theta[ntheta:ntheta+nparams,ntheta:ntheta+nparams]
             V_param = V_theta
             variances_p = np.diag(V_param)
@@ -1181,101 +1104,6 @@ class ParameterEstimator(Optimizer):
                 print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
                 i += 1
             if hasattr(self.model, 'Pinit'):  # added for the estimation of initial conditions which have to be complementary state vars CS
-                for k in self.model.Pinit.keys():
-                    self.model.Pinit[k] = self.model.init_conditions[k].value
-
-                    print('{} ({},{})'.format(k, self.model.Pinit[k].value - variances_p[i] ** 0.5,
-                                              self.model.Pinit[k].value + variances_p[i] ** 0.5))
-                    i += 1
-
-            return 1
-        else:
-            nc = self._n_actual
-            print(nc)
-            nparams = 0
-            for v in six.itervalues(self.model.P):
-                if v.is_fixed():  #: Skip the fixed ones
-                    print(str(v) + '\has been skipped for covariance calculations')
-                    continue
-                nparams += 1
-            if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-                for v in six.itervalues(self.model.Pinit):
-                    if v.is_fixed():  #: Skip the fixed ones
-                        print(str(v) + '\has been skipped for covariance calculations')
-                        continue
-                    nparams += 1
-            # nparams = len(self.model.P)
-            nd = nw * nt
-            ntheta = nc * (nw + nt) + nparams
-
-            print("Computing H matrix\n shape ({},{})".format(nparams, ntheta))
-            all_H = hessian
-            H = all_H[-nparams:, :]
-            # H = hessian
-            print("Computing B matrix\n shape ({},{})".format(ntheta, nd))
-            self._compute_B_matrix(variances)
-            B = self.B_matrix
-            print("Computing Vd matrix\n shape ({},{})".format(nd, nd))
-            self._compute_Vd_matrix(variances)
-            Vd = self.Vd_matrix
-            """
-            Vd_dense = Vd.toarray()
-            print("multiplying H*B")
-            M1 = H.dot(B)
-            print("multiplying H*B*Vd")
-            M2 = M1.dot(Vd_dense)
-            print("multiplying H*B*Vd*Bt")
-            M3 = M2.dot(B.T)
-            print("multiplying H*B*Vd*Bt*Ht")
-            V_theta = M3.dot(H)
-            """
-
-            # R = B.T.dot(H)
-            R = B.T.dot(H.T)
-            A = Vd.dot(R)
-            L = H.dot(B)
-            Vtheta = A.T.dot(L.T)
-            V_theta = Vtheta.T
-
-            ###########added for eig Covariance outputs##########
-            #print(type(hessian))
-            if self._eigredhess2file==True:
-                redhessian=np.linalg.inv(V_theta)
-                np.savetxt('redhessian.out', redhessian, delimiter=',')
-                #np.savetxt('covariance.out', V_theta, delimiter=',')
-                #eigH, vH=np.linalg.eig(V_theta)
-                eigH2, vH2 = np.linalg.eig(redhessian)
-                #np.savetxt('eigcovariance.out',eigH)
-                np.savetxt('eigredhessian.out', eigH2)
-
-            nt = self._n_allmeas_times
-            nw = self._n_meas_lambdas
-            nc = self._n_actual
-            nparams = 0
-            for v in six.itervalues(self.model.P):
-                if v.is_fixed():  #: Skip the fixed ones ;)
-                    continue
-                nparams += 1
-            if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-                for v in six.itervalues(self.model.Pinit):
-                    # if v.is_fixed():  #: Skip the fixed ones ;)
-                    #     continue
-                    nparams += 1
-
-            # this changes depending on the order of the suffixes passed to sipopt
-            nd = nw * nt
-            ntheta = nc * (nw + nt)
-            # V_param = V_theta[ntheta:ntheta+nparams,ntheta:ntheta+nparams]
-            V_param = V_theta
-            variances_p = np.diag(V_param)
-            print('\nConfidence intervals:')
-            i = 0
-            for k, p in self.model.P.items():
-                if p.is_fixed():
-                    continue
-                print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
-                i += 1
-            if hasattr(self.model,'Pinit'):  # added for the estimation of initial conditions which have to be complementary state vars CS
                 for k in self.model.Pinit.keys():
                     self.model.Pinit[k] = self.model.init_conditions[k].value
                     print('{} ({},{})'.format(k, self.model.Pinit[k].value - variances_p[i] ** 0.5,
@@ -1294,41 +1122,25 @@ class ParameterEstimator(Optimizer):
         """
         self._compute_residuals()
         res = self.residuals
-        # print(res)
-        # sets up matrix with variances in diagonals
         nc = self._n_actual
-        # nt = self._n_allmeas_times
         varmat = np.zeros((nc, nc))
         for c, k in enumerate(self._sublist_components):
             varmat[c, c] = variances[k]
-        # print("varmat",varmat)
-        # R=varmat.dot(res)
-        # L = res.dot(varmat)
-
+       
         # Now we can use the E matrix with the hessian to estimate our confidence intervals
         nparams = 0
-        for v in six.itervalues(self.model.P):
+        for v in self.model.P.values():
             if v.is_fixed():  #: Skip the fixed ones
                 print(str(v) + '\has been skipped for covariance calculations')
                 continue
             nparams += 1
         if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-            for v in six.itervalues(self.model.Pinit):
+            for v in self.model.Pinit.values():
                 nparams += 1
         all_H = hessian
         H = all_H[-nparams:, :]
-
-        # print(E_matrix)
-        # covariance_C = E_matrix.dot(H.T)
-
-        # print("value of the objective function (sum of squared residuals/sigma^2): ", E)
-        # covari1 = res_in_vec.dot(H)
-        # covariance_C =  2/(nt-2)*E*np.linalg.inv(H)
-        # covariance_C = np.linalg.inv(H)
-
         covariance_C = H
-        # print(covariance_C,"covariance matrix")
-        variances_p = np.diag(covariance_C)
+        
         print("Parameter variances: ", variances_p)
         print('\nConfidence intervals:')
         i = 0
@@ -1352,20 +1164,16 @@ class ParameterEstimator(Optimizer):
 
         This function is not intended to be used by the users directly
         """
-
         nparams = 0
-        for v in six.itervalues(self.model.P):
+        for v in self.model.P.values():
             if v.is_fixed():  #: Skip the fixed ones
                 print(str(v) + '\has been skipped for covariance calculations')
                 continue
             nparams += 1
         if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-            for v in six.itervalues(self.model.Pinit):
+            for v in self.model.Pinit.values():
                 nparams += 1
         all_H = hessian
-        # w,v = np.linalg.eig(all_H)
-        # np.set_printoptions(threshold=sys.maxsize)
-
         H = all_H[-nparams:, :]
 
         ###########added for eig redHessian outputs########## (CS)
@@ -1393,185 +1201,43 @@ class ParameterEstimator(Optimizer):
                 i += 1
         return 1
 
-    #######
-    ###More Technical Way#### but still needs to be refined
-    # def _compute_covariance_no_model_variance_new(self, hessian, variance):
-    #     # print(type(variance))
-    #     """
-    #     Computes the covariance matrix for the paramaters taking in the Hessian
-    #     matrix and the device variance for the problem where model error is ignored.
-    #     Outputs the parameter confidence intervals.
-    #
-    #     This function is not intended to be used by the users directly
-    #
-    #     """
-    #
-    #     # nparams = 0
-    #     # for v in six.itervalues(self.model.P):
-    #     #     if v.is_fixed():  #: Skip the fixed ones
-    #     #         print(str(v) + '\has been skipped for covariance calculations')
-    #     #         continue
-    #     #     nparams += 1
-    #     # all_H = hessian
-    #     # # w,v = np.linalg.eig(all_H)
-    #     # # np.set_printoptions(threshold=sys.maxsize)
-    #     #
-    #     # H = all_H[-nparams:, :]
-    #
-    #     nt = self._n_alltimes
-    #     nw = self._n_meas_lambdas
-    #     # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-    #     if hasattr(self, '_abs_components'):
-    #         nabs = self._nabs_components  # number of absorbing components (CS)
-    #         nparams = 0
-    #         for v in six.itervalues(self.model.P):
-    #             if v.is_fixed():  #: Skip the fixed ones
-    #                 print(str(v) + '\has been skipped for covariance calculations')
-    #                 continue
-    #             nparams += 1
-    #         # nparams = len(self.model.P)
-    #         nd = nw * nt
-    #         ntheta = nabs * (nw + nt) + nparams
-    #
-    #         print("Computing H matrix\n shape ({},{})".format(nparams, ntheta))
-    #         all_H = hessian
-    #         H = all_H[-nparams:, :]
-    #         # H = hessian
-    #         print("Computing B matrix\n shape ({},{})".format(ntheta, nd))
-    #         self._compute_B_matrix_no_model_variance(variance)
-    #         B = self.B_matrix
-    #         print("Computing Vd matrix\n shape ({},{})".format(nd, nd))
-    #         self._compute_Vd_matrix_no_model_variance(variance)
-    #         Vd = self.Vd_matrix
-    #         """
-    #         Vd_dense = Vd.toarray()
-    #         print("multiplying H*B")
-    #         M1 = H.dot(B)
-    #         print("multiplying H*B*Vd")
-    #         M2 = M1.dot(Vd_dense)
-    #         print("multiplying H*B*Vd*Bt")
-    #         M3 = M2.dot(B.T)
-    #         print("multiplying H*B*Vd*Bt*Ht")
-    #         V_theta = M3.dot(H)
-    #         """
-    #
-    #         # R = B.T.dot(H)
-    #         R = B.T.dot(H.T)
-    #         A = Vd.dot(R)
-    #         L = H.dot(B)
-    #         Vtheta = A.T.dot(L.T)
-    #         V_theta = Vtheta.T
-    #
-    #         ###########added for eig Covariance outputs##########
-    #         #print(type(hessian))
-    #         if self._eigredhess2file==True:
-    #             redhessian=np.linalg.inv(V_theta)
-    #             np.savetxt('redhessian.out', redhessian, delimiter=',')
-    #             #np.savetxt('covariance.out', V_theta, delimiter=',')
-    #             #eigH, vH=np.linalg.eig(V_theta)
-    #             eigH2, vH2 = np.linalg.eig(redhessian)
-    #             #np.savetxt('eigcovariance.out',eigH)
-    #             np.savetxt('eigredhessian.out', eigH2)
-    #
-    #         nt = self._n_alltimes
-    #         nw = self._n_meas_lambdas
-    #         nabs = self._nabs_components  # #number of absorbing components (CS)
-    #         nparams = 0
-    #         for v in six.itervalues(self.model.P):
-    #             if v.is_fixed():  #: Skip the fixed ones ;)
-    #                 continue
-    #             nparams += 1
-    #
-    #         # this changes depending on the order of the suffixes passed to sipopt
-    #         nd = nw * nt
-    #         ntheta = nabs * (nw + nt)
-    #         # V_param = V_theta[ntheta:ntheta+nparams,ntheta:ntheta+nparams]
-    #         V_param = V_theta
-    #         variances_p = np.diag(V_param)
-    #         print('\nConfidence intervals:')
-    #         i = 0
-    #         for k, p in self.model.P.items():
-    #             if p.is_fixed():
-    #                 continue
-    #             print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
-    #             i += 1
-    #         return 1
-    #     else:
-    #         nc = self._n_actual
-    #         print(nc)
-    #         nparams = 0
-    #         for v in six.itervalues(self.model.P):
-    #             if v.is_fixed():  #: Skip the fixed ones
-    #                 print(str(v) + '\has been skipped for covariance calculations')
-    #                 continue
-    #             nparams += 1
-    #         # nparams = len(self.model.P)
-    #         nd = nw * nt
-    #         ntheta = nc * (nw + nt) + nparams
-    #
-    #         print("Computing H matrix\n shape ({},{})".format(nparams, ntheta))
-    #         all_H = hessian
-    #         H = all_H[-nparams:, :]
-    #         print(np.shape(H))
-    #         # H = hessian
-    #         print("Computing B matrix\n shape ({},{})".format(ntheta, nd))
-    #         self._compute_B_matrix_no_model_variance(variance)
-    #         B = self.B_matrix
-    #         print(np.shape(B))
-    #         print("Computing Vd matrix\n shape ({},{})".format(nd, nd))
-    #         self._compute_Vd_matrix_no_model_variance(variance)
-    #         Vd = self.Vd_matrix
-    #         print(np.shape(Vd))
-    #         """
-    #         Vd_dense = Vd.toarray()
-    #         print("multiplying H*B")
-    #         M1 = H.dot(B)
-    #         print("multiplying H*B*Vd")
-    #         M2 = M1.dot(Vd_dense)
-    #         print("multiplying H*B*Vd*Bt")
-    #         M3 = M2.dot(B.T)
-    #         print("multiplying H*B*Vd*Bt*Ht")
-    #         V_theta = M3.dot(H)
-    #         """
-    #
-    #         # R = B.T.dot(H)
-    #         R = B.T.dot(H.T)
-    #         A = Vd.dot(R)
-    #         L = H.dot(B)
-    #         Vtheta = A.T.dot(L.T)
-    #         V_theta = Vtheta.T
-    #
-    #         ###########added for eig redHessian outputs########## (CS)
-    #         if self._eigredhess2file==True:
-    #             redhessian=np.linalg.inv(V_theta)
-    #             np.savetxt('redhessian.out', redhessian, delimiter=',')
-    #             eigH2, vH2 = np.linalg.eig(redhessian)
-    #             np.savetxt('eigredhessian.out', eigH2)
-    #
-    #         nt = self._n_alltimes
-    #         nw = self._n_meas_lambdas
-    #         nc = self._n_actual
-    #         nparams = 0
-    #         for v in six.itervalues(self.model.P):
-    #             if v.is_fixed():  #: Skip the fixed ones ;)
-    #                 continue
-    #             nparams += 1
-    #
-    #         # this changes depending on the order of the suffixes passed to sipopt
-    #         nd = nw * nt
-    #         ntheta = nc * (nw + nt)
-    #         # V_param = V_theta[ntheta:ntheta+nparams,ntheta:ntheta+nparams]
-    #         V_param = V_theta
-    #         variances_p = np.diag(V_param)
-    #         print('\nConfidence intervals:')
-    #         i = 0
-    #         for k, p in self.model.P.items():
-    #             if p.is_fixed():
-    #                 continue
-    #             print('{} ({},{})'.format(k, p.value - variances_p[i] ** 0.5, p.value + variances_p[i] ** 0.5))
-    #             i += 1
-    #         return 1
-    # ###################
+    def _compute_B_matrix_generic(self, nt, time_set, conc_data_var, variance, **kwds):
+        
+        nw = self._n_meas_lambdas
+        nparams = 0
+        for v in self.model.P.values():
+            if v.is_fixed():  #: Skip the fixed parameters
+                continue
+            nparams += 1
+        if hasattr(self.model, 'Pinit'):
+            for v in self.model.Pinit.values():
+                if v.is_fixed():  #: Skip the fixed ones
+                    print(str(v) + '\has been skipped for covariance calculations')
+                    continue
+                nparams += 1
+
+        # this changes depending on the order of the suffixes passed to sipopt
+        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
+        if hasattr(self, '_abs_components'):
+            n_val = self._nabs_components
+            component_set = self._abs_componets
+        else:
+            n_val = self._n_actual
+            component_set = self._sublist_components
+    
+        variance = variances['device']
+        ntheta = n_val * (nw + nt) + nparams
+        self.B_matrix = np.zeros((ntheta, nw * nt))
+        for i, t in enumerate(time_set):
+            for j, l in enumerate(self.model.meas_lambdas):
+                for k, c in enumerate(component_set):
+                    r_idx1 = i * n_val + k
+                    r_idx2 = j * n_val + k + n_val * nt
+                    c_idx = i * nw + j
+                    self.B_matrix[r_idx1, c_idx] = -2 * self.model.S[l, c].value / variance
+                    self.B_matrix[r_idx2, c_idx] = -2 * getattr(self.model, conc_data_var)[t, c].value / variance
+                    
+        return None
     
     def _compute_B_matrix(self, variances, **kwds):
         """Builds B matrix for calculation of covariances
@@ -1584,66 +1250,12 @@ class ParameterEstimator(Optimizer):
         Returns:
             None
         """
-
         nt = self._n_meas_times
-        nw = self._n_meas_lambdas
-
-        nparams = 0
-        for v in six.itervalues(self.model.P):
-            if v.is_fixed():  #: Skip the fixed parameters
-                continue
-            nparams += 1
-        if hasattr(self.model, 'Pinit'):
-            for v in six.itervalues(self.model.Pinit):#added for the estimation of initial conditions which have to be complementary state vars CS
-                if v.is_fixed():  #: Skip the fixed ones
-                    print(str(v) + '\has been skipped for covariance calculations')
-                    continue
-                nparams += 1
-
-        # nparams = len(self.model.P)
-        # this changes depending on the order of the suffixes passed to sipopt
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-        if hasattr(self, '_abs_components'):
-            nabs = self._nabs_components
-            nd = nw * nt
-            ntheta = nabs * (nw + nt) + nparams
-            self.B_matrix = np.zeros((ntheta, nw * nt))
-            for i, t in enumerate(self.model.meas_times):
-                for j, l in enumerate(self.model.meas_lambdas):
-                    for k, c in enumerate(self._abs_components):
-                        # r_idx1 = k*nt+i
-                        r_idx1 = i * nabs + k
-                        r_idx2 = j * nabs + k + nabs * nt
-                        # r_idx2 = j * nc + k + nc * nw
-                        # c_idx = i+j*nt
-                        c_idx = i * nw + j
-                        # print(j, k, r_idx2)
-                        self.B_matrix[r_idx1, c_idx] = -2 * self.model.S[l, c].value / variances['device']
-                        # try:
-                        self.B_matrix[r_idx2, c_idx] = -2 * self.model.C[t, c].value / variances['device']
-        else:
-            nc = self._n_actual
-            nd = nw * nt
-            ntheta = nc * (nw + nt) + nparams
-            self.B_matrix = np.zeros((ntheta, nw * nt))
-            for i, t in enumerate(self.model.meas_times):
-                for j, l in enumerate(self.model.meas_lambdas):
-                    for k, c in enumerate(self._sublist_components):
-                        # r_idx1 = k*nt+i
-                        r_idx1 = i * nc + k
-                        r_idx2 = j * nc + k + nc * nt
-                        # r_idx2 = j * nc + k + nc * nw
-                        # c_idx = i+j*nt
-                        c_idx = i * nw + j
-                        # print(j, k, r_idx2)
-                        self.B_matrix[r_idx1, c_idx] = -2 * self.model.S[l, c].value / variances['device']
-                        # try:
-                        self.B_matrix[r_idx2, c_idx] = -2 * self.model.C[t, c].value / variances['device']
-                    # except IndexError:
-                    #     pass
-        # sys.exit()
-
-    def _compute_B_matrix_no_model_variance(self, variance, **kwds):
+        time_set = self.model.meas_times
+        conc_data_var = 'C'
+        self._compute_B_matrix_generic(nt, time_set, conc_data_var, variance, **kwds)
+    
+    def _compute_B_matrix_no_model_variance(self, variances, **kwds):
         """Builds B matrix for calculation of covariances
 
            This method is not intended to be used by users directly
@@ -1654,62 +1266,10 @@ class ParameterEstimator(Optimizer):
         Returns:
             None
         """
-
         nt = self._n_alltimes
-        nw = self._n_meas_lambdas
-        variance=variance['device']
-        nparams = 0
-        for v in six.itervalues(self.model.P):
-            if v.is_fixed():  #: Skip the fixed parameters
-                continue
-            nparams += 1
-        if hasattr(self.model, 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-            for v in six.itervalues(self.model.Pinit):
-                if v.is_fixed():  #: Skip the fixed ones
-                    print(str(v) + '\has been skipped for covariance calculations')
-                    continue
-                nparams += 1
-
-        # nparams = len(self.model.P)
-        # this changes depending on the order of the suffixes passed to sipopt
-        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-        if hasattr(self, '_abs_components'):
-            nabs = self._nabs_components
-            nd = nw * nt
-            ntheta = nabs * (nw + nt) + nparams
-            self.B_matrix = np.zeros((ntheta, nw * nt))
-            for i, t in enumerate(self.model.alltime):
-                for j, l in enumerate(self.model.meas_lambdas):
-                    for k, c in enumerate(self._abs_components):
-                        # r_idx1 = k*nt+i
-                        r_idx1 = i * nabs + k
-                        r_idx2 = j * nabs + k + nabs * nt
-                        # r_idx2 = j * nc + k + nc * nw
-                        # c_idx = i+j*nt
-                        c_idx = i * nw + j
-                        # print(j, k, r_idx2)
-                        self.B_matrix[r_idx1, c_idx] = -2 * self.model.S[l, c].value / variance
-                        # try:
-                        self.B_matrix[r_idx2, c_idx] = -2 * self.model.Z[t, c].value / variance
-        else:
-            nc = self._n_actual
-            nd = nw * nt
-            ntheta = nc * (nw + nt) + nparams
-            self.B_matrix= np.zeros((ntheta, nw * nt))
-            for i, t in enumerate(self.model.alltime):
-                for j, l in enumerate(self.model.meas_lambdas):
-                    for k, c in enumerate(self._sublist_components):
-                        # r_idx1 = k*nt+i
-                        r_idx1 = i * nc + k
-                        r_idx2 = j * nc + k + nc * nt
-                        # r_idx2 = j * nc + k + nc * nw
-                        # c_idx = i+j*nt
-                        c_idx = i * nw + j
-                        # print(j, k, r_idx2)
-                        self.B_matrix[r_idx1, c_idx] = -2 * self.model.S[l, c].value / variance
-                        # try:
-                        self.B_matrix[r_idx2, c_idx] = -2 * self.model.Z[t, c].value / variance
-
+        time_set = self.model.alltime
+        conc_data_var = 'Z'
+        self._compute_B_matrix_generic(nt, time_set, conc_data_var, variance, **kwds)
 
     def _compute_Vd_matrix(self, variances, **kwds):
         """Builds d covariance matrix
@@ -2097,9 +1657,9 @@ class ParameterEstimator(Optimizer):
         n_vars = len(self._idx_to_variable)
         hessian = np.zeros((n_vars, n_vars))
         i = 0
-        for vi in six.itervalues(self._idx_to_variable):
+        for vi in self._idx_to_variable.values():
             j = 0
-            for vj in six.itervalues(self._idx_to_variable):
+            for vj in self._idx_to_variable.values():
                 if n_vars ==1:
                     #print("var_loc[vi]",var_loc[vi])
                     #print(unordered_hessian)
@@ -2369,8 +1929,8 @@ class ParameterEstimator(Optimizer):
                 print("disc_jump_times is of type {}".format(type(self.jump_times_dict)))
                 raise Exception  # wrong type
             count = 0
-            for i in six.iterkeys(self.jump_times_dict):
-                for j in six.iteritems(self.jump_times_dict[i]):
+            for i in self.jump_times_dict.keys():
+                for j in self.jump_times_dict[i].items():
                     count += 1
             if len(self.feed_times_set) > count:
                 raise Exception("Error: Check feed time points in set feed_times and in jump_times again.\n"
@@ -2920,7 +2480,7 @@ def wavelength_subset_selection(correlations=None, n=None):
         raise RuntimeError("n must be a number between 0 and 1")
 
     subset_dict = dict()
-    for l in six.iterkeys(correlations):
+    for l in correlations.keys():
         if correlations[l] >= n:
             subset_dict[l] = correlations[l]
     return subset_dict
