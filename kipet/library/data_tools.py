@@ -48,7 +48,7 @@ def read_file(filename):
     else:
         raise ValueError(f'The file extension {filename.suffix} is currently not supported')
         return None
-
+#%%
 def write_file(filename, dataframe, filetype='csv'):
     """ Write data to file.
     
@@ -63,23 +63,37 @@ def write_file(filename, dataframe, filetype='csv'):
             None
 
     """
-    if filetype == 'csv':
-        dataframe.to_csv(filename + '.csv')
+    if filetype not in ['csv', 'txt']:
+        print('Savings as CSV - invalid file extension given')
+        filetype = 'csv'
+    
+    suffix = '.' + filetype
+    
+    filename = Path(filename)
+    print(filename.suffix)
+    if filename.suffix == '':
+        filename = filename.with_suffix(suffix)
+    else:
+        suffix = filename.suffix
+        if suffix not in ['.txt', '.csv']:
+            print('Savings as CSV - invalid file extension given')
+            filename = Path(filename.stem).with_suffix('.csv')
+    
+    print(filename)
+    
+    if filename.suffix == '.csv':
+        dataframe.to_csv(filename)
 
-    elif filetype == 'txt':    
-        with open(filename + '.txt', 'w') as f:
+    elif filename.suffix == 'txt':    
+        with open(filename, 'w') as f:
             for i in dataframe.index:
                 for j in dataframe.columns:
                     if not np.isnan(dataframe[j][i]):
                         f.write("{0} {1} {2}\n".format(i,j,dataframe[j][i]))
                         
-    else:
-        print('Data can only be stored as CSV or TXT, defaulting to CSV.')
-        dataframe.to_csv(filename + '.csv')
-
-    print(f'Data successfully saved as {filename}.{filetype}')
+    print(f'Data successfully saved as {filename}')
     return None
-
+#%%
 def read_spectral_data_from_csv(filename, instrument = False, negatives_to_zero = False):
     """ Reads csv with spectral data
     

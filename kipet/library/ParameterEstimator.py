@@ -597,6 +597,7 @@ class ParameterEstimator(Optimizer):
                 component_set = m._abs_components
             else:
                 component_set = list_components
+            print(component_set)
             
             expr = 0
             for t in m.meas_times:
@@ -712,11 +713,11 @@ class ParameterEstimator(Optimizer):
                     'All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
 
             n_vars = len(self._idx_to_variable)
-            # print('n_vars', n_vars)
+            print('n_vars', n_vars)
             hessian = read_reduce_hessian(hessian_output, n_vars)
             
             print(hessian.size, "hessian size")
-            # print(hessian.shape,"hessian shape")
+            print(hessian.shape,"hessian shape")
             # hessian = read_reduce_hessian2(hessian_output,n_vars)
             # print hessian
             if self.model_variance:
@@ -814,6 +815,8 @@ class ParameterEstimator(Optimizer):
             m.del_component('D_bar_constraint')
         m.del_component('objective')
 
+        return None
+    
     def _solve_model_given_c(self, sigma_sq, optimizer, **kwds):
         """Solves estimation based on concentration data. (known variances)
 
@@ -1058,31 +1061,34 @@ class ParameterEstimator(Optimizer):
         m.del_component('objective')
 
     def set_up_reduced_hessian(self, time_set, component_set, var_name, index):
-            
+        
+        print(f'index in: {index}')
+        
         for t in time_set:
             for c in component_set:
                 v = getattr(self.model, var_name)[t, c]
                 self._idx_to_variable[index] = v
                 self.model.red_hessian[v] = index
                 index += 1
-        
+                print(index)
+   
         return index
                     
     def _define_reduce_hess_order(self):
         """
-        How about a doc string?
+        This sets up the suffixes of the reduced hessian
         """
         self.model.red_hessian = Suffix(direction=Suffix.IMPORT_EXPORT)
         count_vars = 1
 
-        if not self._spectra_given:
+        if self._spectra_given:
             if self.model_variance:
                 count_vars = self.set_up_reduced_hessian(self._meas_times, self.component_set, self.component_var, count_vars)
 
         if self._spectra_given:
             if self.model_variance:
                 count_vars = self.set_up_reduced_hessian(self._meas_lambdas, self.component_set, 'S', count_vars)
-         
+                
         for v in self.model.P.values():
             if v.is_fixed():
                 print(v, end='\t')
@@ -1091,14 +1097,16 @@ class ParameterEstimator(Optimizer):
             self._idx_to_variable[count_vars] = v
             self.model.red_hessian[v] = count_vars
             count_vars += 1
-
+            
         if hasattr(self.model, 'Pinit'):
             for k, v in self.model.Pinit.items():
                 v = self.model.init_conditions[k]
                 self._idx_to_variable[count_vars] = v
                 self.model.red_hessian[v] = count_vars
                 count_vars += 1
-
+               
+        return None
+        
     def _confidence_interval_display(self, variances):
         """
         Function to display calculated confidence intervals
@@ -1149,7 +1157,7 @@ class ParameterEstimator(Optimizer):
 
         nparams = self._get_nparams()
         nd = nw * nt
-        ntheta = n_val * (nw + nt) + nparams
+        ntheta = self.n_val * (nw + nt) + nparams
 
         print("Computing H matrix\n shape ({},{})".format(nparams, ntheta))
         all_H = hessian
@@ -1176,7 +1184,7 @@ class ParameterEstimator(Optimizer):
         nw = self._n_meas_lambdas
 
         nd = nw * nt
-        ntheta = n_val * (nw + nt)
+        ntheta = self.n_val * (nw + nt)
         V_param = V_theta
         variances_p = np.diag(V_param)
         self._confidence_interval_display(variances_p)
@@ -1247,9 +1255,7 @@ class ParameterEstimator(Optimizer):
         nt = self._n_meas_times
         time_set = self.model.meas_times
         conc_data_var = 'C'
-        
         nw = self._n_meas_lambdas
-        
         nparams = self._get_nparams()
        
         if hasattr(self, '_abs_components'):
@@ -1262,6 +1268,7 @@ class ParameterEstimator(Optimizer):
         variance = variances['device']
         ntheta = n_val * (nw + nt) + nparams
         self.B_matrix = np.zeros((ntheta, nw * nt))
+
         for i, t in enumerate(time_set):
             for j, l in enumerate(self.model.meas_lambdas):
                 for k, c in enumerate(component_set):
@@ -1272,7 +1279,7 @@ class ParameterEstimator(Optimizer):
                     self.B_matrix[r_idx2, c_idx] = -2 * getattr(self.model, conc_data_var)[t, c].value / variance
                     
         return None
-    
+
     def _compute_Vd_matrix(self, variances, **kwds):
         """Builds d covariance matrix
 
@@ -1292,8 +1299,8 @@ class ParameterEstimator(Optimizer):
         nd = nt * nw
         v_device = variances['device']
 
-        s_array = np.zeros(nw * n_val)
-        v_array = np.zeros(n_val)
+        s_array = np.zeros(nw * self.n_val)
+        v_array = np.zeros(self.n_val)
         
         for k, c in enumerate(self.component_set):
             v_array[k] = variances[c]
@@ -1512,13 +1519,13 @@ class ParameterEstimator(Optimizer):
                 C[t_count, c_count] = getattr(self.model, self.component_var)[t, c].value
 
         for c_count, c in enumerate(self.component_set):
-            for l_count, l in self._meas_lambdas:
+            for l_count, l in enumerate(self._meas_lambdas):
                 S[l_count, c_count] = self.model.S[l, c].value
              
         D_model = C.dot(S.T)
         
-        for t_count, t in enuerate(self._meas_times):
-            for l_count, l in enuerate(self._meas_lambdas):
+        for t_count, t in enumerate(self._meas_times):
+            for l_count, l in enumerate(self._meas_lambdas):
                 sum_e += (D_model[t_count, l_count] - self.model.D[t, l]) ** 2
                 sum_d += (self.model.D[t, l]) ** 2
   
@@ -1586,37 +1593,88 @@ class ParameterEstimator(Optimizer):
 
     #To estimate huplc fit in a similar fashion as for IR or concentration data (CS):
        
+    # def lack_of_fit_huplc(self):
+    #     """ Runs basic post-processing lack of fit analysis
+
+    #         Args:
+    #             None
+
+    #         Returns:
+    #             lack of fit (int): percentage lack of fit
+
+    #     """
+    #     nt = self._n_huplcmeas_times
+    #     nc = self._n_huplc
+    #     sum_e = 0
+    #     sum_d = 0
+    #     D_model = np.zeros((nt, nc))
+    #     C = np.zeros((nt, nc))
+        
+    #     for t_count, t in enumerate(self._huplcmeas_times):
+    #         for l_count, l in enumerate(self._list_huplcabs):
+                
+    #             if hasattr(self.model, 'solidvol'):
+    #                 D_model[t_count, l_count] = (self.model.Z[t, l].value + self.model.solidvol[t, l].value) / (
+    #                     sum(self.model.Z[t, j].value + self.model.solidvol[t, j].value for j in self._list_huplcabs))
+    #             else:
+    #                 D_model[t_count, l_count] = (self.model.Z[t, l].value) / (
+    #                     sum(self.model.Z[t, j].value for j in self._list_huplcabs))
+
+    #             sum_e += (D_model[t_count, l_count] - self.model.Dhat[t, l].value) ** 2
+    #             sum_d += (self.model.Dhat[t, l].value) ** 2
+
+    #     lof = np.sqrt((sum_e/sum_d))*100
+
+    #     print("The lack of fit for the huplc data is ", lof, " %")
+    #     return lof
+
     def lack_of_fit_huplc(self):
         """ Runs basic post-processing lack of fit analysis
-
             Args:
                 None
-
             Returns:
                 lack of fit (int): percentage lack of fit
-
         """
         nt = self._n_huplcmeas_times
         nc = self._n_huplc
-        sum_e = 0
-        sum_d = 0
+
         D_model = np.zeros((nt, nc))
+
         C = np.zeros((nt, nc))
-        
-        for t_count, t in enumerate(self._huplcmeas_times):
-            for l_count, l in enumerate(self._list_huplcabs):
-                
-                if hasattr(self.model, 'solidvol'):
+        t_count = -1
+        for t in self._huplcmeas_times:
+            t_count += 1
+            l_count = 0
+            if hasattr(self.model, 'solidvol'):
+                for l in self._list_huplcabs:
                     D_model[t_count, l_count] = (self.model.Z[t, l].value + self.model.solidvol[t, l].value) / (
                         sum(self.model.Z[t, j].value + self.model.solidvol[t, j].value for j in self._list_huplcabs))
-                else:
+                    l_count += 1
+            else:
+                for l in self._list_huplcabs:
                     D_model[t_count, l_count] = (self.model.Z[t, l].value) / (
                         sum(self.model.Z[t, j].value for j in self._list_huplcabs))
+                    l_count += 1
 
+        sum_e = 0
+        sum_d = 0
+        t_count = -1
+        l_count = 0
+
+        for t in self._huplcmeas_times:
+            t_count += 1
+            l_count = 0
+            for l in self._list_huplcabs:
                 sum_e += (D_model[t_count, l_count] - self.model.Dhat[t, l].value) ** 2
+                l_count += 1
+
+        t_count = -1
+        l_count = 0
+        for t in self._huplcmeas_times:
+            for l in self._list_huplcabs:
                 sum_d += (self.model.Dhat[t, l].value) ** 2
 
-        lof = np.sqrt((sum_e/sum_d))*100
+        lof = ((sum_e / sum_d) ** 0.5) * 100
 
         print("The lack of fit for the huplc data is ", lof, " %")
         return lof

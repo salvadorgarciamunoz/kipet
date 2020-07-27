@@ -1,11 +1,16 @@
 """
 Holds the alternate method used in VarianceEstimator
 """
-
+from pyomo.core import (
+    log,
+    value,
+    )
 from pyomo.environ import (
     Objective,
     SolverFactory,
     )
+
+from kipet.library.ResultsObject import ResultsObject
 
 def run_alternate_method(var_est_object, solver, run_opt_kwargs):
     """Calls the alternative method, whatever that means"""
@@ -16,6 +21,7 @@ def run_alternate_method(var_est_object, solver, run_opt_kwargs):
     tol = run_opt_kwargs.pop('tolerance', 5.0e-5)
     A = run_opt_kwargs.pop('subset_lambdas', None)
     secant_point2 = run_opt_kwargs.pop('secant_point', None)
+    individual_species = run_opt_kwargs.pop('individual_species', False)
     
     solver = 'ipopt'
     
@@ -114,7 +120,7 @@ def run_alternate_method(var_est_object, solver, run_opt_kwargs):
     return results
 
 def run_direct_sigmas_method(var_est_object, solver, run_opt_kwargs):
-        """Calls the direct sigma method"""
+    """Calls the direct sigma method"""
         
     solver_opts = run_opt_kwargs.pop('solver_opts', dict())
     tee = run_opt_kwargs.pop('tee', False)
@@ -347,7 +353,7 @@ def _solve_delta_given_sigma(var_est_object, solver, **kwds):
     ntp = len(var_est_object._meas_times)
     nwp = len(var_est_object._meas_lambdas) 
     inlog = 0
-    nc = len(component_set)
+    nc = len(var_est_object.component_set)
     for t in var_est_object._meas_times:
         for l in set_A:
             D_bar = sum(var_est_object.model.C[t, k] * var_est_object.model.S[l, k] for k in var_est_object.component_set)
