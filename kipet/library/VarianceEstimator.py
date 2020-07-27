@@ -111,7 +111,8 @@ class VarianceEstimator(Optimizer):
             Results from the optimization (pyomo model)
 
         """
-
+        run_opt_kwargs = copy.copy(kwds)
+        
         solver_opts = kwds.pop('solver_opts', dict())
         sigma_sq = kwds.pop('variances', dict())
         init_sigmas = kwds.pop('initial_sigmas', float())
@@ -188,6 +189,7 @@ class VarianceEstimator(Optimizer):
         
         if hasattr(self.model, 'known_absorbance'):
             warnings.warn("Overriden by species with known absorbance")
+        #############################
             list_components = [k for k in self._mixture_components if k not in self._known_absorbance]
             self._sublist_components = list_components
         
@@ -198,7 +200,6 @@ class VarianceEstimator(Optimizer):
             self.component_set = self._sublist_components
             self.component_var = 'C'
         
-        #############################
         """inputs section""" # additional section for inputs from trajectory and fixed inputs, CS
         self.fixedtraj = fixedtraj
         self.fixedy = fixedy
@@ -247,314 +248,356 @@ class VarianceEstimator(Optimizer):
                 print("disc_jump_times is of type {}".format(type(self.jump_times_dict)))
                 raise Exception  # wrong type
             count = 0
-            for i in six.iterkeys(self.jump_times_dict):
-                for j in six.iteritems(self.jump_times_dict[i]):
+            for i in self.jump_times_dict.keys():
+                for j in self.jump_times_dict[i].items():
                     count += 1
             if len(self.feed_times_set) > count:
                 raise Exception("Error: Check feed time points in set feed_times and in jump_times again.\n"
                             "There are more time points in feed_times than jump_times provided.")
             self.load_discrete_jump()
-        ######################################################
+        
 
         if report_time:
             start = time.time()
-        if method == 'originalchenetal':    
-            # solves formulation 18
-            if init_C is None:
-                self._solve_initalization(solver, subset_lambdas=A, solver_opts = solver_opts, tee=tee)
-            else:
-                for t in self._allmeas_times:
-                    for k in self._mixture_components:
-                        self.model.C[t, k].value = init_C[k][t]
-                        self.model.Z[t, k].value = init_C[k][t]
-    
-                s_array = self._solve_S_from_DC(init_C)
-                S_frame = pd.DataFrame(data=s_array,
-                                       columns=self._mixture_components,
-                                       index=self._meas_lambdas)
-                                                                                
-                if hasattr(self, '_abs_components'):
-                    for l in self._meas_lambdas:
-                        for k in self._abs_components:
-                            self.model.S[l, k].value = S_frame[k][l]  # 1e-2
-                            if hasattr(self.model, 'known_absorbance'):
-                                if k in self.model.known_absorbance:
-                                    self.model.S[l, k].value = self.model.known_absorbance_data[k][l]
-                else:
-                    for l in self._meas_lambdas:
-                        for k in self._mixture_components:
-                            self.model.S[l, k].value = S_frame[k][l]  # 1e-2
-                            if hasattr(self.model, 'known_absorbance'):
-                                if k in self.model.known_absorbance:
-                                    self.model.S[l, k].value = self.model.known_absorbance_data[k][l] # ??? [l]
-    
-                
-            print("{: >11} {: >20}".format('Iter', '|Zi-Zi+1|'))
-            logiterfile = "iterations.log"
-            if os.path.isfile(logiterfile):
-                os.remove(logiterfile)
-    
-            # backup
-            if lsq_ipopt:
-                self._build_s_model()
-                self._build_c_model()
-            else:
-                if species_list is None:
-                    self._build_scipy_lsq_arrays()
-                else:
-                    lsq_ipopt = True
-                    self._build_s_model()
-                    self._build_c_model()
-                
-            for it in range(max_iter):
-                
-                rb = ResultsObject()
-                
-                vars_to_load = ['Z', 'C', 'Cs', 'S', 'Y']
-                if not hasattr(self, '_abs_components'):
-                    vars_to_load.remove('Cs')
-                rb.load_from_pyomo_model(self.model, to_load=vars_to_load)
-                
-                self._solve_Z(solver)
-    
-                if lsq_ipopt:
-                    self._solve_S(solver)
-                    self._solve_C(solver)
-                else:
-                    solved_s = self._solve_s_scipy()
-                    solved_c = self._solve_c_scipy()
-                    
-                
-                ra=ResultsObject()    
-                vars_to_load = ['Z', 'C', 'Cs', 'S']
-                if not hasattr(self, '_abs_components'):
-                    vars_to_load.remove('Cs')
-                ra.load_from_pyomo_model(self.model, to_load=vars_to_load)
-                
-                r_diff = compute_diff_results(rb,ra)
-                Z_norm = r_diff.compute_var_norm('Z',norm_order)
-                
-                if it > 0:
-                    print("{: >11} {: >20}".format(it, Z_norm))
-                self._log_iterations(logiterfile, it)
-                if Z_norm<tol and it >= 1:
-                    break
-                    
-            results = ResultsObject()
-            
-            vars_to_load = ['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y']
-            if not hasattr(self, '_abs_components'):
-                vars_to_load.remove('Cs')
-            results.load_from_pyomo_model(self.model, to_load=vars_to_load)
-    
-            print('Iterative optimization converged. Estimating variances now')
-            solved_variances = self._solve_variances(results, fixed_dev_var = fixed_device_var)
-            self.compute_D_given_SC(results)
-            
-            param_vals = dict()
-            for name in self.model.parameter_names:
-                param_vals[name] = self.model.P[name].value
-    
-            results.P = param_vals
-    
-            # removes temporary files. This needs to be changes to work with pyutilib
-            if os.path.exists(self._tmp2):
-                os.remove(self._tmp2)
-            if os.path.exists(self._tmp3):
-                os.remove(self._tmp3)
-            if os.path.exists(self._tmp4):
-                os.remove(self._tmp4)
-                
-        elif method == 'alternate':
-                
-            nu_squared = self.solve_max_device_variance('ipopt', tee = tee, subset_lambdas = A, solver_opts = solver_opts)
-            
-            init_sigmas = init_sigmas
-            
-            if secant_point2 is not None:
-                second_point = secant_point2
-            else:
-                second_point = init_sigmas*10
-            itersigma = dict()
-            
-            itersigma[1] = init_sigmas
-            itersigma[0] = second_point
-            
-            iterdelta = dict()
-            
-            count = 1
-            tol = tol
-            funcval = 1000
-            tee = False
-            
-            iterdelta[0] = self._solve_delta_given_sigma('ipopt', tee = tee, subset_lambdas = A, solver_opts = solver_opts, init_sigmas = itersigma[0])
-
-            while abs(funcval) >= tol:
-                print("overall sigma value at iteration", count,": ", itersigma[count])
-                new_delta = self._solve_delta_given_sigma('ipopt', tee = tee, subset_lambdas = A, solver_opts = solver_opts, init_sigmas = itersigma[count])
-                print("new delta_sq val: ", new_delta)
-                iterdelta[count] = new_delta
-                
-                # if hasattr(self, '_abs_components'):
-                #     component_set = self._abs_components
-                # else:
-                #     component_set = self._sublist_components
-
-                
-                def func1(nu_squared, new_delta, init_sigmas, component_set):
-                    sigmult = 0
-                    nwp = len(self._meas_lambdas)
-                    for l in self._meas_lambdas:
-                        for k in self.component_set:
-                           sigmult += value(self.model.S[l, k])
-                    #print("sum of absorbances: ",sigmult)
-                    funcval = nu_squared - new_delta - init_sigmas*(sigmult/nwp)
-                    return funcval, sigmult
-               
-                def func2(nu_squared, new_delta, init_sigmas, component_set):
-                    sigmult = 0
-                    nwp = len(self._meas_lambdas)
-                    for l in self._meas_lambdas:
-                        for k in self.component_set:
-                            sigmult += value(self.model.S[l, k])
-                    funcval = nu_squared - new_delta - init_sigmas*(sigmult/nwp)
-                    return funcval
-
-                funcval, sigmult = func1(nu_squared, new_delta, itersigma[count])
-
-                if abs(funcval) <= tol:
-                    break
-                else:
-                    denom_secant = func2(nu_squared, new_delta, itersigma[count]) - func2(nu_squared, iterdelta[count-1], itersigma[count - 1])
-                    itersigma[count + 1] = itersigma[count] - func2(nu_squared, new_delta, itersigma[count])*((itersigma[count]-itersigma[count-1])/denom_secant)
-                    if itersigma[count + 1] < 0:
-                        itersigma[count + 1] = -1*itersigma[count + 1]
-                    count += 1
-            if individual_species:
-                print("solving for individual species' variance based on the obtained delta")
-                max_likelihood_val, sigma_vals, stop_it, results = self._solve_sigma_given_delta(solver, subset_lambdas= A, solver_opts = solver_opts, tee=tee, delta = new_delta)
-            else:
-                print("The overall model variance is: ", itersigma[count])
-                sigma_vals = {}
-                
-                for k in component_set:
-                    sigma_vals[k] = abs(itersigma[count])
-                
-            results = ResultsObject()
-            
-            vars_to_load = ['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y']
-            if not hasattr(self, '_abs_components'):
-                vars_to_load.remove('Cs')
-            results.load_from_pyomo_model(self.model, to_load=vars_to_load)
              
-            param_vals = dict()
-            for name in self.model.parameter_names:
-                param_vals[name] = self.model.P[name].value
-    
-            results.P = param_vals
-            results.sigma_sq = sigma_vals
-            print(results)
-            results.sigma_sq['device'] = new_delta
-        
-        elif method == 'direct_sigmas':            
-            print("Solving for sigmas assuming known device variances")
-            direct_or_it = "it"
-            if device_range:
-                if not isinstance(device_range, tuple):
-                    print("device_range is of type {}".format(type(device_range)))
-                    print("It should be a tuple")
-                    raise Exception
-                elif device_range[0] > device_range[1]:
-                    print("device_range needs to be arranged in order from lowest to highest")
-                    raise Exception
-                else:
-                    print("Device range means that we will solve iteratively for different delta values in that range")
-            if device_range and not num_points:
-                print("Need to specify the number of points that we wish to evaluate in the device range")
-            if not num_points:
-                pass
-            elif not isinstance(num_points, int):  
-                print("num_points needs to be an integer!")
-                raise Exception
-            if not device_range:
-                device_range = list() 
-            if not device_range and not num_points:
-                direct_or_it = "direct"
-                print("assessing for the value of delta provided")
-                if not fixed_device_var:
-                    print("If iterative method not selected then need to provide fixed device variance (delta**2)")
-                    raise Exception
-                else:
-                    if not isinstance(fixed_device_var, float):
-                        raise Exception("fixed device variance needs to be of type float")
+        if method == 'originalchenetal':  
+            results = self._call_orginal_chen_method(solver, run_opt_kwargs)
             
-            if direct_or_it in ["it"]:
-                dist = abs((device_range[1] - device_range[0])/num_points)
-                
-                max_likelihood_vals = []
-                delta_vals = []
-                iteration_counter = []
-                delta = device_range[0]
-                
-                count = 0
-                print("0000000000000000000000000000000000000000000000000000000")
-                print("000000000 ITERATION COUNT FOR VARIANCE 0000000000000000")
-                while delta < device_range[1]:
-                    print("iteration: ",count,"---------delta_sq: ",delta, "--------" )
-                    max_likelihood_val, sigma_vals, stop_it, results = self._solve_sigma_given_delta(solver, subset_lambdas= A, solver_opts = solver_opts, tee=tee,delta = delta)
-                    if max_likelihood_val >= 5000:
-                        max_likelihood_vals.append(5000)
-                        delta_vals.append(log(delta))
-                        iteration_counter.append(count)
-                    else:
-                        max_likelihood_vals.append(max_likelihood_val)
-                        delta_vals.append(log(delta))
-                        iteration_counter.append(count)
-                        
-                    delta = delta + dist
-                    count += 1 
-
-                results = ResultsObject()
-            
-                # retrieving solutions to results object  
-                # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-                vars_to_load = ['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y']
-                if not hasattr(self, '_abs_components'):
-                    vars_to_load.remove('Cs')
-                results.load_from_pyomo_model(self.model, to_load=vars_to_load)
-                
-                param_vals = dict()
-                for name in self.model.parameter_names:
-                    param_vals[name] = self.model.P[name].value
+        elif method == 'alternate':
+            solver = 'ipopt'
+            results = self._call_alternate_method(solver, run_opt_kwargs)
         
-                results.P = param_vals
-                results.sigma_sq = sigma_vals
-                
-                print(results)
-                results.sigma_sq['device'] = delta
-                
-            else:
-                max_likelihood_val, sigma_vals, stop_it= self._solve_sigma_given_delta(solver, subset_lambdas= A, solver_opts = solver_opts, tee=tee,delta = fixed_device_var)
-                # retrieving solutions to results object  
-                results = ResultsObject()
-                
-                vars_to_load = ['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y']
-                if not hasattr(self, '_abs_components'):
-                    vars_to_load.remove('Cs')
-                results.load_from_pyomo_model(self.model, to_load=vars_to_load)
-                
-                param_vals = dict()
-                for name in self.model.parameter_names:
-                    param_vals[name] = self.model.P[name].value
-        
-                results.P = param_vals
-                results.sigma_sq = sigma_vals
-                results.sigma_sq['device'] = delta
+        elif method == 'direct_sigmas':
+            results = self._call_direct_sigma_method(solver, run_opt_kwargs)
             
         if report_time:
             end = time.time()
             print("Total execution time in seconds for variance estimation:", end - start)
         
+        return results
+    
+    def _call_orginal_chen_method(self, solver, run_opt_kwargs):
+        """This is the original method for estimating variances from Chen et
+        al. 2016
+        
+        """
+        solver_opts = run_opt_kwargs.pop('solver_opts', dict())
+        max_iter = run_opt_kwargs.pop('max_iter', 400)
+        tol = run_opt_kwargs.pop('tolerance', 5.0e-5)
+        tee = run_opt_kwargs.pop('tee', False)
+        norm_order = run_opt_kwargs.pop('norm',np.inf)
+        A = run_opt_kwargs.pop('subset_lambdas', None)
+        init_C = run_opt_kwargs.pop('init_C', None)
+        lsq_ipopt = run_opt_kwargs.pop('lsq_ipopt', False)
+        species_list = run_opt_kwargs.pop('subset_components', None)
+        fixed_device_var = run_opt_kwargs.pop('fixed_device_variance', None)
+        
+        if init_C is None:
+            self._solve_initalization(solver, 
+                                      subset_lambdas=A, 
+                                      solver_opts=solver_opts, 
+                                      tee=tee)
+        else:
+            for t in self._allmeas_times:
+                for k in self._mixture_components:
+                    self.model.C[t, k].value = init_C[k][t]
+                    self.model.Z[t, k].value = init_C[k][t]
+
+            s_array = self._solve_S_from_DC(init_C)
+            S_frame = pd.DataFrame(data=s_array,
+                                   columns=self._mixture_components,
+                                   index=self._meas_lambdas)
+                                                                            
+            if hasattr(self, '_abs_components'):
+                for l in self._meas_lambdas:
+                    for k in self._abs_components:
+                        self.model.S[l, k].value = S_frame[k][l]  # 1e-2
+                        if hasattr(self.model, 'known_absorbance'):
+                            if k in self.model.known_absorbance:
+                                self.model.S[l, k].value = self.model.known_absorbance_data[k][l]
+            else:
+                for l in self._meas_lambdas:
+                    for k in self._mixture_components:
+                        self.model.S[l, k].value = S_frame[k][l]  # 1e-2
+                        if hasattr(self.model, 'known_absorbance'):
+                            if k in self.model.known_absorbance:
+                                self.model.S[l, k].value = self.model.known_absorbance_data[k][l] # ??? [l]
+
+            
+        print("{: >11} {: >20}".format('Iter', '|Zi-Zi+1|'))
+        logiterfile = "iterations.log"
+        if os.path.isfile(logiterfile):
+            os.remove(logiterfile)
+
+        # backup
+        if lsq_ipopt:
+            self._build_s_model()
+            self._build_c_model()
+        else:
+            if species_list is None:
+                self._build_scipy_lsq_arrays()
+            else:
+                lsq_ipopt = True
+                self._build_s_model()
+                self._build_c_model()
+            
+        for it in range(max_iter):
+            
+            rb = ResultsObject()
+            
+            vars_to_load = ['Z', 'C', 'Cs', 'S', 'Y']
+            if not hasattr(self, '_abs_components'):
+                vars_to_load.remove('Cs')
+            rb.load_from_pyomo_model(self.model, to_load=vars_to_load)
+            
+            self._solve_Z(solver)
+
+            if lsq_ipopt:
+                self._solve_S(solver)
+                self._solve_C(solver)
+            else:
+                solved_s = self._solve_s_scipy()
+                solved_c = self._solve_c_scipy()
+                
+            
+            ra=ResultsObject()    
+            vars_to_load = ['Z', 'C', 'Cs', 'S']
+            if not hasattr(self, '_abs_components'):
+                vars_to_load.remove('Cs')
+            ra.load_from_pyomo_model(self.model, to_load=vars_to_load)
+            
+            r_diff = compute_diff_results(rb,ra)
+            Z_norm = r_diff.compute_var_norm('Z', norm_order)
+            
+            if it > 0:
+                print("{: >11} {: >20}".format(it, Z_norm))
+            self._log_iterations(logiterfile, it)
+            if Z_norm < tol and it >= 1:
+                break
+                
+        results = ResultsObject()
+        
+        vars_to_load = ['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y']
+        if not hasattr(self, '_abs_components'):
+            vars_to_load.remove('Cs')
+        results.load_from_pyomo_model(self.model, to_load=vars_to_load)
+
+        print('Iterative optimization converged. Estimating variances now')
+        solved_variances = self._solve_variances(results, 
+                                                 fixed_dev_var=fixed_device_var)
+        self.compute_D_given_SC(results)
+        
+        param_vals = dict()
+        for name in self.model.parameter_names:
+            param_vals[name] = self.model.P[name].value
+
+        results.P = param_vals
+
+        # removes temporary files. This needs to be changes to work with pyutilib
+        if os.path.exists(self._tmp2):
+            os.remove(self._tmp2)
+        if os.path.exists(self._tmp3):
+            os.remove(self._tmp3)
+        if os.path.exists(self._tmp4):
+            os.remove(self._tmp4)
+            
+        return results
+    
+    def _call_alternate_method(solver, run_opt_kwargs):
+        """Calls the alternative method, whatever that means"""
+        
+        solver_opts = run_opt_kwargs.pop('solver_opts', dict())
+        init_sigmas = run_opt_kwargs.pop('initial_sigmas', float())
+        tee = run_opt_kwargs.pop('tee', False)
+        tol = run_opt_kwargs.pop('tolerance', 5.0e-5)
+        A = run_opt_kwargs.pop('subset_lambdas', None)
+        secant_point2 = run_opt_kwargs.pop('secant_point', None)
+        
+        nu_squared = self.solve_max_device_variance('ipopt',
+                                                    tee=tee,
+                                                    subset_lambdas=A, 
+                                                    solver_opts=solver_opts)
+            
+        if secant_point2 is not None:
+            second_point = secant_point2
+        else:
+            second_point = init_sigmas*10
+        itersigma = dict()
+        
+        itersigma[1] = init_sigmas
+        itersigma[0] = second_point
+        
+        iterdelta = dict()
+        
+        count = 1
+        tol = tol
+        funcval = 1000
+        tee = False
+        
+        iterdelta[0] = self._solve_delta_given_sigma('ipopt',
+                                                     tee=tee, 
+                                                     subset_lambdas=A, 
+                                                     solver_opts=solver_opts, 
+                                                     init_sigmas=itersigma[0])
+
+        while abs(funcval) >= tol:
+            print("Overall sigma value at iteration", count,": ", itersigma[count])
+            
+            new_delta = self._solve_delta_given_sigma('ipopt', 
+                                                      tee=tee, 
+                                                      subset_lambdas=A, 
+                                                      solver_opts=solver_opts, 
+                                                      init_sigmas=itersigma[count])
+            print("New delta_sq val: ", new_delta)
+            
+            iterdelta[count] = new_delta
+            
+            def func1(nu_squared, new_delta, init_sigmas):
+                sigmult = 0
+                nwp = len(self._meas_lambdas)
+                for l in self._meas_lambdas:
+                    for k in self.component_set:
+                       sigmult += value(self.model.S[l, k])
+                funcval = nu_squared - new_delta - init_sigmas*(sigmult/nwp)
+                return funcval, sigmult
+           
+            funcval, sigmult = func1(nu_squared, new_delta, itersigma[count])
+
+            if abs(funcval) <= tol:
+                break
+            else:
+                denom_secant = func1(nu_squared, new_delta, itersigma[count])[0] - func1(nu_squared, iterdelta[count-1], itersigma[count - 1])[0]
+                itersigma[count + 1] = itersigma[count] - func1(nu_squared, new_delta, itersigma[count])[0]*((itersigma[count]-itersigma[count-1])/denom_secant)
+                
+                if itersigma[count + 1] < 0:
+                    itersigma[count + 1] = -1*itersigma[count + 1]
+                count += 1
+                
+        if individual_species:
+            print("Solving for individual species' variance based on the obtained delta")
+            max_likelihood_val, sigma_vals, stop_it, results = \
+                self._solve_sigma_given_delta(solver, 
+                                              subset_lambdas= A, 
+                                              solver_opts=solver_opts, 
+                                              tee=tee, 
+                                              delta=new_delta)
+        else:
+            print("The overall model variance is: ", itersigma[count])
+            #sigma_vals = {k: abs(itersigma[count]) for k in component_set}
+            
+            sigma_vals = {}
+            for k in self.component_set:
+                sigma_vals[k] = abs(itersigma[count])
+            
+        print(f'sigma_vals: {sigma_vals}')
+        results = ResultsObject()
+        
+        vars_to_load = ['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y']
+        if not hasattr(self, '_abs_components'):
+            vars_to_load.remove('Cs')
+        results.load_from_pyomo_model(self.model, to_load=vars_to_load)
+         
+        results.P = {name: self.model.P[name].value for name in self.model.parameter_names}
+        results.sigma_sq = sigma_vals
+        results.sigma_sq['device'] = new_delta
+    
+        return results
+    
+    def _call_direct_sigmas_method(self, solver, run_opt_kwargs):
+        """Calls the direct sigma method"""
+        
+        solver_opts = run_opt_kwargs.pop('solver_opts', dict())
+        tee = run_opt_kwargs.pop('tee', False)
+        A = run_opt_kwargs.pop('subset_lambdas', None)
+        fixed_device_var = run_opt_kwargs.pop('fixed_device_variance', None)
+        device_range = run_opt_kwargs.pop('device_range', None)
+        num_points = run_opt_kwargs.pop('num_points', None)
+        
+        print("Solving for sigmas assuming known device variances")
+        direct_or_it = "it"
+        
+        if device_range:
+            if not isinstance(device_range, tuple):
+                print("device_range is of type {}".format(type(device_range)))
+                print("It should be a tuple")
+                raise Exception
+            elif device_range[0] > device_range[1]:
+                print("device_range needs to be arranged in order from lowest to highest")
+                raise Exception
+            else:
+                print("Device range means that we will solve iteratively for different delta values in that range")
+        if device_range and not num_points:
+            print("Need to specify the number of points that we wish to evaluate in the device range")
+        if not num_points:
+            pass
+        elif not isinstance(num_points, int):  
+            print("num_points needs to be an integer!")
+            raise Exception
+        if not device_range:
+            device_range = list() 
+        if not device_range and not num_points:
+            direct_or_it = "direct"
+            print("assessing for the value of delta provided")
+            if not fixed_device_var:
+                print("If iterative method not selected then need to provide fixed device variance (delta**2)")
+                raise Exception
+            else:
+                if not isinstance(fixed_device_var, float):
+                    raise Exception("fixed device variance needs to be of type float")
+        
+        if direct_or_it in ["it"]:
+            dist = abs((device_range[1] - device_range[0])/num_points)
+            
+            max_likelihood_vals = []
+            delta_vals = []
+            iteration_counter = []
+            delta = device_range[0]
+            
+            count = 0
+            
+            print('*** Starting Variance Iterations ***')
+           
+            while delta < device_range[1]:
+                
+                print(f"Iteration: {count}\tdelta_sq: {delta}")
+                max_likelihood_val, sigma_vals, stop_it, results = \
+                    self._solve_sigma_given_delta(solver, 
+                                                  subset_lambdas=A, 
+                                                  solver_opts=solver_opts, 
+                                                  tee=tee,
+                                                  delta=delta)
+                
+                if max_likelihood_val >= 5000:
+                    max_likelihood_vals.append(5000)
+                    delta_vals.append(log(delta))
+                    iteration_counter.append(count)
+                    max_likelihood_vals.append(max_likelihood_val)
+                    delta_vals.append(log(delta))
+                else:
+                    iteration_counter.append(count)
+                    
+                delta = delta + dist
+                count += 1 
+
+        else:
+            max_likelihood_val, sigma_vals, stop_it = \
+                self._solve_sigma_given_delta(solver, 
+                                              subset_lambdas=A, 
+                                              solver_opts=solver_opts, 
+                                              tee=tee,
+                                              delta=fixed_device_var)
+   
+        results = ResultsObject()
+        
+        vars_to_load = ['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y']
+        if not hasattr(self, '_abs_components'):
+            vars_to_load.remove('Cs')
+        results.load_from_pyomo_model(self.model, to_load=vars_to_load)
+        
+        results.P = {name: self.model.P[name].value for name in self.model.parameter_names}
+        results.sigma_sq = sigma_vals
+        results.sigma_sq['device'] = delta
+            
         return results
     
     def _warn_if_D_negative(self):
@@ -857,6 +900,8 @@ class VarianceEstimator(Optimizer):
         delta = kwds.pop('delta', dict())
         species_list = kwds.pop('subset_components', None)
 
+        model = self.model.clone()
+
         if not set_A:
             set_A = self._meas_lambdas
             
@@ -876,7 +921,6 @@ class VarianceEstimator(Optimizer):
         
         self._warn_if_D_negative()  
         ntp = len(self._meas_times)
-        m = self.model.clone()
         obj = 0.0
    
         for t in self._meas_times:
@@ -1146,9 +1190,11 @@ class VarianceEstimator(Optimizer):
                         self.model.C[t, k].fixed = True
 
         obj = 0.0
+        
+        # Conc obj no sigma - will this work with missing data?
         for k in self._sublist_components:
-            x = sum((self.model.C[t, k]-self.model.Z[t, k])**2 for t in self._meas_times)
-            obj += x
+            obj += sum((self.model.C[t, k]-self.model.Z[t, k])**2 for t in self._meas_times)
+            
 
         self.model.z_objective = Objective(expr=obj)
         if profile_time:
@@ -1701,6 +1747,7 @@ class VarianceEstimator(Optimizer):
                             self.model.S[l, c].set_value(self.model.known_absorbance_data[c][l])
                             self.S_model.S[l, c].fix()
         
+        #D_bar obj
         obj = 0.0
         for t in self._meas_times:
             for l in self._meas_lambdas:
@@ -1773,6 +1820,7 @@ class VarianceEstimator(Optimizer):
         update_nl = kwds.pop('update_nl', False)
         profile_time = kwds.pop('profile_time', False)
 
+        # D_bar obj
         obj = 0.0
         for t in self._meas_times:
             for l in self._meas_lambdas:
@@ -1822,6 +1870,7 @@ class VarianceEstimator(Optimizer):
             self.jump_constraints(i)
         # self.jump_constraints()
 
+    # I want to change this spaghetti
     def jump_constraints(self, fe):
         # type: (int) -> None
         """ Take the current state of variables of the initializing model at fe and load it into the tgt_model
@@ -1921,7 +1970,7 @@ def compute_diff_results(results1,results2):
     diff_results.C = results1.C - results2.C
     return diff_results
 
-#######################additional for inputs###CS
+
 def t_ij(time_set, i, j):
     # type: (ContinuousSet, int, int) -> float
     """Return the corresponding time(continuous set) based on the i-th finite element and j-th collocation point
@@ -1946,14 +1995,15 @@ def t_ij(time_set, i, j):
 
 
 def fe_cp(time_set, feedtime):
-    # type: (ContinuousSet, float) -> tuple
-    # """Return the corresponding fe and cp for a given time
-    # Args:
-    #    time_set:
-    #    t:
-    # """
+    """Return the corresponding fe and cp for a given time
+     Args:
+        time_set:
+        t:
+    
+    type: (ContinuousSet, float) -> tuple
+             
+    """
     fe_l = time_set.get_lower_element_boundary(feedtime)
-    # print("fe_l", fe_l)
     fe = None
     j = 0
     for i in time_set.get_finite_elements():
