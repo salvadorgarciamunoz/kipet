@@ -6,7 +6,6 @@ import scipy
 from pyomo.dae import *
 from pyomo.environ import *
 from kipet.library.ResultsObject import *
-from kipet.library.spectra_methods.SpectraMixins import SpectraMixins
 
 # need to move this two functions to utils
 def find_nearest(array,value):
@@ -37,7 +36,7 @@ def interpolate_from_trajectory(t,trajectory):
         y_tuple = (val,val1)
         return interpolate_linearly(t,x_tuple,y_tuple)
 
-class Simulator(SpectraMixins, object):
+class Simulator(object):
     """Base simulator class.
 
     Note:

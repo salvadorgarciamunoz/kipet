@@ -4,7 +4,6 @@ need in order for it to work properly.
 
 @author: Kevin McBride
 """
-
 import copy
 from pathlib import Path
 from string import Template
@@ -715,26 +714,7 @@ class EstimationPotential(ParameterEstimator):
         rp = [d_sqrt[i]/max(self.epsilon, self.model.P[k].value) for i, k in enumerate(Se)]
         
         return rp, eigenvalues
-    
-    # def df_from_pyomo_data(self, state='C'):
-    
-    #     val = []
-    #     ix = []
-    #     varobject = getattr(self.model, state)
-    #     for index in varobject:
-    #         ix.append(index)
-    #         val.append(varobject[index].value)
-        
-    #     a = pd.Series(index=ix, data=val)
-    #     dfs = pd.DataFrame(a)
-    #     index = pd.MultiIndex.from_tuples(dfs.index)
-       
-    #     dfs = dfs.reindex(index)
-    #     dfs = dfs.unstack()
-    #     dfs.columns = [v[1] for v in dfs.columns]
-    
-    #     return dfs
-        
+     
     def _rank_parameters(self, reduced_hessian, param_list):
         """Performs the parameter ranking based using the Gauss-Jordan
         elimination procedure.

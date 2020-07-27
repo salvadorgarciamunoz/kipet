@@ -1,13 +1,13 @@
 """
 Module to hold the method developed by Chen et al. 2016 based on Scipy
 """
-from contextlib import contextmanager
 import sys
 
 import numpy as np
 from scipy.optimize import least_squares
 from scipy.sparse import coo_matrix
 
+from kipet.library.data_tools import stdout_redirector
 try:
     from StringIO import StringIO
 except ImportError:
@@ -371,12 +371,3 @@ def solve_c_scipy(var_est_object, **kwds):
             getattr(var_est_object.model, var_est_object.component_var)[t,c].value = res.x[j*n+k]
    
     return res.success
-
-@contextmanager
-def stdout_redirector(stream):
-    old_stdout = sys.stdout
-    sys.stdout = stream
-    try:
-        yield
-    finally:
-        sys.stdout = old_stdout

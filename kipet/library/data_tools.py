@@ -1,5 +1,7 @@
+from contextlib import contextmanager
 import scipy
 import six
+import sys
 
 import re
 import matplotlib as cm
@@ -113,6 +115,16 @@ def read_spectral_data_from_csv(filename, instrument = False, negatives_to_zero 
 
     return data
 
+# for redirecting stdout to files
+@contextmanager
+def stdout_redirector(stream):
+    old_stdout = sys.stdout
+    sys.stdout = stream
+    try:
+        yield
+    finally:
+        sys.stdout = old_stdout
+
 #=============================================================================
 #---------------------------- DATA CONVERSION TOOLS --------------------------
 #=============================================================================
@@ -125,7 +137,6 @@ def dict_to_df(data_dict):
     dfs_stacked = pd.Series(index=data_dict.keys(), data=list(data_dict.values()))
     dfs = dfs_stacked.unstack()
     return dfs
-
 
 def is_float_re(str):
     """Checks if a value is a float or not"""
