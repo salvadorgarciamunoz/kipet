@@ -15,17 +15,6 @@
 #               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
 #       Initial concentration 
 
-"""
-EXIT: Optimal Solution Found.
-The lack of fit is  1.3760024675898728  %
-The lack of fit for the huplc data is  50.22807171770231  %
-The estimated parameters are:
-k1 0.2265190799113163
-k2 1.0
-
-"""
-
-
 from __future__ import print_function
 from kipet.library.TemplateBuilder import *
 from kipet.library.PyomoSimulator import *
