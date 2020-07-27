@@ -1593,88 +1593,37 @@ class ParameterEstimator(Optimizer):
 
     #To estimate huplc fit in a similar fashion as for IR or concentration data (CS):
        
-    # def lack_of_fit_huplc(self):
-    #     """ Runs basic post-processing lack of fit analysis
-
-    #         Args:
-    #             None
-
-    #         Returns:
-    #             lack of fit (int): percentage lack of fit
-
-    #     """
-    #     nt = self._n_huplcmeas_times
-    #     nc = self._n_huplc
-    #     sum_e = 0
-    #     sum_d = 0
-    #     D_model = np.zeros((nt, nc))
-    #     C = np.zeros((nt, nc))
-        
-    #     for t_count, t in enumerate(self._huplcmeas_times):
-    #         for l_count, l in enumerate(self._list_huplcabs):
-                
-    #             if hasattr(self.model, 'solidvol'):
-    #                 D_model[t_count, l_count] = (self.model.Z[t, l].value + self.model.solidvol[t, l].value) / (
-    #                     sum(self.model.Z[t, j].value + self.model.solidvol[t, j].value for j in self._list_huplcabs))
-    #             else:
-    #                 D_model[t_count, l_count] = (self.model.Z[t, l].value) / (
-    #                     sum(self.model.Z[t, j].value for j in self._list_huplcabs))
-
-    #             sum_e += (D_model[t_count, l_count] - self.model.Dhat[t, l].value) ** 2
-    #             sum_d += (self.model.Dhat[t, l].value) ** 2
-
-    #     lof = np.sqrt((sum_e/sum_d))*100
-
-    #     print("The lack of fit for the huplc data is ", lof, " %")
-    #     return lof
-
     def lack_of_fit_huplc(self):
         """ Runs basic post-processing lack of fit analysis
+
             Args:
                 None
+
             Returns:
                 lack of fit (int): percentage lack of fit
+
         """
         nt = self._n_huplcmeas_times
         nc = self._n_huplc
-
-        D_model = np.zeros((nt, nc))
-
-        C = np.zeros((nt, nc))
-        t_count = -1
-        for t in self._huplcmeas_times:
-            t_count += 1
-            l_count = 0
-            if hasattr(self.model, 'solidvol'):
-                for l in self._list_huplcabs:
-                    D_model[t_count, l_count] = (self.model.Z[t, l].value + self.model.solidvol[t, l].value) / (
-                        sum(self.model.Z[t, j].value + self.model.solidvol[t, j].value for j in self._list_huplcabs))
-                    l_count += 1
-            else:
-                for l in self._list_huplcabs:
-                    D_model[t_count, l_count] = (self.model.Z[t, l].value) / (
-                        sum(self.model.Z[t, j].value for j in self._list_huplcabs))
-                    l_count += 1
-
         sum_e = 0
         sum_d = 0
-        t_count = -1
-        l_count = 0
+        D_model = np.zeros((nt, nc))
+        C = np.zeros((nt, nc))
+        
+        for t_count, t in enumerate(self._huplcmeas_times):
+            for l_count, l in enumerate(self._list_huplcabs):
+                
+                if hasattr(self.model, 'solidvol'):
+                    D_model[t_count, l_count] = (self.model.Z[t, l].value + self.model.solidvol[t, l].value) / (
+                        sum(self.model.Z[t, j].value + self.model.solidvol[t, j].value for j in self._list_huplcabs))
+                else:
+                    D_model[t_count, l_count] = (self.model.Z[t, l].value) / (
+                        sum(self.model.Z[t, j].value for j in self._list_huplcabs))
 
-        for t in self._huplcmeas_times:
-            t_count += 1
-            l_count = 0
-            for l in self._list_huplcabs:
                 sum_e += (D_model[t_count, l_count] - self.model.Dhat[t, l].value) ** 2
-                l_count += 1
-
-        t_count = -1
-        l_count = 0
-        for t in self._huplcmeas_times:
-            for l in self._list_huplcabs:
                 sum_d += (self.model.Dhat[t, l].value) ** 2
 
-        lof = ((sum_e / sum_d) ** 0.5) * 100
+        lof = np.sqrt((sum_e/sum_d))*100
 
         print("The lack of fit for the huplc data is ", lof, " %")
         return lof
