@@ -4,7 +4,6 @@ import pandas as pd
 import numpy as np
 from pyomo.core import *
 from pyomo.environ import *
-import six
 
 from kipet.library.data_tools import df_from_pyomo_data
 
@@ -62,7 +61,7 @@ class ResultsObject(object):
         model_variables = set()
         for block in instance.block_data_objects():
             block_map = block.component_map(Var)
-            for name in six.iterkeys(block_map):
+            for name in block_map.keys():
                 model_variables.add(name)
                 
         user_variables = set(to_load)
@@ -94,7 +93,7 @@ class ResultsObject(object):
                         data_frame = pd.DataFrame(data=[],
                                                   columns = [],
                                                   index=[])
-                    setattr(self,name,data_frame)        
+                    setattr(self, name, data_frame)        
                 else:
                     raise RuntimeError('load_from_pyomo_model function not supported for models with variables with dimension>2')
                 

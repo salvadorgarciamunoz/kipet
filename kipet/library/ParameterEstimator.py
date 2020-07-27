@@ -72,6 +72,11 @@ class ParameterEstimator(Optimizer):
 
         else:
             self._sublist_components = [k for k in self._mixture_components]
+            
+        if hasattr(self, '_abs_components'):
+            self.component_set = self._abs_components
+        else:
+            self.component_set = self._sublist_components
 
     def run_sim(self, solver, **kdws):
         raise NotImplementedError("ParameterEstimator object does not have run_sim method. Call run_opt")

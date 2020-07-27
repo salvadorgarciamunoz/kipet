@@ -49,12 +49,6 @@ class VarianceEstimator(Optimizer):
             raise NotImplementedError("Variance estimator requires spectral data in model as model.D[ti,lj]")
         self._is_D_deriv = False
 
-        # if hasattr(self, '_abs_components'):
-        #     self.component_set = self._abs_components
-        # else:
-        #     self.component_set = self._sublist_components
-
-
     def run_sim(self, solver, **kwds):
         raise NotImplementedError("VarianceEstimator object does not have run_sim method. Call run_opt")
 
@@ -197,6 +191,13 @@ class VarianceEstimator(Optimizer):
             list_components = [k for k in self._mixture_components if k not in self._known_absorbance]
             self._sublist_components = list_components
         
+        if hasattr(self, '_abs_components'):
+            self.component_set = self._abs_components
+            self.component_var = 'Cs'
+        else:
+            self.component_set = self._sublist_components
+            self.component_var = 'C'
+        
         #############################
         """inputs section""" # additional section for inputs from trajectory and fixed inputs, CS
         self.fixedtraj = fixedtraj
@@ -272,19 +273,45 @@ class VarianceEstimator(Optimizer):
                                        columns=self._mixture_components,
                                        index=self._meas_lambdas)
                 # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-                if hasattr(self, '_abs_components'):
-                    component_set = self._abs_components
-                else:
-                    component_set = self._mixture_components
+                # if hasattr(self, '_abs_components'):
+                #     component_set = self._abs_components
+                # else:
+                #     component_set = self._mixture_components
                      
-                for l in self._meas_lambdas:
-                    for k in self._abs_components:
-                        self.model.S[l, k].value = S_frame[k][l]  # 1e-2
+                # for l in self._meas_lambdas:
+                #     for k in self._abs_components:
+                #         self.model.S[l, k].value = S_frame[k][l]  # 1e-2
             
-                        if hasattr(self.model, 'known_absorbance'):
-                            if k in self.model.known_absorbance:
-                                self.model.S[l, k].value = self.model.known_absorbance_data[k][l]
+                #         if hasattr(self.model, 'known_absorbance'):
+                #             if k in self.model.known_absorbance:
+                #                 self.model.S[l, k].value = self.model.known_absorbance_data[k][l]
                                                                                 # If not working, remove [l]
+                                                                                
+                if hasattr(self, '_abs_components'):
+                    for l in self._meas_lambdas:
+                        for k in self._abs_components:
+                            self.model.S[l, k].value = S_frame[k][l]  # 1e-2
+                            #: Some of these are gonna be non-zero
+                            # if hasattr(self.model, 'non_absorbing'):
+                            #     if k in self.model.non_absorbing:
+                            #         self.model.S[l, k].value = 0.0
+    
+                            if hasattr(self.model, 'known_absorbance'):
+                                if k in self.model.known_absorbance:
+                                    self.model.S[l, k].value = self.model.known_absorbance_data[k][l]
+                else:
+                    for l in self._meas_lambdas:
+                        for k in self._mixture_components:
+                            self.model.S[l, k].value = S_frame[k][l]  # 1e-2
+                            #: Some of these are gonna be non-zero
+                            # if hasattr(self.model, 'non_absorbing'):
+                            #     if k in self.model.non_absorbing:
+                            #         self.model.S[l, k].value = 0.0
+    
+                            if hasattr(self.model, 'known_absorbance'):
+                                if k in self.model.known_absorbance:
+                                    self.model.S[l, k].value = self.model.known_absorbance_data[k]
+    
                 
             print("{: >11} {: >20}".format('Iter', '|Zi-Zi+1|'))
             logiterfile = "iterations.log"
@@ -394,40 +421,38 @@ class VarianceEstimator(Optimizer):
                 print("new delta_sq val: ", new_delta)
                 iterdelta[count] = new_delta
                 
-                if hasattr(self, '_abs_components'):
-                    component_set = self._abs_components
-                else:
-                    component_set = self._mixture_components
+                # if hasattr(self, '_abs_components'):
+                #     component_set = self._abs_components
+                # else:
+                #     component_set = self._sublist_components
 
                 
                 def func1(nu_squared, new_delta, init_sigmas, component_set):
                     sigmult = 0
                     nwp = len(self._meas_lambdas)
                     for l in self._meas_lambdas:
-                        for k in component_set:
+                        for k in self.component_set:
                            sigmult += value(self.model.S[l, k])
                     #print("sum of absorbances: ",sigmult)
                     funcval = nu_squared - new_delta - init_sigmas*(sigmult/nwp)
                     return funcval, sigmult
                
-
-              
                 def func2(nu_squared, new_delta, init_sigmas, component_set):
                     sigmult = 0
                     nwp = len(self._meas_lambdas)
                     for l in self._meas_lambdas:
-                        for k in component_set:
+                        for k in self.component_set:
                             sigmult += value(self.model.S[l, k])
-                    funcval = nu_squared - new_delta - init_sigmas * (sigmult / nwp)
+                    funcval = nu_squared - new_delta - init_sigmas*(sigmult/nwp)
                     return funcval
 
-                funcval, sigmult = func1(nu_squared, new_delta, itersigma[count], component_set)
+                funcval, sigmult = func1(nu_squared, new_delta, itersigma[count])
 
                 if abs(funcval) <= tol:
                     break
                 else:
-                    denom_secant = func2(nu_squared, new_delta, itersigma[count], component_set) - func2(nu_squared, iterdelta[count-1], itersigma[count - 1], component_set)
-                    itersigma[count + 1] = itersigma[count] - func2(nu_squared, new_delta, itersigma[count], component_set)*((itersigma[count]-itersigma[count-1])/denom_secant)
+                    denom_secant = func2(nu_squared, new_delta, itersigma[count]) - func2(nu_squared, iterdelta[count-1], itersigma[count - 1])
+                    itersigma[count + 1] = itersigma[count] - func2(nu_squared, new_delta, itersigma[count])*((itersigma[count]-itersigma[count-1])/denom_secant)
                     if itersigma[count + 1] < 0:
                         itersigma[count + 1] = -1*itersigma[count + 1]
                     count += 1
@@ -455,6 +480,7 @@ class VarianceEstimator(Optimizer):
     
             results.P = param_vals
             results.sigma_sq = sigma_vals
+            print(results)
             results.sigma_sq['device'] = new_delta
         
         elif method == 'direct_sigmas':            
@@ -502,7 +528,7 @@ class VarianceEstimator(Optimizer):
                 print("000000000 ITERATION COUNT FOR VARIANCE 0000000000000000")
                 while delta < device_range[1]:
                     print("iteration: ",count,"---------delta_sq: ",delta, "--------" )
-                    max_likelihood_val, sigma_vals, stop_it, results= self._solve_sigma_given_delta(solver, subset_lambdas= A, solver_opts = solver_opts, tee=tee,delta = delta)
+                    max_likelihood_val, sigma_vals, stop_it, results = self._solve_sigma_given_delta(solver, subset_lambdas= A, solver_opts = solver_opts, tee=tee,delta = delta)
                     if max_likelihood_val >= 5000:
                         max_likelihood_vals.append(5000)
                         delta_vals.append(log(delta))
@@ -532,6 +558,8 @@ class VarianceEstimator(Optimizer):
         
                 results.P = param_vals
                 results.sigma_sq = sigma_vals
+                
+                print(results)
                 results.sigma_sq['device'] = delta
                 
             else:
@@ -606,7 +634,7 @@ class VarianceEstimator(Optimizer):
         keys = sigmas_sq.keys()
         # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
         
-        for k in self._component_set:
+        for k in self.component_set:
             if k not in keys:
                 sigmas_sq[k] = 0.0
 
@@ -614,15 +642,15 @@ class VarianceEstimator(Optimizer):
 
         self._warn_if_D_negative()        
 
-        if hasattr(self, '_abs_components'):
-            component_set = self._abs_components
-        else:
-            component_set = self._sublist_components
+        # if hasattr(self, '_abs_components'):
+        #     component_set = self._abs_components
+        # else:
+        #     component_set = self._sublist_components
             
         obj = 0.0
         for t in self._meas_times:
             for l in set_A:
-                D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in component_set)
+                D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self.component_set)
                 obj += (self.model.D[t, l] - D_bar) ** 2
                     
         self.model.init_objective = Objective(expr=obj)
@@ -694,13 +722,13 @@ class VarianceEstimator(Optimizer):
         nwp = len(self._meas_lambdas)
         
         if hasattr(self, '_abs_components'):
-            component_set = self._abs_components
+            self.component_set = self._abs_components
         else:
-            component_set = self._sublist_components
+            self.component_set = self._sublist_components
         
         for t in self._meas_times:
             for l in set_A:
-                D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in component_set)
+                D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self.component_set)
                 obj += (self.model.D[t, l] - D_bar)**2
        
         self.model.init_objective = Objective(expr=obj)
@@ -713,13 +741,13 @@ class VarianceEstimator(Optimizer):
                                    tee=tee)
         
         print("values for the parameters in case with no model variance")
-        for k,v in six.iteritems(self.model.P):
+        for k, v in self.model.P.items():
             print(k, v.value)
         
         etaTeta = 0
         for t in self._meas_times:
             for l in set_A:
-                D_bar = sum(value(self.model.Z[t, k]) * value(self.model.S[l, k]) for k in component_set)
+                D_bar = sum(value(self.model.Z[t, k]) * value(self.model.S[l, k]) for k in self.component_set)
                 etaTeta += (value(self.model.D[t, l])- D_bar)**2
 
         deltasq = etaTeta/(ntp*nwp)
@@ -763,18 +791,18 @@ class VarianceEstimator(Optimizer):
         if not set_A:
             set_A = self._meas_lambdas
             
-        if hasattr(self, '_abs_components'):
-            component_set = self._abs_components
-        else:
-            component_set = self._sublist_components
+        # if hasattr(self, '_abs_components'):
+        #     component_set = self._abs_components
+        # else:
+        #     component_set = self._sublist_components
         
         if isinstance(sigmas, float):
-            for k in component_set:
+            for k in self.component_set:
                 sigmas_sq[k] = sigmas
         
         elif isinstance(sigmas, dict):
             keys = sigmas.keys()
-            for k in component_set:
+            for k in self.component_set:
                 if k not in keys:
                     sigmas_sq[k] = sigmas
            
@@ -791,7 +819,7 @@ class VarianceEstimator(Optimizer):
         nc = len(component_set)
         for t in self._meas_times:
             for l in set_A:
-                D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in component_set)
+                D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self.component_set)
                 #D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._sublist_components)
                 inlog += (self.model.D[t, l] - D_bar)**2
         # Orig had sublist in both parts - is this an error?
@@ -822,7 +850,7 @@ class VarianceEstimator(Optimizer):
         etaTeta = 0
         for t in self._meas_times:
             for l in set_A:
-                D_bar = sum(value(self.model.C[t, k]) * value(self.model.S[l, k]) for k in component_set)
+                D_bar = sum(value(self.model.C[t, k]) * value(self.model.S[l, k]) for k in self.component_set)
                 etaTeta += (value(self.model.D[t, l]) - D_bar)**2
         
         deltasq = etaTeta/(ntp*nwp)  
@@ -892,25 +920,26 @@ class VarianceEstimator(Optimizer):
         m = self.model.clone()
         obj = 0.0
    
-        if hasattr(self, '_abs_components'):
-            component_set = self._abs_components
-        else:
-            component_set = self._sublist_components
+        # if hasattr(self, '_abs_components'):
+        #     component_set = self._abs_components
+        # else:
+        #     component_set = self._sublist_components
     
         for t in self._meas_times:
             for l in set_A:
-                D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self._abs_components)
+                D_bar = sum(self.model.C[t, k] * self.model.S[l, k] for k in self.component_set)
                 obj += 1/(2*delta)*(self.model.D[t, l] - D_bar)**2
 
-        inlog = {k: 0 for k in component_set}
+        inlog = {k: 0 for k in self.component_set}
         self.model.eps = Param(initialize = 1e-8)  
-        variance_dict = {k: 0 for k in compnent_set}
+        
+        variancesdict = {k: 0 for k in self.component_set}
                 
         for t in self._meas_times:
-            for k in component_set:
+            for k in self.component_set:
                 inlog[k] += ((self.model.C[t, k] - self.model.Z[t, k])**2)
         
-        for k in component_set:
+        for k in self.component_set:
             obj += (ntp/2)*log((inlog[k]/(ntp))+self.model.eps)
         
         self.model.init_objective = Objective(expr=obj)
@@ -927,11 +956,11 @@ class VarianceEstimator(Optimizer):
 
             residuals = (value(self.model.init_objective))
             for t in self._allmeas_times:
-                for k in component_set:
+                for k in self.component_set:
                     variancesdict[k] += 1 / ntp*((value(self.model.C[t, k]) - value(self.model.Z[t, k]))**2)
             
             print("Variances")
-            for k in component_set:
+            for k in self.component_set:
                 print(k, variancesdict[k])
             
             print("Parameter estimates")
@@ -1030,14 +1059,14 @@ class VarianceEstimator(Optimizer):
         keys = sigmas_sq.keys()
         print(keys)
         
-        if hasattr(self, '_abs_components'):
-            component_set = self._abs_components
-            component_var = 'Cs'
-        else:
-            component_set = self._sublist_components
-            component_var = 'C'
+        # if hasattr(self, '_abs_components'):
+        #     component_set = self._abs_components
+        #     component_var = 'Cs'
+        # else:
+        #     component_set = self._sublist_components
+        #     component_var = 'C'
             
-        for k in componet_set:
+        for k in self.component_set:
             print(k)
             if k not in keys:
                 sigmas_sq[k] = 0.0
@@ -1061,7 +1090,7 @@ class VarianceEstimator(Optimizer):
     
         for t in self._meas_times:
             for l in set_A:
-                D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in component_set)
+                D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self.component_set)
                 obj += (self.model.D[t, l] - D_bar) ** 2
         
         self.model.init_objective = Objective(expr=obj)
@@ -1096,7 +1125,7 @@ class VarianceEstimator(Optimizer):
                       m.meas_lambdas)
         
         def rule_D_bar(m, t, l):
-            return m.D_bar[t, l] == sum(getattr(m, component_var)[t, k] * m.S[l, k] for k in component_set)
+            return m.D_bar[t, l] == sum(getattr(m, self.component_var)[t, k] * m.S[l, k] for k in self.component_set)
         
         m.D_bar_constraint = Constraint(m.meas_times,
                                         m.meas_lambdas,
@@ -1252,20 +1281,20 @@ class VarianceEstimator(Optimizer):
 
         if hasattr(self, '_abs_components'):
             n = self._nabs_components
-            component_set = self._abs_components
+           # component_set = self._abs_components
         else:
             n = self._n_components
-            component_set = self._mixture_components
+          #  component_set = self._mixture_components
 
         for j, l in enumerate(self._meas_lambdas):
-            for k, c in enumerate(component_set):
+            for k, c in enumerate(self.component_set):
                 if self.model.S[l, c].value < 0.0 and self._is_D_deriv == False:  #: only less thant zero for non-absorbing
                     self._s_array[j * n + k] = 1e-2
                 else:
                     self._s_array[j * n + k] = self.model.S[l, c].value
 
         for j, t in enumerate(self._allmeas_times):
-            for k, c in enumerate(component_set):
+            for k, c in enumerate(self.component_set):
                 self._z_array[j * n + k] = self.model.Z[t, c].value
 
         def F(x, z_array, d_array, nl, nt, nc):
@@ -1346,7 +1375,7 @@ class VarianceEstimator(Optimizer):
             print("Scipy.optimize.least_squares time={:.3f} seconds".format(t1-t0))
 
         for j, l in enumerate(self._meas_lambdas):
-            for k, c in enumerate(component_set):
+            for k, c in enumerate(self.component_set):
                 self.model.S[l, c].value = res.x[j * n + k]
                 if hasattr(self.model, 'known_absorbance'):
                     if c in self.model.known_absorbance:
@@ -1409,22 +1438,22 @@ class VarianceEstimator(Optimizer):
        
         if hasattr(self, '_abs_components'):
             n = self._nabs_components
-            component_set = self._abs_components
-            component_var = 'Cs'
+            # component_set = self._abs_components
+            # component_var = 'Cs'
         else:
             n = self._n_components
-            component_set = self._mixture_components
-            component_var = 'C'
+            # component_set = self._mixture_components
+            # component_var = 'C'
             
         for i, t in enumerate(self._allmeas_times):
-            for k, c in enumerate(component_set):
-                if getattr(self.model, component_var)[t, c].value <= 0.0:
+            for k, c in enumerate(self.component_set):
+                if getattr(self.model, self.component_var)[t, c].value <= 0.0:
                     self._c_array[i * n + k] = 1e-15
                 else:
-                    self._c_array[i * n + k] = getattr(self.model, component_var)[t, c].value
+                    self._c_array[i * n + k] = getattr(self.model, self.component_var)[t, c].value
 
         for j, l in enumerate(self._meas_lambdas):
-            for k, c in enumerate(component_set):
+            for k, c in enumerate(self.component_set):
                 self._s_array[j * n + k] = self.model.S[l, c].value
 
 
@@ -1501,8 +1530,8 @@ class VarianceEstimator(Optimizer):
             print("Scipy.optimize.least_squares time={:.3f} seconds".format(t1-t0))
 
         for j, t in enumerate(self._allmeas_times):
-            for k,c in enumerate(component_set):
-                gettattr(self.model, component_var)[t,c].value = res.x[j*n+k]
+            for k,c in enumerate(self.component_set):
+                getattr(self.model, self.component_var)[t,c].value = res.x[j*n+k]
        
         return res.success
 
@@ -1526,19 +1555,19 @@ class VarianceEstimator(Optimizer):
 
         variance_dict = dict()
 
-        if hasattr(self,'_abs_components'):
-            component_set = self._abs_components
-        else:
-            component_set = self._sublist_components
+        # if hasattr(self,'_abs_components'):
+        #     component_set = self._abs_components
+        # else:
+        #     component_set = self._sublist_components
         
-        n_val = len(component_set)
+        n_val = len(self.component_set)
             
         A = np.ones((nl, n_val + 1))
         reciprocal_nt = 1.0/nt
         for i, l in enumerate(self._meas_lambdas):
             for j, t in enumerate(self._meas_times):
                 D_bar = 0.0
-                for w, k in enumerate(component_set):
+                for w, k in enumerate(self.component_set):
                     A[i, w] = results.S[k][l]**2
                     D_bar += results.S[k][l]*results.Z[k][t]
                 b[i] += (self.model.D[t, l] - D_bar)**2
@@ -1572,14 +1601,14 @@ class VarianceEstimator(Optimizer):
                 res_lsq = least_squares(F, x0, JF,
                                         bounds=(0.0, np.inf),
                                         verbose=2, args=(A, bb))
-                for i, k in enumerate(component_set):
+                for i, k in enumerate(self.component_set):
                     variance_dict[k] = res_lsq.x[i]
                 variance_dict['device'] = res_lsq.x[n_val]
                 results.sigma_sq = variance_dict
                 return res_lsq.success
 
             else:
-                for i, k in enumerate(component_set):
+                for i, k in enumerate(self.component_set):
                     variance_dict[k] = res_lsq[0][i][0]
                 variance_dict['device'] = res_lsq[0][n_val][0]
                 results.sigma_sq = variance_dict
@@ -1591,7 +1620,7 @@ class VarianceEstimator(Optimizer):
             Ap = np.zeros((nl, n_val))
             for i, l in enumerate(self._meas_lambdas):
                 for j, t in enumerate(self._meas_times):
-                    for w, k in enumerate(component_set):
+                    for w, k in enumerate(self.component_set):
                         Ap[i, w] = results.S[k][l] ** 2
 
             res_lsq = np.linalg.lstsq(Ap, bp, rcond=None)
@@ -1605,7 +1634,7 @@ class VarianceEstimator(Optimizer):
                         res_lsq[0][i] = abs(res_lsq[0][i])
                 res_lsq[0][i]
 
-            for i, k in enumerate(component_set):
+            for i, k in enumerate(self.component_set):
                 variance_dict[k] = res_lsq[0][i][0]
             variance_dict['device'] = fixed_dev_var
             results.sigma_sq = variance_dict
@@ -1633,9 +1662,9 @@ class VarianceEstimator(Optimizer):
         else:
             n_val = self._n_components
             
-        self._s_array = np.ones(self._n_meas_lambdas * n) 
-        self._z_array = np.ones(self._n_allmeas_times * n)
-        self._c_array = np.ones(self._n_allmeas_times * n)
+        self._s_array = np.ones(self._n_meas_lambdas * n_val) 
+        self._z_array = np.ones(self._n_allmeas_times * n_val)
+        self._c_array = np.ones(self._n_allmeas_times * n_val)
  
         return None
     
@@ -1697,24 +1726,24 @@ class VarianceEstimator(Optimizer):
             None
 
         """
-        if hasattr(self, '_abs_components'):
-            component_set = self._abs_components
-        else:
-            component_set = self._sublist_components
+        # if hasattr(self, '_abs_components'):
+        #     component_set = self._abs_components
+        # else:
+        #     component_set = self._sublist_components
             
         self.S_model = ConcreteModel()
         if self._is_D_deriv:
-            self.S_model.S = Var(self._meas_lambdas,
-                                 component_set,
-                                 bounds=(None, None),
-                                 initialize=1.0)
+            lower_bound = 0.0
         else:
-            self.S_model.S = Var(self._meas_lambdas,
-                                 component_set,
-                                 bounds=(0.0, None),
-                                 initialize=1.0)
+            lower_bound = None
+            
+        self.S_model.S = Var(self._meas_lambdas,
+                             self.component_set,
+                             bounds=(lower_bound, None),
+                             initialize=1.0)
+    
         for l in self._meas_lambdas:
-            for k in component_set:
+            for k in self.component_set:
                 self.S_model.S[l, k].value = self.model.S[l, k].value
                 if hasattr(self.model, 'known_absorbance'):
                     if k in self.model.known_absorbance:
@@ -1738,13 +1767,13 @@ class VarianceEstimator(Optimizer):
         update_nl = kwds.pop('update_nl', False)
         profile_time = kwds.pop('profile_time', False)
 
-        if hasattr(self, '_abs_components'):
-            component_set = self._abs_components
-        else:
-            component_set = self._sublist_components
+        # if hasattr(self, '_abs_components'):
+        #     component_set = self._abs_components
+        # else:
+        #     component_set = self._sublist_components
             
         for l in self._meas_lambdas:
-            for c in component_set:
+            for c in self.component_set:
                 self.S_model.S[l, c].value = self.model.S[l, c].value
               
                 if hasattr(self.model, 'known_absorbance'):
@@ -1756,7 +1785,7 @@ class VarianceEstimator(Optimizer):
         obj = 0.0
         for t in self._meas_times:
             for l in self._meas_lambdas:
-                D_bar = sum(self.S_model.S[l, k] * self.model.Z[t, k].value for k in component_set)
+                D_bar = sum(self.S_model.S[l, k] * self.model.Z[t, k].value for k in self.component_set)
                 obj += (D_bar - self.model.D[t, l]) ** 2
                     
         self.S_model.objective = Objective(expr=obj)
@@ -1778,7 +1807,7 @@ class VarianceEstimator(Optimizer):
         self.S_model.del_component('objective')
         
         for l in self._meas_lambdas:
-            for c in component_set:
+            for c in self.component_set:
                 self.model.S[l, c].value = self.S_model.S[l, c].value
                 if hasattr(self.model, 'known_absorbance'):
                     if c in self.model.known_absorbance:
@@ -1825,15 +1854,15 @@ class VarianceEstimator(Optimizer):
         update_nl = kwds.pop('update_nl', False)
         profile_time = kwds.pop('profile_time', False)
         
-        if hasattr(self, '_abs_components'):
-            component_set = self._abs_components
-        else:
-            component_set = self._sublist_components
+        # if hasattr(self, '_abs_components'):
+        #     component_set = self._abs_components
+        # else:
+        #     component_set = self._sublist_components
         
         obj = 0.0
         for t in self._meas_times:
             for l in self._meas_lambdas:
-                D_bar = sum(self.model.S[l, k].value*self.C_model.C[t, k] for k in component_set)
+                D_bar = sum(self.model.S[l, k].value*self.C_model.C[t, k] for k in self.component_set)
                 obj += (self.model.D[t, l]-D_bar)**2
         
         self.C_model.objective = Objective(expr=obj)
@@ -1854,7 +1883,7 @@ class VarianceEstimator(Optimizer):
         self.C_model.del_component('objective')
         
         for t in self._allmeas_times:
-            for c in component_set:
+            for c in self.component_set:
                 self.model.C[t, c].value = self.C_model.C[t, c].value  #: does not matter for non_abs
          
     
