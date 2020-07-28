@@ -23,13 +23,17 @@ from kipet.library.Optimizer import *
 from kipet.library.TemplateBuilder import *
 from kipet.library.common.jumps import *
 from kipet.library.common.read_hessian import *
+
 from kipet.library.spectra_methods.spectra_compute_D import compute_D_given_SC
 from kipet.library.spectra_methods.G_handling import (
     decompose_G_test,
     g_handling_status_messages,
     g_handling_check_options,
     )
-from kipet.library.common.objectives import conc_objective
+from kipet.library.common.objectives import (
+    conc_objective, 
+    absorption_objective,
+    )
 
 class ParameterEstimator(Optimizer):
     """Optimizer for parameter estimation.
@@ -183,13 +187,15 @@ class ParameterEstimator(Optimizer):
             decompose_G_test(self)
         g_handling_status_messages(self)
         
-        def rule_init_conditionsnew(mod, k):
-            st = mod.start_time.value  # important!
-            if k in mod.Pinit.keys():
-                bla = mod.X[st, k]
+        def rule_init_conditionsnew(model, target_component):
+            start_time = model.start_time.value  # important!
+            
+            if target_component in model.Pinit.keys():
+                bla = model.X[start_time, target_component]
             else:
-                bla = mod.Z[st, k]
-            return bla == mod.init_conditions[k]
+                bla = model.Z[start_time, target_component]
+            
+            return bla == model.init_conditions[target_component]
         
         if hasattr(self.model, 'Pinit'):
             
@@ -281,10 +287,10 @@ class ParameterEstimator(Optimizer):
             end = time.time()
             print("Total execution time in seconds for variance estimation:", end - start)
 
-        return self.get_results()
+        return self._get_results()
 
 
-    def get_results(self):
+    def _get_results(self):
         """Removed results unit from function"""
     
         results = ResultsObject()
@@ -326,6 +332,81 @@ class ParameterEstimator(Optimizer):
                 return results
 
         return results
+
+    def _get_list_components(self, species_list):
+        
+        if species_list is None:
+            list_components = [k for k in self._mixture_components]
+        else:
+            list_components = []
+            for k in species_list:
+                if k in self._mixture_components:
+                    list_components.append(k)
+                else:
+                    warnings.warn("Ignored {} since is not a mixture component of the model".format(k))
+
+        return list_components
+    
+    # def final_func(self):
+        
+        # estimation with model variance and device:
+
+        # def rule_objective(m):
+        #     expr = 0
+            
+        #     g_options = {
+        #         'unwanted_G': self.unwanted_G,
+        #         'time_variant_G': self.time_variant_G,
+        #         'time_invariant_G_no_decompose': self.time_invariant_G_no_decompose,
+        #         }
+            
+        #     D_bar = True
+        #     if with_d_vars:
+        #         D_bar = False
+
+        #     print('This is D_bar')
+        #     print(D_bar)
+        #     print(list_components)
+        #     expr += absorption_objective(model, 
+        #                                  sigma_device = sigma_sq['device'],
+        #                                  D_bar = D_bar,
+        #                                  g_options = g_options,
+        #                                  species_list = list_components)
+            
+    def _get_objective_expr(self, model, with_d_vars, component_set, sigma_sq, device=False):
+    
+        expr = 0
+        for t in model.meas_times:
+            for l in model.meas_lambdas:
+                if with_d_vars:
+                    D_bar = model.D_bar[t, l]
+                else:
+                    if device:    
+                        if hasattr(model, 'huplc_absorbing'):
+                            D_bar = sum(model.Z[t, k] * model.S[l, k] for k in component_set if k not in model.solid_spec_arg1)
+                        else:
+                            D_bar = sum(model.Z[t, k] * model.S[l, k] for k in component_set)    
+                    else:
+                        if hasattr(model, '_abs_components'):
+                            if hasattr(model, 'huplc_absorbing') and hasattr(model, 'solid_spec_arg1'):
+                                D_bar = sum(model.Cs[t, k] * model.S[l, k] for k in model._abs_components if k not in model.solid_spec_arg1)
+                            else:
+                                D_bar = sum(model.Cs[t, k] * model.S[l, k] for k in model._abs_components)
+                        else:
+                            if hasattr(model, 'huplc_absorbing') and hasattr(model, 'solid_spec_arg1'):
+                                D_bar = sum(
+                                    model.C[t, k] * model.S[l, k] for k in component_set if k not in model.solid_spec_arg1)
+                            else:
+                                D_bar = sum(model.C[t, k] * model.S[l, k] for k in component_set)
+                            
+                if self.unwanted_G or self.time_variant_G:
+                    expr += (model.D[t, l] - D_bar - model.qr[t]*model.g[l]) ** 2 / (sigma_sq['device'])
+                elif self.time_invariant_G_no_decompose:
+                    expr += (model.D[t, l] - D_bar - model.g[l]) ** 2 / (sigma_sq['device'])
+                else:
+                    expr += (model.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
+                   
+        return expr
 
     def _solve_extended_model(self, sigma_sq, optimizer, **kwds):
         """Solves estimation based on spectral data. (known variances)
@@ -370,16 +451,8 @@ class ParameterEstimator(Optimizer):
         if not set_A:
             set_A = self._meas_lambdas
 
-        list_components = []
-        if species_list is None:
-            list_components = [k for k in self._mixture_components]
-        else:
-            for k in species_list:
-                if k in self._mixture_components:
-                    list_components.append(k)
-                else:
-                    warnings.warn("Ignored {} since is not a mixture component of the model".format(k))
-
+        list_components = self._get_list_components(species_list)
+        
         if not self._spectra_given:
             raise NotImplementedError("Extended model requires spectral data model.D[ti,lj]")
 
@@ -410,90 +483,57 @@ class ParameterEstimator(Optimizer):
             sigma_sq = dict()
             sigma_sq['device'] = sigma_dev
 
-        m = self.model
+        model = self.model
         
-        #%%
-        # When G is time-invariant and cannot be decomposed, problem (19) should be called.
         # Instead of calling (19), (24) is called but all qr[i] are fixed at 1.0. KH.L
         if self.time_invariant_G_no_decompose:
-            for i in m.alltime:
-                m.qr[i] = 1.0
-            m.qr.fix()
+            for i in model.alltime:
+                model.qr[i] = 1.0
+            model.qr.fix()
 
-        def _qr_end_constraint(m):
-            return m.qr[m.alltime[-1]] == 1.0
+        def _qr_end_constraint(model):
+            return model.qr[model.alltime[-1]] == 1.0
         
         if self.time_variant_G or self.unwanted_G:
-            m.qr_end_cons = Constraint(rule = _qr_end_constraint)
+            model.qr_end_cons = Constraint(rule = _qr_end_constraint)
         
-        #%%
+        
         if with_d_vars and self.model_variance:
-            m.D_bar = Var(m.meas_times,
-                          m.meas_lambdas)
-            # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-            #if hasattr(self, '_abs_components'):
-            def rule_D_bar(m, t, l):
-                if hasattr(m, 'huplc_absorbing') and hasattr(m, 'solid_spec_arg1'):
-                    return m.D_bar[t, l] == sum(
-                        getattr(m, self.component_var)[t, k] * m.S[l, k] for k in self.component_set if k not in m.solid_spec_arg1)
+            print('You made it here')
+            model.D_bar = Var(model.meas_times, model.meas_lambdas)
+            
+            def rule_D_bar(model, t, l):
+                if hasattr(model, 'huplc_absorbing') and hasattr(model, 'solid_spec_arg1'):
+                    return model.D_bar[t, l] == sum(
+                        getattr(model, self.component_var)[t, k] * model.S[l, k] for k in self.component_set if k not in model.solid_spec_arg1)
                 else:
-                    return m.D_bar[t, l] == sum(getattr(m, self.component_var).Cs[t, k] * m.S[l, k] for k in self.component_set)
+                    return model.D_bar[t, l] == sum(getattr(model, self.component_var)[t, k] * model.S[l, k] for k in self.component_set)
 
-            m.D_bar_constraint = Constraint(m.meas_times,
-                                            m.meas_lambdas,
-                                            rule=rule_D_bar)
+            model.D_bar_constraint = Constraint(model.meas_times,
+                                                model.meas_lambdas,
+                                                rule=rule_D_bar)
+        
+        
+        
+        print(f'with_d_vars {with_d_vars}')
+        print(f'huplc_absorbing {hasattr(model, "huplc_absorbing")}')
+        print(f'solid_spec_arg1 {hasattr(model, "solid_spec_arg1")}')
+        print(f'_abs_components {hasattr(model, "_abs_components")}')
+        #print(model.D_bar.display())
         
         #For addition of huplc data and matching liquid and solid species (CS):
-        def rule_Dhat_bar(m, t, l):
-            list_huplcabs = [k for k in m.huplc_absorbing.value]
-            return m.Dhat_bar[t, l] == (m.Z[t, l] + m.solidvol[t, l]) / (
-                sum(m.Z[t, j] + m.solidvol[t, j] for j in list_huplcabs))
-
-        # estimation with model variance and device:
+        def rule_Dhat_bar(model, t, l):
+            list_huplcabs = [k for k in model.huplc_absorbing.value]
+            return model.Dhat_bar[t, l] == (model.Z[t, l] + model.solidvol[t, l]) / (
+                sum(model.Z[t, j] + model.solidvol[t, j] for j in list_huplcabs))
 
         def rule_objective(m):
-            expr = 0
-            for t in m.meas_times:
-                for l in m.meas_lambdas:
-                    if with_d_vars:
-                        if self.unwanted_G or self.time_variant_G:
-                            expr += (m.D[t, l] - m.D_bar[t, l] - m.qr[t]*m.g[l]) ** 2 / (sigma_sq['device'])
-                        elif self.time_invariant_G_no_decompose:
-                            expr += (m.D[t, l] - m.D_bar[t, l] - m.g[l]) ** 2 / (sigma_sq['device'])
-                        else:
-                            expr += (m.D[t, l] - m.D_bar[t, l]) ** 2 / (sigma_sq['device'])
-                    else:
-                        # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
-                        if hasattr(m, '_abs_components'):
-                            if hasattr(m, 'huplc_absorbing') and hasattr(m, 'solid_spec_arg1'):
-                                D_bar = sum(
-                                    m.Cs[t, k] * m.S[l, k] for k in m._abs_components if k not in m.solid_spec_arg1)
-                            else:
-                                D_bar = sum(m.Cs[t, k] * m.S[l, k] for k in m._abs_components)
-                            if self.unwanted_G or self.time_variant_G:
-                                expr += (m.D[t, l] - D_bar - m.qr[t]*m.g[l]) ** 2 / (sigma_sq['device'])
-                            elif self.time_invariant_G_no_decompose:
-                                expr += (m.D[t, l] - D_bar - m.g[l]) ** 2 / (sigma_sq['device'])
-                            else:
-                                expr += (m.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
-                        else:
-                            if hasattr(m, 'huplc_absorbing') and hasattr(m, 'solid_spec_arg1'):
-                                D_bar = sum(
-                                    m.C[t, k] * m.S[l, k] for k in list_components if k not in m.solid_spec_arg1)
-                            else:
-                                D_bar = sum(m.C[t, k] * m.S[l, k] for k in list_components)
-                            if self.unwanted_G or self.time_variant_G:
-                                expr += (m.D[t, l] - D_bar - m.qr[t]*m.g[l]) ** 2 / (sigma_sq['device'])
-                            elif self.time_invariant_G_no_decompose:
-                                expr += (m.D[t, l] - D_bar - m.g[l]) ** 2 / (sigma_sq['device'])
-                            else:
-                                expr += (m.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
+            expr = self._get_objective_expr(m, with_d_vars, list_components, sigma_sq)
 
             expr *= weights[0]
             second_term = 0.0
-           
             for t in m.meas_times:
-                second_term += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components)
+                second_term += sum((model.C[t, k] - model.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components)
                 
             expr += weights[1] * second_term
 
@@ -501,9 +541,9 @@ class ParameterEstimator(Optimizer):
             if penaltyparam==True:
                 if ppenalty_weights is None:
                     fourth_term = 0.0
-                    for k in m.P.keys():
+                    for k in model.P.keys():
                         if k in ppenalty_dict.keys():
-                            fourth_term = (m.P[k] - ppenalty_dict[k]) ** 2
+                            fourth_term = (model.P[k] - ppenalty_dict[k]) ** 2
                 else:
                     if len(ppenalty_dict)!=len(ppenalty_weights):
                         raise RuntimeError(
@@ -513,307 +553,77 @@ class ParameterEstimator(Optimizer):
                             'Check the parameter names in ppenalty_weights and ppenalty_dict again. They must match.')
                     else:
                         fourth_term = 0.0
-                        for k in m.P.keys():
+                        for k in model.P.keys():
                             if k in ppenalty_dict.keys():
-                                fourth_term += ppenalty_weights[k] * (m.P[k] - ppenalty_dict[k]) ** 2
+                                fourth_term += ppenalty_weights[k] * (model.P[k] - ppenalty_dict[k]) ** 2
                 expr +=fourth_term
 
 
             # for new huplc structure (CS):
-            if hasattr(m, 'huplc_absorbing'):
-                third_term = 0.0
-                if not 'device-huplc' in sigma_sq.keys():
-                    sigma_sq['device-huplc'] = 1.0
-                if hasattr(m, 'solid_spec_arg1') and hasattr(m, 'solid_spec_arg2'):
-                    solidvol_dict = dict()
-                    m.add_component('cons_solidvol', ConstraintList())
-                    new_consolidvol = getattr(m, 'cons_solidvol')
-                    m.add_component('solidvol', Var(m.huplctime, m.huplc_absorbing.value, initialize=solidvol_dict))
-
-                    for k in m.solid_spec_arg1:
-                        for j in m.algebraics:
-                            for time in m.huplctime:
-                                if j == k:
-                                    for l in m.huplc_absorbing.value:
-                                        strsolidspec = "\'" + str(k) + "\'" + ', ' + "\'" + str(
-                                            l) + "\'"  # pair of absorbing solid and liquid
-                                        if l in m.solid_spec_arg2 and strsolidspec in str(
-                                                m.solid_spec.keys()):  #check whether pair of solid and liquid in keys and whether liquid in huplcabs species
-                                            valY = value(m.Y[time, k]) / value(m.vol)
-                                            if valY <= 0:
-                                                new_consolidvol.add(m.solidvol[time, l] == 0.0)
-                                            else:
-                                                new_consolidvol.add(m.solidvol[time, l] == m.Y[time, k] / m.vol)
-                                        else:
-                                            new_consolidvol.add(m.solidvol[time, l] == 0.0)
-                        for jk in list_components:
-                            for time in m.huplctime:
-                                if jk == k:
-                                    for l in m.huplc_absorbing.value:
-                                        strsolidspec = "\'" + str(k) + "\'" + ', ' + "\'" + str(
-                                            l) + "\'"  # pair of absorbing solid and liquid
-                                        if l in m.solid_spec_arg2 and strsolidspec in str(
-                                                m.solid_spec.keys()):  #check whether pair of solid and liquid in keys and whether liquid in huplcabs species
-                                            valZ = value(m.Z[time, k]) / value(m.vol)
-                                            if valZ <= 0:
-                                                new_consolidvol.add(m.solidvol[time, l] == 0.0)
-                                            else:
-                                                new_consolidvol.add(m.solidvol[time, l] == m.Z[time, k] / m.vol)
-                                        else:
-                                            new_consolidvol.add(m.solidvol[time, l] == 0.0)
-                    else:
-                        new_consolidvol.add(m.solidvol[time, l] == 0.0)
-
-
-                    m.Dhat_bar = Var(m.huplcmeas_times,
-                                     m.huplc_absorbing)
-
-                    m.Dhat_bar_constraint = Constraint(m.huplcmeas_times,
-                                                       m.huplc_absorbing,
-                                                       rule=rule_Dhat_bar)
-
-                    for t in m.huplcmeas_times:
-                        list_huplcabs = [k for k in m.huplc_absorbing.value]
-                        for k in list_huplcabs:
-                            third_term += (m.Dhat[t, k] - m.Dhat_bar[t, k]) ** 2 / sigma_sq['device-huplc']
-
+            if hasattr(model, 'huplc_absorbing'):
+                third_term = self._huplc_obj_term(model, sigma_sq)
                 expr += weights[2] * third_term
 
                 if penaltyparamcon == True: #added for optional penalty term related to constraint CS
-                    #if ppenalty_weights is None:
-                    # fifth_term = 0.0
                     rho=1e-1
                     sumpen=0.0
-                    for t in m.alltime:
+                    for t in model.alltime:
                         sumpen = sumpen + m.Y[t,'npen']
                     fifth_term = rho*sumpen
                     expr += fifth_term
+                    
             return expr
 
         # estimation without model variance and only device variance
-        def rule_objective_device_only(m):
+        def rule_objective_device_only(model):
             
-            if hasattr(m, 'huplc_absorbing'):
-                component_set = m._abs_components
+            if hasattr(model, 'huplc_absorbing'):
+                component_set = model._abs_components
             else:
                 component_set = list_components
             print(component_set)
             
-            expr = 0
-            for t in m.meas_times:
-                for l in m.meas_lambdas:
-                    if with_d_vars:
-                        if self.unwanted_G or self.time_variant_G:
-                            expr += (m.D[t, l] - m.D_bar[t, l] - m.qr[t]*m.g[l]) ** 2 / (sigma_sq['device'])
-                        elif self.time_invariant_G_no_decompose:
-                            expr += (m.D[t, l] - m.D_bar[t, l] - m.g[l]) ** 2 / (sigma_sq['device'])
-                        else:
-                            expr += (m.D[t, l] - m.D_bar[t, l]) ** 2 / (sigma_sq['device'])
-                    else:
-                        if hasattr(m, 'huplc_absorbing'):
-                            D_bar = sum(
-                                m.Z[t, k] * m.S[l, k] for k in component_set if k not in m.solid_spec_arg1)
-                        else:
-                            D_bar = sum(m.Z[t, k] * m.S[l, k] for k in component_set)
-                        if self.unwanted_G or self.time_variant_G:
-                            expr += (m.D[t, l] - D_bar - m.qr[t]*m.g[l]) ** 2 / (sigma_sq['device'])
-                        elif self.time_invariant_G_no_decompose:
-                            expr += (m.D[t, l] - D_bar - m.g[l]) ** 2 / (sigma_sq['device'])
-                        else:
-                            expr += (m.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
-                      
-            # for new huplc structure CS:
-            if hasattr(m, 'huplc_absorbing'):
-                third_term = 0.0
-                if not 'device-huplc' in sigma_sq.keys():
-                    sigma_sq['device-huplc'] = 1.0
-                if m.solid_spec_arg1 is not None and m.solid_spec_arg2 is not None:
-                    solidvol_dict = dict()
-                    m.add_component('cons_solidvol', ConstraintList())
-                    new_consolidvol = getattr(m, 'cons_solidvol')
-                    m.add_component('solidvol', Var(m.huplctime, m.huplc_absorbing.value, initialize=solidvol_dict))
-
-                    for k in m.solid_spec_arg1:
-                        for j in m.algebraics:
-                            for time in m.huplctime:
-                                if j == k:
-                                    for l in m.huplc_absorbing.value:
-                                        strsolidspec = "\'" + str(k) + "\'" + ', ' + "\'" + str(
-                                            l) + "\'"  # pair of absorbing solid and liquid
-                                        if l in m.solid_spec_arg2 and strsolidspec in str(
-                                                m.solid_spec.keys()):  #check whether pair of solid and liquid in keys and whether liquid in huplcabs species
-                                            valY = value(m.Y[time, k]) / value(m.vol)
-                                            if valY <= 0:
-                                                new_consolidvol.add(m.solidvol[time, l] == 0.0)
-                                            else:
-                                                new_consolidvol.add(m.solidvol[time, l] == m.Y[time, k] / m.vol)
-                                        else:
-                                            new_consolidvol.add(m.solidvol[time, l] == 0.0)
-                        for jk in list_components:
-                            for time in m.huplctime:
-                                if jk == k:
-                                    for l in m.huplc_absorbing.value:
-                                        strsolidspec = "\'" + str(k) + "\'" + ', ' + "\'" + str(
-                                            l) + "\'"  # pair of absorbing solid and liquid
-                                        if l in m.solid_spec_arg2 and strsolidspec in str(
-                                                m.solid_spec.keys()): #check whether pair of solid and liquid in keys and whether liquid in huplcabs species
-                                            valZ = value(m.Z[time, k]) / value(m.vol)
-                                            if valZ <= 0:
-                                                new_consolidvol.add(m.solidvol[time, l] == 0.0)
-                                            else:
-                                                new_consolidvol.add(m.solidvol[time, l] == m.Z[time, k] / m.vol)
-                                        else:
-                                            new_consolidvol.add(m.solidvol[time, l] == 0.0)
-
-                    m.Dhat_bar = Var(m.huplcmeas_times,
-                                     m.huplc_absorbing)
-
-                    m.Dhat_bar_constraint = Constraint(m.huplcmeas_times,
-                                                       m.huplc_absorbing,
-                                                       rule=rule_Dhat_bar)
-
-                    for t in m.huplcmeas_times:
-                        list_huplcabs = [k for k in m.huplc_absorbing.value]
-                        for k in list_huplcabs:
-                            third_term += (m.Dhat[t, k] - m.Dhat_bar[t, k]) ** 2 / sigma_sq['device-huplc']
-
+            expr = self._get_objective_expr(model, with_d_vars, component_set, sigma_sq, device=True)
+                
+            if hasattr(model, 'huplc_absorbing'):
+                third_term = self._huplc_obj_term(model, sigma_sq)
                 expr += weights[2] * third_term
-             
+                      
             return expr
 
         if self.model_variance == True:
-            m.objective = Objective(rule=rule_objective)
+            model.objective = Objective(rule=rule_objective)
         else:
-            m.objective = Objective(rule=rule_objective_device_only)
-
-        if covariance and self.solver == 'ipopt_sens':
-            if self.model_variance == False:
-                print("WARNING: FOR PROBLEMS WITH NO MODEL VARIANCE it is advised to use k_aug!!!")
-            self._tmpfile = "ipopt_hess"
-            solver_results = optimizer.solve(m, tee=tee,
-                                             logfile=self._tmpfile,
-                                             report_timing=True)
-
-            # self.model.red_hessian.pprint
-            print("Done solving building reduce hessian")
-            output_string = ''
-            with open(self._tmpfile, 'r') as f:
-                output_string = f.read()
-            if os.path.exists(self._tmpfile):
-                os.remove(self._tmpfile)
-            # output_string = f.getvalue()
-            ipopt_output, hessian_output = split_sipopt_string(output_string)
-            #print(hessian_output)
-            print("build strings")
-            #if tee == True:
-                #print(ipopt_output)
-
-            if not all_sigma_specified:
-                raise RuntimeError(
-                    'All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
-
-            n_vars = len(self._idx_to_variable)
-            print('n_vars', n_vars)
-            hessian = read_reduce_hessian(hessian_output, n_vars)
-            
-            print(hessian.size, "hessian size")
-            print(hessian.shape,"hessian shape")
-            # hessian = read_reduce_hessian2(hessian_output,n_vars)
-            # print hessian
-            if self.model_variance:
-                self._compute_covariance(hessian, sigma_sq)
-            else:
-                self._compute_covariance_no_model_variance(hessian, sigma_sq)
+            model.objective = Objective(rule=rule_objective_device_only)
 
         if warmstart==True:
-            if hasattr(m,'dual') and hasattr(m,'ipopt_zL_out') and hasattr(m,'ipopt_zU_out') and hasattr(m,'ipopt_zL_in') and hasattr(m,'ipopt_zU_in'):
-                self.update_warm_start(m)
+            if hasattr(model,'dual') and hasattr(model,'ipopt_zL_out') and hasattr(model,'ipopt_zU_out') and hasattr(model,'ipopt_zL_in') and hasattr(model,'ipopt_zU_in'):
+                self.update_warm_start(model)
             else:
-                self.add_warm_start_suffixes(m, use_k_aug=False)
-                
-        if covariance and self.solver == 'k_aug':
-            self.add_warm_start_suffixes(m, use_k_aug=True)   
-            
-            count_vars = 1
+                self.add_warm_start_suffixes(model, use_k_aug=False)
 
-            if not self._spectra_given:
-                pass
-            else:
-                if self.model_variance:
-                     for t in self._allmeas_times:
-                        for c in self.component_set:
-                            getattr(m, self.component_var)[t, c].set_suffix_value(m.dof_v, count_vars)
-                            count_vars += 1
-            
-            if not self._spectra_given:
-                pass
-            else:
-                for l in self._meas_lambdas:
-                    for c in self.component_set:
-                        m.S[l, c].set_suffix_value(m.dof_v, count_vars)
-                        count_vars += 1
-
-            for v in m.P.values():
-                if v.is_fixed():
-                    continue
-                m.P.set_suffix_value(m.dof_v, count_vars)
-                count_vars += 1
-
-            if hasattr(m,'Pinit'):
-                for k, v in self.model.Pinit.items():
-                    m.init_conditions[k].set_suffix_value(m.dof_v, count_vars)
-                    count_vars += 1
-
-            print("SET FOR k_aug")
-            self._tmpfile = "k_aug_hess"
-            ip = SolverFactory('ipopt')
-            solver_results = ip.solve(m, tee=tee,
-                                      logfile=self._tmpfile,
-                                      report_timing=True)
-            k_aug = SolverFactory('k_aug')
-            # k_aug.options["compute_inv"] = ""
-            self.update_warm_start(m)
-            # m.write(filename="mynl.nl", format=ProblemFormat.nl)
-            k_aug.solve(m, tee=tee)
-            print("Done solving building reduce hessian")
-
-            if not all_sigma_specified:
-                raise RuntimeError(
-                    'All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
-
-            n_vars = len(self._idx_to_variable)
-            print("n_vars", n_vars)
-            #m.rh_name.pprint()
-            var_loc = m.rh_name
-            for v in self._idx_to_variable.values():
-                try:
-                    var_loc[v]
-                except:
-                    # print(v, "is an error")
-                    var_loc[v] = 0
-                    # print(v, "is thus set to ", var_loc[v])
-                    # print(var_loc[v])
-
-            vlocsize = len(var_loc)
-            # print("var_loc size, ", vlocsize)
-            unordered_hessian = np.loadtxt('result_red_hess.txt')
-            if os.path.exists('result_red_hess.txt'):
-                os.remove('result_red_hess.txt')
-            
-            hessian = self._order_k_aug_hessian(unordered_hessian, var_loc)
-            if self._estimability == True:
-                self.hessian = hessian
+        if covariance and self.solver == 'ipopt_sens':
+            hessian = self._covariance_ipopt_sens(model, optimizer, tee)
             if self.model_variance:
                 self._compute_covariance(hessian, sigma_sq)
             else:
                 self._compute_covariance_no_model_variance(hessian, sigma_sq)
+        
+        elif covariance and self.solver == 'k_aug':
+            hessian = self._covariance_k_aug(model, optimizer, tee)
+            if self.model_variance:
+                self._compute_covariance(hessian, sigma_sq)
+            else:
+                self._compute_covariance_no_model_variance(hessian, sigma_sq)
+        
         else:
-            solver_results = optimizer.solve(m, tee=tee)
+            solver_results = optimizer.solve(model, tee=tee)
            
         if with_d_vars:
-            m.del_component('D_bar')
-            m.del_component('D_bar_constraint')
-        m.del_component('objective')
+            model.del_component('D_bar')
+            model.del_component('D_bar_constraint')
+        
+        model.del_component('objective')
 
         return None
     
@@ -848,15 +658,8 @@ class ParameterEstimator(Optimizer):
         species_list = kwds.pop('subset_components', None)
         symbolic_solver_labels = kwds.pop('symbolic_solver_labels', False)
 
-        list_components = []
-        if species_list is None:
-            list_components = [k for k in self._mixture_components]
-        else:
-            for k in species_list:
-                if k in self._mixture_components:
-                    list_components.append(k)
-                else:
-                    warnings.warn("Ignored {} since is not a mixture component of the model".format(k))
+        list_components = self._get_list_components(species_list)
+        model = self.model
 
         if not self._concentration_given:
             raise NotImplementedError(
@@ -876,189 +679,227 @@ class ParameterEstimator(Optimizer):
                 all_sigma_specified = False
                 sigma_sq[k] = max(sigma_sq.values())
 
-        m = self.model
-
-        # estimation
-        def rule_objective(m):
+        def rule_objective(model):
             obj=0
-            if penaltyparamcon == True: #added for optional penalty term related to constraint CS
+            if penaltyparamcon == True:
                 rho = 100
                 sumpen = 0.0
-                obj = conc_objective(m)
-                for t in m.allmeas_times:
-                    sumpen += m.Y[t, 'npen']
+                obj += conc_objective(model)
+                for t in model.allmeas_times:
+                    sumpen += model.Y[t, 'npen']
                 fifth_term = rho * sumpen
                 obj += fifth_term
             else:
-                obj = conc_objective(m)
+                obj += conc_objective(model)
             return obj
 
-        m.objective = Objective(rule=rule_objective)
+        model.objective = Objective(rule=rule_objective)
 
         if warmstart==True:
-            if hasattr(m,'dual') and hasattr(m,'ipopt_zL_out') and hasattr(m,'ipopt_zU_out') and hasattr(m,'ipopt_zL_in') and hasattr(m,'ipopt_zU_in'):
-                self.update_warm_start(m)
+            if hasattr(model,'dual') and hasattr(model,'ipopt_zL_out') and hasattr(model,'ipopt_zU_out') and hasattr(model,'ipopt_zL_in') and hasattr(model,'ipopt_zU_in'):
+                self.update_warm_start(model)
             else:
-                self.add_warm_start_suffixes(m)
+                self.add_warm_start_suffixes(model)
 
         if covariance and self.solver == 'ipopt_sens':
-            self._tmpfile = "ipopt_hess"
-            solver_results = optimizer.solve(m, tee=False,
-                                             logfile=self._tmpfile,
-                                             report_timing=True)
-            #self.model.red_hessian.pprint
-            # m.P.pprint()
-            print("Done solving building reduce hessian")
-            output_string = ''
-            with open(self._tmpfile, 'r') as f:
-                output_string = f.read()
-
-                print("output_string", output_string)
-            if os.path.exists(self._tmpfile):
-                os.remove(self._tmpfile)
-            # output_string = f.getvalue()
-            ipopt_output, hessian_output = split_sipopt_string(output_string)
-            # print hessian_output
-            print("build strings")
-            # if tee == True:
-            #    print(ipopt_output)
-
-            if not all_sigma_specified:
-                raise RuntimeError(
-                    'All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
-
-            n_vars = len(self._idx_to_variable)
-            hessian = read_reduce_hessian(hessian_output, n_vars)
-            print(hessian.size, "hessian size")
-            # hessian = read_reduce_hessian2(hessian_output,n_vars)
+            hessian = self._covariance_ipopt_sens(model, optimizer, tee)
             if self._concentration_given:
                 self._compute_covariance_C(hessian, sigma_sq)
 
         elif covariance and self.solver == 'k_aug':
-            self.add_warm_start_suffixes(m, use_k_aug=True)
-            
-            m.dof_v.pprint()
-            m.rh_name.pprint()
-            count_vars = 1
-
-            if self._spectra_given:
-                for t in self._allmeas_times:
-                    for c in self._sublist_components:
-                        m.C[t, c].set_suffix_value(m.dof_v, count_vars)
-                        count_vars += 1
-                        
-                for l in self._meas_lambdas:
-                    for c in self._sublist_components:
-                        m.S[l, c].set_suffix_value(m.dof_v, count_vars)
-                        count_vars += 1
-
-            for v in m.P.values():
-                if v.is_fixed():
-                    continue
-                m.P.set_suffix_value(m.dof_v, count_vars)
-                count_vars += 1
-
-            if hasattr(m,'Pinit'):
-                for v in self.model.initparameter_names:
-                    m.init_conditions[v].set_suffix_value(m.dof_v, count_vars)
-                    count_vars += 1
-
-            self._tmpfile = "k_aug_hess"
-            ip = SolverFactory('ipopt')
-            solver_results = ip.solve(m, 
-                                      tee=False,
-                                      logfile=self._tmpfile,
-                                      report_timing=True, 
-                                      symbolic_solver_labels=True)
-            ##############################################
-            # Try different options in case it fails! (CS)
-            ############################################
-            self.termination_condition = solver_results.solver.termination_condition
-            if self.termination_condition != TerminationCondition.optimal:
-                print("WARNING: The solution of the iteration was unsuccessful. The problem is solved with additional solver options.")
-                optimizer.options["OF_start_with_resto"] = 'yes'
-                solver_results = optimizer.solve(m, tee=tee, symbolic_solver_labels=True)
-                self.termination_condition = solver_results.solver.termination_condition
-                if self.termination_condition != TerminationCondition.optimal:
-                    print(
-                        "WARNING: The solution of the iteration was unsuccessful. The problem is solved with additional solver options.")
-                    optimizer.options["OF_start_with_resto"] = 'no'
-                    # optimizer.options["OF_bound_push"] = 1E-02
-                    optimizer.options["OF_bound_relax_factor"] = 1E-05
-                    solver_results = optimizer.solve(m, tee=tee, symbolic_solver_labels=True)
-                    self.termination_condition = solver_results.solver.termination_condition
-                    # options["OF_bound_relax_factor"] = 1E-08
-                    if self.termination_condition != TerminationCondition.optimal:
-                        print("The current iteration was unsuccessful.")
-            #############################################
-            # m.P.pprint()
-            k_aug = SolverFactory('k_aug')
-
-            # k_aug.options["no_scale"] = ""
-            self.update_warm_start(m)
-            # m.write(filename="mynl.nl", format=ProblemFormat.nl)
-            k_aug.solve(m, tee=False)
-            print("Done solving building reduce hessian")
-
-            if not all_sigma_specified:
-                raise RuntimeError(
-                    'All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
-
-            n_vars = len(self._idx_to_variable)
-            print("n_vars", n_vars)
-            # m.rh_name.pprint()
-            
-            var_loc = m.rh_name
-            for v in self._idx_to_variable.values():
-                try:
-                    var_loc[v]
-                except:
-                    # print(v, "is an error")
-                    var_loc[v] = 0
-                    # print(v, "is thus set to ", var_loc[v])
-                    # print(var_loc[v])
-
-            vlocsize = len(var_loc)
-            print("var_loc size, ", vlocsize)
-            unordered_hessian = np.loadtxt('result_red_hess.txt')
-            if os.path.exists('result_red_hess.txt'):
-                os.remove('result_red_hess.txt')
-            # hessian = read_reduce_hessian_k_aug(hessian_output, n_vars)
-            # hessian =hessian_output
-            # print(hessian)
-            print(unordered_hessian.size, "unordered hessian size")
-            hessian = self._order_k_aug_hessian(unordered_hessian, var_loc)
-            if self._estimability == True:
-                self.hessian = hessian
+            hessian = self._covariance_k_aug(model, optimizer, tee, labels=True)
             if self._concentration_given:
                 self._compute_covariance_C(hessian, sigma_sq)
-        elif self.solver == 'gams' and covariance==False: #To use conopt as alternative NLP solver, CS
+            
+        elif self.solver == 'gams' and covariance==False:
             ip = SolverFactory('gams')
-            solver_results = ip.solve(m, solver='conopt', tee=True)
-            ##############################################
+            solver_results = ip.solve(model, solver='conopt', tee=True)
+            
         else:
+            solver_results = optimizer.solve(model, tee=tee, symbolic_solver_labels=True)
+            self._termination_problems(solver_results, optimizer)
+            
+        model.del_component('objective')
+    
+    def _covariance_ipopt_sens(self, model, optimizer, tee):
+        """Generalize the covariance optimization with IPOPT Sens"""
+        
+        if self.model_variance == False:
+            print("WARNING: FOR PROBLEMS WITH NO MODEL VARIANCE it is advised to use k_aug!!!")
+        self._tmpfile = "ipopt_hess"
+        solver_results = optimizer.solve(model, tee=tee,
+                                         logfile=self._tmpfile,
+                                         report_timing=True)
+
+        
+        print("Done solving building reduce hessian")
+        output_string = ''
+        with open(self._tmpfile, 'r') as f:
+            output_string = f.read()
+        if os.path.exists(self._tmpfile):
+            os.remove(self._tmpfile)
+
+        ipopt_output, hessian_output = split_sipopt_string(output_string)
+        
+        if not all_sigma_specified:
+            raise RuntimeError(
+                'All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
+
+        n_vars = len(self._idx_to_variable)
+        hessian = read_reduce_hessian(hessian_output, n_vars)
+        
+        return hessian
+    
+    def _covariance_k_aug(self, model, optimizer, tee, labels=False):
+        """Generalize the covariance optimization with k_aug"""
+  
+        self.add_warm_start_suffixes(model, use_k_aug=True)   
+        
+        count_vars = 1
+
+        if self._spectra_given:
+            for t in self._allmeas_times:
+                for c in self.component_set:
+                    getattr(model, self.component_var)[t, c].set_suffix_value(model.dof_v, count_vars)
+                    count_vars += 1
+        
+            for l in self._meas_lambdas:
+                for c in self.component_set:
+                    model.S[l, c].set_suffix_value(model.dof_v, count_vars)
+                    count_vars += 1
+
+        for v in model.P.values():
+            if v.is_fixed():
+                continue
+            model.P.set_suffix_value(model.dof_v, count_vars)
+            count_vars += 1
+
+        if hasattr(model,'Pinit'):
+            for k, v in self.model.Pinit.items():
+            #for v in self.model.initparameter_names:
+                model.init_conditions[k].set_suffix_value(model.dof_v, count_vars)
+                count_vars += 1
+
+        self._tmpfile = "k_aug_hess"
+        ip = SolverFactory('ipopt')
+        solver_results = ip.solve(model,
+                                  tee=tee,
+                                  logfile=self._tmpfile,
+                                  report_timing=True,
+                                  symbolic_solver_labels=labels,
+                                  )
+        
+        if labels:
+            self._termination_problems(solver_results, optimizer)
+        
+        k_aug = SolverFactory('k_aug')
+        self.update_warm_start(model)
+        k_aug.solve(model, tee=tee)
+        print("Done solving building reduce hessian")
+
+        if not all_sigma_specified:
+            raise RuntimeError(
+                'All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
+
+        n_vars = len(self._idx_to_variable)         
+        var_loc = model.rh_name
+        for v in self._idx_to_variable.values():
+            try:
+                var_loc[v]
+            except:
+                var_loc[v] = 0
+
+        vlocsize = len(var_loc)
+        unordered_hessian = np.loadtxt('result_red_hess.txt')
+        if os.path.exists('result_red_hess.txt'):
+            os.remove('result_red_hess.txt')
+        
+        hessian = self._order_k_aug_hessian(unordered_hessian, var_loc)
+        if self._estimability == True:
+            self.hessian = hessian
+
+        return hessian
+    
+    def _termination_problems(self, solver_results, optimizer):
+        """This is some funky code"""
+        
+        self.termination_condition = solver_results.solver.termination_condition
+        if self.termination_condition != TerminationCondition.optimal:
+            print("WARNING: The solution of the iteration was unsuccessful. The problem is solved with additional solver options.")
+            optimizer.options["OF_start_with_resto"] = 'yes'
             solver_results = optimizer.solve(m, tee=tee, symbolic_solver_labels=True)
-            ##############################################
-            #Try different options in case it fails! (CS)
-            ############################################
             self.termination_condition = solver_results.solver.termination_condition
-            if self.termination_condition!= TerminationCondition.optimal:
-                print("WARNING: The solution of the iteration was unsuccessful. The problem is solved with additional solver options.")
-                optimizer.options["OF_start_with_resto"] = 'yes'
+            if self.termination_condition != TerminationCondition.optimal:
+                print(
+                    "WARNING: The solution of the iteration was unsuccessful. The problem is solved with additional solver options.")
+                optimizer.options["OF_start_with_resto"] = 'no'
+                # optimizer.options["OF_bound_push"] = 1E-02
+                optimizer.options["OF_bound_relax_factor"] = 1E-05
                 solver_results = optimizer.solve(m, tee=tee, symbolic_solver_labels=True)
                 self.termination_condition = solver_results.solver.termination_condition
-                if self.termination_condition!= TerminationCondition.optimal:
-                    print(
-                        "WARNING: The solution of the iteration was unsuccessful. The problem is solved with additional solver options.")
-                    optimizer.options["OF_start_with_resto"] = 'no'
-                    optimizer.options["bound_push"] = 1E-02
-                    optimizer.options["OF_bound_relax_factor"] = 1E-05
-                    solver_results = optimizer.solve(m, tee=tee, symbolic_solver_labels=True)
-                    self.termination_condition = solver_results.solver.termination_condition
-                    # options["OF_bound_relax_factor"] = 1E-08
-                    if self.termination_condition!= TerminationCondition.optimal:
-                        raise Exception("The current iteration was unsuccessful.")
-        m.del_component('objective')
+                # options["OF_bound_relax_factor"] = 1E-08
+                if self.termination_condition != TerminationCondition.optimal:
+                        print("The current iteration was unsuccessful.")
+                        
+        return None
+
+    @staticmethod
+    def _huplc_obj_term(m, sigma_sq):
+        third_term = 0.0
+        if not 'device-huplc' in sigma_sq.keys():
+            sigma_sq['device-huplc'] = 1.0
+        if hasattr(m, 'solid_spec_arg1') and hasattr(m, 'solid_spec_arg2'):
+            solidvol_dict = dict()
+            m.add_component('cons_solidvol', ConstraintList())
+            new_consolidvol = getattr(m, 'cons_solidvol')
+            m.add_component('solidvol', Var(m.huplctime, m.huplc_absorbing.value, initialize=solidvol_dict))
+
+            for k in m.solid_spec_arg1:
+                for j in m.algebraics:
+                    for time in m.huplctime:
+                        if j == k:
+                            for l in m.huplc_absorbing.value:
+                                strsolidspec = "\'" + str(k) + "\'" + ', ' + "\'" + str(
+                                    l) + "\'"  # pair of absorbing solid and liquid
+                                if l in m.solid_spec_arg2 and strsolidspec in str(
+                                        m.solid_spec.keys()):  #check whether pair of solid and liquid in keys and whether liquid in huplcabs species
+                                    valY = value(m.Y[time, k]) / value(m.vol)
+                                    if valY <= 0:
+                                        new_consolidvol.add(m.solidvol[time, l] == 0.0)
+                                    else:
+                                        new_consolidvol.add(m.solidvol[time, l] == m.Y[time, k] / m.vol)
+                                else:
+                                    new_consolidvol.add(m.solidvol[time, l] == 0.0)
+                for jk in list_components:
+                    for time in m.huplctime:
+                        if jk == k:
+                            for l in m.huplc_absorbing.value:
+                                strsolidspec = "\'" + str(k) + "\'" + ', ' + "\'" + str(
+                                    l) + "\'"  # pair of absorbing solid and liquid
+                                if l in m.solid_spec_arg2 and strsolidspec in str(
+                                        m.solid_spec.keys()):  #check whether pair of solid and liquid in keys and whether liquid in huplcabs species
+                                    valZ = value(m.Z[time, k]) / value(m.vol)
+                                    if valZ <= 0:
+                                        new_consolidvol.add(m.solidvol[time, l] == 0.0)
+                                    else:
+                                        new_consolidvol.add(m.solidvol[time, l] == m.Z[time, k] / m.vol)
+                                else:
+                                    new_consolidvol.add(m.solidvol[time, l] == 0.0)
+
+            m.Dhat_bar = Var(m.huplcmeas_times,
+                             m.huplc_absorbing)
+
+            m.Dhat_bar_constraint = Constraint(m.huplcmeas_times,
+                                               m.huplc_absorbing,
+                                               rule=rule_Dhat_bar)
+
+            for t in m.huplcmeas_times:
+                list_huplcabs = [k for k in m.huplc_absorbing.value]
+                for k in list_huplcabs:
+                    third_term += (m.Dhat[t, k] - m.Dhat_bar[t, k]) ** 2 / sigma_sq['device-huplc']
+
+        return third_term
+
 
     def set_up_reduced_hessian(self, time_set, component_set, var_name, index):
         
@@ -1135,6 +976,7 @@ class ParameterEstimator(Optimizer):
                 print(str(v) + '\has been skipped for covariance calculations')
                 continue
             nparams += 1
+            
         if hasattr(self.model, 'Pinit'):
             for v in self.model.Pinit.values():
                 if isSkipFixed:
@@ -1146,9 +988,15 @@ class ParameterEstimator(Optimizer):
         return nparams
 
     def _compute_covariance(self, hessian, variances):
+        """Computes the covariance for post calculation anaylsis
+        
+        ADD HERE
+        
+        """        
 
         nt = self._n_allmeas_times
         nw = self._n_meas_lambdas
+        nd = nw * nt
         
         if hasattr(self, '_abs_components'):
             isSkipFixed = True
@@ -1156,7 +1004,6 @@ class ParameterEstimator(Optimizer):
             isSkipFixed = False
 
         nparams = self._get_nparams()
-        nd = nw * nt
         ntheta = self.n_val * (nw + nt) + nparams
 
         print("Computing H matrix\n shape ({},{})".format(nparams, ntheta))
@@ -1164,29 +1011,20 @@ class ParameterEstimator(Optimizer):
         H = all_H[-nparams:, :]
  
         print("Computing B matrix\n shape ({},{})".format(ntheta, nd))
-        self._compute_B_matrix(variances)
-        B = self.B_matrix
+        B = self._compute_B_matrix(variances)
         
         print("Computing Vd matrix\n shape ({},{})".format(nd, nd))
-        self._compute_Vd_matrix(variances)
-        Vd = self.Vd_matrix
+        Vd = self._compute_Vd_matrix(variances)
         
-        R = B.T.dot(H.T)
-        A = Vd.dot(R)
-        L = H.dot(B)
-        Vtheta = A.T.dot(L.T)
-        V_theta = Vtheta.T
+        R = B.T @ H.T
+        A = Vd @ R
+        L = H @ B
+        V_theta = (A.T @ L.T).T
 
         if self._eigredhess2file==True:
             save_eig_red_hess(V_theta)
-
-        nt = self._n_allmeas_times
-        nw = self._n_meas_lambdas
-
-        nd = nw * nt
-        ntheta = self.n_val * (nw + nt)
-        V_param = V_theta
-        variances_p = np.diag(V_param)
+        
+        variances_p = np.diag(V_theta)
         self._confidence_interval_display(variances_p)
         
         return None
@@ -1194,10 +1032,11 @@ class ParameterEstimator(Optimizer):
     def _compute_covariance_C_generic(self, hessian, variances, use_model_variance=False):
         """
         Generic covariance function to reduce code
+        
+        Residuals are not even used...
         """
         if use_model_variance:
-            self._compute_residuals()
-            res = self.residuals
+            #res = self._compute_residuals()
             nc = self._n_actual
             varmat = np.zeros((nc, nc))
             for c, k in enumerate(self._sublist_components):
@@ -1216,7 +1055,7 @@ class ParameterEstimator(Optimizer):
         print("Parameter variances: ", variances_p)
         self._confidence_interval_display(variances_p)
        
-        return 1
+        return None
 
     def _compute_covariance_C(self, hessian, variances):
         """
@@ -1267,7 +1106,7 @@ class ParameterEstimator(Optimizer):
     
         variance = variances['device']
         ntheta = n_val * (nw + nt) + nparams
-        self.B_matrix = np.zeros((ntheta, nw * nt))
+        B_matrix = np.zeros((ntheta, nw * nt))
 
         for i, t in enumerate(time_set):
             for j, l in enumerate(self.model.meas_lambdas):
@@ -1275,10 +1114,10 @@ class ParameterEstimator(Optimizer):
                     r_idx1 = i * n_val + k
                     r_idx2 = j * n_val + k + n_val * nt
                     c_idx = i * nw + j
-                    self.B_matrix[r_idx1, c_idx] = -2 * self.model.S[l, c].value / variance
-                    self.B_matrix[r_idx2, c_idx] = -2 * getattr(self.model, conc_data_var)[t, c].value / variance
+                    B_matrix[r_idx1, c_idx] = -2 * self.model.S[l, c].value / variance
+                    B_matrix[r_idx2, c_idx] = -2 * getattr(self.model, conc_data_var)[t, c].value / variance
                     
-        return None
+        return B_matrix
 
     def _compute_Vd_matrix(self, variances, **kwds):
         """Builds d covariance matrix
@@ -1323,8 +1162,9 @@ class ParameterEstimator(Optimizer):
                         col.append(i * nw + p)
                         data.append(val)
 
-        self.Vd_matrix = scipy.sparse.coo_matrix((data, (row, col)), shape=(nd, nd)).tocsr()
-        return None
+        Vd_matrix = scipy.sparse.coo_matrix((data, (row, col)), shape=(nd, nd)).tocsr()
+        
+        return Vd_matrix
         
     def _compute_residuals(self):
         """
@@ -1335,15 +1175,12 @@ class ParameterEstimator(Optimizer):
         """
         nt = self._n_allmeas_times
         nc = self._n_actual
-        self.residuals = dict()
-        for c in self._sublist_components:
-            for t in self._allmeas_times:
-                a = self.model.C[t, c].value
-                b = self.model.Z[t, c].value
-                r = ((a - b) ** 2)
-                self.residuals[t, c] = r
+        residuals = dict()
+        
+        for index, value in self.model.C.items():
+            residuals[index] = (v.value - self.model.Z[index].value)**2 
              
-        return None
+        return residuals
 
     def _order_k_aug_hessian(self, unordered_hessian, var_loc):
         """
@@ -1369,7 +1206,7 @@ class ParameterEstimator(Optimizer):
         print(hessian.size, "hessian size")
         return hessian
 
-    def calc_new_D(self, subset):
+    def _calc_new_D(self, subset):
         
         new_D = pd.DataFrame(np.nan, index=self._meas_times, columns=subset)
         for t in self._meas_times:
@@ -1407,7 +1244,7 @@ class ParameterEstimator(Optimizer):
             subset = list(x1)
         
         # This is the filter for creating the new data subset
-        new_D = self.calc_new_D(subset)
+        new_D = self._calc_new_D(subset)
         
         # Now that we have a new DataFrame, we need to build the entire problem from this
         # An entire new ParameterEstimation problem should be set up, on the outside of
@@ -1472,7 +1309,7 @@ class ParameterEstimator(Optimizer):
             x1, y1 = zip(*lists1)
             x = list(x1)
 
-            new_D = self.calc_new_D(new_subs)
+            new_D = self._calc_new_D(new_subs)
                         
 
             # opt_model, nfe, ncp = construct_model_from_reduced_set(builder_before_data, end_time, new_D)
@@ -1591,8 +1428,6 @@ class ParameterEstimator(Optimizer):
 
         return cor_l
 
-    #To estimate huplc fit in a similar fashion as for IR or concentration data (CS):
-       
     def lack_of_fit_huplc(self):
         """ Runs basic post-processing lack of fit analysis
 

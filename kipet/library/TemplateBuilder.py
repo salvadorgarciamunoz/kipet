@@ -514,9 +514,9 @@ class TemplateBuilder(object):
                     dfc.loc[t] = [0.0 for n in range(len(data.columns))]
       
             
-            print(dfc)
+            #print(dfc)
             dfallc = data.append(dfc)
-            print(dfallc)
+            #print(dfallc)
             dfallc.sort_index(inplace=True)
             dfallc.index = dfallc.index.to_series().apply(
                 lambda x: np.round(x, 6))

@@ -545,8 +545,12 @@ class EstimationPotential(ParameterEstimator):
         
         """
         obj = 0
-        obj += conc_objective(model)
-        obj += comp_objective(model)  
+        #if model.mixture_components & model.measured_data:
+        obj += conc_objective(model) 
+        #if model.complementary_states & model.measured_data:
+        obj += comp_objective(model)
+        # obj += conc_objective(model)
+        #obj += comp_objective(model)  
     
         return Objective(expr=obj)
    

@@ -242,3 +242,86 @@ class VarianceEstimator(Optimizer):
         
         with open(self._tmp4,'w') as f:
             f.write("temporary file for ipopt output")
+            
+    def solve_max_device_variance(self, solver, **kwds):
+        """Solves the maximum likelihood formulation with (C-Z) = 0. solves ntp/2*log(eTe/ntp)
+        and then calculates delta from the solution. See documentation for more details.
+    
+        Args:
+            solver_opts (dict, optional): options passed to the nonlinear solver
+        
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
+            (Weifeng paper). Default all wavelengths.
+    
+        Returns:
+    
+            delta_sq (float): value of the max device variance
+    
+        """   
+        solver_opts = kwds.pop('solver_opts', dict())
+        tee = kwds.pop('tee', True)
+        set_A = kwds.pop('subset_lambdas', list())
+    
+        if not set_A:
+            set_A = self._meas_lambdas
+    
+        list_components = [k for k in self._mixture_components]
+                    
+        self._sublist_components = list_components
+    
+        if hasattr(self.model, 'non_absorbing'):
+            warnings.warn("Overriden by non_absorbing")
+            list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
+            self._sublist_components = list_components
+        
+        if hasattr(self.model, 'known_absorbance'):
+            warnings.warn("Overriden by species with known absorbance")
+            list_components = [k for k in self._mixture_components if k not in self._known_absorbance]
+            self._sublist_components = list_components
+            
+        print("Solving For the worst possible device variance\n")
+        
+        self._warn_if_D_negative()
+        
+        obj = 0.0
+        ntp = len(self._meas_times)
+        nwp = len(self._meas_lambdas)
+        
+        if hasattr(self, '_abs_components'):
+            self.component_set = self._abs_components
+        else:
+            self.component_set = self._sublist_components
+        
+        for t in self._meas_times:
+            for l in set_A:
+                D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self.component_set)
+                obj += (self.model.D[t, l] - D_bar)**2
+       
+        self.model.init_objective = Objective(expr=obj)
+        
+        opt = SolverFactory(solver)
+    
+        for key, val in solver_opts.items():
+            opt.options[key]=val
+        solver_results = opt.solve(self.model,
+                                   tee=tee)
+        
+        print("values for the parameters in case with no model variance")
+        for k, v in self.model.P.items():
+            print(k, v.value)
+        
+        etaTeta = 0
+        for t in self._meas_times:
+            for l in set_A:
+                D_bar = sum(value(self.model.Z[t, k]) * value(self.model.S[l, k]) for k in self.component_set)
+                etaTeta += (value(self.model.D[t, l])- D_bar)**2
+    
+        deltasq = etaTeta/(ntp*nwp)
+        
+        self.model.del_component('init_objective')
+        print("worst case delta squared: ", deltasq)
+    
+        return deltasq
