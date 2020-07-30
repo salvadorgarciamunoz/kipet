@@ -4,6 +4,7 @@ Module to hold the method developed by Chen et al. 2016 based on Scipy
 import sys
 
 import numpy as np
+from pyomo.environ import *
 from scipy.optimize import least_squares
 from scipy.sparse import coo_matrix
 

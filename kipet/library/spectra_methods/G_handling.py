@@ -1,4 +1,4 @@
-import numpy.linalg as nl
+import numpy as np
 
 def g_handling_check_options(est_object):
     if est_object.unwanted_G and est_object.time_variant_G:
@@ -20,7 +20,7 @@ def g_handling_status_messages(est_object):
         print("\nTime-invariant unwanted contribution is involved but G cannot be decomposed.\n")
     return None
  
-def decompose_G_test(est_object):
+def decompose_G_test(est_object, St, Z_in):
     """Check whether or not G can be decomposed"""
     
     if St == dict() and Z_in == dict():
@@ -35,7 +35,7 @@ def decompose_G_test(est_object):
     #     omega_list.append(Z_in[j])
     
     omega_sub = np.array(omega_list)
-    rank = nl.matrix_rank(omega_sub)
+    rank = np.linalg.matrix_rank(omega_sub)
     cols = omega_sub.shape[1]
     rko = cols - rank
     

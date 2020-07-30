@@ -117,6 +117,8 @@ class TemplateBuilder(object):
         self._initextraparams_init = dict()  # added for parameter initial guess CS
         self._initextraparams_bounds = dict()
 
+        # TODO: Put all data into it's own structure (attrs?)
+
         self._y_bounds = dict()  # added for additional optional bounds CS
         self._prof_bounds = list()  # added for additional optional bounds MS
         self._init_conditions = dict()
@@ -462,6 +464,17 @@ class TemplateBuilder(object):
         
         return None
     
+    def clear_data(self):
+        
+        self._spectral_data = None
+        self._concentration_data = None
+        self._complementary_states_data = None # added for complementary state data (Est.) KM
+        self._huplc_data = None #added for additional data CS
+        self._smoothparam_data = None  # added for additional smoothing parameter data CS
+        self._absorption_data = None
+        
+        return None
+    
     def add_data(self, data, data_type=None, label=None):
         
         if data_type is not None:
@@ -472,7 +485,7 @@ class TemplateBuilder(object):
 
         return None
 
-    def _add_state_data(self, data, data_type, label=None):
+    def _add_state_data(self, data, data_type, label=None, overwrite=True):
         """Generic method for adding data (concentration or complementary 
         state data) - uses the measured data attribute to process
         
@@ -507,6 +520,9 @@ class TemplateBuilder(object):
             except:
                 raise ValueError("You need to provide a label for custom data types")
         
+        if isinstance(data, pd.Series):
+            data = pd.DataFrame(data)
+        
         if isinstance(data, pd.DataFrame):
             dfc = pd.DataFrame(index=self._feed_times, columns=data.columns)
             for t in self._feed_times:
@@ -514,9 +530,9 @@ class TemplateBuilder(object):
                     dfc.loc[t] = [0.0 for n in range(len(data.columns))]
       
             
-            #print(dfc)
+            #print(f'dfc:\n{dfc}')
             dfallc = data.append(dfc)
-            #print(dfallc)
+            #print(f'dfallc:\n{dfallc}')
             dfallc.sort_index(inplace=True)
             dfallc.index = dfallc.index.to_series().apply(
                 lambda x: np.round(x, 6))
@@ -529,10 +545,14 @@ class TemplateBuilder(object):
                         
                 count += 1
 
-            if hasattr(self, f'_{data_type}_data'):
-                df_data = getattr(self, f'_{data_type}_data')
-                df_data = pd.concat([df_data, dfallc], axis=1)
-                setattr(self, f'_{data_type}_data', df_data)
+            dfallc = dfallc.dropna(how='all')
+
+            if not overwrite:
+                if hasattr(self, f'_{data_type}_data'):
+                    df_data = getattr(self, f'_{data_type}_data')
+                    #print(f'df_data:\n{df_data}')
+                    df_data = pd.concat([df_data, dfallc], axis=1)
+                    setattr(self, f'_{data_type}_data', df_data)
             else:
                 setattr(self, f'_{data_type}_data', dfallc)
             if label in state_data:
@@ -544,7 +564,7 @@ class TemplateBuilder(object):
             C = np.array(dfallc)
             for t in range(len(dfallc.index)):
                 for l in range(len(dfallc.columns)):
-                    if C[t, l] >= 0:
+                    if C[t, l] >= 0 or np.isnan(C[t, l]):
                         pass
                     else:
                         setattr(self, f'_is_{label}_deriv', True)
@@ -558,22 +578,26 @@ class TemplateBuilder(object):
     def add_experimental_data(self, data):
         """Generic function to add all data at once if in the same dataframe.
         At the moment this works for concentration and complementary states
+        
+        Use this for mixed and missing data
         """
         exp_data = pd.DataFrame(data)
         
         conc_state_headers = self._component_names & set(exp_data.columns)
         if len(conc_state_headers) > 0:
-            for c in conc_state_headers:
-                self.add_concentration_data(pd.DataFrame(exp_data[c].dropna()))
-        
+            for i, c in enumerate(conc_state_headers):
+                overwrite = True if i == 0 else False
+                self.add_concentration_data(pd.DataFrame(exp_data[c].dropna()), overwrite=overwrite)
+                
         comp_state_headers = self._complementary_states & set(exp_data.columns)
         if len(comp_state_headers) > 0:
-            for c in comp_state_headers:
-                self.add_complementary_states_data(pd.DataFrame(exp_data[c].dropna()))
+            for i, c in enumerate(comp_state_headers):
+                overwrite = True if i == 0 else False
+                self.add_complementary_states_data(pd.DataFrame(exp_data[c].dropna()), overwrite=overwrite)
         
         return None
         
-    def add_concentration_data(self, data):
+    def add_concentration_data(self, data, overwrite=True):
         """Add concentration data as a wrapper to _add_state_data
 
         Args:
@@ -584,12 +608,14 @@ class TemplateBuilder(object):
             None
 
         """
+        print(data)
         self._add_state_data(data,
-                             data_type='concentration')
+                             data_type='concentration',
+                             overwrite=overwrite)
         
         return None
         
-    def add_complementary_states_data(self, data):
+    def add_complementary_states_data(self, data, overwrite=True):
         """Add complementary state data as a wrapper to _add_state_data
 
         Args:
@@ -601,11 +627,12 @@ class TemplateBuilder(object):
 
         """
         self._add_state_data(data,
-                             data_type='complementary_states')
+                             data_type='complementary_states',
+                             overwrite=overwrite)
                            
         return None
     
-    def add_spectral_data(self, data):
+    def add_spectral_data(self, data, overwrite=True):
         """Add spectral data as a wrapper to _add_state_data
 
         Args:
@@ -617,9 +644,10 @@ class TemplateBuilder(object):
 
         """
         self._add_state_data(data,
-                             data_type='spectral')
+                             data_type='spectral',
+                             overwrite=overwrite)
         
-    def add_huplc_data(self, data): #added for the inclusion of h/uplc data CS
+    def add_huplc_data(self, data, overwrite=True): #added for the inclusion of h/uplc data CS
         """Add HPLC or UPLC data as a wrapper to _add_state_data
 
                 Args:
@@ -630,9 +658,10 @@ class TemplateBuilder(object):
                     None
         """
         self._add_state_data(data,
-                             data_type='huplc')
+                             data_type='huplc',
+                             overwrite=overwrite)
 
-    def add_smoothparam_data(self, data): #added for mutable smoothing parameter option CS
+    def add_smoothparam_data(self, data, overwrite=True): #added for mutable smoothing parameter option CS
         """Add smoothing parameters as a wrapper to _add_state_data
 
                 Args:
@@ -643,10 +672,11 @@ class TemplateBuilder(object):
                     None
         """
         self._add_state_data(data,
-                             data_type='smoothparam')
+                             data_type='smoothparam',
+                             overwrite=overwrite)
 
 
-    def add_absorption_data(self, data):
+    def add_absorption_data(self, data, overwrite=True):
         """Add absorption data
 
         Args:
@@ -1129,7 +1159,7 @@ class TemplateBuilder(object):
     
                 for time, comp in getattr(pyomo_model, var):
                     if time == pyomo_model.start_time.value:
-                        print(f'initial values: {time}, {comp}')
+                      #  print(f'initial values: {time}, {comp}')
                         getattr(pyomo_model, var)[time, comp].value = self._init_conditions[comp]
 
         # End intialization for C and U

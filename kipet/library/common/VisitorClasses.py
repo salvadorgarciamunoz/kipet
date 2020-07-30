@@ -4,9 +4,10 @@ Replacement and Scaling Mixins used in model modification
 
 from pyomo.core.expr import current as EXPR
 from pyomo.environ import *
+from pyomo.core.expr.numvalue import NumericConstant
 
 class ReplacementVisitor(EXPR.ExpressionReplacementVisitor):
-
+    
     def __init__(self):
         super(ReplacementVisitor, self).__init__()
         self._replacement = None
@@ -14,7 +15,7 @@ class ReplacementVisitor(EXPR.ExpressionReplacementVisitor):
 
     def change_suspect(self, suspect_):
         self._suspect = suspect_
-        
+
     def change_replacement(self, replacement_):
         self._replacement = replacement_
 
@@ -25,8 +26,9 @@ class ReplacementVisitor(EXPR.ExpressionReplacementVisitor):
         if node.__class__ in native_numeric_types:
             return True, node
 
-        # if node.__class__ is NumericConstant:
-        #     return True, node
+        if node.__class__ is NumericConstant:
+            return True, node
+
 
         if node.is_variable_type():
             if id(node) == self._suspect:
@@ -34,7 +36,7 @@ class ReplacementVisitor(EXPR.ExpressionReplacementVisitor):
                 return True, d
             else:
                 return True, node
-            
+
         return False, None
     
 class ScalingVisitor(EXPR.ExpressionReplacementVisitor):

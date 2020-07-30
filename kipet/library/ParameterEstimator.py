@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function
-from __future__ import division
-
 import copy
 import os
 import re
@@ -21,10 +19,9 @@ from pyomo.opt import (
 
 from kipet.library.Optimizer import *
 from kipet.library.TemplateBuilder import *
-from kipet.library.common.jumps import *
 from kipet.library.common.read_hessian import *
 
-from kipet.library.spectra_methods.spectra_compute_D import compute_D_given_SC
+#from kipet.library.spectra_methods.spectra_compute_D import compute_D_given_SC
 from kipet.library.spectra_methods.G_handling import (
     decompose_G_test,
     g_handling_status_messages,
@@ -184,7 +181,7 @@ class ParameterEstimator(Optimizer):
         
         g_handling_check_options(self)
         if self.time_invariant_G:
-            decompose_G_test(self)
+            decompose_G_test(self, St, Z_in)
         g_handling_status_messages(self)
         
         def rule_init_conditionsnew(model, target_component):
@@ -251,30 +248,44 @@ class ParameterEstimator(Optimizer):
 
         if inputs_sub is not None:
             from kipet.library.common.additional_inputs import add_inputs
-            add_inputs(self)
+            
+            add_kwargs = dict(
+                fixedtraj = fixedtraj,
+                fixedy = fixedy, 
+                inputs_sub = inputs_sub,
+                yfix = yfix,
+                yfixtraj = yfixtraj,
+                trajectories = trajectories,
+            )
+            
+            add_inputs(self, add_kwargs)
         
         if jump:
-            set_up_jumps(self, run_opt_kwargs)
+            self.set_up_jumps(run_opt_kwargs)
             
         for key, val in solver_opts.items():
             opt.options[key] = val
             
+        tee=False
         active_objectives = [o for o in self.model.component_map(Objective, active=True)]
         if active_objectives:
             print(
                 "WARNING: The model has an active objective. Running optimization with models objective.\n"
                 " To solve optimization with default objective (Weifengs) deactivate all objectives in the model.")
             solver_results = opt.solve(self.model, tee=tee)
+                
 
         elif self._spectra_given:
-            self._solve_extended_model(variances, opt,
+            self._solve_extended_model(variances, 
+                                       opt,
                                        tee=tee,
                                        covariance=covariance,
                                        with_d_vars=with_d_vars,
                                        **kwds)
 
         elif self._concentration_given:
-            self._solve_model_given_c(variances, opt,
+            self._solve_model_given_c(variances, 
+                                      opt,
                                       tee=tee,
                                       covariance=covariance,
                                       **kwds)
@@ -313,7 +324,7 @@ class ParameterEstimator(Optimizer):
                 'Must either provide concentration data or spectra in order to solve the parameter estimation problem')
 
         if self._spectra_given:
-            compute_D_given_SC(self, results)
+            self.compute_D_given_SC(results)
 
         results.P = {name: self.model.P[name].value for name in self.model.parameter_names}
 
@@ -406,7 +417,7 @@ class ParameterEstimator(Optimizer):
                 else:
                     expr += (model.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
                    
-        return expr
+        return expr 
 
     def _solve_extended_model(self, sigma_sq, optimizer, **kwds):
         """Solves estimation based on spectral data. (known variances)
@@ -465,7 +476,6 @@ class ParameterEstimator(Optimizer):
             list_components = [k for k in self._mixture_components if k not in self._known_absorbance]
 
         all_sigma_specified = True
-        print(sigma_sq)
 
         if isinstance(sigma_sq, dict): 
             keys = sigma_sq.keys()
@@ -499,7 +509,6 @@ class ParameterEstimator(Optimizer):
         
         
         if with_d_vars and self.model_variance:
-            print('You made it here')
             model.D_bar = Var(model.meas_times, model.meas_lambdas)
             
             def rule_D_bar(model, t, l):
@@ -513,13 +522,6 @@ class ParameterEstimator(Optimizer):
                                                 model.meas_lambdas,
                                                 rule=rule_D_bar)
         
-        
-        
-        print(f'with_d_vars {with_d_vars}')
-        print(f'huplc_absorbing {hasattr(model, "huplc_absorbing")}')
-        print(f'solid_spec_arg1 {hasattr(model, "solid_spec_arg1")}')
-        print(f'_abs_components {hasattr(model, "_abs_components")}')
-        #print(model.D_bar.display())
         
         #For addition of huplc data and matching liquid and solid species (CS):
         def rule_Dhat_bar(model, t, l):
@@ -581,7 +583,6 @@ class ParameterEstimator(Optimizer):
                 component_set = model._abs_components
             else:
                 component_set = list_components
-            print(component_set)
             
             expr = self._get_objective_expr(model, with_d_vars, component_set, sigma_sq, device=True)
                 
@@ -603,14 +604,14 @@ class ParameterEstimator(Optimizer):
                 self.add_warm_start_suffixes(model, use_k_aug=False)
 
         if covariance and self.solver == 'ipopt_sens':
-            hessian = self._covariance_ipopt_sens(model, optimizer, tee)
+            hessian = self._covariance_ipopt_sens(model, optimizer, tee, all_sigma_specified)
             if self.model_variance:
                 self._compute_covariance(hessian, sigma_sq)
             else:
                 self._compute_covariance_no_model_variance(hessian, sigma_sq)
         
         elif covariance and self.solver == 'k_aug':
-            hessian = self._covariance_k_aug(model, optimizer, tee)
+            hessian = self._covariance_k_aug(model, optimizer, tee, all_sigma_specified)
             if self.model_variance:
                 self._compute_covariance(hessian, sigma_sq)
             else:
@@ -702,12 +703,12 @@ class ParameterEstimator(Optimizer):
                 self.add_warm_start_suffixes(model)
 
         if covariance and self.solver == 'ipopt_sens':
-            hessian = self._covariance_ipopt_sens(model, optimizer, tee)
+            hessian = self._covariance_ipopt_sens(model, optimizer, tee, all_sigma_specified)
             if self._concentration_given:
                 self._compute_covariance_C(hessian, sigma_sq)
 
         elif covariance and self.solver == 'k_aug':
-            hessian = self._covariance_k_aug(model, optimizer, tee, labels=True)
+            hessian = self._covariance_k_aug(model, optimizer, tee, all_sigma_specified, labels=True)
             if self._concentration_given:
                 self._compute_covariance_C(hessian, sigma_sq)
             
@@ -721,13 +722,14 @@ class ParameterEstimator(Optimizer):
             
         model.del_component('objective')
     
-    def _covariance_ipopt_sens(self, model, optimizer, tee):
+    def _covariance_ipopt_sens(self, model, optimizer, tee, all_sigma_specified):
         """Generalize the covariance optimization with IPOPT Sens"""
         
         if self.model_variance == False:
             print("WARNING: FOR PROBLEMS WITH NO MODEL VARIANCE it is advised to use k_aug!!!")
         self._tmpfile = "ipopt_hess"
-        solver_results = optimizer.solve(model, tee=tee,
+        solver_results = optimizer.solve(model, 
+                                         tee=tee,
                                          logfile=self._tmpfile,
                                          report_timing=True)
 
@@ -750,7 +752,7 @@ class ParameterEstimator(Optimizer):
         
         return hessian
     
-    def _covariance_k_aug(self, model, optimizer, tee, labels=False):
+    def _covariance_k_aug(self, model, optimizer, tee, all_sigma_specified, labels=False):
         """Generalize the covariance optimization with k_aug"""
   
         self.add_warm_start_suffixes(model, use_k_aug=True)   
@@ -821,7 +823,7 @@ class ParameterEstimator(Optimizer):
         return hessian
     
     def _termination_problems(self, solver_results, optimizer):
-        """This is some funky code"""
+        """This is some funky code - do we need it?"""
         
         self.termination_condition = solver_results.solver.termination_condition
         if self.termination_condition != TerminationCondition.optimal:
@@ -902,16 +904,14 @@ class ParameterEstimator(Optimizer):
 
 
     def set_up_reduced_hessian(self, time_set, component_set, var_name, index):
-        
-        print(f'index in: {index}')
-        
+        """Method to declare the reduced hessian suffix variables"""
+
         for t in time_set:
             for c in component_set:
                 v = getattr(self.model, var_name)[t, c]
                 self._idx_to_variable[index] = v
                 self.model.red_hessian[v] = index
                 index += 1
-                print(index)
    
         return index
                     
@@ -990,7 +990,7 @@ class ParameterEstimator(Optimizer):
     def _compute_covariance(self, hessian, variances):
         """Computes the covariance for post calculation anaylsis
         
-        ADD HERE
+        
         
         """        
 
@@ -1069,7 +1069,7 @@ class ParameterEstimator(Optimizer):
         self._compute_covariance_C_generic(hessian, variances, use_model_variance=True)
         return None
 
-    def _compute_covariance_no_model_variance(self, hessian, variance):
+    def _compute_covariance_no_model_variance(self, hessian, variances):
         """
         Computes the covariance matrix for the paramaters taking in the Hessian
         matrix and the device variance for the problem where model error is ignored.
@@ -1193,8 +1193,6 @@ class ParameterEstimator(Optimizer):
         n_vars = len(self._idx_to_variable)
         hessian = np.zeros((n_vars, n_vars))
         
-        # why not enumerate? C++ guy?
-        
         for i, vi in enumerate(self._idx_to_variable.values()):
             for j, vj in enumerate(self._idx_to_variable.values()):
                 if n_vars == 1:
@@ -1207,6 +1205,7 @@ class ParameterEstimator(Optimizer):
         return hessian
 
     def _calc_new_D(self, subset):
+        """Updates the D data for the wavelength selection"""
         
         new_D = pd.DataFrame(np.nan, index=self._meas_times, columns=subset)
         for t in self._meas_times:
@@ -1294,6 +1293,7 @@ class ParameterEstimator(Optimizer):
             raise RuntimeError("search_range[1] must be bigger than search_range[0]!")
         # firstly we will run the initial search from at increments of 20 % for the correlations
         # we already have lof(0) so we want 10,30,50,70, 90.
+        
         count = 0
         filt = 0.0
         initial_solutions = list()
@@ -1310,7 +1310,6 @@ class ParameterEstimator(Optimizer):
             x = list(x1)
 
             new_D = self._calc_new_D(new_subs)
-                        
 
             # opt_model, nfe, ncp = construct_model_from_reduced_set(builder_before_data, end_time, new_D)
             # Now that we have a new DataFrame, we need to build the entire problem from this
@@ -1328,7 +1327,6 @@ class ParameterEstimator(Optimizer):
         for x in initial_solutions:
             print("When wavelengths of less than ", x[0], "correlation are removed")
             print("The lack of fit is: ", x[1])
-
 
     # =============================================================================
     # --------------------------- DIAGNOSTIC TOOLS ------------------------
@@ -1550,14 +1548,17 @@ def run_param_est(opt_model, nfe, ncp, sigmas, solver='ipopt'):
     options = dict()
 
     # These may not always solve, so we need to come up with a decent initialization strategy here
-    if solver != 'ipopt':
-        convariance = True
-        
-    results_pyomo = p_estimator.run_opt('ipopt',
+    if solver == 'ipopt':
+        results_pyomo = p_estimator.run_opt('ipopt',
                                             tee=False,
                                             solver_opts=options,
-                                            covariance=covariance,
-                                            )
+                                            variances=sigmas)
+    else:
+        results_pyomo = p_estimator.run_opt(solver,
+                                            tee=False,
+                                            solver_opts=options,
+                                            variances=sigmas,
+                                            covariance=True)
     
     lof = p_estimator.lack_of_fit()
 

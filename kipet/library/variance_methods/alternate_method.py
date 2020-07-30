@@ -8,6 +8,7 @@ from pyomo.core import (
 from pyomo.environ import (
     Objective,
     SolverFactory,
+    Param,
     )
 
 from kipet.library.ResultsObject import ResultsObject
@@ -25,7 +26,7 @@ def run_alternate_method(var_est_object, solver, run_opt_kwargs):
     
     solver = 'ipopt'
     
-    nu_squared = solve_max_device_variance(var_est_object,
+    nu_squared = var_est_object.solve_max_device_variance(
                                            solver,
                                            tee=tee,
                                            subset_lambdas=A, 
@@ -426,7 +427,7 @@ def _solve_sigma_given_delta(var_est_object, solver, **kwds):
         solver_results = None
         for k, v in var_est_object.model.P.items():
             print(k, v.value)
-        var_est_object.model = m
+        var_est_object.model = model
         for k, v in var_est_object.model.P.items():
             print(k, v.value)
     var_est_object.model.del_component('init_objective')

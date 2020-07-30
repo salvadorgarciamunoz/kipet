@@ -46,9 +46,9 @@ if __name__ == "__main__":
     filename1 = os.path.join(dataDirectory,'Dij_multexp_tiv_G.txt')
     filename2 = os.path.join(dataDirectory,'Dij_multexp_tv_G.txt')
     filename3 = os.path.join(dataDirectory,'Dij_multexp_no_G.txt')
-    D_frame1 = read_spectral_data_from_txt(filename1)
-    D_frame2 = read_spectral_data_from_txt(filename2)
-    D_frame3 = read_spectral_data_from_txt(filename3)
+    D_frame1 = read_file(filename1)
+    D_frame2 = read_file(filename2)
+    D_frame3 = read_file(filename3)
 
     #This function can be used to remove a certain number of wavelengths from data
     # in this case only every 2nd wavelength is included

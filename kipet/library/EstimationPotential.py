@@ -25,7 +25,7 @@ from pyomo.environ import (
     Set,
     )
 
-from kipet.library.data_tools import df_from_pyomo_data
+from kipet.library.common.read_write_tools import df_from_pyomo_data
 from kipet.library.ParameterEstimator import ParameterEstimator
 from kipet.library.PyomoSimulator import PyomoSimulator
 from kipet.library.TemplateBuilder import TemplateBuilder

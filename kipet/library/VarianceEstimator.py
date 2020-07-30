@@ -6,7 +6,7 @@ from pyomo.dae import *
 from pyomo.environ import *
 
 from kipet.library.Optimizer import *
-from kipet.library.common.jumps import *
+
 
 class VarianceEstimator(Optimizer):
     """Optimizer for variance estimation.
@@ -176,11 +176,21 @@ class VarianceEstimator(Optimizer):
         # Fixed imputs and trajectory section
         if inputs_sub is not None:
             from kipet.library.common.additional_inputs import add_inputs
-            add_inputs(self)
+            
+            add_kwargs = dict(
+                fixedtraj = fixedtraj,
+                fixedy = fixedy, 
+                inputs_sub = inputs_sub,
+                yfix = yfix,
+                yfixtraj = yfixtraj,
+                trajectories = trajectories,
+            )
+            
+            add_inputs(self, add_kwargs)
 
         # Dosing
         if jump:
-            set_up_jumps(self, run_opt_kwargs)
+            self.set_up_jumps(run_opt_kwargs)
         
         if report_time:
             start = time.time()
@@ -197,7 +207,7 @@ class VarianceEstimator(Optimizer):
         
         elif method == 'direct_sigmas':
             from kipet.library.variance_methods.alternate_method import run_direct_sigmas_method
-            results = run_direct_sigma_method(self, solver, run_opt_kwargs)
+            results = run_direct_sigmas_method(self, solver, run_opt_kwargs)
             
         # Report time
         if report_time:
@@ -325,3 +335,35 @@ class VarianceEstimator(Optimizer):
         print("worst case delta squared: ", deltasq)
     
         return deltasq
+    
+    def solve_sigma_given_delta(self, solver, **kwds):
+        """Function that solves for model variances based on a given device variance. Solves
+        The log likelihood function and returns a dictionary containg all sigmas, including
+        the device/delta in order to easily apply to the parameter estimation problem.
+           This method is intended to be used by users directly
+        Args:
+            solver (str): solver to use to solve the problems (recommended "ipopt")
+            
+            delta (float): the device variance squared 
+        
+            tee (bool,optional): flag to tell the optimizer whether to stream output
+            to the terminal or not
+        
+            solver_opts (dict,optional): Dictionary containing solver options
+        
+            subset_lambdas (array_like,optional): Set of wavelengths to used in problem 
+            (Weifeng paper). Default all wavelengths.
+        Returns:
+            all_variances (dict): dictionary containg all sigmas, including the device/delta
+        """   
+        from kipet.library.variance_methods.alternate_method import _solve_sigma_given_delta
+        
+        solver_opts = kwds.pop('solver_opts', dict())
+        tee = kwds.pop('tee', True)
+        set_A = kwds.pop('subset_lambdas', list())
+        delta = kwds.pop('delta', dict())
+        
+        residuals, sigma_vals, stop_it, results = _solve_sigma_given_delta(self, solver, subset_lambdas= set_A, solver_opts = solver_opts, tee=tee, delta = delta)
+        all_variances = sigma_vals
+        all_variances['device'] = delta
+        return all_variances

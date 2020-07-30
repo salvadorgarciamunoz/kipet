@@ -181,7 +181,7 @@ if __name__ == "__main__":
 
     A_set = [l for i, l in enumerate(model.meas_lambdas) if (i % 4 == 0)]
 
-    # #: this will take a sweet-long time to solve.
+    # #: this will take a sweet-long time to solve. - why aren't there more of these?
     results_variances = v_estimator.run_opt('ipopt',
                                             tee=True,
                                             solver_options=options,

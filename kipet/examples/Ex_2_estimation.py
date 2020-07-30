@@ -26,13 +26,13 @@ import os
 import sys
 import inspect
 import six
-#%%
-# if __name__ == "__main__":
 
-#     with_plots = True
-#     if len(sys.argv)==2:
-#         if int(sys.argv[1]):
-#             with_plots = False
+if __name__ == "__main__":
+
+    with_plots = True
+    if len(sys.argv)==2:
+        if int(sys.argv[1]):
+            with_plots = False
  
         
     #=========================================================================
@@ -180,100 +180,100 @@ import six
         
         
     #%%
-def rule_objective(model):
-    """This function defines the objective function for the estimability
+# def rule_objective(model):
+#     """This function defines the objective function for the estimability
     
-    This is equation 5 from Chen and Biegler 2020. It has the following
-    form:
+#     This is equation 5 from Chen and Biegler 2020. It has the following
+#     form:
         
-    .. math::
-        \min J = \frac{1}{2}(\mathbf{w}_m - \mathbf{w})^T V_{\mathbf{w}}^{-1}(\mathbf{w}_m - \mathbf{w})
+#     .. math::
+#         \min J = \frac{1}{2}(\mathbf{w}_m - \mathbf{w})^T V_{\mathbf{w}}^{-1}(\mathbf{w}_m - \mathbf{w})
         
-    Originally KIPET was designed to only consider concentration data in
-    the estimability, but this version now includes complementary states
-    such as reactor and cooling temperatures. If complementary state data
-    is included in the model, it is detected and included in the objective
-    function.
+#     Originally KIPET was designed to only consider concentration data in
+#     the estimability, but this version now includes complementary states
+#     such as reactor and cooling temperatures. If complementary state data
+#     is included in the model, it is detected and included in the objective
+#     function.
     
-    Args:
-        model (pyomo.core.base.PyomoModel.ConcreteModel): This is the pyomo
-        model instance for the estimability problem.
+#     Args:
+#         model (pyomo.core.base.PyomoModel.ConcreteModel): This is the pyomo
+#         model instance for the estimability problem.
             
-    Returns:
-        obj (pyomo.environ.Objective): This returns the objective function
-        for the estimability optimization.
+#     Returns:
+#         obj (pyomo.environ.Objective): This returns the objective function
+#         for the estimability optimization.
     
-    """
-    obj = 0
+#     """
+#     obj = 0
 
-    for k in set(model.mixture_components.value_list) & set(model.measured_data.value_list):
-        for t, v in model.C.items():
-            obj += 0.5*(model.C[t] - model.Z[t]) ** 2 / model.sigma[k]**2
+#     for k in set(model.mixture_components.value_list) & set(model.measured_data.value_list):
+#         for t, v in model.C.items():
+#             obj += 0.5*(model.C[t] - model.Z[t]) ** 2 / model.sigma[k]**2
     
-    for k in set(model.complementary_states.value_list) & set(model.measured_data.value_list):
-        for t, v in model.U.items():
-            obj += 0.5*(model.X[t] - model.U[t]) ** 2 / model.sigma[k]**2      
+#     for k in set(model.complementary_states.value_list) & set(model.measured_data.value_list):
+#         for t, v in model.U.items():
+#             obj += 0.5*(model.X[t] - model.U[t]) ** 2 / model.sigma[k]**2      
 
-    return Objective(expr=obj)
+#     return Objective(expr=obj)
 
     
-    #%%
+#     #%%
     
-# Still does not converge - why?
-# Add the sigmas to the problem to get it working!
+# # Still does not converge - why?
+# # Add the sigmas to the problem to get it working!
     
-import numpy as np
-import pandas as pd
+# import numpy as np
+# import pandas as pd
 
-from kipet.library.NestedSchurDecomposition import NestedSchurDecomposition as NSD
-#from kipet.examples.Ex_17_CSTR_setup import make_model_dict
+# from kipet.library.NestedSchurDecomposition import NestedSchurDecomposition as NSD
+# #from kipet.examples.Ex_17_CSTR_setup import make_model_dict
 
-# For simplicity, all of the models and simulated data are generated in
-# the following function
+# # For simplicity, all of the models and simulated data are generated in
+# # the following function
 
-# models, parameters = make_model_dict() 
-models = {1: p_estimator.model}
+# # models, parameters = make_model_dict() 
+# models = {1: p_estimator.model}
 
 
-for k, model in models.items():
+# for k, model in models.items():
     
-     model.measured_data = Set(initialize=model.mixture_components)
-     model.sigma = Param(model.measured_data, initialize=1)
-     model.objective = rule_objective(model)
+#      model.measured_data = Set(initialize=model.mixture_components)
+#      model.sigma = Param(model.measured_data, initialize=1)
+#      model.objective = rule_objective(model)
 
-# This is still needed and should include the union of all parameters in all
-# models
+# # This is still needed and should include the union of all parameters in all
+# # models
 
-#factor = np.random.uniform(low=0.8, high=1.2, size=len(parameters))
+# #factor = np.random.uniform(low=0.8, high=1.2, size=len(parameters))
 
-p_init = {k: v.value for k, v in models[1].P.items()}
+# p_init = {k: v.value for k, v in models[1].P.items()}
 
-d_init_guess = {k: (1.2*p_init[k], p) for k, p in builder._parameters_bounds.items()}
-#d_init_guess = {p.name: (p.init, p.bounds) for i, p in enumerate(parameters)}
-
-
-# NSD routine
-
-# If there is only one parameter it does not really update - it helps if you
-# let the other infomation "seep in" from the other experiments.
-
-# This is very slow and takes a long time for spectra problems
-# I need to try this with multiple data sets.
-
-parameter_var_name = 'P'
-options = {
-    'method': 'trust-constr',
-    'use_est_param': False,   # Use this to reduce model based on EP
-    'use_scaling' : True,
-    'cross_updating' : True,
-    }
-
-print(d_init_guess)
-
-nsd = NSD(models, d_init_guess, parameter_var_name, options)
-results, od = nsd.nested_schur_decomposition(debug=True)
+# d_init_guess = {k: (1.2*p_init[k], p) for k, p in builder._parameters_bounds.items()}
+# #d_init_guess = {p.name: (p.init, p.bounds) for i, p in enumerate(parameters)}
 
 
-print(f'\nThe final parameter values are:\n{nsd.parameters_opt}')
+# # NSD routine
+
+# # If there is only one parameter it does not really update - it helps if you
+# # let the other infomation "seep in" from the other experiments.
+
+# # This is very slow and takes a long time for spectra problems
+# # I need to try this with multiple data sets.
+
+# parameter_var_name = 'P'
+# options = {
+#     'method': 'trust-constr',
+#     'use_est_param': False,   # Use this to reduce model based on EP
+#     'use_scaling' : True,
+#     'cross_updating' : True,
+#     }
+
+# print(d_init_guess)
+
+# nsd = NSD(models, d_init_guess, parameter_var_name, options)
+# results, od = nsd.nested_schur_decomposition(debug=True)
+
+
+# print(f'\nThe final parameter values are:\n{nsd.parameters_opt}')
         
-nsd.plot_paths('')
+# nsd.plot_paths('')

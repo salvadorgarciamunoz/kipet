@@ -3,12 +3,15 @@ Additional Input Options for Variance and Parameter Estimation Classes
 Place into Optimizer?
 """
 
-def add_inputs(est_object):
-    est_object.fixedtraj = fixedtraj
-    est_object.fixedy = fixedy
-    est_object.inputs_sub = inputs_sub
-    est_object.yfix = yfix
-    est_object.yfixtraj = yfixtraj
+def add_inputs(est_object, kwds):
+    
+    est_object.fixedtraj = kwds.pop("fixedtraj", False)
+    est_object.fixedy = kwds.pop("fixedy", False)
+    est_object.inputs_sub = kwds.pop("inputs_sub", None)
+    est_object.yfix = kwds.pop("yfix", None)
+    est_object.yfixtraj = kwds.pop("yfixtraj", None)
+    trajectories = kwds.pop("trajectories", None)
+    
     if est_object.inputs_sub != None:
         for k in est_object.inputs_sub.keys():
             if not isinstance(est_object.inputs_sub[k], list):

@@ -3,9 +3,21 @@ Plotting functions for KIPET
 
 """
 import matplotlib.pyplot as plt
+import matplotlib.colors as mpc
+import numpy as np
 import pandas as pd
 
 
+COLOR_SET = [
+            [0, 0.4470, 0.7410], 	          
+          	[0.8500, 0.3250, 0.0980], 	          	
+          	[0.9290, 0.6940, 0.1250], 	          	
+          	[0.4940, 0.1840, 0.5560], 	          	
+          	[0.4660, 0.6740, 0.1880], 	          	
+          	[0.3010, 0.7450, 0.9330],
+          	[0.6350, 0.0780, 0.1840], 	          	
+    ]
+    
 def make_plot(results_object, data, *args, **kwargs):
     """Make a plot of the results
     
@@ -23,10 +35,11 @@ def make_plot(results_object, data, *args, **kwargs):
         
     """    
     # Figure options
-    xlabel = kwargs.get('xlabel', 'time(s)')    
-    ylabel = kwargs.get('ylabel', 'Concentration (mol/L)')
-    title = kwargs.get('title', 'Concentration Profile')
+    xlabel = kwargs.get('xlabel', 'Time (Unit)')    
+    ylabel = kwargs.get('ylabel', 'Concentration (Unit)')
+    title = kwargs.get('title', 'Concentration Profiles')
     figsize = kwargs.get('figsize', (30, 10))    
+    fontsize = kwargs.get('fontsize', 14)
 
     # Data variable
     data_type = {
@@ -37,23 +50,25 @@ def make_plot(results_object, data, *args, **kwargs):
     # Make plot
     fig, ax = plt.subplots(figsize=figsize)
     
-    for col in getattr(results_object, data_type[data][0]).columns:
+    for i, col in enumerate(getattr(results_object, data_type[data][1]).columns):
 
+        i = divmod(i, 7)[1]
         # Plot the experimental data
-        plot_data = getattr(results_object, data_type[data][0])[col].dropna()
-        ax.scatter(plot_data.index.values, plot_data.values, marker='o')
+        if col in getattr(results_object, data_type[data][0]).columns:
+            plot_data = getattr(results_object, data_type[data][0])[col].dropna()
+            ax.scatter(plot_data.index.values, plot_data.values, marker='o', color=COLOR_SET[i], label=col + f' ({data_type[data][0]})')
         
         # Plot the predicted data
         plot_data = getattr(results_object, data_type[data][1])[col].dropna()
-        ax.plot(plot_data.index.values, plot_data.values, label=col)
+        ax.plot(plot_data.index.values, plot_data.values, color=COLOR_SET[i], label=col + f' ({data_type[data][1]})')
         
     # Plot annotations
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.title(title)
+    plt.xlabel(xlabel, fontsize=fontsize)
+    plt.ylabel(ylabel, fontsize=fontsize)
+    plt.title(title, fontsize=fontsize)
     plt.legend()
     plt.show()
-
+    
     return None
 
 

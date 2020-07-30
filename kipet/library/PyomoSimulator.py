@@ -1,14 +1,12 @@
-import six
 import sys
 import warnings
 
-from pyomo.core.expr import current as EXPR
 from pyomo.dae import *
 from pyomo.environ import *
 
 from kipet.library.ResultsObject import *
 from kipet.library.Simulator import *
-from kipet.library.mixins.VisitorMixins import ScalingVisitor
+from kipet.library.common.VisitorClasses import ScalingVisitor
 
     
 class PyomoSimulator(Simulator):
@@ -388,6 +386,7 @@ class PyomoSimulator(Simulator):
         for component in to_initialize:
             single_trajectory = trajectories[component]
             for t in inner_set:
+                #print(t)
                 val = interpolate_from_trajectory(t, single_trajectory)
                 if not np.isnan(val):
                     var[t, component].value = val
@@ -524,7 +523,7 @@ class PyomoSimulator(Simulator):
             Dhat_var = self.model.Dhat
             Chat_var = self.model.Chat
         # check all parameters are fixed before simulating
-        for p_var_data in six.itervalues(P_var):
+        for p_var_data in P_var.values():
             if not p_var_data.fixed:
                 raise RuntimeError(
                     'For simulation fix all parameters. Parameter {} is unfixed'.format(p_var_data.cname()))
@@ -533,7 +532,7 @@ class PyomoSimulator(Simulator):
         if self.model.nobjectives():
             objectives_map = self.model.component_map(ctype=Objective, active=True)
             active_objectives_names = []
-            for obj in six.itervalues(objectives_map):
+            for obj in objectives_map.values():
                 name = obj.cname()
                 active_objectives_names.append(name)
                 str_warning = 'Deactivating objective {} for simulation'.format(name)
@@ -702,6 +701,3 @@ class PyomoSimulator(Simulator):
 
         results.P = param_vals
         return results
-
-
-
