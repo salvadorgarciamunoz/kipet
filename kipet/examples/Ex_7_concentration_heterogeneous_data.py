@@ -6,10 +6,12 @@ Example 7 - Concentration as input with missing or incongruent data
 This also shows some other new features of Kipet as well
 
 """
-import matplotlib.pyplot as plt
+import inspect
 import os
 import sys
 import pathlib
+
+import matplotlib.pyplot as plt
 import pandas as pd
 
 from kipet.library.TemplateBuilder import *
@@ -27,9 +29,15 @@ if __name__ == "__main__":
     #=========================================================================
     #USER INPUT SECTION - REQUIRED MODEL BUILDING ACTIONS
     #=========================================================================
+    data_file = 'missing_data.txt'
+    directory = 'data_sets'
     
-    filename ='missing_data.txt'
-    # New generic data read method - handles all of the path stuff now
+    dataDirectory = os.path.abspath(
+    os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
+        inspect.currentframe() ) ) ), directory))
+    filename =  os.path.join(dataDirectory, data_file)
+    
+    # New generic data read method
     C_frame = read_file(filename)
     
     # Also with optional directory if not in the default

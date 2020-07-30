@@ -153,18 +153,16 @@ class VarianceEstimator(Optimizer):
                 else:
                     warnings.warn("Ignored {} since is not a mixture component of the model".format(k))
 
-        self._sublist_components = list_components
-
         # Set up the correct components based on absorption
         if hasattr(self.model, 'non_absorbing'):
             warnings.warn("Overriden by non_absorbing")
             list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
-            self._sublist_components = list_components
         
         if hasattr(self.model, 'known_absorbance'):
             warnings.warn("Overriden by species with known absorbance")
             list_components = [k for k in self._mixture_components if k not in self._known_absorbance]
-            self._sublist_components = list_components
+        
+        self._sublist_components = list_components
         
         if hasattr(self, '_abs_components'):
             self.component_set = self._abs_components
@@ -280,17 +278,15 @@ class VarianceEstimator(Optimizer):
     
         list_components = [k for k in self._mixture_components]
                     
-        self._sublist_components = list_components
-    
         if hasattr(self.model, 'non_absorbing'):
             warnings.warn("Overriden by non_absorbing")
             list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
-            self._sublist_components = list_components
         
         if hasattr(self.model, 'known_absorbance'):
             warnings.warn("Overriden by species with known absorbance")
             list_components = [k for k in self._mixture_components if k not in self._known_absorbance]
-            self._sublist_components = list_components
+        
+        self._sublist_components = list_components
             
         print("Solving For the worst possible device variance\n")
         

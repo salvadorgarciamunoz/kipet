@@ -104,8 +104,9 @@ class Optimizer(JumpsMixin, PyomoSimulator):
                 
                         
             Bd = coo_matrix((data, (row, col)),
-                                         shape=(self._n_meas_times*self._n_meas_lambdas,
-                                                self._n_components*self._n_meas_lambdas))
+                            shape=(self._n_meas_times*self._n_meas_lambdas,
+                                   self._n_components*self._n_meas_lambdas)
+                            )
 
             if not with_bounds:
                 if self._n_meas_times == self._n_components:
