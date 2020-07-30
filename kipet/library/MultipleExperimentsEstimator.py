@@ -2032,7 +2032,7 @@ class MultipleExperimentsEstimator(object):
         #these solutions to initialize
         m = ConcreteModel()
         m.solver_opts = solver_opts
-        m.tee = True #tee
+        m.tee = tee
         
         if scaled_variance == True:
             var_scaled = dict()
@@ -2230,7 +2230,6 @@ class MultipleExperimentsEstimator(object):
         m.obj = Objective(sense = minimize, expr=sum(b.error for b in m.experiment[:]))
         self.model = m
         
-        tee =True
         if covariance and solver == 'k_aug' and self._spectra_given:
             #Not yet working
             
