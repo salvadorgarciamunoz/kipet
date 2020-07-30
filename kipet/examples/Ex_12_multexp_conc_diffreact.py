@@ -284,7 +284,7 @@ if __name__ == "__main__":
     # Finally we run the parameter estimation. This solves each dataset separately first and then
     # links the models and solves it simultaneously
     results_pest = pest.run_parameter_estimation(solver = 'ipopt_sens', 
-                                                        tee=False,
+                                                         tee=True,
                                                          nfe=nfe,
                                                          ncp=ncp,
                                                          covariance = True,

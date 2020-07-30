@@ -29,7 +29,7 @@ def generate_absorbance_data(wl_span,parameters_dict):
     array = np.zeros((n_lambdas,n_components))
     for i,l in enumerate(wl_span):
         j = 0
-        for k,p in six.iteritems(parameters_dict):
+        for k, p in parameters_dict.items():
             alphas = p['alphas']
             betas  = p['betas']
             gammas = p['gammas']

@@ -106,7 +106,7 @@ if __name__ == "__main__":
         
         plt.show()
     
-    write_concentration_data_to_csv('sim_data.csv',data)
+    write_concentration_data_to_csv('sim_data.csv', data)
     
     # Load spectral data from the file location. 
     #################################################################################

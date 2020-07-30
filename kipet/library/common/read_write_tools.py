@@ -10,6 +10,18 @@ import numpy as np
 import pandas as pd
 
 def _set_directory(filename, directory):
+    """Sets the current working directory plus the given subdirectory as the
+    directory for the given data file (filename)
+    
+    Args:
+        filename (str): name of input file
+        
+        directory (str): name of directory with data file
+          
+    Returns:
+        filename (Path): the full filename of the data
+    
+    """
     
     data_dir = Path.cwd().joinpath(directory)
     filename = data_dir.joinpath(Path(filename))
@@ -21,6 +33,8 @@ def read_file(filename, directory='data_sets'):
     
         Args:
             filename (str): name of input file
+            
+            directory (str): name of data directory if not Kipet default
           
         Returns:
             DataFrame
@@ -54,7 +68,7 @@ def read_file(filename, directory='data_sets'):
         raise ValueError(f'The file extension {filename.suffix} is currently not supported')
         return None
 
-def write_file(filename, dataframe, filetype='csv'):
+def write_file(filename, dataframe, filetype='csv', directory='data_sets'):
     """ Write data to file.
     
         Args:
@@ -74,7 +88,7 @@ def write_file(filename, dataframe, filetype='csv'):
     
     suffix = '.' + filetype
     
-    filename = Path(filename)
+    filename = Path(directory).joinpath(filename)
     if filename.suffix == '':
         filename = filename.with_suffix(suffix)
     else:
@@ -133,7 +147,7 @@ def read_spectral_data_from_csv(filename, instrument = False, negatives_to_zero 
 
 # Legacy functions
 
-def write_spectral_data_to_csv(filename,dataframe):
+def write_spectral_data_to_csv(filename, dataframe, directory='data_sets'):
     """ Write spectral data Dij to csv file.
     
         Args:
@@ -144,9 +158,9 @@ def write_spectral_data_to_csv(filename,dataframe):
         Returns:
             None
     """
-    write_file(filename, dataframe, 'csv')
+    write_file(filename, dataframe, 'csv', directory)
 
-def write_spectral_data_to_txt(filename,dataframe):
+def write_spectral_data_to_txt(filename, dataframe, directory='data_sets'):
     """ Write spectral data Dij to txt file.
     
         Args:
@@ -158,9 +172,9 @@ def write_spectral_data_to_txt(filename,dataframe):
             None
     
     """
-    write_file(filename, dataframe, 'txt')
+    write_file(filename, dataframe, 'txt', directory)
 
-def write_absorption_data_to_csv(filename,dataframe):
+def write_absorption_data_to_csv(filename, dataframe, directory='data_sets'):
     """ Write absorption data Sij to csv file.
     
         Args:
@@ -171,9 +185,9 @@ def write_absorption_data_to_csv(filename,dataframe):
         Returns:
             None
     """
-    write_file(filename, dataframe, 'csv')
+    write_file(filename, dataframe, 'csv', directory)
 
-def write_absorption_data_to_txt(filename,dataframe):
+def write_absorption_data_to_txt(filename, dataframe, directory='data_sets'):
     """ Write absorption data Sij to txt file.
     
         Args:
@@ -184,9 +198,9 @@ def write_absorption_data_to_txt(filename,dataframe):
         Returns:
             None
     """
-    write_file(filename, dataframe, 'txt')
+    write_file(filename, dataframe, 'txt', directory)
 
-def write_concentration_data_to_csv(filename,dataframe):
+def write_concentration_data_to_csv(filename, dataframe, directory='data_sets'):
     """ Write concentration data Cij to csv file.
     
         Args:
@@ -197,9 +211,9 @@ def write_concentration_data_to_csv(filename,dataframe):
         Returns:
             None
     """
-    write_file(filename, dataframe, 'csv')
+    write_file(filename, dataframe, 'csv', directory)
 
-def write_concentration_data_to_txt(filename,dataframe):
+def write_concentration_data_to_txt(filename, dataframe, directory='data_sets'):
     """ Write concentration data Cij to txt file.
     
         Args:
@@ -210,7 +224,7 @@ def write_concentration_data_to_txt(filename,dataframe):
         Returns:
             None
     """
-    write_file(filename, dataframe, 'txt')
+    write_file(filename, dataframe, 'txt', directory)
 
 
 def read_concentration_data(filename):

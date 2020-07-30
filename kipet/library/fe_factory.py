@@ -1,21 +1,22 @@
-# -*- coding: utf-8 -*-
-
-from __future__ import print_function
-from pyomo.environ import *
-from pyomo.dae import *
-from pyomo.opt import SolverFactory, ProblemFormat, TerminationCondition
-from pyomo import *
-from pyomo.core.base.sets import _SetProduct
-#from pyomo.core.kernel.numvalue import value as value
+import math
 from os import getcwd, remove
 import sys
-import six
-from pyomo.core.expr import current as EXPR
-from pyomo.core.expr.numvalue import NumericConstant
+
 import numpy as np
-import math
 import pandas as pd
 
+from pyomo import *
+from pyomo.core.base.sets import _SetProduct
+from pyomo.core.expr.numvalue import NumericConstant
+from pyomo.dae import *
+from pyomo.environ import *
+from pyomo.opt import (
+    ProblemFormat,
+    SolverFactory,
+    TerminationCondition,
+    )
+
+from kipet.library.common.VisitorClasses import ReplacementVisitor
 
 __author__ = 'David M Thierry'  #: April 2018
 
@@ -443,14 +444,12 @@ class fe_initialize(object):
         self.jump_times_dict = jump_times #now dictionary
         self.feed_times_set = feed_times
         count = 0
-        for i in six.iterkeys(self.jump_times_dict):
-            for j in six.iteritems(self.jump_times_dict[i]):
+        for i in self.jump_times_dict.keys():
+            for j in self.jump_times_dict[i].items():
                 count += 1
         if len(self.feed_times_set) > count:
             raise Exception("Error: Check feed time points in set feed_times and in jump_times again.\n"
                             "There are more time points in feed_times than jump_times provided.")
-
-
 
     def cycle_ics(self, curr_fe):
         """Cycles the initial conditions of the initializing model.
@@ -797,38 +796,3 @@ def fe_cp(time_set, feedtime):
             break
         j += 1
     return fe, cp
-
-
-#: This class can replace variables from an expression
-class ReplacementVisitor(EXPR.ExpressionReplacementVisitor):
-    def __init__(self):
-        super(ReplacementVisitor, self).__init__()
-        self._replacement = None
-        self._suspect = None
-
-    def change_suspect(self, suspect_):
-        self._suspect = suspect_
-
-    def change_replacement(self, replacement_):
-        self._replacement = replacement_
-
-    def visiting_potential_leaf(self, node):
-        #
-        # Clone leaf nodes in the expression tree
-        #
-        if node.__class__ in native_numeric_types:
-            return True, node
-
-        if node.__class__ is NumericConstant:
-            return True, node
-
-
-        if node.is_variable_type():
-            if id(node) == self._suspect:
-                d = self._replacement
-                return True, d
-            else:
-                return True, node
-
-        return False, None
-

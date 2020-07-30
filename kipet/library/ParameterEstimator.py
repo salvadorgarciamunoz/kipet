@@ -266,7 +266,7 @@ class ParameterEstimator(Optimizer):
         for key, val in solver_opts.items():
             opt.options[key] = val
             
-        tee=False
+        tee=True
         active_objectives = [o for o in self.model.component_map(Objective, active=True)]
         if active_objectives:
             print(
