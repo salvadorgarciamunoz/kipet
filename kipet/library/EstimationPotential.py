@@ -4,7 +4,6 @@ need in order for it to work properly.
 
 @author: Kevin McBride
 """
-
 import copy
 from pathlib import Path
 from string import Template
@@ -26,9 +25,14 @@ from pyomo.environ import (
     Set,
     )
 
+from kipet.library.common.read_write_tools import df_from_pyomo_data
 from kipet.library.ParameterEstimator import ParameterEstimator
 from kipet.library.PyomoSimulator import PyomoSimulator
 from kipet.library.TemplateBuilder import TemplateBuilder
+from kipet.library.common.objectives import (
+    conc_objective,
+    comp_objective,
+    )
 
 __author__ = 'Kevin McBride'  #: April 2020
     
@@ -397,11 +401,11 @@ class EstimationPotential(ParameterEstimator):
         exp_data = list(self.model.measured_data.keys())
         
         if len(self.model.mixture_components.value) > 0:
-            dfz = self._get_simulated_data(state='Z')       
+            dfz = df_from_pyomo_data(self.model.Z)       
             dfc = None
         
             if len(self.model.mixture_components.value & self.model.measured_data.value) > 0:        
-                dfc = self._get_simulated_data(state='C')
+                dfc = df_from_pyomo_data(self.model.C)
             
                 for col in dfc.columns:
                     if col not in exp_data:
@@ -425,11 +429,11 @@ class EstimationPotential(ParameterEstimator):
             plt.show()
             
         if len(self.model.complementary_states.value) > 0:
-            dfx = self._get_simulated_data(state='X')
+            dfx = df_from_pyomo_data(self.model.X)  
             dfu = None
             
             if len(self.model.complementary_states.value & self.model.measured_data.value) > 0:
-                dfu = self._get_simulated_data(state='U')  
+                dfu = df_from_pyomo_data(self.model.U)  
             
                 for col in dfu.columns:
                     if col not in exp_data:
@@ -541,15 +545,12 @@ class EstimationPotential(ParameterEstimator):
         
         """
         obj = 0
-
-        # This can be cleaned up
-        for k in model.mixture_components & model.measured_data:
-            for t, v in model.C.items():
-                obj += 0.5*(model.C[t] - model.Z[t]) ** 2 / model.sigma[k]**2
-        
-        for k in model.complementary_states & model.measured_data:
-            for t, v in model.U.items():
-                obj += 0.5*(model.X[t] - model.U[t]) ** 2 / model.sigma[k]**2      
+        #if model.mixture_components & model.measured_data:
+        obj += conc_objective(model) 
+        #if model.complementary_states & model.measured_data:
+        obj += comp_objective(model)
+        # obj += conc_objective(model)
+        #obj += comp_objective(model)  
     
         return Objective(expr=obj)
    
@@ -717,26 +718,7 @@ class EstimationPotential(ParameterEstimator):
         rp = [d_sqrt[i]/max(self.epsilon, self.model.P[k].value) for i, k in enumerate(Se)]
         
         return rp, eigenvalues
-    
-    def _get_simulated_data(self, state='C'):
-    
-        val = []
-        ix = []
-        varobject = getattr(self.model, state)
-        for index in varobject:
-            ix.append(index)
-            val.append(varobject[index].value)
-        
-        a = pd.Series(index=ix, data=val)
-        dfs = pd.DataFrame(a)
-        index = pd.MultiIndex.from_tuples(dfs.index)
-       
-        dfs = dfs.reindex(index)
-        dfs = dfs.unstack()
-        dfs.columns = [v[1] for v in dfs.columns]
-    
-        return dfs
-        
+     
     def _rank_parameters(self, reduced_hessian, param_list):
         """Performs the parameter ranking based using the Gauss-Jordan
         elimination procedure.

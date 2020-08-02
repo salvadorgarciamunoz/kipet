@@ -37,7 +37,7 @@ if __name__ == "__main__":
         
     #=========================================================================
     #USER INPUT SECTION - REQUIRED MODEL BUILDING ACTIONS
-    #=========================================================================
+    #=====================================================`====================
        
     
     # Load spectral data from the relevant file location. As described in section 4.3.1
@@ -46,7 +46,7 @@ if __name__ == "__main__":
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
             inspect.currentframe() ) ) ), 'data_sets'))
     filename =  os.path.join(dataDirectory,'Dij.txt')
-    D_frame = read_spectral_data_from_txt(filename)
+    D_frame = read_file(filename)
 
     # Then we build dae block for as described in the section 4.2.1. Note the addition
     # of the data using .add_spectral_data
@@ -56,8 +56,9 @@ if __name__ == "__main__":
     builder.add_mixture_component(components)
     builder.add_parameter('k1', init=4.0, bounds=(0.0,5.0)) 
     #There is also the option of providing initial values: Just add init=... as additional argument as above.
-    builder.add_parameter('k2',bounds=(0.0,1.0))
+    builder.add_parameter('k2', init=2, bounds=(0.0,1.0))
     builder.add_spectral_data(D_frame)
+
 
     # define explicit system of ODEs
     def rule_odes(m,t):
@@ -68,7 +69,10 @@ if __name__ == "__main__":
         return exprs
     
     builder.set_odes_rule(rule_odes)
+    builder.bound_profile(var='S', bounds=(0, 200))
     opt_model = builder.create_pyomo_model(0.0,10.0)
+    
+    #%
     
     #=========================================================================
     #USER INPUT SECTION - VARIANCE ESTIMATION 
@@ -141,6 +145,11 @@ if __name__ == "__main__":
                                       solver_opts = options,
                                       variances=sigmas)
 
+    # The p_estimator models are needed for the NSD algorithm after C has
+    # been found...
+    # Try this using a single instance...
+    # Initial values are the parameters found using the PE
+
     # And display the results
     print("The estimated parameters are:")
     for k,v in six.iteritems(results_pyomo.P):
@@ -157,5 +166,5 @@ if __name__ == "__main__":
         plt.xlabel("Wavelength (cm)")
         plt.ylabel("Absorbance (L/(mol cm))")
         plt.title("Absorbance  Profile")
-    
+
         plt.show()

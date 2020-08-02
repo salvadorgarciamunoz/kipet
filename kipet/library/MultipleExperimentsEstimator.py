@@ -1269,7 +1269,7 @@ class MultipleExperimentsEstimator(object):
         
         if covariance and solver == 'ipopt_sens':
             self._tmpfile = "ipopt_hess"
-            solver_results = optimizer.solve(m, tee=False,
+            solver_results = optimizer.solve(m, tee=tee,
                                              logfile=self._tmpfile,
                                              report_timing=True)
 

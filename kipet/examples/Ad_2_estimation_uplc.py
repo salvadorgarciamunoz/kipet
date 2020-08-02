@@ -46,7 +46,7 @@ if __name__ == "__main__":
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
             inspect.currentframe() ) ) ), 'data_sets'))
     filename =  os.path.join(dataDirectory,'Dij.txt')
-    D_frame = read_spectral_data_from_txt(filename)
+    D_frame = read_file(filename)
 
     # Then we build dae block for as described in the section 4.2.1. Note the addition
     # of the data using .add_spectral_data
@@ -113,7 +113,7 @@ if __name__ == "__main__":
     #=========================================================================
     # In order to run the paramter estimation we create a pyomo model as described in section 4.3.4
     filename2 = os.path.join(dataDirectory, 'UPLCdata2.csv')
-    add_frame = read_concentration_data_from_csv(filename2)
+    add_frame = read_file(filename2)
 
     #Some examples for preprocessing:
     #mD_frame = msc(dataFrame = D_frame)
@@ -159,7 +159,7 @@ if __name__ == "__main__":
                                       variances=sigmas#,
                                       # weights=[1.,1.,1e8]#for adjusting the weights related to the terms in the objective, here with higher weight for the uplc data
                                         )
-    write_concentration_data_to_csv('resultsimZ.csv', results_pyomo.Z)
+    write_file('resultsimZ.csv', results_pyomo.Z)
     lof = p_estimator.lack_of_fit()
     lof2 = p_estimator.lack_of_fit_huplc()
 

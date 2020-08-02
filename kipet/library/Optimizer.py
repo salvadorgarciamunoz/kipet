@@ -1,21 +1,26 @@
-# -*- coding: utf-8 -*-
-from __future__ import print_function
-from __future__ import division
+"""
+Base Optimizer Class
+"""
+import numpy as np
+from scipy.sparse import coo_matrix
+from scipy.sparse.linalg import (
+    lsqr,
+    spsolve,
+    ) 
+from scipy.optimize import least_squares
 
-import copy
-import scipy
-import six
-import sys
-
-from contextlib import contextmanager
 from pyomo.dae import *
 from pyomo.environ import *
-from scipy.optimize import least_squares
+from pyomo.environ import (
+    Suffix,
+    )
 
 from kipet.library.PyomoSimulator import *
 from kipet.library.ResultsObject import *
+from kipet.library.mixins.JumpsMixin import JumpsMixin
 
-class Optimizer(PyomoSimulator):
+
+class Optimizer(JumpsMixin, PyomoSimulator):
     """Base optimizer class.
 
     Note:
@@ -25,7 +30,7 @@ class Optimizer(PyomoSimulator):
         model (model): Pyomo model.
 
     """
-    def __init__(self,model):
+    def __init__(self, model):
         """Optimizer constructor.
 
         Note: 
@@ -38,13 +43,41 @@ class Optimizer(PyomoSimulator):
         """
         super(Optimizer, self).__init__(model)
         
-    def run_sim(self,solver,**kdws):
+    def run_sim(self, solver, **kdws):
         raise NotImplementedError("Optimizer abstract method. Call child class")       
 
-    def run_opt(self,solver,**kwds):
+    def run_opt(self, solver, **kwds):
         raise NotImplementedError("Optimizer abstract method. Call child class")
-
-    def _solve_S_from_DC(self,C_dataFrame,tee=False,with_bounds=False,max_iter=200):
+        
+    @staticmethod
+    def add_warm_start_suffixes(model, use_k_aug=False):
+        """Adds suffixed variables to problem"""
+        
+        # Ipopt bound multipliers (obtained from solution)
+        model.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
+        model.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+        # Ipopt bound multipliers (sent to solver)
+        model.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
+        model.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
+        # Obtain dual solutions from first solve and send to warm start
+        model.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
+        
+        if use_k_aug:
+            model.dof_v = Suffix(direction=Suffix.EXPORT)
+            model.rh_name = Suffix(direction=Suffix.IMPORT)
+            
+        return None
+            
+    @staticmethod
+    def update_warm_start(model):
+        """Updates the suffixed variables for a warmstart"""
+        
+        model.ipopt_zL_in.update(model.ipopt_zL_out)
+        model.ipopt_zU_in.update(model.ipopt_zU_out)
+        
+        return None
+    
+    def _solve_S_from_DC(self, C_dataFrame, tee=False, with_bounds=False, max_iter=200):
         """Solves a basic least squares problems with SVD.
         
         Args:
@@ -52,7 +85,6 @@ class Optimizer(PyomoSimulator):
         
         Returns:
             DataFrame with estimated S_values 
-
         """
         D_data = self.model.D
         if self._n_meas_lambdas:
@@ -71,15 +103,16 @@ class Optimizer(PyomoSimulator):
                     D_vector[i*self._n_meas_lambdas+j] = D_data[t,l]    
                 
                         
-            Bd = scipy.sparse.coo_matrix((data, (row, col)),
-                                         shape=(self._n_meas_times*self._n_meas_lambdas,
-                                                self._n_components*self._n_meas_lambdas))
+            Bd = coo_matrix((data, (row, col)),
+                            shape=(self._n_meas_times*self._n_meas_lambdas,
+                                   self._n_components*self._n_meas_lambdas)
+                            )
 
             if not with_bounds:
                 if self._n_meas_times == self._n_components:
-                    s_array = scipy.sparse.linalg.spsolve(Bd, D_vector)
+                    s_array = spsolve(Bd, D_vector)
                 elif self._n_meas_times>self._n_components:
-                    result_ls = scipy.sparse.linalg.lsqr(Bd, D_vector,show=tee)
+                    result_ls = lsqr(Bd, D_vector,show=tee)
                     s_array = result_ls[0]
                 else:
                     raise RuntimeError('Need n_t_meas >= self._n_components')
@@ -112,8 +145,8 @@ class Optimizer(PyomoSimulator):
             s_shaped = np.empty((self._n_meas_lambdas,self._n_components))
 
         return s_shaped
-
-    def run_lsq_given_P(self,solver,parameters,**kwds):
+    
+    def run_lsq_given_P(self, solver, parameters, **kwds):
         """Gives a raw estimate of S given kinetic parameters.
         
         Args:
@@ -126,13 +159,11 @@ class Optimizer(PyomoSimulator):
             
             tee (bool,optional): flag to tell the optimizer whether to stream output
             to the terminal or not
-
             initialization (bool, optional): flag indicating whether result should be 
             loaded or not to the pyomo model
         
         Returns:
             Results object with loaded results
-
         """
         solver_opts = kwds.pop('solver_opts', dict())
         variances = kwds.pop('variances',dict())
@@ -149,7 +180,7 @@ class Optimizer(PyomoSimulator):
         base_values = ResultsObject()
         base_values.load_from_pyomo_model(self.model,
                                           to_load=['Z','dZdt','X','dXdt','Y'])
-
+        
         # fixes parameters 
         old_values = {}        
         for k,v in parameters.items():
@@ -165,7 +196,7 @@ class Optimizer(PyomoSimulator):
         # deactivates objective functions for simulation                
         objectives_map = self.model.component_map(ctype=Objective,active=True)
         active_objectives_names = []
-        for obj in six.itervalues(objectives_map):
+        for obj in objectives_map.values():
             name = obj.cname()
             active_objectives_names.append(name)
             obj.deactivate()
@@ -190,12 +221,12 @@ class Optimizer(PyomoSimulator):
             objectives_map[name].activate()
 
         # unstale variables that were marked stale
-        for var in six.itervalues(self.model.component_map(ctype=Var)):
-            if not isinstance(var,DerivativeVar):
-                for var_data in six.itervalues(var):
+        for var in self.model.component_map(ctype=Var).values():
+            if not isinstance(var, DerivativeVar):
+                for var_data in var.values():
                     var_data.stale=False
             else:
-                for var_data in six.itervalues(var):
+                for var_data in var.values():
                     var_data.stale=True
 
         # retriving solutions to results object  
@@ -254,13 +285,3 @@ class Optimizer(PyomoSimulator):
                 self.initialize_from_trajectory('dXdt',base_values.dXdt)
         
         return results
-
-# for redirecting stdout to files
-@contextmanager
-def stdout_redirector(stream):
-    old_stdout = sys.stdout
-    sys.stdout = stream
-    try:
-        yield
-    finally:
-        sys.stdout = old_stdout

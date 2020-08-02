@@ -66,7 +66,7 @@ if __name__ == "__main__":
 
     # Provide good initial guess
     p_guess = {'k1':0.006655}
-    raw_results = optimizer.run_lsq_given_P('ipopt',p_guess,tee=False)
+    raw_results = optimizer.run_lsq_given_P('ipopt',p_guess,tee=True)
     
     optimizer.initialize_from_trajectory('Z',raw_results.Z)
     optimizer.initialize_from_trajectory('S',raw_results.S)

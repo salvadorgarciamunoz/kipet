@@ -26,6 +26,7 @@ import os
 import sys
 import inspect
 import six
+import copy
 
 if __name__ == "__main__":
 
@@ -69,7 +70,7 @@ if __name__ == "__main__":
     builder.set_odes_rule(rule_odes)
     # Notice that to use the wavelength subset optimization we need to use make a copy of the builder
     # before we add the spectral data matrix
-    builder_before_data = builder
+    builder_before_data = copy.copy(builder)
     
     builder.add_spectral_data(D_frame)
     end_time = 10

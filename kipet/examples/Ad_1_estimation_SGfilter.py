@@ -19,6 +19,7 @@ from kipet.library.PyomoSimulator import *
 from kipet.library.ParameterEstimator import *
 from kipet.library.VarianceEstimator import *
 from kipet.library.data_tools import *
+from kipet.library.common.charts import plot_spectral_data
 import matplotlib.pyplot as plt
 import inspect
 import sys
@@ -43,7 +44,7 @@ if __name__ == "__main__":
             inspect.currentframe() ) ) ),'data_sets'))
     filename =  os.path.join(dataDirectory,'Dij_case51b.csv')
     D_frame = read_spectral_data_from_csv(filename)
-    fD_frame = savitzky_golay(dataFrame = D_frame, window_size = 15, orderPoly = 5)
+    D_frame = savitzky_golay(dataFrame = D_frame, window_size = 15, orderPoly = 5)
 
     builder = TemplateBuilder()    
     components = {'A':1.0,'B':0,'C':0}
@@ -52,7 +53,7 @@ if __name__ == "__main__":
     # note the parameter is not fixed here
     builder.add_parameter('k1',bounds=(0.0,1.0))
     builder.add_parameter('k2',bounds=(0.0,1.0))
-    builder.add_spectral_data(fD_frame)
+    builder.add_spectral_data(D_frame)
 
     # define explicit system of ODEs
     def rule_odes(m,t):
@@ -70,7 +71,6 @@ if __name__ == "__main__":
     #=========================================================================
     # USER INPUT SECTION - PARAMETER ESTIMATION 
     #=========================================================================
-        
     optimizer = ParameterEstimator(pyomo_model)
 
     optimizer.apply_discretization('dae.collocation',nfe=30,ncp=1,scheme='LAGRANGE-RADAU')
@@ -79,8 +79,9 @@ if __name__ == "__main__":
     # parameters. The results of the least squares will then be used to initialize the 
     # parameter estimation optimization. (Described in Section 5.6 of documentation)
     p_guess = {'k1':0.3,'k2':0.05}
-    raw_results = optimizer.run_lsq_given_P('ipopt',p_guess,tee=False)
     
+    raw_results = optimizer.run_lsq_given_P('ipopt',p_guess,tee=False)
+
     optimizer.initialize_from_trajectory('Z',raw_results.Z)
     optimizer.initialize_from_trajectory('S',raw_results.S)
     optimizer.initialize_from_trajectory('dZdt',raw_results.dZdt)
@@ -107,7 +108,7 @@ if __name__ == "__main__":
     # display results
     if with_plots:
         plot_spectral_data(D_frame,dimension='3D')
-        plot_spectral_data(fD_frame,dimension='3D')
+        plot_spectral_data(D_frame,dimension='3D')
         results_pyomo.C.plot.line(legend=True)
         plt.xlabel("time (s)")
         plt.ylabel("Concentration (mol/L)")
@@ -120,5 +121,3 @@ if __name__ == "__main__":
         plt.title("Absorbance  Profile")
 
         plt.show()
-
-

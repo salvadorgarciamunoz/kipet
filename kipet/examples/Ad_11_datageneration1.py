@@ -17,6 +17,8 @@ from kipet.library.PyomoSimulator import *
 from kipet.library.data_tools import *
 from kipet.library.ParameterEstimator import *
 from kipet.library.VarianceEstimator import *
+from kipet.library.common.charts import plot_spectral_data
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
