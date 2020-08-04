@@ -34,6 +34,7 @@ def conc_objective(model, *args, **kwargs):
 
     """
     obj=0
+  
     if model.mixture_components & model.measured_data:
         for index, values in model.C.items():
             obj += _concentration_term(model, index, **kwargs)
@@ -163,8 +164,7 @@ def _concentration_term(model, index, **kwargs):
     else:
         sigma = custom_sigma[index[1]]
     
-    objective_concentration_term = 0.5*(model.C[index] - model.Z[index]) ** 2 \
-        / sigma**2
+    objective_concentration_term = 0.5*(model.C[index] - model.Z[index]) ** 2  / sigma
     
     return objective_concentration_term
     

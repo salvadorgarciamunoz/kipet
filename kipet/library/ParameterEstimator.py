@@ -440,7 +440,6 @@ class ParameterEstimator(Optimizer):
         Returns:
             None
         """
-
         tee = kwds.pop('tee', False)
         with_d_vars = kwds.pop('with_d_vars', False)
 
@@ -643,7 +642,7 @@ class ParameterEstimator(Optimizer):
         Returns:
             None
         """
-
+        
         tee = kwds.pop('tee', False)
         if self._huplc_given:  # added for new huplc structure CS
             weights = kwds.pop('weights', [0.0, 1.0, 1.0])
@@ -685,13 +684,13 @@ class ParameterEstimator(Optimizer):
             if penaltyparamcon == True:
                 rho = 100
                 sumpen = 0.0
-                obj += conc_objective(model)
+                obj += conc_objective(model, sigma=sigma_sq)
                 for t in model.allmeas_times:
                     sumpen += model.Y[t, 'npen']
                 fifth_term = rho * sumpen
                 obj += fifth_term
             else:
-                obj += conc_objective(model)
+                obj += conc_objective(model, sigma=sigma_sq)
             return obj
 
         model.objective = Objective(rule=rule_objective)
@@ -791,11 +790,17 @@ class ParameterEstimator(Optimizer):
                                   symbolic_solver_labels=labels,
                                   )
         
+         
         if labels:
             self._termination_problems(solver_results, optimizer)
         
         k_aug = SolverFactory('k_aug')
+        
+        model.ipopt_zL_in.display()
+        model.rh_name.display()
         self.update_warm_start(model)
+        model.ipopt_zL_in.display()
+        
         k_aug.solve(model, tee=tee)
         print("Done solving building reduce hessian")
 
@@ -817,6 +822,7 @@ class ParameterEstimator(Optimizer):
             os.remove('result_red_hess.txt')
         
         hessian = self._order_k_aug_hessian(unordered_hessian, var_loc)
+        
         if self._estimability == True:
             self.hessian = hessian
 
