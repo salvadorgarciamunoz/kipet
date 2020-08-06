@@ -26,6 +26,9 @@ class ResultsObject(object):
         self.P = None
         self.dZdt = None
         self.dXdt = None
+        
+        self.objective = None
+        self.parameter_covariance = None
 
     def __str__(self):
         string = "\nRESULTS\n"

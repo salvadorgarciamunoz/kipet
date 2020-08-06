@@ -266,30 +266,32 @@ class ParameterEstimator(Optimizer):
         for key, val in solver_opts.items():
             opt.options[key] = val
             
-        tee=True
-        active_objectives = [o for o in self.model.component_map(Objective, active=True)]
+        self.objective_value = 0
+        active_objectives = [o for o in self.model.component_map(Objective, active=True)]        
         if active_objectives:
             print(
                 "WARNING: The model has an active objective. Running optimization with models objective.\n"
                 " To solve optimization with default objective (Weifengs) deactivate all objectives in the model.")
             solver_results = opt.solve(self.model, tee=tee)
-                
+    
 
+        
         elif self._spectra_given:
-            self._solve_extended_model(variances, 
+            self.objective_value, self.cov_mat = self._solve_extended_model(variances, 
                                        opt,
                                        tee=tee,
                                        covariance=covariance,
                                        with_d_vars=with_d_vars,
                                        **kwds)
-
+            
+       
         elif self._concentration_given:
-            self._solve_model_given_c(variances, 
+            self.objective_value, self.cov_mat = self._solve_model_given_c(variances, 
                                       opt,
                                       tee=tee,
                                       covariance=covariance,
                                       **kwds)
-            
+       
         else:
             raise RuntimeError(
                 'Must either provide concentration data or spectra in order to solve the parameter estimation problem')
@@ -305,6 +307,9 @@ class ParameterEstimator(Optimizer):
         """Removed results unit from function"""
     
         results = ResultsObject()
+        
+        results.objective = self.objective_value
+        results.parameter_covariance = self.cov_mat
 
         if self._spectra_given:
             results.load_from_pyomo_model(self.model,
@@ -457,6 +462,7 @@ class ParameterEstimator(Optimizer):
         species_list = kwds.pop('subset_components', None)
         set_A = kwds.pop('subset_lambdas', list())
         self._eigredhess2file=eigredhess2file
+        cov_mat = None
 
         if not set_A:
             set_A = self._meas_lambdas
@@ -605,16 +611,16 @@ class ParameterEstimator(Optimizer):
         if covariance and self.solver == 'ipopt_sens':
             hessian = self._covariance_ipopt_sens(model, optimizer, tee, all_sigma_specified)
             if self.model_variance:
-                self._compute_covariance(hessian, sigma_sq)
+                cov_mat = self._compute_covariance(hessian, sigma_sq)
             else:
-                self._compute_covariance_no_model_variance(hessian, sigma_sq)
+                cov_mat = self._compute_covariance_no_model_variance(hessian, sigma_sq)
         
         elif covariance and self.solver == 'k_aug':
             hessian = self._covariance_k_aug(model, optimizer, tee, all_sigma_specified)
             if self.model_variance:
-                self._compute_covariance(hessian, sigma_sq)
+                cov_mat = self._compute_covariance(hessian, sigma_sq)
             else:
-                self._compute_covariance_no_model_variance(hessian, sigma_sq)
+                cov_mat = self._compute_covariance_no_model_variance(hessian, sigma_sq)
         
         else:
             solver_results = optimizer.solve(model, tee=tee)
@@ -623,9 +629,11 @@ class ParameterEstimator(Optimizer):
             model.del_component('D_bar')
             model.del_component('D_bar_constraint')
         
+        obj_val = model.objective.expr()
         model.del_component('objective')
-
-        return None
+        
+        return obj_val, cov_mat
+        
     
     def _solve_model_given_c(self, sigma_sq, optimizer, **kwds):
         """Solves estimation based on concentration data. (known variances)
@@ -657,6 +665,7 @@ class ParameterEstimator(Optimizer):
         ppenalty_weights = kwds.pop('ppenalty_weights', None)
         species_list = kwds.pop('subset_components', None)
         symbolic_solver_labels = kwds.pop('symbolic_solver_labels', False)
+        cov_mat = None
 
         list_components = self._get_list_components(species_list)
         model = self.model
@@ -704,12 +713,12 @@ class ParameterEstimator(Optimizer):
         if covariance and self.solver == 'ipopt_sens':
             hessian = self._covariance_ipopt_sens(model, optimizer, tee, all_sigma_specified)
             if self._concentration_given:
-                self._compute_covariance_C(hessian, sigma_sq)
+                cov_mat = self._compute_covariance_C(hessian, sigma_sq)
 
         elif covariance and self.solver == 'k_aug':
             hessian = self._covariance_k_aug(model, optimizer, tee, all_sigma_specified, labels=True)
             if self._concentration_given:
-                self._compute_covariance_C(hessian, sigma_sq)
+                cov_mat = self._compute_covariance_C(hessian, sigma_sq)
             
         elif self.solver == 'gams' and covariance==False:
             ip = SolverFactory('gams')
@@ -719,7 +728,10 @@ class ParameterEstimator(Optimizer):
             solver_results = optimizer.solve(model, tee=tee, symbolic_solver_labels=True)
             self._termination_problems(solver_results, optimizer)
             
+        obj_val = model.objective.expr()
         model.del_component('objective')
+        
+        return obj_val, cov_mat
     
     def _covariance_ipopt_sens(self, model, optimizer, tee, all_sigma_specified):
         """Generalize the covariance optimization with IPOPT Sens"""
@@ -1033,7 +1045,7 @@ class ParameterEstimator(Optimizer):
         variances_p = np.diag(V_theta)
         self._confidence_interval_display(variances_p)
         
-        return None
+        return V_theta
 
     def _compute_covariance_C_generic(self, hessian, variances, use_model_variance=False):
         """
@@ -1061,7 +1073,7 @@ class ParameterEstimator(Optimizer):
         print("Parameter variances: ", variances_p)
         self._confidence_interval_display(variances_p)
        
-        return None
+        return covariance_C
 
     def _compute_covariance_C(self, hessian, variances):
         """
@@ -1072,8 +1084,8 @@ class ParameterEstimator(Optimizer):
         This function is not intended to be used by the users directly
 
         """
-        self._compute_covariance_C_generic(hessian, variances, use_model_variance=True)
-        return None
+        cov_mat = self._compute_covariance_C_generic(hessian, variances, use_model_variance=True)
+        return cov_mat
 
     def _compute_covariance_no_model_variance(self, hessian, variances):
         """
@@ -1083,8 +1095,8 @@ class ParameterEstimator(Optimizer):
 
         This function is not intended to be used by the users directly
         """
-        self._compute_covariance_C_generic(hessian, variances, use_model_variance=False)
-        return None
+        cov_mat = self._compute_covariance_C_generic(hessian, variances, use_model_variance=False)
+        return cov_mat
     
     def _compute_B_matrix(self, variances, **kwds):
         """Builds B matrix for calculation of covariances
