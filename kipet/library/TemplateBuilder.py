@@ -555,6 +555,7 @@ class TemplateBuilder(object):
                     setattr(self, f'_{data_type}_data', df_data)
             else:
                 setattr(self, f'_{data_type}_data', dfallc)
+            
             if label in state_data:
                 self._all_state_data += list(data.columns)
         else:
@@ -608,7 +609,6 @@ class TemplateBuilder(object):
             None
 
         """
-        print(data)
         self._add_state_data(data,
                              data_type='concentration',
                              overwrite=overwrite)

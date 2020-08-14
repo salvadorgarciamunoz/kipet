@@ -20,6 +20,7 @@ from pyomo.opt import (
 from kipet.library.Optimizer import *
 from kipet.library.TemplateBuilder import *
 from kipet.library.common.read_hessian import *
+from kipet.library.common.pe_methods import *
 
 #from kipet.library.spectra_methods.spectra_compute_D import compute_D_given_SC
 from kipet.library.spectra_methods.G_handling import (
@@ -32,7 +33,10 @@ from kipet.library.common.objectives import (
     absorption_objective,
     )
 
-class ParameterEstimator(Optimizer):
+
+from kipet.library.common.pe_methods import PEMixins 
+
+class ParameterEstimator(PEMixins, Optimizer):
     """Optimizer for parameter estimation.
 
     Parameters
@@ -693,13 +697,13 @@ class ParameterEstimator(Optimizer):
             if penaltyparamcon == True:
                 rho = 100
                 sumpen = 0.0
-                obj += conc_objective(model, sigma=sigma_sq)
+                obj += conc_objective(model, variance=sigma_sq)
                 for t in model.allmeas_times:
                     sumpen += model.Y[t, 'npen']
                 fifth_term = rho * sumpen
                 obj += fifth_term
             else:
-                obj += conc_objective(model, sigma=sigma_sq)
+                obj += conc_objective(model, variance=sigma_sq)
             return obj
 
         model.objective = Objective(rule=rule_objective)
@@ -834,6 +838,7 @@ class ParameterEstimator(Optimizer):
             os.remove('result_red_hess.txt')
         
         hessian = self._order_k_aug_hessian(unordered_hessian, var_loc)
+        #hessian =self..order_k_aug_hessian(self, unordered_hessian, var_loc)
         
         if self._estimability == True:
             self.hessian = hessian
@@ -920,19 +925,6 @@ class ParameterEstimator(Optimizer):
 
         return third_term
 
-
-    def set_up_reduced_hessian(self, time_set, component_set, var_name, index):
-        """Method to declare the reduced hessian suffix variables"""
-
-        for t in time_set:
-            for c in component_set:
-                v = getattr(self.model, var_name)[t, c]
-                self._idx_to_variable[index] = v
-                self.model.red_hessian[v] = index
-                index += 1
-   
-        return index
-                    
     def _define_reduce_hess_order(self):
         """
         This sets up the suffixes of the reduced hessian
@@ -942,11 +934,8 @@ class ParameterEstimator(Optimizer):
 
         if self._spectra_given:
             if self.model_variance:
-                count_vars = self.set_up_reduced_hessian(self._meas_times, self.component_set, self.component_var, count_vars)
-
-        if self._spectra_given:
-            if self.model_variance:
-                count_vars = self.set_up_reduced_hessian(self._meas_lambdas, self.component_set, 'S', count_vars)
+                count_vars = self._set_up_reduced_hessian(self.model, self._meas_times, self.component_set, self.component_var, count_vars)
+                count_vars = self._set_up_reduced_hessian(self.model, self._meas_lambdas, self.component_set, 'S', count_vars)
                 
         for v in self.model.P.values():
             if v.is_fixed():
@@ -984,26 +973,6 @@ class ParameterEstimator(Optimizer):
                 i += 1
         
         return None
-    
-    def _get_nparams(self, isSkipFixed=True):
-        """Returns the number of unfixed parameters"""
-        
-        nparams = 0
-        for v in self.model.P.values():
-            if v.is_fixed():
-                print(str(v) + '\has been skipped for covariance calculations')
-                continue
-            nparams += 1
-            
-        if hasattr(self.model, 'Pinit'):
-            for v in self.model.Pinit.values():
-                if isSkipFixed:
-                    if v.is_fixed():
-                        print(str(v) + '\has been skipped for covariance calculations')
-                        continue
-                nparams += 1
-
-        return nparams
 
     def _compute_covariance(self, hessian, variances):
         """Computes the covariance for post calculation anaylsis
@@ -1011,7 +980,6 @@ class ParameterEstimator(Optimizer):
         
         
         """        
-
         nt = self._n_allmeas_times
         nw = self._n_meas_lambdas
         nd = nw * nt
@@ -1021,31 +989,12 @@ class ParameterEstimator(Optimizer):
         else:
             isSkipFixed = False
 
-        nparams = self._get_nparams()
-        ntheta = self.n_val * (nw + nt) + nparams
-
-        print("Computing H matrix\n shape ({},{})".format(nparams, ntheta))
-        all_H = hessian
-        H = all_H[-nparams:, :]
- 
-        print("Computing B matrix\n shape ({},{})".format(ntheta, nd))
-        B = self._compute_B_matrix(variances)
-        
-        print("Computing Vd matrix\n shape ({},{})".format(nd, nd))
-        Vd = self._compute_Vd_matrix(variances)
-        
-        R = B.T @ H.T
-        A = Vd @ R
-        L = H @ B
-        V_theta = (A.T @ L.T).T
-
-        if self._eigredhess2file==True:
-            save_eig_red_hess(V_theta)
-        
-        variances_p = np.diag(V_theta)
+        nparams = self._get_nparams(self.model)
+        self._n_params = nparams
+        variances_p, covariances_p = self._variances_p_calc(hessian, variances)
         self._confidence_interval_display(variances_p)
         
-        return V_theta
+        return covariances_p
 
     def _compute_covariance_C_generic(self, hessian, variances, use_model_variance=False):
         """
@@ -1054,13 +1003,13 @@ class ParameterEstimator(Optimizer):
         Residuals are not even used...
         """
         if use_model_variance:
-            #res = self._compute_residuals()
+            res = self._compute_residuals(self.model)
             nc = self._n_actual
             varmat = np.zeros((nc, nc))
             for c, k in enumerate(self._sublist_components):
                 varmat[c, c] = variances[k]
         
-        nparams = self._get_nparams(isSkipFixed=False)
+        nparams = self._get_nparams(self.model, isSkipFixed=False)
         
         all_H = hessian
         H = all_H[-nparams:, :]
@@ -1113,7 +1062,7 @@ class ParameterEstimator(Optimizer):
         time_set = self.model.meas_times
         conc_data_var = 'C'
         nw = self._n_meas_lambdas
-        nparams = self._get_nparams()
+        nparams = self._get_nparams(self.model)
        
         if hasattr(self, '_abs_components'):
             n_val = self._nabs_components
@@ -1183,44 +1132,6 @@ class ParameterEstimator(Optimizer):
         Vd_matrix = scipy.sparse.coo_matrix((data, (row, col)), shape=(nd, nd)).tocsr()
         
         return Vd_matrix
-        
-    def _compute_residuals(self):
-        """
-        Computes the square of residuals between the optimal solution (Z) and the concentration data (C)
-        Note that this returns a matrix of time points X components and it has not been divided by sigma^2
-
-        This method is not intended to be used by users directly
-        """
-        nt = self._n_allmeas_times
-        nc = self._n_actual
-        residuals = dict()
-        
-        for index, value in self.model.C.items():
-            residuals[index] = (v.value - self.model.Z[index].value)**2 
-             
-        return residuals
-
-    def _order_k_aug_hessian(self, unordered_hessian, var_loc):
-        """
-        not meant to be used directly by users. Takes in the inverse of the reduced hessian
-        outputted by k_aug and uses the rh_name to find the locations of the variables and then
-        re-orders the hessian to be in a format where the other functions are able to compute the
-        confidence intervals in a way similar to that utilized by sIpopt.
-        """
-        vlocsize = len(var_loc)
-        n_vars = len(self._idx_to_variable)
-        hessian = np.zeros((n_vars, n_vars))
-        
-        for i, vi in enumerate(self._idx_to_variable.values()):
-            for j, vj in enumerate(self._idx_to_variable.values()):
-                if n_vars == 1:
-                    h = unordered_hessian
-                    hessian[i, j] = h
-                else:
-                    h = unordered_hessian[(var_loc[vi]), (var_loc[vj])]
-                    hessian[i, j] = h
-        print(hessian.size, "hessian size")
-        return hessian
 
     def _calc_new_D(self, subset):
         """Updates the D data for the wavelength selection"""
