@@ -1,32 +1,30 @@
-# -*- coding: utf-8 -*-
-from __future__ import print_function
-from __future__ import division
-from pyomo.environ import *
-from pyomo.dae import *
-from kipet.library.ParameterEstimator import *
-from kipet.library.VarianceEstimator import *
-from kipet.library.Optimizer import *
-from kipet.library.FESimulator import *
-# from kipet.library.fe_factory import *
-from kipet.library.PyomoSimulator import *
-from pyomo import *
-import matplotlib.pyplot as plt
-import pandas as pd
-import numpy as np
-import math
-import scipy
-import six
 import copy
-import re
+import math
 import os
+import re
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from pyomo import *
+from pyomo.dae import *
+from pyomo.environ import *
 from pyomo.opt import ProblemFormat
+
 from scipy.sparse import coo_matrix
 
-from kipet.library.common.pe_methods import PEMixins
 from kipet.library.common.objectives import conc_objective
+from kipet.library.common.pe_methods import PEMixins
 from kipet.library.common.read_hessian import split_sipopt_string
 
-__author__ = 'Michael Short'  #: February 2019
+from kipet.library.fe_factory import *
+from kipet.library.FESimulator import *
+from kipet.library.Optimizer import *
+from kipet.library.ParameterEstimator import *
+from kipet.library.PyomoSimulator import *
+from kipet.library.VarianceEstimator import *
+
+__author__ = 'Michael Short, Kevin McBride'  #: February 2019 - August 2020
 
 class MultipleExperimentsEstimator(PEMixins, object):
     """This class is for Estimation of Variances and parameters when we have multiple experimental datasets.
@@ -90,6 +88,8 @@ class MultipleExperimentsEstimator(PEMixins, object):
         self.global_params = None
         
         # set of flags to mark the how many times and wavelengths are in each dataset
+        # TODO: make an object for the datasets to handle these things
+        
         self.l_mark = dict()
         self.t_mark = dict()
         self.n_mark = dict()
@@ -161,13 +161,8 @@ class MultipleExperimentsEstimator(PEMixins, object):
             self.l_mark = {i: n for i, n in enumerate(nw)}
             nw = nw[-1]
             self._n_meas_lambdas = nw
-            
-        else:
-            nw = None
         
-        print(self.t_mark, self.n_mark, self.p_mark, self.l_mark)
-        
-        return None #nt, nc, nparams, nw
+        return None
     
     def _display_covariance(self, variances_p):
         """Displays the covariance results to the console
@@ -257,11 +252,8 @@ class MultipleExperimentsEstimator(PEMixins, object):
         npt = np.r_[self.t_mark[0], np.diff(list(self.t_mark.values()))]
         npl = np.r_[self.l_mark[0], np.diff(list(self.l_mark.values()))]
         npp = np.r_[self.p_mark[0], np.diff(list(self.p_mark.values()))]
-        
         exp_lookup = {i: exp for i, exp in enumerate(self.experiments)}
-        
         ntheta = sum(npn*(npt + npl) + npp)
-        #@B_matrix = np.zeros((ntheta, nw * nt))
         
         exp_count = 0
         timeshift = 0 
@@ -271,52 +263,31 @@ class MultipleExperimentsEstimator(PEMixins, object):
         cols = []
         data = []
         
-        print(f'nt: {nt}')
-        print(f'nw: {nw}')
+        meas_times = {exp : {indx: time for indx, time in enumerate(self.model.experiment[exp].meas_times)} for exp in self.experiments}
+        meas_lambdas = {exp : {indx: wave for indx, wave in enumerate(self.model.experiment[exp].meas_lambdas)} for exp in self.experiments}
         
         for i in range(nt):
             for j in range(nw):
-                
-                if exp_count == 0:
-                    nc = self.n_mark[exp_count]
-                    nc_prev = nc
-                    
+            
+                nc = npn[exp_count]
                 if i == self.t_mark[exp_count] and j == self.l_mark[exp_count]:
                     exp_count += 1
                     timeshift = i
-                    waveshift = j
-                    nc_prev = nc
-                    nc = (self.n_mark[exp_count] - self.n_mark[exp_count - 1])
+                    waveshift = j    
+           
+                exp = exp_lookup[exp_count]
                 
-                for x, exp in enumerate(self.experiments):
-                    if x == exp_count:
-                        break
-                    else:
-                         pass
-            
-                #exp = exp_lookup[exp_count]
-                #meas_times = {indx: time for indx, time in enumerate(self.model.experiment[exp].meas_times)}
-                #meas_lambdas = {indx: wave for indx, wave in enumerate(self.model.experiment[exp].meas_lambdas)}
-             
                 for comp_num, comp in enumerate(self._sublist_components[exp]):
                     
-                    # I don't like this part, but am not able to change it!
-                    for ii, t in enumerate(self.model.experiment[exp].meas_times):
-                        if ii + timeshift == i:
-                            time = t
-                            break
-                        else:
-                            pass
-                    for jj, l in enumerate(self.model.experiment[exp].meas_lambdas):
-                        if jj + waveshift == j:
-                            wave = l
-                            break
-                        else:
-                            pass 
+                    if i - timeshift in list(range(npt[exp_count])):
+                        time = meas_times[exp][i - timeshift]
                     
-                    r_idx1 = i*nc + comp_num  # row 1
-                    r_idx2 = j*nc + comp_num + nc*nt  # row 2
-                    c_idx =  i*nw + j # column
+                    if j - waveshift in list(range(npl[exp_count])):
+                        wave = meas_lambdas[exp][j - waveshift]
+   
+                    r_idx1 = i*nc + comp_num
+                    r_idx2 = j*nc + comp_num + nc*nt
+                    c_idx =  i*nw + j
                     
                     rows.append(r_idx1)
                     cols.append(c_idx)
@@ -325,9 +296,8 @@ class MultipleExperimentsEstimator(PEMixins, object):
                     rows.append(r_idx2)
                     cols.append(c_idx)
                     data.append(-2 * self.model.experiment[exp].C[time, comp].value / (self.variances[exp]['device']))
-                    
-                   
-        B_matrix = coo_matrix((data, (rows, cols)), shape=(ntheta, nw * nt)).toarray()
+                         
+        B_matrix = coo_matrix((data, (rows, cols)), shape=(ntheta, nw * nt)).tocsr()
         self.B_matrix = B_matrix
         
         return B_matrix
@@ -343,42 +313,35 @@ class MultipleExperimentsEstimator(PEMixins, object):
         Returns:
             None
         """
-        # add check for model already solved
         row = []
         col = []
         data = []
         nt = self._n_meas_times
         nw = self._n_meas_lambdas
         nc = self._n_actual
-        print("self._n_actual", self._n_actual)
 
         v_array = np.zeros(nc)
-                
-        #nc = nc/len(self.experiments)
-        #nc = int(math.ceil(nc))
-        #print("how many components: " , nc)
         s_array = np.zeros(nw * nc)
         
         count = 0
         for x in self.experiments:
             for k, c in enumerate(self._sublist_components[x]):
-                #print("v_array: ", k, c)
                 v_array[count] = variances[x][c]
                 count += 1
         
-        #print("v_array full: ", v_array)
-        
-        kshift,jshift = 0,0
+        kshift = 0
+        jshift = 0
         knum = 0
         jnum=0
         count=0
         exp_count = 0
+        
         for x in self.experiments:
             kshift += knum
             jshift += jnum
             if exp_count != 0:
                 kshift+=1
-            #print("shifts:", ishift,kshift,jshift)
+
             for j, l in enumerate(self.model.experiment[x].meas_lambdas):
                 for k, c in enumerate(self._sublist_components[x]):
                     
@@ -387,38 +350,27 @@ class MultipleExperimentsEstimator(PEMixins, object):
                         nt = self.t_mark[exp_count]
                         nw = self.l_mark[exp_count]
                     else: 
-                        #nc = (self.n_mark[exp_count] - self.n_mark[exp_count - 1])
                         nt = (self.t_mark[exp_count] - self.t_mark[exp_count - 1] )
                         nw = (self.l_mark[exp_count] - self.l_mark[exp_count - 1])
 
                     s_array[(j+jshift) * nc + (k+kshift)] = self.model.experiment[x].S[l, c].value
                     idx = (j+jshift) * nc + (k+kshift)
-                    #print(idx)
                     knum = max(knum,k)
                     count += 1
                 
                 jnum = max(jnum,j)
-            #print("nc", nc)
             exp_count += 1
 
-        #print("times in loop:", count)
         row = []
         col = []
         data = []
         nt = self._n_meas_times
         nw = self._n_meas_lambdas
         nd = nt * nw
-        # Vd_dense = np.zeros((nd,nd))
         v_device = list()
         
-        #print("s_array:", s_array)
-        #print(s_array.size)
-        #print(s_array.shape)        
-
-        #exp_count = 0
         for x in self.experiments:
             v_device.append(variances[x]['device']) 
-            #exp_count += 1
         
         exp_count = 0
         v_device_exp = v_device[exp_count]
@@ -432,22 +384,20 @@ class MultipleExperimentsEstimator(PEMixins, object):
                 row.append(i * nw + j)
                 col.append(i * nw + j)
                 data.append(val)
-                # Vd_dense[i*nw+j,i*nw+j] = val
                 for p in range(nw):
                     if j != p:
                         val = sum(v_array[k] * s_array[j * nc + k] * s_array[p * nc + k] for k in range(nc))
                         row.append(i * nw + j)
                         col.append(i * nw + p)
                         data.append(val)
-                        # Vd_dense[i*nw+j,i*nw+p] = val
 
-        Vd_matrix = scipy.sparse.coo_matrix((data, (row, col)),
-                                                 shape=(nd, nd)).tocsr()
+        Vd_matrix = coo_matrix((data, (row, col)), shape=(nd, nd)).tocsr()
+        
         self.Vd_matrix = Vd_matrix
     
         return Vd_matrix
   
-    def run_simulation(self, builder, **kwds): #added for option to initialize from simulation (CS)
+    def run_simulation(self, builder, **kwds):
         """ Runs simulation by solving nonlinear system with ipopt
 
         Args:
@@ -759,7 +709,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
                                             tol=tol,
                                             subset_lambdas = A)
             print("\nThe estimated variances are:\n")
-            for k,v in six.iteritems(results_variances[l].sigma_sq):
+            for k, v in results_variances[l].sigma_sq.items():
                 print(k, v)
             self.variance_results[l] = results_variances[l]
             # and the sigmas for the parameter estimation step are now known and fixed
@@ -855,14 +805,14 @@ class MultipleExperimentsEstimator(PEMixins, object):
                             m.experiment[i].S[l, c].set_suffix_value(m.dof_v, count_vars)
                             count_vars += 1
     
-                for v in six.itervalues(self.model.experiment[i].P):
+                for v in self.model.experiment[i].P.values():
                     if v.is_fixed():
                         continue
                     m.experiment[i].P.set_suffix_value(m.dof_v, count_vars)
                     count_vars += 1
 
                 if hasattr(self.model.experiment[i],'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-                    for k, v in six.iteritems(self.model.experiment[i].Pinit):
+                    for k, v in self.model.experiment[i].Pinit.items():
                         # print(k,v,i)
                         m.experiment[i].init_conditions[k].set_suffix_value(m.dof_v, count_vars)
                             # print(m.experiment[i].Pinit, m.dof_v, count_vars)
@@ -900,7 +850,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
             print("n_vars", n_vars)
             # m.rh_name.pprint()
             var_loc = m.rh_name
-            for v in six.itervalues(self._idx_to_variable):
+            for v in self._idx_to_variable.values():
                 try:
                     var_loc[v]
                 except:
@@ -1027,7 +977,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
             print("globs", self.global_params)
             
             for i in self.experiments:
-                for k, v in six.iteritems(self.model.experiment[i].P):
+                for k, v in self.model.experiment[i].P.items():
                     #print(k,v)                    
                     if k not in var_counted:
                         #print(count_vars)
@@ -1041,7 +991,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
                         var_counted.append(k)
 
                 if hasattr(self.model.experiment[i], 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
-                    for k, v in six.iteritems(self.model.experiment[i].Pinit):
+                    for k, v in self.model.experiment[i].Pinit.items():
                         # print(k,v,i)
                         if k not in var_counted:
                             m.experiment[i].init_conditions[k].set_suffix_value(m.dof_v, count_vars)
@@ -1073,7 +1023,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
             print("n_vars", n_vars)
             m.rh_name.pprint()
             var_loc = m.rh_name
-            for v in six.itervalues(self._idx_to_variable):
+            for v in self._idx_to_variable.values():
                 try:
                     var_loc[v]
                 except:
@@ -1407,7 +1357,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
                     self.initialization_model[l] = ind_p_est[l]
 
                     print("The estimated parameters are:")
-                    for k, v in six.iteritems(results_pest[l].P):
+                    for k, v in results_pest[l].P.items():
                         print(k, v)
                         if k not in all_params:
                             all_params.append(k)
@@ -1420,7 +1370,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
                     if hasattr(results_pest[l],
                                'Pinit'):  # added for the estimation of initial conditions which have to be complementary state vars CS
                         print("The estimated parameters are:")
-                        for k, v in six.iteritems(results_pest[l].Pinit):
+                        for k, v in results_pest[l].Pinit.items():
                             print(k, v)
                             if k not in all_params:
                                 all_params.append(k)
@@ -1464,7 +1414,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
                     self.initialization_model[l] = ind_p_est[l]
 
                     print("The estimated parameters are:")
-                    for k, v in six.iteritems(results_pest[l].P):
+                    for k, v in results_pest[l].P.items():
                         print(k, v)
                         if k not in all_params:
                             all_params.append(k)
@@ -1477,7 +1427,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
                     if hasattr(results_pest[l],
                                'Pinit'):  # added for the estimation of initial conditions which have to be complementary state vars CS
                         print("The estimated parameters are:")
-                        for k, v in six.iteritems(results_pest[l].Pinit):
+                        for k, v in results_pest[l].Pinit.items():
                             print(k, v)
                             if k not in all_params:
                                 all_params.append(k)
@@ -1535,7 +1485,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
                     self.initialization_model[l] = ind_p_est[l]
 
                     print("The estimated parameters are:")
-                    for k, v in six.iteritems(results_pest[l].P):
+                    for k, v in results_pest[l].P.items():
                         print(k, v)
                         if k not in all_params:
                             all_params.append(k)
@@ -1548,7 +1498,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
                     if hasattr(results_pest[l],
                                'Pinit'):  # added for the estimation of initial conditions which have to be complementary state vars CS
                         print("The estimated parameters are:")
-                        for k, v in six.iteritems(results_pest[l].Pinit):
+                        for k, v in results_pest[l].Pinit.items():
                             print(k, v)
                             if k not in all_params:
                                 all_params.append(k)
@@ -1591,7 +1541,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
                     self.initialization_model[l] = ind_p_est[l]
 
                     print("The estimated parameters are:")
-                    for k, v in six.iteritems(results_pest[l].P):
+                    for k, v in results_pest[l].P.items():
                         print(k, v)
                         if k not in all_params:
                             all_params.append(k)
@@ -1604,7 +1554,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
                     if hasattr(results_pest[l],
                                'Pinit'):  # added for the estimation of initial conditions which have to be complementary state vars CS
                         print("The estimated parameters are:")
-                        for k, v in six.iteritems(results_pest[l].Pinit):
+                        for k, v in results_pest[l].Pinit.items():
                             print(k, v)
                             if k not in all_params:
                                 all_params.append(k)
@@ -1635,7 +1585,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
                     self.initialization_model[l] = ind_p_est[l]
 
                     print("The estimated parameters are:")
-                    for k,v in six.iteritems(results_pest[l].P):
+                    for k,v in results_pest[l].P.items():
                         print(k, v)
                         if k not in all_params:
                             all_params.append(k)
@@ -1649,7 +1599,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
 
                     if hasattr(results_pest[l], 'Pinit'):#added for the estimation of initial conditions which have to be complementary state vars CS
                         print("The estimated parameters are:")
-                        for k, v in six.iteritems(results_pest[l].Pinit):
+                        for k, v in results_pest[l].Pinit.items():
                             print(k, v)
                             if k not in all_params:
                                 all_params.append(k)
