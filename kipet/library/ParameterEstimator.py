@@ -22,7 +22,6 @@ from kipet.library.TemplateBuilder import *
 from kipet.library.common.read_hessian import *
 from kipet.library.common.pe_methods import *
 
-#from kipet.library.spectra_methods.spectra_compute_D import compute_D_given_SC
 from kipet.library.spectra_methods.G_handling import (
     decompose_G_test,
     g_handling_status_messages,
@@ -33,8 +32,7 @@ from kipet.library.common.objectives import (
     absorption_objective,
     )
 
-
-from kipet.library.common.pe_methods import PEMixins 
+from kipet.library.mixins.PEMixins import PEMixins 
 
 class ParameterEstimator(PEMixins, Optimizer):
     """Optimizer for parameter estimation.

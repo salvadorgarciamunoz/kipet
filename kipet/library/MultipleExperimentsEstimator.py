@@ -14,8 +14,9 @@ from pyomo.opt import ProblemFormat
 from scipy.sparse import coo_matrix
 
 from kipet.library.common.objectives import conc_objective
-from kipet.library.common.pe_methods import PEMixins
 from kipet.library.common.read_hessian import split_sipopt_string
+
+from kipet.library.mixins.PEMixins import PEMixins
 
 from kipet.library.fe_factory import *
 from kipet.library.FESimulator import *
