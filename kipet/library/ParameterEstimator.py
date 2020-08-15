@@ -20,7 +20,6 @@ from pyomo.opt import (
 from kipet.library.Optimizer import *
 from kipet.library.TemplateBuilder import *
 from kipet.library.common.read_hessian import *
-from kipet.library.common.pe_methods import *
 
 from kipet.library.spectra_methods.G_handling import (
     decompose_G_test,
