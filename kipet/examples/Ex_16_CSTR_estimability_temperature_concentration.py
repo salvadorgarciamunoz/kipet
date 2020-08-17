@@ -171,7 +171,7 @@ if __name__ == "__main__":
         builder_est.add_parameter(param.name, bounds=param.bounds, init=param.init*factor)
    
     # New method to add state variance to the model builder
-    builder_est.add_state_variance(noise)
+    builder_est.add_state_variance({k: v**2 for k, v in noise.items()})
     
     # New method to add times like everything else
     builder_est.set_model_times(times)

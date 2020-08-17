@@ -35,10 +35,20 @@ def conc_objective(model, *args, **kwargs):
     """
     obj=0
   
-    if model.mixture_components & model.measured_data:
-        for index, values in model.C.items():
-            obj += _concentration_term(model, index, **kwargs)
-            
+    source = kwargs.get('source', 'concentration')
+    
+    if source == 'concentration':
+    
+        if model.mixture_components & model.measured_data:
+            for index, values in model.C.items():
+                obj += _concentration_term(model, index, **kwargs)
+      
+    elif source == 'spectra':
+      
+        if model.mixture_components:
+            for index, values in model.C.items():
+                obj += _concentration_term(model, index, **kwargs)
+      
     return obj
 
 def comp_objective(model, *args, **kwargs):
@@ -157,18 +167,18 @@ def _concentration_term(model, index, **kwargs):
         LS concentration term for objective
 
     """
-    custom_sigma = kwargs.get('sigma', None)
+    custom_sigma = kwargs.get('variance', None)
     
     if custom_sigma is None:
-        sigma = model.sigma[index[1]]
+        variance = model.sigma[index[1]]
     else:
-        sigma = custom_sigma[index[1]]
+        variance = custom_sigma[index[1]]
     
-    objective_concentration_term = 0.5*(model.C[index] - model.Z[index]) ** 2  / sigma
+    objective_concentration_term = (model.C[index] - model.Z[index]) ** 2  / variance
     
     return objective_concentration_term
     
-def _complementary_state_term(model, index):
+def _complementary_state_term(model, index, **kwargs):
     """
     
     Parameters
@@ -185,8 +195,14 @@ def _complementary_state_term(model, index):
         LS complementary state term for objective
 
     """
-    objective_complementary_state_term = 0.5*(model.U[index] - model.X[index]) ** 2 \
-        / model.sigma[index[1]]**2
+    custom_sigma = kwargs.get('variance', None)
+    
+    if custom_sigma is None:
+        variance = model.sigma[index[1]]
+    else:
+        variance = custom_sigma[index[1]]
+    
+    objective_complementary_state_term = (model.U[index] - model.X[index]) ** 2 / variance
     
     return objective_complementary_state_term
 
