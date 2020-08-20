@@ -34,7 +34,7 @@ def interpolate_trajectory(t, tr):
         slopes.append(slope)
         
     slopes.append(0)
-    val = tr.loc[0]
+    val = tr.iloc[0]
 
     for i, time in enumerate(times):
         val += (times[i] - times[i - 1]) * slopes[bisect.bisect_left(list(tr.index)[1:], time)]
