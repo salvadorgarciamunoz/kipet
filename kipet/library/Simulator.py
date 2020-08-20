@@ -22,33 +22,22 @@ from kipet.library.ResultsObject import *
 def interpolate_trajectory(t, tr):
     
     slopes = []
+    tr_val = np.zeros((len(t)))
     times = [ti for ti in t]
-    tr_val = np.zeros((len(times)))
     
-    for i, tp in enumerate(tr.index):
-        
+    for i, indx in enumerate(tr.index):
         if i == 0:
             continue
-        
         x1 = tr.index[i - 1]
         x2 = tr.index[i]
-
-        y1 = tr.loc[x1]
-        y2 = tr.loc[x2]
+        slope = (tr.loc[x2] - tr.loc[x1])/(x2 - x1)
+        slopes.append(slope)
         
-        slope = (y2 - y1)/(x2 - x1)
-        slopes.append((tp, slope))
-        
-    def slope_calc(time_value, breakpoints=list(tr.index)[1:], slopes=[s[1] for s in slopes] + [0]):
-        i = bisect.bisect_left(breakpoints, time_value)
-        return slopes[i]
-
+    slopes.append(0)
     val = tr.loc[0]
 
-    counter = 0
     for i, time in enumerate(times):
-        del_x = times[i] - times[i - 1]
-        val += del_x * slope_calc(time)
+        val += (times[i] - times[i - 1]) * slopes[bisect.bisect_left(list(tr.index)[1:], time)]
         tr_val[i] = val
 
     return tr_val 
