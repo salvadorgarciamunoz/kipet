@@ -102,10 +102,13 @@ class PyomoSimulator(Simulator):
                     dfsmoothdata.loc[t] = [value(self.model.smooth_param_data[t, p]) for p in self.model.smoothparameter_names]
 
                 for p in self.model.smoothparameter_names:
-                    for ti in self.model.alltime:
+                    
+                    values = interpolate_trajectory(self.model.alltime, dfsmoothdata[p])
+
+                    for indx, ti in enumerate(self.model.alltime):
                         if float(dfallps[p][ti]) > 1:
-                            valueinterp=interpolate_from_trajectory(ti, dfsmoothdata[p])
-                            dfallpsall[p][ti] = float(valueinterp)
+                            #valueinterp=interpolate_from_trajectory(ti, dfsmoothdata[p])
+                            dfallpsall[p][ti] = float(values[i])
                         else:
                             dfallpsall.loc[ti] = float(dfallps[p][ti])
 
@@ -155,11 +158,25 @@ class PyomoSimulator(Simulator):
             raise NotImplementedError("Fixing state variables is not allowd. Only algebraics can be fixed")
 
         single_traj = trajectories[variable_index]
+        
+        print(single_traj)
         sim_alltimes = sorted(self._alltimes)
+        
+        print(self._alltimes, sim_alltimes)
+        
         var = getattr(self.model, variable_name)
+        
+        values = interpolate_trajectory(sim_alltimes, single_traj)
         for i, t in enumerate(sim_alltimes):
-            value = interpolate_from_trajectory(t, single_traj)
-            var[t, variable_index].fix(value)
+            print(values[i])
+            var[t, variable_index].fix(values[i])
+        
+        
+        # for i, t in enumerate(sim_alltimes):
+        #     value = interpolate_from_trajectory(t, single_traj)
+            
+        #     print(f'value: {value}')
+        #    var[t, variable_index].fix(value)
 
     def unfix_time_dependent_variable(self, variable_name, variable_index):
         var = getattr(self.model, variable_name)
@@ -385,11 +402,19 @@ class PyomoSimulator(Simulator):
         """
         for component in to_initialize:
             single_trajectory = trajectories[component]
-            for t in inner_set:
-                #print(t)
-                val = interpolate_from_trajectory(t, single_trajectory)
-                if not np.isnan(val):
-                    var[t, component].value = val
+            
+            values = interpolate_trajectory(inner_set, single_trajectory)
+            for i, t in enumerate(inner_set):
+                if not np.isnan(values[i]):
+                    var[t, component].value = values[i]
+
+            
+            
+            # for t in inner_set:
+            #     #print(t)
+            #     val = interpolate_from_trajectory(t, single_trajectory)
+            #     if not np.isnan(val):
+            #         var[t, component].value = val
 
     def scale_variables_from_trajectory(self, variable_name, trajectories):
         """Scales discretized variables with maximum value of the trajectory.
