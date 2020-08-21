@@ -304,6 +304,8 @@ class PyomoSimulator(Simulator):
         except:
             raise RuntimeError('Initialization of variable {} is not supported'.format(variable_name))
 
+        #print(var, inner_set)
+
         columns = trajectories.columns
         to_initialize = list()
         component_set = rgetattr(self, set_comp[variable_name])
@@ -318,13 +320,33 @@ class PyomoSimulator(Simulator):
                 to_initialize.append(component)
                 
         for component in to_initialize:
+            vals = []
             single_trajectory = trajectories[component]
-            values = interpolate_trajectory(inner_set, single_trajectory)
-            for i, t in enumerate(inner_set):
-                if not np.isnan(values[i]):
-                    var[t, component].value = values[i]
+            # print(single_trajectory)
+            #print(inner_set)
 
-        return None
+            for t in inner_set:
+                #print(t)
+                val = interpolate_from_trajectory(t, single_trajectory)
+                vals.append(val)
+                if not np.isnan(val):
+                    var[t, component].value = val
+    
+        #    print(f'VALS:\n{vals}')
+        
+        # for component in to_initialize:
+        #     single_trajectory = trajectories[component]
+        #     print(single_trajectory)
+        #     print(inner_set)
+
+        #     values = interpolate_trajectory(inner_set, single_trajectory)
+            
+        #     print(f'VALUES:\n{values}')
+        #     for i, t in enumerate(inner_set):
+        #         if not np.isnan(values[i]):
+        #             var[t, component].value = values[i]
+
+    #     return None
 
     def scale_variables_from_trajectory(self, variable_name, trajectories):
         """Scales discretized variables with maximum value of the trajectory.
