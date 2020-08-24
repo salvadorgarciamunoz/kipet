@@ -17,14 +17,20 @@ def find_nearest(array,value):
     else:
         return idx
 
-def interpolate_linearly(x,x_tuple,y_tuple):
+def interpolate_linearly(x,x_tuple,y_tuple, verbose=False):
     # print(f'x: {x}')
     # print(f'x_tuple: {x_tuple}')
     # print(f'y_tuple: {y_tuple}')
     m = (y_tuple[1]-y_tuple[0])/(x_tuple[1]-x_tuple[0])
+    if verbose and x < 3:
+        print(f'Time: {x}')
+        print(f'y: {y_tuple}')
+        print(f'x: {x_tuple}')
+        print(f'slope: {m}')
+        print(f'val: {y_tuple[0]+m*(x-x_tuple[0])}')
     return y_tuple[0]+m*(x-x_tuple[0])
 
-def interpolate_from_trajectory(t,trajectory):
+def interpolate_from_trajectory(t,trajectory, verbose=False):
 
     times_traj = np.array(trajectory.index)
     last_time_idx = len(times_traj)-1
@@ -52,30 +58,32 @@ def interpolate_from_trajectory(t,trajectory):
         #print(f't_found1: {t_found1}')
         #print(f'val: {val}')
         #print(f'val1: {val1}')
-        
-        return interpolate_linearly(t,x_tuple,y_tuple)
+        m = interpolate_linearly(t,x_tuple,y_tuple, verbose=verbose)
+    
+        return m 
 
 def interpolate_trajectory(t, tr):
     
-    slopes = []
     tr_val = np.zeros((len(t)))
     times = [ti for ti in t]
-    
-    for i, indx in enumerate(tr.index):
+
+    for i, t_indx in enumerate(times):
+
         if i == 0:
+            tr_val[i] = tr.iloc[0]
+            continue        
+
+        indx_left = bisect.bisect_left(tr.index[1:], times[i])
+        if indx_left == len(tr) - 1:
+            tr_val[i] = tr.iloc[indx_left]
             continue
-        x1 = tr.index[i - 1]
-        x2 = tr.index[i]
-        slope = (tr.loc[x2] - tr.loc[x1])/(x2 - x1)
-        slopes.append(slope)
         
-    slopes.append(0)
-    val = tr.iloc[0]
-
-    for i, time in enumerate(times):
-        val += (times[i] - times[i - 1]) * slopes[bisect.bisect_left(list(tr.index)[1:], time)]
+        dx = tr.index[indx_left + 1] - tr.index[indx_left]
+        dy = tr.iloc[indx_left + 1] - tr.iloc[indx_left]
+        m = dy/dx
+        val = tr.iloc[indx_left] +  (times[i] - tr.index[indx_left]) * m
         tr_val[i] = val
-
+    
     return tr_val 
 
 class Simulator(object):
