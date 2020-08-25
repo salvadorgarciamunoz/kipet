@@ -8,60 +8,6 @@ from pyomo.dae import *
 from pyomo.environ import *
 from kipet.library.ResultsObject import *
 
-# These functions are fundamentaly incorrect
-# need to move these two functions to utils
-def find_nearest(array,value):
-    idx = np.searchsorted(array, value, side="left")
-    if idx == len(array) or idx==len(array)-1 or math.fabs(value - array[idx-1]) < math.fabs(value - array[idx]):
-        return idx-1
-    else:
-        return idx
-
-def interpolate_linearly(x,x_tuple,y_tuple, verbose=False):
-    # print(f'x: {x}')
-    # print(f'x_tuple: {x_tuple}')
-    # print(f'y_tuple: {y_tuple}')
-    m = (y_tuple[1]-y_tuple[0])/(x_tuple[1]-x_tuple[0])
-    if verbose and x < 3:
-        print(f'Time: {x}')
-        print(f'y: {y_tuple}')
-        print(f'x: {x_tuple}')
-        print(f'slope: {m}')
-        print(f'val: {y_tuple[0]+m*(x-x_tuple[0])}')
-    return y_tuple[0]+m*(x-x_tuple[0])
-
-def interpolate_from_trajectory(t,trajectory, verbose=False):
-
-    times_traj = np.array(trajectory.index)
-    last_time_idx = len(times_traj)-1
-    idx_near = find_nearest(times_traj,t)
-    
-    # print(f'times_traj: {times_traj}')
-    # print(f'last_time_idx: {last_time_idx}')
-    # print(f'idx_near: {idx_near}')
-    
-    if idx_near==last_time_idx:
-        #print('if true')
-        t_found = times_traj[idx_near]
-        # print(f't_found: {t_found}')
-        return trajectory[t_found]
-    else:
-        #print('if false')
-        idx_near1 = idx_near+1
-        t_found = times_traj[idx_near]
-        t_found1 = times_traj[idx_near1]
-        val = trajectory[t_found]
-        val1 = trajectory[t_found1]
-        x_tuple = (t_found,t_found1)
-        y_tuple = (val,val1)
-        #print(f't_found: {t_found}')
-        #print(f't_found1: {t_found1}')
-        #print(f'val: {val}')
-        #print(f'val1: {val1}')
-        m = interpolate_linearly(t,x_tuple,y_tuple, verbose=verbose)
-    
-        return m 
-
 def interpolate_trajectory(t, tr):
     
     tr_val = np.zeros((len(t)))
