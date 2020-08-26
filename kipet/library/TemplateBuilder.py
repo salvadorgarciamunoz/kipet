@@ -464,6 +464,19 @@ class TemplateBuilder(object):
         
         return None
     
+    def input_data(self, data_obj_list):
+        """This should take a DataContainer and input the data, but for now
+        it will take a DataBlock list
+        
+        """
+        for db in data_obj_list:
+            if db.category == 'state':
+                self.add_data(db.data, 'complementary_states')
+            else:
+                self.add_data(db.data, db.category)
+        
+        return None
+    
     def clear_data(self):
         
         self._spectral_data = None
