@@ -13,19 +13,7 @@ import pandas as pd
 
 DEFAULT_DIR = 'data_sets'
 
-# def set_data_file_path(filename, directory='data_sets'):
-    
-#     print(inspect.getfile(inspect.currentframe())) # script filename (usually with path)
-#     print(os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))) # script directory
-    
-#     dataDirectory = os.path.abspath(
-#     os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
-#         inspect.currentframe() ) ) ), directory))
-#     filename =  os.path.join(dataDirectory, filename)
-    
-#     return filename
-
-def _set_directory(filename, directory=DEFAULT_DIR):
+def _set_directory():
     """Sets the current working directory plus the given subdirectory as the
     directory for the given data file (filename)
     
@@ -38,17 +26,11 @@ def _set_directory(filename, directory=DEFAULT_DIR):
         filename (Path): the full filename of the data
     
     """
-    #target_filename = inspect.getframeinfo(inspect.currentframe()).filename
-    #path = os.path.dirname(os.path.abspath(target_filename))
-    #current_dir = Path(path)    
-    #kipet_dir = current_dir.parent.parent
-    #data_dir = kipet_dir.joinpath(directory)
-    #abs_filename = data_dir.joinpath(Path(filename))
-
-    kipet_dir = Path.cwd()
-    data_dir = kipet_dir.joinpath(directory)
-    abs_filename = data_dir.joinpath(Path(filename))
-    return abs_filename
+    dataDirectory = os.path.abspath(
+        os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
+            inspect.currentframe() ) ) ), '../../examples', 'data_sets'))
+    
+    return Path(dataDirectory)
 
 def read_file(filename, directory=DEFAULT_DIR):       
     """ Reads data from a csv or txt file and converts it to a DataFrame
@@ -62,7 +44,8 @@ def read_file(filename, directory=DEFAULT_DIR):
             DataFrame
 
     """
-    filename = _set_directory(filename, directory)
+    #dirname = _set_directory()
+    filename = Path(filename)
     print(f'read dir : {filename}')
     #filename = Path(filename)
     data_dict = {}
@@ -109,7 +92,11 @@ def write_file(filename, dataframe, filetype='csv', directory=DEFAULT_DIR):
     
     suffix = '.' + filetype
     
-    filename = Path(directory).joinpath(filename)
+    #filename = Path(directory).joinpath(filename)
+    
+    #dirname = _set_directory()
+    filename = Path(filename)
+                   
     if filename.suffix == '':
         filename = filename.with_suffix(suffix)
     else:
@@ -118,6 +105,7 @@ def write_file(filename, dataframe, filetype='csv', directory=DEFAULT_DIR):
             print('Savings as CSV - invalid file extension given')
             filename = Path(filename.stem).with_suffix('.csv')
     
+    print(filename.absolute())
     if filename.suffix == '.csv':
         dataframe.to_csv(filename)
 

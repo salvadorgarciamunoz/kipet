@@ -1,3 +1,4 @@
+from functools import reduce
 import sys
 import warnings
 
@@ -7,6 +8,46 @@ from pyomo.environ import *
 from kipet.library.ResultsObject import *
 from kipet.library.Simulator import *
 from kipet.library.common.VisitorClasses import ScalingVisitor
+
+time_sets = ['model.alltime',
+             '_allmeas_times',
+             '_meas_lambdas',
+             'model.huplctime']
+
+comp_sets = ['_mixture_components',
+             '_complementary_states',
+             '_algebraics',
+             'model.smoothparameter_names',
+             '_hpulcabs_components']
+
+set_time = {
+            'Z' : time_sets[0],
+            'dZdt' : time_sets[0],
+            'C' : time_sets[1],
+            'Cs' : time_sets[1],
+            'S' : time_sets[2],
+            'X' : time_sets[0],
+            'U' : time_sets[1],
+            'dXdt' : time_sets[0],
+            'Y' : time_sets[0],
+            'dual' : time_sets[0],
+            'Ps' : time_sets[0],
+            'Chat' : time_sets[3],
+            }
+
+set_comp = {
+            'Z' : comp_sets[0],
+            'dZdt' : comp_sets[0],
+            'C' : comp_sets[0],
+            'Cs' : comp_sets[0],
+            'S' : comp_sets[0],
+            'X' : comp_sets[1],
+            'U' : comp_sets[1],
+            'dXdt' : comp_sets[1],
+            'Y' : comp_sets[2],
+            'Ps' : comp_sets[3],
+            'Chat' : comp_sets[4],
+            }
 
     
 class PyomoSimulator(Simulator):
@@ -102,9 +143,10 @@ class PyomoSimulator(Simulator):
                     dfsmoothdata.loc[t] = [value(self.model.smooth_param_data[t, p]) for p in self.model.smoothparameter_names]
 
                 for p in self.model.smoothparameter_names:
-                    for ti in self.model.alltime:
+                    values = interpolate_trajectory(self.model.alltime, dfsmoothdata[p])
+                    for i, ti in enumerate(self.model.alltime):
                         if float(dfallps[p][ti]) > 1:
-                            valueinterp=interpolate_from_trajectory(ti, dfsmoothdata[p])
+                            valueinterp=values[i]
                             dfallpsall[p][ti] = float(valueinterp)
                         else:
                             dfallpsall.loc[ti] = float(dfallps[p][ti])
@@ -149,7 +191,7 @@ class PyomoSimulator(Simulator):
         visitor = ScalingVisitor(scale)
         return visitor.dfs_postorder_stack(expr)
 
-    def fix_from_trajectory(self, variable_name, variable_index, trajectories):
+    def fix_from_trajectory(self, variable_name, variable_index, trajectories, verbose=False):
 
         if variable_name in ['X', 'dXdt', 'Z', 'dZdt']:
             raise NotImplementedError("Fixing state variables is not allowd. Only algebraics can be fixed")
@@ -157,9 +199,13 @@ class PyomoSimulator(Simulator):
         single_traj = trajectories[variable_index]
         sim_alltimes = sorted(self._alltimes)
         var = getattr(self.model, variable_name)
+        values = interpolate_trajectory(sim_alltimes, single_traj)
+        r_values = []
         for i, t in enumerate(sim_alltimes):
-            value = interpolate_from_trajectory(t, single_traj)
-            var[t, variable_index].fix(value)
+            var[t, variable_index].fix(values[i])
+            r_values.append((t, values[i]))
+
+        return r_values
 
     def unfix_time_dependent_variable(self, variable_name, variable_index):
         var = getattr(self.model, variable_name)
@@ -251,228 +297,81 @@ class PyomoSimulator(Simulator):
             None
 
         """
-
         if not self.model.alltime.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
 
-        if variable_name == 'Z':
-            var = self.model.Z
-            inner_set = self.model.alltime
-        elif variable_name == 'dZdt':
-            var = self.model.dZdt
-            inner_set = self.model.alltime
-        elif variable_name == 'C':
-            var = self.model.C
-            inner_set = self._allmeas_times
-        elif variable_name =='Cs':
-            var = self.model.Cs
-            inner_set = self._allmeas_times
-        elif variable_name == 'S':
-            var = self.model.S
-            inner_set = self._meas_lambdas
-        elif variable_name == 'X':
-            var = self.model.X
-            inner_set = self.model.alltime
-        elif variable_name == 'U':
-            var = self.model.U
-            inner_set = self._allmeas_times
-        elif variable_name == 'dXdt':
-            var = self.model.dXdt
-            inner_set = self.model.alltime
-        elif variable_name == 'Y':
-            var = self.model.Y
-            inner_set = self.model.alltime
-        elif variable_name == 'dual':  # for warm start
-            var = self.model.dual
-            inner_set = self.model.alltime
-        elif variable_name == 'Ps':
-            var = self.model.Ps
-            inner_set = self.model.alltime
-        elif variable_name =='Chat':
-            var = self.model.Chat
-            inner_set = self.model.huplctime
-        else:
+        try:
+            var = getattr(self.model, variable_name)
+            inner_set = rgetattr(self, set_time[variable_name])
+        except:
             raise RuntimeError('Initialization of variable {} is not supported'.format(variable_name))
 
         columns = trajectories.columns
-
         to_initialize = list()
-        if variable_name in ['Z', 'dZdt', 'S', 'C']:
-            for component in columns:
-                if component not in self._mixture_components:
-                    print(
-                        'WARNING: Mixture component {} is not in model mixture components. initialization ignored'.format(
-                            component))
-                else:
-                    to_initialize.append(component)
-        #added due to new structure for non_abs species, Cs as subset of C (CS):
-        if variable_name in ['Cs']:
-            for component in columns:
-                if component not in self._mixture_components:
-                    if component not in self._abs_components:
-                        print(
-                            'WARNING: Absorbing component {} is not in model absorbing components. initialization ignored'.format(
-                            component))
-                else:
-                    to_initialize.append(component)
+        component_set = rgetattr(self, set_comp[variable_name])
 
-        #added for additional huplc data CS:
-        if variable_name in ['Chat']:#, 'Dhat']:
-            for component in columns:
-                if component not in self._huplcabs_components:
-                    print(
-                        'WARNING: HUPLC absorbing component {} is not in model absorbing components. initialization ignored'.format(
-                            component))
-                else:
-                    to_initialize.append(component)
-
-        #added for additional smoothing data CS:
-        if variable_name in ['Ps']:#, 'Dhat']:
-            for component in columns:
-                if component not in self.model.smoothparameter_names:
-                    print(
-                        'WARNING: Smoothing parameter component {} is not in Smoothing parameter components. initialization ignored'.format(
-                            component))
-                else:
-                    to_initialize.append(component)
-
-
-        if variable_name in ['X', 'dXdt', 'U']:
-            for component in columns:
-                if component not in self._complementary_states:
-                    print('WARNING: State {} is not in model complementary_states. initialization ignored'.format(
-                        component))
-                else:
-                    to_initialize.append(component)
-
-        if variable_name in ['Y']:
-            for component in columns:
-                if component not in self._algebraics:
-                    print('WARNING: Algebraic {} is not in model algebraics. initialization ignored'.format(component))
-                else:
-                    to_initialize.append(component)
-        """            
-        trajectory_times = np.array(trajectories.index)
-        n_ttimes = len(trajectory_times)
-        first_time = trajectory_times[0]
-        last_time = trajectory_times[-1]
-        for component in to_initialize:
-            for t in inner_set:
-                if t>=first_time and t<=last_time:
-                    idx = find_nearest(trajectory_times,t)
-                    t0 = trajectory_times[idx]
-                    if t==t0:
-                        if not np.isnan(trajectories[component][t0]):
-                            var[t,component].value = trajectories[component][t0]
-                        else:
-                            var[t,component].value = None
-                    else:
-                        if t0==last_time:
-                            if not np.isnan(trajectories[component][t0]):
-                                var[t,component].value = trajectories[component][t0]
-                            else:
-                                var[t,component].value = None
-                        else:
-                            idx1 = idx+1
-                            t1 = trajectory_times[idx1]
-                            x_tuple = (t0,t1)
-                            y_tuple = (trajectories[component][t0],trajectories[component][t1])
-                            y = interpolate_linearly(t,x_tuple,y_tuple)
-                            if not np.isnan(y):
-                                var[t,component].value = y
-                            else:
-                                var[t,component].value = None
-        """
+        for component in columns:
+            comp_warning = f'WARNING: {component} not a model component and its initialization is ignored'
+            if variable_name != 'Cs' and component not in component_set:
+                print(comp_warning)
+            elif variable_name == 'Cs' and component not in set(self._abs_components).intersection(set(component_set)):
+                print(comp_warning)
+            else:
+                to_initialize.append(component)
+       
         for component in to_initialize:
             single_trajectory = trajectories[component]
-            for t in inner_set:
-                #print(t)
-                val = interpolate_from_trajectory(t, single_trajectory)
-                if not np.isnan(val):
-                    var[t, component].value = val
+            values = interpolate_trajectory(inner_set, single_trajectory)
+            for i, t in enumerate(inner_set):
+                if not np.isnan(values[i]):
+                    var[t, component].value = values[i]
+
+        return None
 
     def scale_variables_from_trajectory(self, variable_name, trajectories):
         """Scales discretized variables with maximum value of the trajectory.
-
         Note:
             This method only works with ipopt
-
         Args:
             variable_name (str): Name of the variable in pyomo model
-
             trajectories (DataFrame or Series): Indexed in in the same way the pyomo
             variable is indexed. If the variable is by two sets then the first set is
             the indices of the data frame, the second set is the columns
-
         Returns:
             None
-
         """
+        tol = 1e-5
+        
+        if variable_name not in ['Z', 'dZdt', 'S', 'C', 'X', 'dXdt', 'U', 'Y']:
+            print('Warning: nothing to initialize')
+            return None
+        
         # time-invariant nominal scaling
         if not self.model.alltime.get_discretization_info():
             raise RuntimeError('apply discretization first before runing simulation')
 
-        if variable_name == 'Z':
-            var = self.model.Z
-            inner_set = self.model.alltime
-        elif variable_name == 'dZdt':
-            var = self.model.dZdt
-            inner_set = self.model.alltime
-        elif variable_name == 'C':
-            var = self.model.C
-            inner_set = self._allmeas_times
-        elif variable_name =='Cs':
-            var = self.model.Cs
-            inner_set = self._allmeas_times
-        elif variable_name == 'S':
-            var = self.model.S
-            inner_set = self._meas_lambdas
-        elif variable_name == 'X':
-            var = self.model.X
-            inner_set = self.model.alltime
-        elif variable_name == 'U':
-            var = self.model.U
-            inner_set = self._allmeas_times
-        elif variable_name == 'dXdt':
-            var = self.model.dXdt
-            inner_set = self.model.alltime
-        elif variable_name == 'Y':
-            var = self.model.Y
-            inner_set = self.model.alltime
-        elif variable_name =='Chat':
-            var = self.model.Chat
-            inner_set = self.model.huplctime
-        else:
+        try:
+            var = getattr(self.model, variable_name)
+            inner_set = rgetattr(self, set_time[variable_name])
+        except:
             raise RuntimeError('Scaling of variable {} is not supported'.format(variable_name))
 
         columns = trajectories.columns
-        nominal_vals = dict()
-        if variable_name in ['Z', 'dZdt', 'S', 'C']:
-            for component in columns:
-                nominal_vals[component] = abs(trajectories[component].max())
-                if component not in self._mixture_components:
-                    raise RuntimeError('Mixture component {} is not in model mixture components'.format(component))
-
-        if variable_name in ['X', 'dXdt', 'U']:
-            for component in columns:
-                nominal_vals[component] = abs(trajectories[component].max())
-                if component not in self._complementary_states:
-                    raise RuntimeError('State {} is not in model complementary_states'.format(component))
-
-        if variable_name in ['Y']:
-            for component in columns:
-                nominal_vals[component] = abs(trajectories[component].max())
-                if component not in self._algebraics:
-                    raise RuntimeError('Algebraics {} is not in model algebraics'.format(component))
-
-        tol = 1e-5
+        component_set = rgetattr(self, set_comp[variable_name])
+            
         for component in columns:
-            if nominal_vals[component] >= tol:
-                scale = 1.0 / nominal_vals[component]
+            if component not in component_set:
+                raise RuntimeError(f'Component {component} is not used in the model')
+                
+            nominal_vals = abs(trajectories[component].max())
+            if nominal_vals >= tol:
+                scale = 1.0 / nominal_vals
                 for t in inner_set:
                     self.model.scaling_factor.set_value(var[t, component], scale)
 
         self._ipopt_scaled = True
+        
+        return None
 
     def validate(self):
         """Validates model before passing to solver.
@@ -701,3 +600,8 @@ class PyomoSimulator(Simulator):
 
         results.P = param_vals
         return results
+    
+def rgetattr(obj, attr, *args):
+    def _getattr(obj, attr):
+        return getattr(obj, attr, *args)
+    return reduce(_getattr, [obj] + attr.split('.')) 

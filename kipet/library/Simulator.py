@@ -1,3 +1,4 @@
+import bisect
 import math
 
 import numpy as np
@@ -7,35 +8,29 @@ from pyomo.dae import *
 from pyomo.environ import *
 from kipet.library.ResultsObject import *
 
-# need to move this two functions to utils
-def find_nearest(array,value):
-    idx = np.searchsorted(array, value, side="left")
-    if idx == len(array) or idx==len(array)-1 or math.fabs(value - array[idx-1]) < math.fabs(value - array[idx]):
-        return idx-1
-    else:
-        return idx
+def interpolate_trajectory(t, tr):
+    
+    tr_val = np.zeros((len(t)))
+    times = [ti for ti in t]
 
-def interpolate_linearly(x,x_tuple,y_tuple):
-    m = (y_tuple[1]-y_tuple[0])/(x_tuple[1]-x_tuple[0])
-    return y_tuple[0]+m*(x-x_tuple[0])
+    for i, t_indx in enumerate(times):
 
-def interpolate_from_trajectory(t,trajectory):
+        if i == 0:
+            tr_val[i] = tr.iloc[0]
+            continue        
 
-    times_traj = np.array(trajectory.index)
-    last_time_idx = len(times_traj)-1
-    idx_near = find_nearest(times_traj,t)
-    if idx_near==last_time_idx:
-        t_found = times_traj[idx_near]
-        return trajectory[t_found]
-    else:
-        idx_near1 = idx_near+1
-        t_found = times_traj[idx_near]
-        t_found1 = times_traj[idx_near1]
-        val = trajectory[t_found]
-        val1 = trajectory[t_found1]
-        x_tuple = (t_found,t_found1)
-        y_tuple = (val,val1)
-        return interpolate_linearly(t,x_tuple,y_tuple)
+        indx_left = bisect.bisect_left(tr.index[1:], times[i])
+        if indx_left == len(tr) - 1:
+            tr_val[i] = tr.iloc[indx_left]
+            continue
+        
+        dx = tr.index[indx_left + 1] - tr.index[indx_left]
+        dy = tr.iloc[indx_left + 1] - tr.iloc[indx_left]
+        m = dy/dx
+        val = tr.iloc[indx_left] +  (times[i] - tr.index[indx_left]) * m
+        tr_val[i] = val
+    
+    return tr_val 
 
 class Simulator(object):
     """Base simulator class.

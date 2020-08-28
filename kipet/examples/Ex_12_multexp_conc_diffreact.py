@@ -106,7 +106,13 @@ if __name__ == "__main__":
         
         plt.show()
     
-    write_concentration_data_to_csv('sim_data.csv',data)
+    dataDirectory = os.path.abspath(
+        os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
+            inspect.currentframe() ) ) ), 'data_sets'))
+    
+    filename = os.path.join(dataDirectory, 'sim_data.csv')
+    
+    write_concentration_data_to_csv(filename ,data)
 
     #=========================================================================
     #     SIMULATION MODEL   2
@@ -174,13 +180,16 @@ if __name__ == "__main__":
         
         plt.show()
     
-    write_concentration_data_to_csv('sim_data1.csv',data2)
+    
+    filename2 = os.path.join(dataDirectory, 'sim_data1.csv')
+
+    write_concentration_data_to_csv(filename2, data2)
     
     # Load spectral data from the file location. 
     #################################################################################
 
-    D_frame1 = read_concentration_data_from_csv('sim_data.csv')
-    D_frame2 = read_concentration_data_from_csv('sim_data1.csv')
+    D_frame1 = read_concentration_data_from_csv(filename)
+    D_frame2 = read_concentration_data_from_csv(filename2)
 
     # Then we build dae block for as described in the section 4.2.1. Note the addition
     # of the data using .add_concentration_data

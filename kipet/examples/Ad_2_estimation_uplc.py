@@ -159,7 +159,9 @@ if __name__ == "__main__":
                                       variances=sigmas#,
                                       # weights=[1.,1.,1e8]#for adjusting the weights related to the terms in the objective, here with higher weight for the uplc data
                                         )
-    write_file('resultsimZ.csv', results_pyomo.Z)
+    
+    filename_write =  os.path.join(dataDirectory,'resultsimZ.csv')
+    write_file(filename_write, results_pyomo.Z)
     lof = p_estimator.lack_of_fit()
     lof2 = p_estimator.lack_of_fit_huplc()
 
