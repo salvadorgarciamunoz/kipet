@@ -5,6 +5,7 @@ from kipet.library.ParameterEstimator import *
 from kipet.library.VarianceEstimator import *
 from kipet.library.data_tools import *
 from kipet.library.DataHandler import DataBlock
+from kipet.library.common.plot_results import plot_results
 
 import matplotlib.pyplot as plt
 import os
@@ -98,17 +99,21 @@ if __name__ == "__main__":
         
     # display results
     if with_plots:
-        results_pyomo.C.plot.line(legend=True)
-        plt.xlabel("time (s)")
-        plt.ylabel("Concentration (mol/L)")
-        plt.title("Concentration Profile")
         
-        results_pyomo.Z.plot.line(legend=True)
-        plt.xlabel("time (s)")
-        plt.ylabel("Concentration (mol/L)")
-        plt.title("Concentration Profile")
+        
+        plot_results(p_estimator.model, 'C')
+        
+        # results_pyomo.C.plot.line(legend=True)
+        # plt.xlabel("time (s)")
+        # plt.ylabel("Concentration (mol/L)")
+        # plt.title("Concentration Profile")
+        
+        # results_pyomo.Z.plot.line(legend=True)
+        # plt.xlabel("time (s)")
+        # plt.ylabel("Concentration (mol/L)")
+        # plt.title("Concentration Profile")
 
     
-        plt.show()
+        # plt.show()
     
 
