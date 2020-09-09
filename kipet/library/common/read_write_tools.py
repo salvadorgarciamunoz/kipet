@@ -13,7 +13,7 @@ import pandas as pd
 
 DEFAULT_DIR = 'data_sets'
 
-def _set_directory():
+def set_directory(filename, data_dir=DEFAULT_DIR):
     """Sets the current working directory plus the given subdirectory as the
     directory for the given data file (filename)
     
@@ -26,11 +26,8 @@ def _set_directory():
         filename (Path): the full filename of the data
     
     """
-    dataDirectory = os.path.abspath(
-        os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
-            inspect.currentframe() ) ) ), '../../examples', 'data_sets'))
-    
-    return Path(dataDirectory)
+    dataDirectory = Path().absolute().joinpath(data_dir, filename)
+    return dataDirectory
 
 def read_file(filename, directory=DEFAULT_DIR):       
     """ Reads data from a csv or txt file and converts it to a DataFrame
@@ -45,6 +42,7 @@ def read_file(filename, directory=DEFAULT_DIR):
 
     """
     #dirname = _set_directory()
+    #filename = dirname.joinpath(filename)
     filename = Path(filename)
     print(f'read dir : {filename}')
     #filename = Path(filename)

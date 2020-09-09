@@ -40,7 +40,7 @@ def conc_objective(model, *args, **kwargs):
     if source == 'concentration':
     
         if model.mixture_components & model.measured_data:
-            for index, values in model.C.items():
+            for index, values in model.Cm.items():
                 obj += _concentration_term(model, index, **kwargs)
       
     elif source == 'spectra':
@@ -174,7 +174,7 @@ def _concentration_term(model, index, **kwargs):
     else:
         variance = custom_sigma[index[1]]
     
-    objective_concentration_term = (model.C[index] - model.Z[index]) ** 2  / variance
+    objective_concentration_term = (model.Cm[index] - model.Z[index]) ** 2  / variance
     
     return objective_concentration_term
     

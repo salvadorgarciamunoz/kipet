@@ -24,6 +24,7 @@ set_time = {
             'Z' : time_sets[0],
             'dZdt' : time_sets[0],
             'C' : time_sets[1],
+            'Cm' : time_sets[1],
             'Cs' : time_sets[1],
             'S' : time_sets[2],
             'X' : time_sets[0],
@@ -39,6 +40,7 @@ set_comp = {
             'Z' : comp_sets[0],
             'dZdt' : comp_sets[0],
             'C' : comp_sets[0],
+            'Cm' : comp_sets[0],
             'Cs' : comp_sets[0],
             'S' : comp_sets[0],
             'X' : comp_sets[1],
@@ -84,7 +86,7 @@ class PyomoSimulator(Simulator):
         self._allmeas_times=sorted(self.model.allmeas_times)
         self._ipopt_scaled = False
         self._spectra_given = hasattr(self.model, 'D')
-        self._concentration_given = hasattr(self.model, 'C')
+        self._concentration_given = hasattr(self.model, 'Cm')
         self._conplementary_states_given = hasattr(self.model, 'U')
         self._absorption_given = hasattr(self.model,
                                          'S')  # added for special case of absorption data available but not concentration data CS
@@ -260,8 +262,9 @@ class PyomoSimulator(Simulator):
                                         columns=self._mixture_components,
                                         index=self._allmeas_times)
 
-                self.initialize_from_trajectory('C', c_init_panel)
-                print("self._n_meas_times is true in _default_init in PyomoSim")
+                if hasattr(self.model, 'Cm'):
+                    self.initialize_from_trajectory('Cm', c_init_panel)
+                    print("self._n_meas_times is true in _default_init in PyomoSim")
 
         x_init = []
         for t in self._alltimes:

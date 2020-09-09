@@ -100,4 +100,8 @@ class ResultsObject(object):
                 else:
                     raise RuntimeError('load_from_pyomo_model function not supported for models with variables with dimension>2')
                 
-
+    @property
+    def parameters(self):
+        for k, v in self.P.items():
+            print(k, v)
+        

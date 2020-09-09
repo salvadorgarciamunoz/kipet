@@ -20,7 +20,7 @@ from kipet.library.ResultsObject import ResultsObject
 from pyomo.core.base.PyomoModel import ConcreteModel
 
 # Default Matlab colors
-colors = [(0,    0.4470,    0.7410),
+colors_rgb = [(0,    0.4470,    0.7410),
           (0.8500,    0.3250,    0.0980),
           (0.9290,    0.6940,    0.1250),
           (0.4940,    0.1840,    0.5560),
@@ -30,7 +30,7 @@ colors = [(0,    0.4470,    0.7410),
           ]
 
 # Convert to rgb format used in plotly
-colors = ['rgb(' + ','.join([str(int(255*c)) for c in color]) + ')' for color in colors]
+colors = ['rgb(' + ','.join([str(int(255*c)) for c in color]) + ')' for color in colors_rgb]
 
 exp_to_pred = {'C': 'Z',
                'U': 'X',
@@ -44,7 +44,6 @@ def _make_plots(model, var, filename=None, show_plot=True):
     """
     if hasattr(model, var) and getattr(model, var) is not None:    
        
-        
         if isinstance(model, ResultsObject):
             exp = getattr(model, var)
         elif isinstance(model, ConcreteModel):

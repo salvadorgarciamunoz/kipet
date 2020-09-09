@@ -15,11 +15,111 @@ from plotly import __version__
 from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
 
 from kipet.library.data_tools import *
-
+from kipet.library.common.plot_results import colors
 
 data_categories = ['concentration', 'spectra', 'state']
 
-class DataBlock(object):
+class DataBlock():
+    
+    def __init__(self):
+        
+        self.datasets = {}
+        
+    def __getitem__(self, value):
+        
+        return self.datasets[value]
+         
+    def __str__(self):
+        
+        format_string = "{:<20}{:<15}{:<30}{:<10}\n"
+        data_str = 'DataBlock:\n'
+        data_str += format_string.format(*['Name', 'Category', 'Components', 'Size'])
+        
+        for dataset in self.datasets.values():
+            
+            data_str += format_string.format(f'{dataset.name}', f'{dataset.category}', f'{dataset.species}', f'{dataset.data.shape}')
+        
+        return data_str
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __iter__(self):
+        for param, data in self.datasets.items():
+            yield data
+            
+    def add_dataset(self, *args, **kwargs):
+        
+        """Should handle a series of different input methods:
+          
+        KP = KineticParameter('k1', init=1.0, bounds=(0.01, 10))
+        builder.add_parameter_temp(KP)
+        
+        - or -
+        
+        builder.add_parameter('k1', init=1.0, bounds=(0.01, 10))
+        
+        - or -
+        
+        builder.add_parameter('k1', 1.0, (0.01, 10))
+            
+        """        
+        #bounds = kwargs.pop('bounds', None)
+        #init = kwargs.pop('init', None)
+        
+        if len(args) == 1:
+            if isinstance(args[0], DataSet):
+                self.datasets[args[0].name] = args[0]
+            
+            else:
+                raise ValueError('Needs a DataSet instance')
+            
+        #     elif isinstance(args[0], (list, tuple)):
+        #         args = [a for a in args[0]]
+        #         self._add_parameter_with_terms(*args)
+                
+        #     elif isinstance(args[0], dict):
+        #         args = [[k] + [*v] for k, v in args[0].items()][0]
+        #         self._add_parameter_with_terms(*args)
+                
+        #     elif isinstance(args[0], str):
+        #         self._add_parameter_with_terms(args[0], init, bounds)
+                
+        #     else:
+        #         raise ValueError('For a parameter a name and initial value are required')
+            
+        # elif len(args) >= 2:
+            
+        #     _args = [args[0], None, None]
+                    
+        #     if init is not None:
+        #         _args[1] = init
+        #     else:
+        #         if not isinstance(args[1], (list, tuple)):
+        #             _args[1] = args[1]
+
+        #     if bounds is not None:
+        #         _args[2] = bounds
+        #     else:
+        #         if len(args) == 3:
+        #             _args[2] = args[2]
+        #         else:
+        #             if _args[1] is None:
+        #                 _args[2] = args[1]
+                        
+        #     self._add_parameter_with_terms(*_args)
+    
+        return None
+
+    @property
+    def time_span(self):
+        
+        start_time = min([dataset.time_span[0] for dataset in self.datasets.values()])
+        stop_time = max([dataset.time_span[1] for dataset in self.datasets.values()])
+
+        return (start_time, stop_time)
+
+class DataSet(object):
     
     """The specific data object"""
     
@@ -109,11 +209,12 @@ class DataBlock(object):
             x_axis_text = ' '.join([x_axis_text, '[' + self.units[1] +']'])
         
         fig = go.Figure()
-        for cols in self.data.columns:
+        for i, cols in enumerate(self.data.columns):
             fig.add_trace(go.Scatter(x=self.data.index,
                                      y=self.data[cols],
                                      mode='markers',
-                                     name=cols)
+                                     name=cols,
+                                     marker=dict(size=10, color=colors[i])),
                           )
            
         fig.update_layout(title_text=f'{self.category.capitalize()} data: {self.name}',
@@ -172,12 +273,16 @@ class DataBlock(object):
     
     @property
     def species(self):
-        if self.data is not None and self.data.category == 'concentration':
+        if self.data is not None and self.category == 'concentration':
             return list(self.data.columns)
         elif self.data is None:
             return []
         else:
             return []
+        
+    @property
+    def time_span(self):
+        return self.data.index.min(), self.data.index.max()
 
 if __name__ == '__main__':
 

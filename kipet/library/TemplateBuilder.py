@@ -30,38 +30,62 @@ except ImportError:
 logger = logging.getLogger('ModelBuilderLogger')
     
 
-class KineticParameter():
-    """A simple class for holding kinetic parameter data"""
+# class KineticParameter():
+#     """A simple class for holding kinetic parameter data"""
 
-    def __init__(self, name, bounds=None, init=None, uncertainty=None):
+#     def __init__(self, name=None, init=None, bounds=None): #, variance=None):
 
-        self.name = name
-        self.bounds = bounds
-        self.init = init
-        self.uncertainty = uncertainty
+#         if name is None:
+#             raise ValueError('KineticParameter requires a name (k1, k2, etc.)')
         
-    def __str__(self):
-        return f'KineticParameter: {self.name}, bounds={self.bounds}, init={self.init}, variance={self.uncertainty}'
-
-    def __repr__(self):
-        return f'KineticParameter: {self.name}, bounds={self.bounds}, init={self.init}, variance={self.uncertainty}'
-
-
-class Component():
-    """A simple class for holding component information"""
+#         if init is None:
+#             raise ValueError('KineticParameter requires an initial value "init = float"')
     
-    def __init__(self, name, init, sigma=1, state='concentration'):
-    
-        self.name = name
-        self.init = init
-        self.sigma = sigma
-        self.state = state
+#         if bounds is None:
+#             raise Warning('KineticParameter needs a bounds tuple for optimization')
 
-    def __str__(self):
-        return f'Component: {self.name}, init={self.init}, sigma={self.sigma}'
+#         self.name = name
+#         self.bounds = bounds
+#         self.init = init
+        
+#     def __str__(self):
+#         return f'KineticParameter: {self.name}, bounds={self.bounds}, init={self.init}, variance={self.uncertainty}'
+
+#     def __repr__(self):
+#         return f'KineticParameter: {self.name}, bounds={self.bounds}, init={self.init}, variance={self.uncertainty}'
+
+
+# class Component():
+#     """A simple class for holding component information"""
     
-    def __repr__(self):
-        return f'Component: {self.name}, init={self.init}, sigma={self.sigma}'
+#     def __init__(self, name=None, init=None, variance=None, state=None):
+    
+#         if name is None:
+#             raise ValueError('Component requires a name (Should match provided data')
+        
+#         if init is None:
+#             raise ValueError('Compnent requires an initial value "init = ..."')
+    
+#         if variance is None:
+#             raise Warning('Component variance not provided and is being set to one')
+#             variance = 1
+            
+#         if state is None:
+#             raise ValueError('Component requires a state (complementary, concentration)')
+        
+#         self.name = name
+#         self.init = init
+#         self.sigma = sigma
+#         self.state = state
+
+#     def __str__(self):
+#         return f'Component: {self.name}, init={self.init}, sigma={self.sigma}'
+    
+#     def __repr__(self):
+#         return f'Component: {self.name}, init={self.init}, sigma={self.sigma}'
+
+
+# Goal - remove all data checking and handling from TemplateBuilder and move to DataHandler
 
 class TemplateBuilder(object):
     """Helper class for creation of models.
@@ -259,23 +283,28 @@ class TemplateBuilder(object):
         # perhaps make this more secure later on and account for different input types
         return None
     
-    def add_model_constants(self, constant_dict):
-        """Add constants to the model (nominal parameters that are changed in
-        the estimability calculations)
+    # def add_model_constants(self, constant_dict):
+    #     """Add constants to the model (nominal parameters that are changed in
+    #     the estimability calculations)
         
-        Args:
-            constant_dict (dict): A dict containing the nominal parameter
-            values.
+    #     Args:
+    #         constant_dict (dict): A dict containing the nominal parameter
+    #         values.
             
-        Returns:
-            None
-        """
-        if isinstance(constant_dict, dict):
-            self._model_constants = constant_dict
-        else:
-            raise TypeError('Model constants must be given as a dict')
+    #     Returns:
+    #         None
+    #     """
+    #     if isinstance(constant_dict, dict):
+    #         self._model_constants = constant_dict
+    #     else:
+    #         raise TypeError('Model constants must be given as a dict')
             
-        return None
+    #     return None
+    
+    def add_parameters(self, ParameterBlockObject):
+        
+        for param in ParameterBlockObject:
+            self.add_parameter(param.name, init=param.init, bounds=param.bounds)
 
     def add_parameter(self, *args, **kwds):
         """Add a kinetic parameter(s) to the model.
@@ -361,8 +390,6 @@ class TemplateBuilder(object):
             None
 
         """
-        # bounds = kwds.pop('bounds', None)
-        # init = kwds.pop('init', None)
         mutable = kwds.pop('mutable', False)
 
         if len(args) == 2:
@@ -410,6 +437,16 @@ class TemplateBuilder(object):
             raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try str, float')
 
         return None
+
+
+    def add_components(self, ComponentBlockObject):
+        """Add model components to template using the ComponentBlock object
+        
+        Args:
+            ComponentBlockObject (ComponentBlock): Model components
+        """
+        for component in ComponentBlockObject:
+            self._add_state_variable(component.name, component.init, data_type=component.state)
 
 
     def add_mixture_component(self, *args):
@@ -464,16 +501,18 @@ class TemplateBuilder(object):
         
         return None
     
-    def input_data(self, data_obj_list):
+    def input_data(self, DataBlockObject):
         """This should take a DataContainer and input the data, but for now
         it will take a DataBlock list
         
         """
-        for db in data_obj_list:
-            if db.category == 'state':
+        for db in DataBlockObject:
+            if db.category == 'state':     
                 self.add_data(db.data, 'complementary_states')
             else:
                 self.add_data(db.data, db.category)
+        
+        self.datablock = DataBlockObject
         
         return None
     
@@ -516,16 +555,20 @@ class TemplateBuilder(object):
             None
 
         """
+        print(data)
+        print(data_type)
+        print(label)
+        
         built_in_data_types = {
-            'concentration' : 'C',
+            'concentration' : 'Cm',
             'complementary_states' : 'U',
             'spectral' : 'D',
             'huplc' : 'Dhat',
             'smoothparam' : 'Ps',
             }
         
-        state_data = ['C', 'U']
-        deriv_data = ['C', 'U', 'D', 'Dhat']
+        state_data = ['C', 'U', 'Cm']
+        deriv_data = ['C', 'U', 'D', 'Dhat', 'Cm']
         
         if label is None:
             try:
@@ -542,10 +585,7 @@ class TemplateBuilder(object):
                 if t not in data.index:
                     dfc.loc[t] = [0.0 for n in range(len(data.columns))]
       
-            
-            #print(f'dfc:\n{dfc}')
             dfallc = data.append(dfc)
-            #print(f'dfallc:\n{dfallc}')
             dfallc.sort_index(inplace=True)
             dfallc.index = dfallc.index.to_series().apply(
                 lambda x: np.round(x, 6))
@@ -576,13 +616,14 @@ class TemplateBuilder(object):
         
         if label in deriv_data:
             C = np.array(dfallc)
+            setattr(self, f'_is_{label}_deriv', False)
             for t in range(len(dfallc.index)):
                 for l in range(len(dfallc.columns)):
                     if C[t, l] >= 0 or np.isnan(C[t, l]):
                         pass
                     else:
                         setattr(self, f'_is_{label}_deriv', True)
-                        #self._is_C_deriv = True
+            print(label, hasattr(self, f'_is_{label}_deriv'))
             if getattr(self, f'_is_{label}_deriv') == True:
                 print(
                     f"Warning! Since {label}-matrix contains negative values Kipet is assuming a derivative of {label} has been inputted")
@@ -935,11 +976,13 @@ class TemplateBuilder(object):
             if end_time is None:
                 end_time = self._times[1]
         else:
-            if start_time is None:
-                raise ValueError('A start time must be provided')
-            if end_time is None:
-                raise ValueError('An end time must be provided')
-        
+            if start_time is None and end_time is None:
+                try:    
+                    start_time = self.datablock.time_span[0]
+                    end_time = self.datablock.time_span[1]
+                except:
+                    raise ValueError('A model requires a start and end time or a dataset')
+            
         # Model
         pyomo_model = ConcreteModel()
 
@@ -1139,41 +1182,43 @@ class TemplateBuilder(object):
         # Variables of provided data - set as fixed variables complementary to above
         
         fixed_var_name = {
-                'C' : self._concentration_data,
+               # 'C' : self._spectral_data,
+                'Cm' : self._concentration_data,
                 'U' : self._complementary_states_data,
                     }
         
         for var, data in fixed_var_name.items():
             c_dict = dict()
-            if getattr(self, f'_is_{var}_deriv') == True:
-                c_bounds = (None, None)
-            else:
-                c_bounds = (0.0, None)
-    
-            if data is not None:    
-                for i, row in data.iterrows():
-                     c_dict.update({(i, col): float(row[col]) for col in data.columns if not np.isnan(float(row[col]))})
-            
-                setattr(pyomo_model, f'{var}_indx', Set(initialize=c_dict.keys(), ordered=True))
-                setattr(pyomo_model, var, Var(getattr(pyomo_model, f'{var}_indx'),
-                                              bounds=c_bounds,
-                                              initialize=c_dict,
-                                              )
-                        )
+            if hasattr(self, f'_is_{var}_deriv'):
+                if getattr(self, f'_is_{var}_deriv') == True:
+                    c_bounds = (None, None)
+                else:
+                    c_bounds = (0.0, None)
+        
+                if data is not None:    
+                    for i, row in data.iterrows():
+                         c_dict.update({(i, col): float(row[col]) for col in data.columns if not np.isnan(float(row[col]))})
                 
-                for k, v in getattr(pyomo_model, var).items():
-                    getattr(pyomo_model, var)[k].fixed = True
-            
-            else:
-                setattr(pyomo_model, var, Var(pyomo_model.allmeas_times,
-                                pyomo_model.mixture_components,
-                                bounds=c_bounds,
-                                initialize=1))
-    
-                for time, comp in getattr(pyomo_model, var):
-                    if time == pyomo_model.start_time.value:
-                      #  print(f'initial values: {time}, {comp}')
-                        getattr(pyomo_model, var)[time, comp].value = self._init_conditions[comp]
+                    setattr(pyomo_model, f'{var}_indx', Set(initialize=c_dict.keys(), ordered=True))
+                    setattr(pyomo_model, var, Var(getattr(pyomo_model, f'{var}_indx'),
+                                                  bounds=c_bounds,
+                                                  initialize=c_dict,
+                                                  )
+                            )
+                    
+                    for k, v in getattr(pyomo_model, var).items():
+                        getattr(pyomo_model, var)[k].fixed = True
+                
+                else:
+                    setattr(pyomo_model, var, Var(pyomo_model.allmeas_times,
+                                    pyomo_model.mixture_components,
+                                    bounds=c_bounds,
+                                    initialize=1))
+        
+                    for time, comp in getattr(pyomo_model, var):
+                        if time == pyomo_model.start_time.value:
+                          #  print(f'initial values: {time}, {comp}')
+                            getattr(pyomo_model, var)[time, comp].value = self._init_conditions[comp]
 
         # End intialization for C and U
         
@@ -1196,7 +1241,7 @@ class TemplateBuilder(object):
                 for param, bounds in self._parameters_bounds.items():
                     lb = bounds[0]
                     ub = bounds[1]
-                    p_dict[param] = (ub - lb) / 2 + lb
+                    p_dict[param] = (ub + lb) / 2
 
         if self._scale_parameters:
             pyomo_model.P = Var(pyomo_model.parameter_names,
@@ -1309,6 +1354,11 @@ class TemplateBuilder(object):
             pyomo_model.D = Param(pyomo_model.meas_times,
                                   pyomo_model.meas_lambdas,
                                   initialize=s_data_dict)
+            
+            pyomo_model.C = Var(pyomo_model.meas_times,
+                                    pyomo_model.mixture_components,
+                                    bounds=(0, None),
+                                    initialize=1)
         
         # unwanted contributions: create variables qr and g KH.L
         if self._qr_bounds is not None:
@@ -1373,7 +1423,6 @@ class TemplateBuilder(object):
             def rule_odes(m, t, k):
                 exprs = self._odes(m, t)
             
-                ### Test Area End ###
                 if t == m.start_time.value:
                     return Constraint.Skip
                 else:

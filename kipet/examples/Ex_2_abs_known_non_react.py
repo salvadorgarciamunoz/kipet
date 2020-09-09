@@ -69,7 +69,7 @@ if __name__ == "__main__":
     #plot_spectral_data(D_frame1, dimension = '3D')
     #D_frame2.plot.line()
     #df.plot.line()
-    plot_spectral_data(df, dimension = '3D')
+    #plot_spectral_data(df, dimension = '3D')
     #=========================================================================
     #USER INPUT SECTION - REQUIRED MODEL BUILDING ACTIONS
     #=========================================================================

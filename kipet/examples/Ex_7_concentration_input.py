@@ -6,6 +6,7 @@ from kipet.library.VarianceEstimator import *
 from kipet.library.data_tools import *
 from kipet.library.DataHandler import DataBlock
 from kipet.library.common.plot_results import plot_results
+from kipet.library.common.model_components import ParameterBlock, KineticParameter, Component
 
 import matplotlib.pyplot as plt
 import os
@@ -13,9 +14,9 @@ import sys
 import inspect
 import six
 import pandas as pd
-                                                                                                        
+         #%%                                                                                               
 if __name__ == "__main__":
-
+#%%
     with_plots = True
     if len(sys.argv)==2:
         if int(sys.argv[1]):
@@ -25,14 +26,50 @@ if __name__ == "__main__":
     #USER INPUT SECTION - REQUIRED MODEL BUILDING ACTIONS
     #=========================================================================
        
-    
+    #%%
     # Load spectral data from the relevant file location. As described in section 4.3.1
     #################################################################################
+    
+    # This should not be necessary
+    parameters = ParameterBlock()   
+        
+    parameter_inputs = [
+            ('Tf',  293.15, (250, 400)),
+            ('Cfa', 2500, (0, 5000)),
+            ('rho', 1025,  (800, 2000)),
+            ('delH', 160, (0.0, 400)),
+            ('ER',  255, (0.0, 500)),
+            ('k',   2.5, (0.0, 10)),
+            #('Tfc',  283.15, (250, 400)),
+            #('rhoc', 1000, (0.0, 2000)),
+            #('h',  3600, (0.0, 5000)),
+            ]
+    
+    
+    parameters.add_parameter_list(parameter_inputs)
+    
+    parameters.add_parameter({'Tfc': [283.15, (250, 400)]})
+    
+    parameters.add_parameter(('rhoc', 1000, (0.0, 2000)))
+    
+    parameters.add_parameter('h', 3600, (0, 5000))
+    
+    print(parameters)
+    
+    
+    # components = [
+    #         Component('A', 1000, 0.1),
+    #         ]
+    #%%
+    
+    # I still want to get rid of this stuff here
+    
     dataDirectory = os.path.abspath(
         os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
             inspect.currentframe() ) ) ), 'data_sets'))
 
     filename =  os.path.join(dataDirectory,'Ex_1_C_data.txt')
+    
     C_data = DataBlock( 
                         name='Example Data', 
                         category='concentration', 
@@ -41,9 +78,11 @@ if __name__ == "__main__":
                         units=('mol/L', 'h')
                       )
     
-    C_frame = C_data.data
+    #C_frame = C_data.data
     
-    # Then we build dae block for as described in the section 4.2.1. Note the addition
+    # Then we build dae block for as described in the section 4    # components = [
+    #         Component('A', 1000, 0.1),
+    #         ].2.1. Note the addition
     # of the data using .add_spectral_data
     #################################################################################    
     builder = TemplateBuilder()    
