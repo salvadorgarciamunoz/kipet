@@ -37,6 +37,10 @@ class ParameterBlock():
     def __iter__(self):
         for param, data in self.parameters.items():
             yield data
+            
+    def __len__(self):
+        return len(self.parameters)
+    
 
     def add_parameter_list(self, param_list):
         """Handles lists of parameters or single parameters added to the model
@@ -114,7 +118,7 @@ class ParameterBlock():
         param = ModelParameter(name=name,
                                init=init,
                                bounds=bounds
-                                 )
+                              )
             
         self.parameters[param.name] = param
             
@@ -213,6 +217,9 @@ class ComponentBlock():
     def __iter__(self):
         for comp, data in self.components.items():
             yield data
+    
+    def __len__(self):
+        return len(self.components)
     
     def add_component_list(self, comp_list):
         """Handles lists of parameters or single parameters added to the model

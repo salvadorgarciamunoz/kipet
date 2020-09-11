@@ -17,7 +17,7 @@ from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
 from kipet.library.data_tools import *
 from kipet.library.common.plot_results import colors
 
-data_categories = ['concentration', 'spectra', 'state']
+data_categories = ['concentration', 'spectral', 'state']
 
 class DataBlock():
     
@@ -31,13 +31,13 @@ class DataBlock():
          
     def __str__(self):
         
-        format_string = "{:<20}{:<15}{:<30}{:<10}\n"
+        format_string = "{:<20}{:<15}{:<30}{:<15}{:<30}\n"
         data_str = 'DataBlock:\n'
-        data_str += format_string.format(*['Name', 'Category', 'Components', 'Size'])
+        data_str += format_string.format(*['Name', 'Category', 'Components', 'Size', 'File'])
         
         for dataset in self.datasets.values():
             
-            data_str += format_string.format(f'{dataset.name}', f'{dataset.category}', f'{dataset.species}', f'{dataset.data.shape}')
+            data_str += format_string.format(f'{dataset.name}', f'{dataset.category}', f'{dataset.species}', f'{dataset.data.shape}', f'{dataset.file.name}')
         
         return data_str
 
@@ -47,6 +47,10 @@ class DataBlock():
     def __iter__(self):
         for param, data in self.datasets.items():
             yield data
+            
+    def __len__(self):
+        return len(self.datasets)
+    
             
     def add_dataset(self, *args, **kwargs):
         
@@ -64,29 +68,45 @@ class DataBlock():
         builder.add_parameter('k1', 1.0, (0.01, 10))
             
         """        
-        #bounds = kwargs.pop('bounds', None)
-        #init = kwargs.pop('init', None)
+        category = kwargs.pop('category', None)
+        data = kwargs.pop('data', None)
+        file = kwargs.pop('file', None)
         
-        if len(args) == 1:
-            if isinstance(args[0], DataSet):
-                self.datasets[args[0].name] = args[0]
+        units = None
+        notes = None
+        description = None
+        
+        #if len(args) == 1:
+        if isinstance(args[0], DataSet):
+            self.datasets[args[0].name] = args[0]
+        
+        else:
+            if isinstance(args[0], str):
+                
+                dataset = DataSet(
+                    args[0], 
+                    category=category, 
+                    data=data, 
+                    units=units, 
+                    notes=notes, 
+                    file=file,
+                    description=description,
+                 )
+                self.datasets[args[0]] = dataset
             
-            else:
-                raise ValueError('Needs a DataSet instance')
-            
-        #     elif isinstance(args[0], (list, tuple)):
-        #         args = [a for a in args[0]]
-        #         self._add_parameter_with_terms(*args)
+            # elif isinstance(args[0], (list, tuple)):
+            #     args = [a for a in args[0]]
+            #     self._add_parameter_with_terms(*args)
                 
-        #     elif isinstance(args[0], dict):
-        #         args = [[k] + [*v] for k, v in args[0].items()][0]
-        #         self._add_parameter_with_terms(*args)
+            # elif isinstance(args[0], dict):
+            #     args = [[k] + [*v] for k, v in args[0].items()][0]
+            #     self._add_parameter_with_terms(*args)
                 
-        #     elif isinstance(args[0], str):
-        #         self._add_parameter_with_terms(args[0], init, bounds)
+            # elif isinstance(args[0], str):
+            #     self._add_parameter_with_terms(args[0], init, bounds)
                 
-        #     else:
-        #         raise ValueError('For a parameter a name and initial value are required')
+            # else:
+            #     raise ValueError('For a dataset a name, category, and filename/dataframe are required')
             
         # elif len(args) >= 2:
             
@@ -125,7 +145,7 @@ class DataSet(object):
     
     def __init__(self, 
                  name, 
-                 category, 
+                 category=None, 
                  data=None, 
                  units=None, 
                  notes=None, 
@@ -187,7 +207,7 @@ class DataSet(object):
         if self.category in ['concentration', 'state']:
             self._plot_2D_data()
             
-        if self.category == 'spectra':
+        if self.category == 'spectral':
             self._plot_spectral_data()
     
         return None
@@ -305,7 +325,7 @@ if __name__ == '__main__':
     filename =  os.path.join(dataDirectory,'Dij.txt')
     D_frame = read_file(filename)
     
-    ds = DataBlock('S1', 'spectra', D_frame)
-    ds1 = DataBlock('S2', 'spectra', file=filename)
+    ds = DataBlock('S1', 'spectral', D_frame)
+    ds1 = DataBlock('S2', 'spectral', file=filename)
     
     #ds1.show_data()

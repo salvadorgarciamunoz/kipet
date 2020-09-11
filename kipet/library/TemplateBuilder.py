@@ -555,9 +555,9 @@ class TemplateBuilder(object):
             None
 
         """
-        print(data)
-        print(data_type)
-        print(label)
+        # print(data)
+        # print(data_type)
+        # print(label)
         
         built_in_data_types = {
             'concentration' : 'Cm',
@@ -623,7 +623,7 @@ class TemplateBuilder(object):
                         pass
                     else:
                         setattr(self, f'_is_{label}_deriv', True)
-            print(label, hasattr(self, f'_is_{label}_deriv'))
+            #print(label, hasattr(self, f'_is_{label}_deriv'))
             if getattr(self, f'_is_{label}_deriv') == True:
                 print(
                     f"Warning! Since {label}-matrix contains negative values Kipet is assuming a derivative of {label} has been inputted")

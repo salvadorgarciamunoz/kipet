@@ -1,12 +1,44 @@
+# Standard library imports
+import time
+
+# Thirdparty library imports
 import datetime
-import pandas as pd
 import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+from plotly import __version__
+from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
 from pyomo.core import *
+from pyomo.core.base.PyomoModel import ConcreteModel
 from pyomo.environ import *
 
+# Kipet library imports
 from kipet.library.common.read_write_tools import df_from_pyomo_data
 
+"""
+Constants used for plotting
+"""
+# Default Matlab colors
+colors_rgb = [(0,    0.4470,    0.7410),
+          (0.8500,    0.3250,    0.0980),
+          (0.9290,    0.6940,    0.1250),
+          (0.4940,    0.1840,    0.5560),
+          (0.4660,    0.6740,    0.1880),
+          (0.3010,    0.7450,    0.9330),
+          (0.6350,    0.0780,    0.1840)
+          ]
+
+# Convert to rgb format used in plotly
+colors = ['rgb(' + ','.join([str(int(255*c)) for c in color]) + ')' for color in colors_rgb]
+
+exp_to_pred = {'C': 'Z',
+               'Cm': 'Z',
+               'U': 'X',
+               'S': None,
+               }
+
 class ResultsObject(object):
+    """Container for all of the results. Includes plotting functions"""
     
     def __init__(self):
         """
@@ -16,42 +48,22 @@ class ResultsObject(object):
         self.generated_datetime = datetime.datetime
         self.results_name = None
         self.solver_statistics = {}
-        self.Z = None
-        self.X = None
-        self.Y = None
-        self.C = None
-        self.S = None
-        self.sigma_sq = None
-        self.device_variance = None
-        self.P = None
-        self.dZdt = None
-        self.dXdt = None
-        
-        self.objective = None
-        self.parameter_covariance = None
 
     def __str__(self):
         string = "\nRESULTS\n"
-        if self.Z is not None:
-            string += "Z:\n {}\n\n".format(self.Z)
-        if self.C is not None:
-            string += "C:\n {}\n\n".format(self.C)
-        if self.S is not None:
-            string += "S:\n {}\n\n".format(self.S)
-        if self.X is not None:
-            string += "X:\n {}\n\n".format(self.X)
-        if self.dZdt is not None:
-            string += "dZdt:\n {}\n\n".format(self.dZdt)
-        if self.dXdt is not None:
-            string += "dXdt:\n {}\n\n".format(self.dXdt)
-        if self.P is not None:
-            string += "P:\n {}\n".format(self.P)
-        if self.sigma_sq is not None:
-            string += "Sigmas2:\n {}\n".format(self.sigma_sq)
-
+        
+        result_vars = ['Z', 'C', 'Cm', 'S', 'X', 'dZdt', 'dXdt', 'P', 'sigma_sq']
+        
+        for var in result_vars:
+            if hasattr(self, var) and getattr(self, var) is not None:
+                var_str = var
+                if var == 'sigma_sq':
+                    var_str = 'Sigmas2'
+                string += f'{var_str}:\n {getattr(self, var)}\n\n'
+        
         return string
 
-    def compute_var_norm(self,variable_name,norm_type=np.inf):
+    def compute_var_norm(self, variable_name, norm_type=np.inf):
         var = getattr(self,variable_name)
         var_array = np.array(var)
         return np.linalg.norm(var_array,norm_type)
@@ -74,10 +86,10 @@ class ResultsObject(object):
         else:
             variables_to_load = model_variables
 
-        diff = user_variables.difference(model_variables)
-        if diff:
-            print("WARNING: The following variables are not part of the model:")
-            print(diff) 
+        # diff = user_variables.difference(model_variables)
+        # if diff:
+        #     print("WARNING: The following variables are not part of the model:")
+        #     print(diff) 
         
         for block in instance.block_data_objects():
             block_map = block.component_map(Var)
@@ -98,10 +110,124 @@ class ResultsObject(object):
                                                   index=[])
                     setattr(self, name, data_frame)        
                 else:
-                    raise RuntimeError('load_from_pyomo_model function not supported for models with variables with dimension>2')
+                    raise RuntimeError('load_from_pyomo_model function not supported for models with variables with dimension > 2')
+        
+    def _make_plots(self, var, predict, filename=None, show_plot=True):
+        """Makes the actual plots and filters out the data that is missing from
+        the model.
+        
+        """
+        if hasattr(self, var) and getattr(self, var) is not None:    
+            exp = getattr(self, var)
+            pred = None
+            
+            if predict and hasattr(self, exp_to_pred[var]) and getattr(self, exp_to_pred[var]) is not None:
+                pred = getattr(self, exp_to_pred[var])
                 
+            fig = go.Figure()    
+            
+            if var not in ['S', 'Z']:
+                
+                if pred is not None:
+                    for i, col in enumerate(pred.columns):
+                        fig.add_trace(
+                            go.Scatter(x=pred.index,
+                                   y=pred[col],
+                                   name=col + ' (pred)',
+                                   line=dict(color=colors[i])
+                                   ))
+                for i, col in enumerate(exp.columns):
+                    fig.add_trace(
+                        go.Scatter(x=exp.index,
+                               y=exp[col],
+                               name=col + ' (exp)',
+                               mode='markers',
+                               marker=dict(size=10, opacity=0.5, color=colors[i])),
+                           )
+       
+            else:
+                for i, col in enumerate(exp.columns):
+                    fig.add_trace(
+                        go.Scatter(x=exp.index,
+                               y=exp[col],
+                               name=col,
+                               line=dict(color=colors[i]),
+                           )
+                        )
+                    
+                if var == 'S':
+                    fig.update_layout(
+                        title="Absorbance Profile",
+                        xaxis_title="Wavelength (cm)",
+                        yaxis_title="Absorbance (L/(mol cm))",
+                        )
+                else:
+                    fig.update_layout(
+                        title="Concentration Profile",
+                        xaxis_title="Time",
+                        yaxis_title="Concentration",
+                        )
+            #x_data = [t for t in model.alltime]
+            #x_axis_mod = 0.025*(x_data[-1] - x_data[0])
+            #fig.update_xaxes(range=[x_data[0]-x_axis_mod, x_data[-1]+x_axis_mod])
+            fig.update_xaxes(zeroline=True, zerolinewidth=2, zerolinecolor='black')
+            fig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor='black')
+        
+            if show_plot:
+                if filename is None:
+                    filename = f'chart_{str(time.time())[-4:]}.html'
+                plot(fig, filename=filename)
+    
+        return None
+    
+    def plot(self, var=None, predict=True, filename=None, show_plot=True, simulation=False):
+        """Function to plot experimental data and model predictions using plotly.
+        Automatically finds the concentration and complementary state data in 
+        the model (if the the model has the attribute, it will be checked)
+        
+        Args:
+            model (pyomo Concrete): the model object after optimization
+                This can be a single model or a dict
+            
+            var (str): the variable C, Cm, or U to be displayed
+            
+            filename (str): optional filename
+            
+            show_plot (bool): defaults to True, shows the plots in the browswer
+            
+        Returns:
+            None
+        
+        """
+        
+        if not simulation:
+            _predict = predict
+            if var is None:
+                for _var in exp_to_pred.keys():
+                    if _var == 'S':
+                        _predict = False
+                    
+                    if getattr(self, _var) is not None: 
+                        self._make_plots(_var, _predict, filename, show_plot)
+                    
+            else:
+                if var == 'S':
+                    predict = False
+                self._make_plots(var, predict, filename, show_plot)
+            
+        else:
+            self._make_plots('Z', False, filename, show_plot)
+
+        return None
+    
     @property
     def parameters(self):
         for k, v in self.P.items():
             print(k, v)
+            
+    @property
+    def variances(self):
+        for k, v in self.sigma_sq.items():
+            print(k, v)
+
         

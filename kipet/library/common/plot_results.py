@@ -33,6 +33,7 @@ colors_rgb = [(0,    0.4470,    0.7410),
 colors = ['rgb(' + ','.join([str(int(255*c)) for c in color]) + ')' for color in colors_rgb]
 
 exp_to_pred = {'C': 'Z',
+               'Cm': 'Z',
                'U': 'X',
                }
 
@@ -97,7 +98,7 @@ def plot_results(model, var=None, filename=None, show_plot=True):
         model (pyomo Concrete): the model object after optimization
             This can be a single model or a dict
         
-        var (str): the variable C or U to be displayed
+        var (str): the variable C, Cm, or U to be displayed
         
         filename (str): optional filename
         

@@ -114,7 +114,7 @@ class PyomoSimulator(Simulator):
         if not self.model.alltime.get_discretization_info():
             
             discretizer = TransformationFactory(transformation)
-            
+
             if fixed_times == None:
                 discretizer.apply_to(self.model, wrt=self.model.alltime, **kwargs)
             else:
@@ -412,7 +412,7 @@ class PyomoSimulator(Simulator):
 
         # adjusts the seed to reproduce results with noise
         np.random.seed(seed)
-
+        
         # variables
         Z_var = self.model.Z
         dZ_var = self.model.dZdt
@@ -420,7 +420,8 @@ class PyomoSimulator(Simulator):
         X_var = self.model.X
         U_var = self.model.U
         dX_var = self.model.dXdt
-        C_var = self.model.C  # added for estimation with inputs and conc data CS
+        if hasattr(self.model, 'Cm'):
+            C_var = self.model.Cm  # added for estimation with inputs and conc data CS
         if self._huplc_given: #added for additional data CS
             Dhat_var = self.model.Dhat
             Chat_var = self.model.Chat

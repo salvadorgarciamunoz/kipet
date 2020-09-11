@@ -324,7 +324,7 @@ class ParameterEstimator(PEMixins, Optimizer):
      
         elif self._concentration_given:
             results.load_from_pyomo_model(self.model,
-                                          to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'Y'])
+                                          to_load=['Z', 'dZdt', 'X', 'dXdt', 'Cm', 'Y'])
         else:
             raise RuntimeError(
                 'Must either provide concentration data or spectra in order to solve the parameter estimation problem')
