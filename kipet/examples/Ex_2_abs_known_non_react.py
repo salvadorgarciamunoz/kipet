@@ -108,14 +108,14 @@ if __name__ == "__main__":
 
     # Variances can then be displayed 
     print("\nThe estimated variances are:\n")
-    kipet_model.results['ve'].variances
+    kipet_model.results['v_estimator'].variances
 
     # and the sigmas for the parameter estimation step are now known and fixed
-    sigmas = kipet_model.results['ve'].sigma_sq
+    sigmas = kipet_model.results['v_estimator'].sigma_sq
     
     if with_plots:
-        kipet_model.results['ve'].plot('C', predict=False)
-        kipet_model.results['ve'].plot('S', predict=False)
+        kipet_model.results['v_estimator'].plot('C', predict=False)
+        kipet_model.results['v_estimator'].plot('S', predict=False)
    
     #=========================================================================
     # USER INPUT SECTION - PARAMETER ESTIMATION 
@@ -129,9 +129,7 @@ if __name__ == "__main__":
     # varininace estimation step. This is optional.
     
     # The p_estimator attribute is the ParameterEstimator object from previous versions
-    kipet_model.p_estimator.initialize_from_trajectory('Z', kipet_model.results['ve'].Z)
-    kipet_model.p_estimator.initialize_from_trajectory('S', kipet_model.results['ve'].S)
-    kipet_model.p_estimator.initialize_from_trajectory('C', kipet_model.results['ve'].C)
+    kipet_model.initialize_from_trajectory(source=kipet_model.results['v_estimator'])
     
     # Again we provide options for the solver
     options = dict()
@@ -148,10 +146,10 @@ if __name__ == "__main__":
 
     # And display the results
     print("The estimated parameters are:")
-    kipet_model.results['pe'].parameters
+    kipet_model.results['p_estimator'].parameters
     
     # New plotting methods
     if with_plots:
-        kipet_model.results['pe'].plot('C')
-        kipet_model.results['pe'].plot('S')
+        kipet_model.results['p_estimator'].plot('C')
+        kipet_model.results['p_estimator'].plot('S')
         

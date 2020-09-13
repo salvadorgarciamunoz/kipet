@@ -50,7 +50,7 @@ if __name__ == "__main__":
     # If no times are given to the builder, it will use the times in the data
     kipet_model.create_pyomo_model()
     
-    # Display the KipetTemplate object attributes
+    # Display the KipetModel object attributes
     print(kipet_model)
 
     #=========================================================================
@@ -88,7 +88,7 @@ if __name__ == "__main__":
 
     # Variances can then be displayed 
     print("\nThe estimated variances are:\n")
-    kipet_model.results['ve'].variances
+    kipet_model.results['v_estimator'].variances
 
     # New method to create and discretize the ParameterEstimation instance
     # The resulting model stored as p_model and the p_estimator is now an attribute
@@ -97,8 +97,8 @@ if __name__ == "__main__":
     # Certain problems may require initializations and scaling and these can be provided from the 
     # varininace estimation step. This is optional.
     # Initialize methods make it simpler to use the variance trajectories
-    kipet_model.initialize_from_trajectory(source=kipet_model.results['ve'])
-    kipet_model.scale_variables_from_trajectory(source=kipet_model.results['ve'])
+    kipet_model.initialize_from_trajectory(source=kipet_model.results['v_estimator'])
+    kipet_model.scale_variables_from_trajectory(source=kipet_model.results['v_estimator'])
     
     # Again we provide options for the solver
     options = dict()
@@ -108,13 +108,13 @@ if __name__ == "__main__":
     kipet_model.run_pe_opt('ipopt',
                            tee=True,
                            solver_opts=options,
-                           variances=kipet_model.results['ve'].sigma_sq)
+                           variances=kipet_model.results['v_estimator'].sigma_sq)
 
     # And display the results
     print("The estimated parameters are:")
-    kipet_model.results['pe'].parameters
+    kipet_model.results['p_estimator'].parameters
     
-       # New plotting methods
+    # New plotting methods
     if with_plots:
-        kipet_model.results['pe'].plot('C')
-        kipet_model.results['pe'].plot('S')
+        kipet_model.results['p_estimator'].plot('C')
+        kipet_model.results['p_estimator'].plot('S')

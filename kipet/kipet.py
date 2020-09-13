@@ -8,8 +8,6 @@ without requiring a plethora of imports
 import copy
 
 # Third party imports
-import matplotlib.pyplot as plt
-import pandas as pd
 
 # Kipet library imports
 import kipet.library.data_tools as data_tools
@@ -32,15 +30,10 @@ class KipetModel():
     enable a simpler framework for using the software. 
     
     """
-    def __init__(self, use_existing_builder=None, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         
         self.model = None
-        
-        if use_existing_builder is not None:
-            self.builder = copy.copy(use_existing_builder.builder)
-        else:
-            self.builder = TemplateBuilder()
-        
+        self.builder = TemplateBuilder()
         self.options = {'solver' : 'ipopt'}
         self.components = ComponentBlock()   
         self.parameters = ParameterBlock()
@@ -75,7 +68,6 @@ class KipetModel():
             
         """
         self.components.add_component(*args, **kwargs)
-    
         return None
     
     def add_parameter(self, *args, **kwargs):
@@ -92,7 +84,6 @@ class KipetModel():
             
         """
         self.parameters.add_parameter(*args, **kwargs)
-        
         return None
     
     def add_dataset(self, *args, **kwargs):
@@ -109,12 +100,11 @@ class KipetModel():
             
         """
         self.datasets.add_dataset(*args, **kwargs)
-        
         return None
     
-    
     def set_directory(self, filename, directory=DEFAULT_DIR):
-        """Wrapper for the set_directory method"""
+        """Wrapper for the set_directory method. This replaces the awkward way
+        of ensuring the correct directory for the data is used."""
 
         return set_directory(filename, directory)
     
@@ -145,13 +135,6 @@ class KipetModel():
             self.builder.add_parameters(self.parameters)
         else:
             raise ValueError('The model has no parameters')
-        
-        # if self.intent == 'optimization' and len(self.datasets) > 0:
-        #     self.builder.input_data(self.datasets)
-        # elif self.intent == 'optimization' and len(self.datasets) == 0:
-        #     raise ValueError('Optimization of parameter requires a dataset')
-        # else:
-        #     pass
         
         if len(self.datasets) > 0:
             self.builder.input_data(self.datasets)
@@ -214,7 +197,6 @@ class KipetModel():
         solver = options.pop('solver', 'ipopt')
         solver_options = options.pop('solver_options', [])
     
-    
         self.results['sim'] = simulator.run_sim(solver,
                                           tee=False,
                                           solver_options=solver_options,
@@ -223,13 +205,27 @@ class KipetModel():
         return None
     
     def reduce_spectra_data_set(self, dropout=4):
+        """To reduce the computational burden, this can be used to reduce 
+        the amount of spectral data used
         
+        """
         A_set = [l for i, l in enumerate(self.model.meas_lambdas) if (i % dropout == 0)]
         return A_set
     
     def create_variance_estimator(self, options=None, **kwargs):
+        """This is a wrapper for creating the VarianceEstimator"""
         
-        """This should try to handle all of the variance cases"""
+        self.create_estimator(options, estimator='v_estimator', **kwargs)
+        return None
+        
+    def create_parameter_estimator(self, options=None, **kwargs):
+        """This is a wrapper for creating the ParameterEstiamtor"""
+        
+        self.create_estimator(options, estimator='p_estimator', **kwargs)
+        return None
+        
+    def create_estimator(self, options, estimator=None, **kwargs):
+        """This function handles creating the Estimator object"""
         
         if not self.allow_optimization:
             raise AttributeError('This model is not ready for optimization')
@@ -245,90 +241,74 @@ class KipetModel():
         
         options = options.copy() if options is not None else default_options
         
-        if self.model is None:
-            raise ValueError('Cannot create VarianceEstimator without pyomo model')
+        if estimator == 'v_estimator':
+            Estimator = VarianceEstimator
+            est_str = 'VarianceEstimator'
+            
+        elif estimator == 'p_estimator':
+            Estimator = ParameterEstimator
+            est_str = 'ParameterEstimator'
+            
         else:
-            self.v_model = self.model.clone()
-            self.v_estimator = VarianceEstimator(self.v_model)
-            self.v_estimator.apply_discretization(method,
+            raise ValueError('Keyword argument estimator must be p_estimator or v_estimator.')
+        
+        if self.model is None:
+            raise ValueError(f'Cannot create {est_str} without pyomo model')
+        else:
+            setattr(self, f'{estimator[0]}_model', self.model.clone())
+            setattr(self, estimator, Estimator(getattr(self, f'{estimator[0]}_model')))
+            getattr(self, estimator).apply_discretization(method,
                                                   ncp = ncp,
                                                   nfe = nfe,
                                                   scheme = scheme)
-        
         return None
     
     def run_ve_opt(self, *args, **kwargs):
         """Wrapper for run_opt method in VarianceEstimator"""
         
-        if not hasattr(self, 'v_estimator'):
-            raise AttributeError('KipetTemplate has no attribute v_estimator')
-            
-        self.results['ve'] = self.v_estimator.run_opt(*args, **kwargs)
-        
+        self._run_opt('v_estimator', *args, **kwargs)
         return None
+    
+    def run_pe_opt(self, *args, **kwargs):
+        """Wrapper for run_opt method in ParameterEstimator"""
+        
+        self._run_opt('p_estimator', *args, **kwargs)
+        return None
+    
+    def _run_opt(self, estimator, *args, **kwargs):
+        """Runs the respective optimization for the estimator"""
+        
+        if not hasattr(self, estimator):
+            raise AttributeError(f'KipetModel has no attribute {estimator}')
+            
+        self.results[estimator] = getattr(self, estimator).run_opt(*args, **kwargs)
+        return self.results[estimator]
     
     def initialize_from_trajectory(self, variable=None, source=None):
         """Wrapper for the initialize_from_trajectory method in
         ParameterEstimator
         
         """
-        if variable is None:
-            for var in ['Z', 'C', 'S']:
-                self.p_estimator.initialize_from_trajectory(var, getattr(source, var))
-                
-        else:
-            self.p_estimator.initialize_from_trajectory(variable, getattr(source, var))
-                
+        self._from_trajectory('initialize', variable, source)
         return None
     
     def scale_variables_from_trajectory(self, variable=None, source=None):
-            
+        """Wrapper for the scale_varialbes_from_trajectory method in
+        ParameterEstimator
+        
+        """
+        self._from_trajectory('scale_variables', variable, source)
+        return None
+        
+    def _from_trajectory(self, category, variable, source):
+        """Generic initialization/scaling function"""
+        
+        method = getattr(self.p_estimator, f'{category}_from_trajectory')
         if variable is None:
             for var in ['Z', 'C', 'S']:
-                self.p_estimator.scale_variables_from_trajectory(var, getattr(source, var))
-                
+                method(var, getattr(source, var))   
         else:
-            self.p_estimator.scale_variables_from_trajectory(variable, getattr(source, variable))
-                
-        return None
-        
-    def create_parameter_estimator(self, options=None, **kwargs):
-        
-        """This should try to handle all of the parameter estimation cases"""
-        
-        if not self.allow_optimization:
-            raise AttributeError('This model is not ready for optimization')
-        
-        method = kwargs.pop('method', 'dae.collocation')
-        ncp = kwargs.pop('ncp', 3)
-        nfe = kwargs.pop('nfe', 50)
-        scheme = kwargs.pop('scheme', 'LAGRANGE-RADAU')
-                
-        default_options = {
-            'solver' : 'ipopt',
-            }
-        options = options.copy() if options is not None else default_options
-        
-        if self.model is None:
-            raise ValueError('Cannot create ParameterEstimator without pyomo model')
-        else:
-            self.p_model = self.model.clone()
-            self.p_estimator = ParameterEstimator(self.p_model)
-            self.p_estimator.apply_discretization(method,
-                                                  ncp = ncp,
-                                                  nfe = nfe,
-                                                  scheme = scheme)
-        
-        return None
-    
-    def run_pe_opt(self, *args, **kwargs):
-        """Wrapper for run_opt method in ParameterEstimator"""
-        
-        if not hasattr(self, 'p_estimator'):
-            raise AttributeError('KipetTemplate has no attribute p_estimator')
-            
-        self.results['pe'] = self.p_estimator.run_opt(*args, **kwargs)
-        
+            method(variable, getattr(source, variable))
         return None
     
     def set_known_absorbing_species(self, *args, **kwargs):
@@ -336,11 +316,8 @@ class KipetModel():
         
         """
         self.builder.set_known_absorbing_species(*args, **kwargs)    
-        
         return None
     
     @property
     def result(self):
-        return self.results['pe']
-        
-    
+        return self.results['p_estimator']
