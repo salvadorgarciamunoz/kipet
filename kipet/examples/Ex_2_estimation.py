@@ -89,9 +89,6 @@ if __name__ == "__main__":
     # Variances can then be displayed 
     print("\nThe estimated variances are:\n")
     kipet_model.results['ve'].variances
-    
-    # The sigmas for the parameter estimation step are now known and fixed
-    sigmas = kipet_model.results['ve'].sigma_sq
 
     # New method to create and discretize the ParameterEstimation instance
     # The resulting model stored as p_model and the p_estimator is now an attribute
@@ -100,8 +97,8 @@ if __name__ == "__main__":
     # Certain problems may require initializations and scaling and these can be provided from the 
     # varininace estimation step. This is optional.
     # Initialize methods make it simpler to use the variance trajectories
-    kipet_model.initialize_from_variance_trajectory()
-    kipet_model.scale_variables_from_variance_trajectory()
+    kipet_model.initialize_from_trajectory(source=kipet_model.results['ve'])
+    kipet_model.scale_variables_from_trajectory(source=kipet_model.results['ve'])
     
     # Again we provide options for the solver
     options = dict()
@@ -110,8 +107,8 @@ if __name__ == "__main__":
     # New method run_pe_opt to call ParameterEstimator.run_opt()
     kipet_model.run_pe_opt('ipopt',
                            tee=True,
-                           solver_opts = options,
-                           variances=sigmas)
+                           solver_opts=options,
+                           variances=kipet_model.results['ve'].sigma_sq)
 
     # And display the results
     print("The estimated parameters are:")

@@ -207,7 +207,7 @@ class ResultsObject(object):
                     if _var == 'S':
                         _predict = False
                     
-                    if getattr(self, _var) is not None: 
+                    if hasattr(self, _var) and getattr(self, _var) is not None: 
                         self._make_plots(_var, _predict, filename, show_plot)
                     
             else:

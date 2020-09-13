@@ -32,16 +32,9 @@ class KipetModel():
     enable a simpler framework for using the software. 
     
     """
-    def __init__(self, intent='opt', use_existing_builder=None, *args, **kwargs):
+    def __init__(self, use_existing_builder=None, *args, **kwargs):
         
         self.model = None
-        
-        if intent in ['s', 'sim', 'simulation']:
-            self.intent = 'simulation'
-        elif intent in ['o', 'opt', 'optimization']:
-            self.intent = 'optimization'
-        else:
-            raise ValueError('Intent must be for simulation (s) or optimization (o)')
         
         if use_existing_builder is not None:
             self.builder = copy.copy(use_existing_builder.builder)
@@ -59,8 +52,6 @@ class KipetModel():
     def __repr__(self):
         
         kipet_str = 'KipetTemplate Object:\n\n'
-        
-        kipet_str += f'Intended use: {self.intent}\n'
         kipet_str += f'Has ODEs: {hasattr(self, "odes")}\n'
         kipet_str += f'Has Model: {hasattr(self, "model") and getattr(self, "model") is not None}\n'
         kipet_str += '\n'
@@ -155,10 +146,18 @@ class KipetModel():
         else:
             raise ValueError('The model has no parameters')
         
-        if self.intent == 'optimization' and len(self.datasets) > 0:
+        # if self.intent == 'optimization' and len(self.datasets) > 0:
+        #     self.builder.input_data(self.datasets)
+        # elif self.intent == 'optimization' and len(self.datasets) == 0:
+        #     raise ValueError('Optimization of parameter requires a dataset')
+        # else:
+        #     pass
+        
+        if len(self.datasets) > 0:
             self.builder.input_data(self.datasets)
-        elif self.intent == 'optimization' and len(self.datasets) == 0:
-            raise ValueError('Optimization of parameter requires a dataset')
+            self.allow_optimization = True
+        elif len(self.datasets) == 0:
+            self.allow_optimization = False
         else:
             pass
             
@@ -232,6 +231,9 @@ class KipetModel():
         
         """This should try to handle all of the variance cases"""
         
+        if not self.allow_optimization:
+            raise AttributeError('This model is not ready for optimization')
+        
         method = kwargs.pop('method', 'dae.collocation')
         ncp = kwargs.pop('ncp', 3)
         nfe = kwargs.pop('nfe', 50)
@@ -265,40 +267,37 @@ class KipetModel():
         
         return None
     
-    def initialize_from_variance_trajectory(self, variable=None):
+    def initialize_from_trajectory(self, variable=None, source=None):
         """Wrapper for the initialize_from_trajectory method in
         ParameterEstimator
         
         """
-        if 've' not in self.results:
-            raise AttributeError('KipetModel does not have variance results')
-            
         if variable is None:
             for var in ['Z', 'C', 'S']:
-                self.p_estimator.initialize_from_trajectory(var, getattr(self.results['ve'], var))
+                self.p_estimator.initialize_from_trajectory(var, getattr(source, var))
                 
         else:
-            self.p_estimator.initialize_from_trajectory(variable, getattr(self.results['ve'], variable))
+            self.p_estimator.initialize_from_trajectory(variable, getattr(source, var))
                 
         return None
     
-    def scale_variables_from_variance_trajectory(self, variable=None):
-        
-        if 've' not in self.results:
-            raise AttributeError('KipetModel does not have variance results')
+    def scale_variables_from_trajectory(self, variable=None, source=None):
             
         if variable is None:
             for var in ['Z', 'C', 'S']:
-                self.p_estimator.scale_variables_from_trajectory(var, getattr(self.results['ve'], var))
+                self.p_estimator.scale_variables_from_trajectory(var, getattr(source, var))
                 
         else:
-            self.p_estimator.scale_variables_from_trajectory(variable, getattr(self.results['ve'], variable))
+            self.p_estimator.scale_variables_from_trajectory(variable, getattr(source, variable))
                 
         return None
         
     def create_parameter_estimator(self, options=None, **kwargs):
         
         """This should try to handle all of the parameter estimation cases"""
+        
+        if not self.allow_optimization:
+            raise AttributeError('This model is not ready for optimization')
         
         method = kwargs.pop('method', 'dae.collocation')
         ncp = kwargs.pop('ncp', 3)

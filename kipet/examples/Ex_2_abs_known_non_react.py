@@ -70,7 +70,7 @@ if __name__ == "__main__":
     
     kipet_model.add_equations(rule_odes)
     # If no times are given to the builder, it will use the times in the data
-    kipet_model.create_pyomo_model(0, 10)
+    kipet_model.create_pyomo_model()
     
     # Display the KipetTemplate object attributes
     print(kipet_model)
@@ -116,7 +116,7 @@ if __name__ == "__main__":
     if with_plots:
         kipet_model.results['ve'].plot('C', predict=False)
         kipet_model.results['ve'].plot('S', predict=False)
-#%%    
+   
     #=========================================================================
     # USER INPUT SECTION - PARAMETER ESTIMATION 
     #=========================================================================
