@@ -124,23 +124,36 @@ class ParameterBlock():
             
         return None
 
-    def as_dict(self, factor=None):
+    def as_dict(self, factor=None, bounds=False):
         """Returns the parameter data as a dict that can be used directly in
         other kipet methods
         
         """
-        if factor is None:
-            return {p.name: (p.init, p.bounds) for p in self.parameters.values()}
-
-        elif isinstance(factor, (int, float)):
-            return {p.name: (factor*p.init, p.bounds) for p in self.parameters.values()}
-
-        elif len(factor) == len(self.parameters):
-            return {p.name: (factor[i]*p.init, p.bounds) for i, p in enumerate(self.parameters.values())}
+        if bounds:
+            if factor is None:
+                return {p.name: (p.init, p.bounds) for p in self.parameters.values()}
+    
+            elif isinstance(factor, (int, float)):
+                return {p.name: (factor*p.init, p.bounds) for p in self.parameters.values()}
+    
+            elif len(factor) == len(self.parameters):
+                return {p.name: (factor[i]*p.init, p.bounds) for i, p in enumerate(self.parameters.values())}
+    
+            else:
+                raise ValueError('Invalid factor passed: must be scalar (float, int) or an array with length equal to the number of parameters')
 
         else:
-            raise ValueError('Invalid factor passed: must be scalar (float, int) or an array with length equal to the number of parameters')
-
+            if factor is None:
+                return {p.name: p.init for p in self.parameters.values()}
+    
+            elif isinstance(factor, (int, float)):
+                return {p.name: factor*p.init for p in self.parameters.values()}
+    
+            elif len(factor) == len(self.parameters):
+                return {p.name: factor[i]*p.init for i, p in enumerate(self.parameters.values())}
+    
+            else:
+                raise ValueError('Invalid factor passed: must be scalar (float, int) or an array with length equal to the number of parameters')
 
 class ModelParameter():
     """A simple class for holding kinetic parameter data

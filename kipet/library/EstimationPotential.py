@@ -29,6 +29,7 @@ from kipet.library.common.read_write_tools import df_from_pyomo_data
 from kipet.library.ParameterEstimator import ParameterEstimator
 from kipet.library.PyomoSimulator import PyomoSimulator
 from kipet.library.TemplateBuilder import TemplateBuilder
+from kipet.library.common.VisitorClasses import ReplacementVisitor
 from kipet.library.common.objectives import (
     conc_objective,
     comp_objective,
@@ -36,7 +37,7 @@ from kipet.library.common.objectives import (
 
 __author__ = 'Kevin McBride'  #: April 2020
     
-class EstimationPotential(ParameterEstimator):
+class EstimationPotential():
     """This class is for estimability analysis. The algorithm here is the one
     presented by Chen and Biegler (accepted AIChE 2020) using the reduced 
     hessian to select the estimable parameters. 
@@ -367,7 +368,7 @@ class EstimationPotential(ParameterEstimator):
         else:
             self.model.P.pprint()
             
-        return None
+        return {p: self.model.K[p].value for p in Se}
     
     def plot_results(self):
         """This function plots the profiles from the final model after
@@ -492,6 +493,7 @@ class EstimationPotential(ParameterEstimator):
                                               tee=True,
                                               solver_options=options,
                                               )
+        print(type(self.model))
         
         # The model needs to be discretized
         model_pe = ParameterEstimator(self.model)
@@ -679,14 +681,20 @@ class EstimationPotential(ParameterEstimator):
         Jac_l = np.delete(Jac, col_ind, axis=1)
         
         m, n = jac.shape
-        X = spsolve(coo_matrix(np.mat(Jac_l)).tocsc(), coo_matrix(np.mat(-Jac_f)).tocsc())
         
+        X = spsolve(coo_matrix(np.mat(Jac_l)).tocsc(), coo_matrix(np.mat(-Jac_f)).tocsc())
         col_ind_left = list(set(range(n)).difference(set(col_ind)))
         col_ind_left.sort()
         
         Z = np.zeros([n, n_free])
         Z[col_ind, :] = np.eye(n_free)
-        Z[col_ind_left, :] = X.todense()
+        
+        if not isinstance(X, np.ndarray):
+            X = X.todense()
+        if len(X.shape) == 1:
+            X = X.reshape(-1, 1)
+            
+        Z[col_ind_left, :] = X
     
         Z_mat = coo_matrix(np.mat(Z)).tocsr()
         Z_mat_T = coo_matrix(np.mat(Z).T).tocsr()
@@ -824,3 +832,168 @@ class EstimationPotential(ParameterEstimator):
         df_U_update.loc[pivot['r'], pivot['c']] = 1
         
         return df_U_update
+
+def reduce_models(models_dict_provided,
+                  parameter_dict=None,
+                  method='reduced_hessian',
+                  simulation_data=None,
+                  ):
+    """Uses the EstimationPotential module to find out which parameters
+    can be estimated using each experiment and reduces the model
+    accordingly
+    
+    This can take a single model or a dict of models. It then proceeds to 
+    find the global set of estimable parameters as well. These are returned
+    in the parameter dict that contains the names of the global set, the
+    model specific parameter sets, and a dict of parameter initial values and
+    bounds that can be used in further methods.
+    
+    Args:
+        models_dict_provided (dict): model or dict of models
+        
+        parameter_dict (dict): parameters and their initial values
+        
+        method (str): model reduction method
+        
+        simulation_data (pd.DataFrame): simulation data used for a warmstart
+        
+    Returns:
+        models_dict_reduced (dict): dict of reduced models
+        
+        parameter_data (dict): parameter data that may be useful
+        
+        Example:
+            
+        {'names': ['Cfa', 'rho', 'ER', 'k', 'Tfc'],
+         'esp_params_model': {'model_1': ['Cfa', 'Tfc', 'ER', 'rho', 'k']},
+         'initial_values': {'Cfa': (2490.7798699208106, (0, 5000)),
+          'rho': (1335.058139853457, (800, 2000)),
+          'ER': (253.78019656674874, (0.0, 500)),
+          'k': (2.4789686423018376, (0.0, 10)),
+          'Tfc': (262.9381531048641, (250, 400))}}
+    
+    """
+    if not isinstance(models_dict_provided, dict):
+        try:
+            models_dict_provided = [models_dict_provided]
+            models_dict_provided = {f'model_{i + 1}': model for i, model in enumerate(models_dict_provided)}
+        except:
+            raise ValueError('You passed something other than a model or a dict of models')
+    
+    list_of_methods = ['reduced_hessian']
+    
+    if method not in list_of_methods:
+        raise ValueError(f'The model reduction method must be one of the following: {", ".join(list_of_methods)}')
+    
+    
+    if method == 'reduced_hessian':
+        if parameter_dict is None:
+            raise ValueError('The reduced Hessian parameter selection method requires initial parameter values')
+        
+    models_dict = copy.deepcopy(models_dict_provided)
+    parameters = parameter_dict
+    
+    all_param = set()
+    all_param.update(p for p in parameters.keys())
+    
+    options = {
+            'verbose' : False,
+                    }
+    
+    # Loop through to perform EP on each model
+    params_est = {}
+    set_of_est_params = set()
+    for name, model in models_dict.items():
+        
+        if method == 'reduced_hessian':
+            print(f'Starting EP analysis of {name}')
+            est_param = EstimationPotential(model, simulation_data=simulation_data, options=options)
+            params_est[name] = est_param.estimate()
+    
+    # Add model's estimable parameters to global set
+    for param_set in params_est.values():
+        set_of_est_params.update(param_set)
+    
+    models_dict_reduced = {}
+    
+    # How does this look with MP?
+
+    # Remove the non-estimable parameters from the odes
+    for key, model in models_dict.items():
+
+        update_set = set_of_est_params
+
+        for param in all_param.difference(update_set):   
+            parameter_to_change = param
+            if parameter_to_change in model.P.keys():
+    
+                change_value = [v[0] for p, v in parameters.items() if p == parameter_to_change][0]
+            
+                for k, v in model.odes.items(): 
+                    ep_updated_expr = _update_expression(v.body, model.P[parameter_to_change], change_value)
+                    print(ep_updated_expr)
+                    model.odes[k] = ep_updated_expr == 0
+        
+                model.parameter_names.remove(param)
+                del model.P[param]
+    
+        models_dict_reduced[key] = model
+
+    # Calculate initial values based on averages of EP output
+    initial_values = pd.DataFrame(np.zeros((len(models_dict), len(set_of_est_params))), index=models_dict.keys(), columns=list(set_of_est_params))
+
+    for exp, param_data in params_est.items(): 
+        for param in param_data:
+            initial_values.loc[exp, param] = param_data[param]
+    
+    dividers = dict(zip(initial_values.columns, np.count_nonzero(initial_values, axis=0)))
+    
+    init_val_sum = initial_values.sum()
+    
+    for param in dividers.keys():
+        init_val_sum.loc[param] = init_val_sum.loc[param]/dividers[param]
+    
+    init_vals = init_val_sum.to_dict()
+    init_bounds = {p: parameters[p][1] for p in parameters.keys() if p in set_of_est_params}
+    
+    # Redeclare the d_init_guess values using the new values provided by EP
+    d_init_guess = {p: (init_vals[p], init_bounds[p]) for p in init_bounds.keys()}
+    
+    new_parameter_data = d_init_guess
+    new_initial_values = {k: v[0] for k, v in new_parameter_data.items()}
+    
+    # The parameter names need to be updated as well
+    parameter_names = list(new_initial_values.keys())
+    pe_dict = {k: list(v.keys()) for k, v in params_est.items()}
+    
+    parameter_data = {
+        'names' : parameter_names,
+        'est_params_model': pe_dict,
+        'initial_values': new_parameter_data,
+        }
+
+    return models_dict_reduced, parameter_data
+
+
+def _update_expression(expr, replacement_param, change_value):
+    """Takes the non-estiambale parameter and replaces it with its intitial
+    value
+    
+    Args:
+        expr (pyomo constraint expr): the target ode constraint
+        
+        replacement_param (str): the non-estimable parameter to replace
+        
+        change_value (float): initial value for the above parameter
+        
+    Returns:
+        new_expr (pyomo constraint expr): updated constraints with the
+            desired parameter replaced with a float
+    
+    """
+    visitor = ReplacementVisitor()
+    visitor.change_replacement(change_value)
+    visitor.change_suspect(id(replacement_param))
+    new_expr = visitor.dfs_postorder_stack(expr)
+    
+    return new_expr

@@ -52,7 +52,7 @@ class ResultsObject(object):
     def __str__(self):
         string = "\nRESULTS\n"
         
-        result_vars = ['Z', 'C', 'Cm', 'S', 'X', 'dZdt', 'dXdt', 'P', 'sigma_sq']
+        result_vars = ['Z', 'C', 'Cm', 'K', 'S', 'X', 'dZdt', 'dXdt', 'P', 'sigma_sq']
         
         for var in result_vars:
             if hasattr(self, var) and getattr(self, var) is not None:

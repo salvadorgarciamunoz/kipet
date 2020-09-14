@@ -307,6 +307,8 @@ class ParameterEstimator(PEMixins, Optimizer):
     def _get_results(self):
         """Removed results unit from function"""
     
+        scaled_parameter_var = 'K'
+    
         results = ResultsObject()
         
         results.objective = self.objective_value
@@ -332,7 +334,10 @@ class ParameterEstimator(PEMixins, Optimizer):
         if self._spectra_given:
             self.compute_D_given_SC(results)
 
-        results.P = {name: self.model.P[name].value for name in self.model.parameter_names}
+        if hasattr(self.model, scaled_parameter_var): 
+            results.P = {name: self.model.P[name].value*getattr(self.model, scaled_parameter_var)[name].value for name in self.model.parameter_names}
+        else:
+            results.P = {name: self.model.P[name].value for name in self.model.parameter_names}
 
         if hasattr(self.model, 'Pinit'):
             param_valsinit = dict()

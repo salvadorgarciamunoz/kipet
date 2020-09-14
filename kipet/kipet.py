@@ -11,7 +11,7 @@ import copy
 
 # Kipet library imports
 import kipet.library.data_tools as data_tools
-from kipet.library.EstimationPotential import EstimationPotential
+from kipet.library.EstimationPotential import EstimationPotential, reduce_models
 from kipet.library.FESimulator import FESimulator
 from kipet.library.ParameterEstimator import ParameterEstimator
 from kipet.library.PyomoSimulator import PyomoSimulator
@@ -126,6 +126,8 @@ class KipetModel():
             None
 
         """
+        scale_parameters = kwargs.pop('scale_parameters', False)
+        
         if len(self.components) > 0:
             self.builder.add_components(self.components)
         else:
@@ -149,6 +151,8 @@ class KipetModel():
         else:
             raise ValueError('The model requires a set of ODEs')
         
+        self.builder.set_parameter_scaling(scale_parameters)
+        self.builder.add_state_variance(self.components.variances)
         self.model = self.builder.create_pyomo_model(*args, **kwargs)
         
         return None
@@ -317,6 +321,21 @@ class KipetModel():
         """
         self.builder.set_known_absorbing_species(*args, **kwargs)    
         return None
+    
+    def reduce_model(self):
+        """This calls the reduce_models method in the EstimationPotential
+        module to reduce the model based on the reduced hessian parameter
+        selection method. 
+        """
+        parameter_dict = self.parameters.as_dict(bounds=True)
+
+        models_dict_reduced, parameter_data = reduce_models(self.model,
+                                                            parameter_dict=parameter_dict,
+                                                            )
+        self.model = models_dict_reduced['model_1']
+        self.using_reduced_model = True
+        
+        return models_dict_reduced, parameter_data
     
     @property
     def result(self):

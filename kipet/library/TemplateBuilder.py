@@ -1255,10 +1255,15 @@ class TemplateBuilder(object):
 
         # set bounds P
         for k, v in self._parameters_bounds.items():
-            lb = v[0]
-            ub = v[1]
+            factor = 1
+            if self._scale_parameters:
+                factor = self._parameters_init[k]
+            
+            lb = v[0]/factor
+            ub = v[1]/factor
             pyomo_model.P[k].setlb(lb)
             pyomo_model.P[k].setub(ub)
+
 
         if self._estim_init==True:#added for the estimation of initial conditions which have to be complementary state vars CS
             pyomo_model.initparameter_names = Set(initialize=self._initextraest)

@@ -49,7 +49,7 @@ if __name__ == "__main__":
     kipet_model.builder.bound_profile(var='S', bounds=(0, 200))
     # If no times are given to the builder, it will use the times in the data
     kipet_model.create_pyomo_model()
-    
+
     # Display the KipetModel object attributes
     print(kipet_model)
 
