@@ -220,7 +220,12 @@ class ComponentBlock():
         comp_str += format_string.format(*['Name', 'State', 'Init', 'Variance'])
         
         for comp in self.components.values():
-            comp_str += format_string.format(comp.name, comp.state, f'{comp.init:0.2e}', f'{comp.variance:0.2e}')
+            
+            comp_variance = 'None'
+            if comp.variance is not None:
+                comp_variance = f'{comp.variance:0.2e}'
+                
+            comp_str += format_string.format(comp.name, comp.state, f'{comp.init:0.2e}', comp_variance)
         
         return comp_str
 
@@ -345,8 +350,7 @@ class ModelComponent():
             raise ValueError('Compnent requires an initial value "init = ..."')
     
         if variance is None:
-            print(f'Warning: Component {name} variance not provided and is being set to one')
-            variance = 1
+            print(f'Warning: Component {name} variance not provided')
             
         if state is None:
             raise ValueError('Component requires a state (complementary, concentration)')

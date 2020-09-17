@@ -24,6 +24,59 @@ from kipet.library.common.read_write_tools import set_directory
 
 DEFAULT_DIR = 'data_sets'
 
+class KipetModelBlock():
+    
+    """This will hold a dict of KipetModel instances
+    
+    It is not necessary unless many different methods are needed for the 
+    underlying KipetModel instances
+    
+    """
+    def __init__(self):
+        
+        self.models = {}
+        
+    def __getitem__(self, value):
+        
+        return self.models[value]
+         
+    def __str__(self):
+        
+        block_str = "KipetModelBlock - for multiple KipetModels\n\n"
+        
+        for name, model in self.models.items():
+            block_str += f'{name}\tDatasets: {len(model.datasets)}\n'
+        
+        return block_str
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __iter__(self):
+        for model, contents in self.models.items():
+            yield data
+            
+    def __len__(self):
+        return len(self.models)
+    
+    def add_model_list(self, model_list):
+        """Handles lists of parameters or single parameters added to the model
+        """
+        for model in model_list:
+            self.add_model(model)         
+        
+        return None
+    
+    def add_model(self, model):
+        
+        if isinstance(model, KipetModel):
+            self.models[model.name] = model
+        else:
+            raise ValueError('KipetModelBlock can only add KipetModel instances.')
+            
+        return None
+        
+    
 class KipetModel():
     
     """This should consolidate all of the Kipet classes into a single class to
@@ -32,6 +85,7 @@ class KipetModel():
     """
     def __init__(self, *args, **kwargs):
         
+        self.name = kwargs.get('name', 'Model-1')
         self.model = None
         self.builder = TemplateBuilder()
         self.options = {'solver' : 'ipopt'}
@@ -44,7 +98,7 @@ class KipetModel():
         
     def __repr__(self):
         
-        kipet_str = 'KipetTemplate Object:\n\n'
+        kipet_str = f'KipetTemplate Object {self.name}:\n\n'
         kipet_str += f'Has ODEs: {hasattr(self, "odes")}\n'
         kipet_str += f'Has Model: {hasattr(self, "model") and getattr(self, "model") is not None}\n'
         kipet_str += '\n'
@@ -57,6 +111,36 @@ class KipetModel():
     def __str__(self):
         return self.__repr__()
     
+    def clone(self, name=None, init=None):
+        """Makes a copy of the KipetModel and removes the data. This is done
+        to reuse the model, components, and parameters in an easier manner
+        
+        """
+        new_kipet_model = copy.deepcopy(self)
+        
+        # Reset the datasets
+        new_kipet_model.datasets = DataBlock()
+        
+        # Workaround for missing names
+        if name is None:
+            new_kipet_model.name = self.name + '_copy'
+        else:
+            new_kipet_model.name = name
+            
+        # Workaround for the initializations
+        if init is not None:
+            if isinstance(init, (list, tuple)):
+                for i, comp in enumerate(new_kipet_model.components):
+                    print(comp.init)
+                    comp.init = init[i]
+            elif isinstance(init, dict):
+                for k, new_init_val in init.items():
+                    new_kipet_model.components[k].init = new_init_val
+        else:
+            print('Cloned model has the same initial values as original.')
+            
+        return new_kipet_model
+        
     def add_component(self, *args, **kwargs):
         """Add the components to the Kipet instance
         
@@ -279,6 +363,61 @@ class KipetModel():
         self._run_opt('p_estimator', *args, **kwargs)
         return None
     
+    def run_opt(self, *args, options=None, **kwargs):
+        """Run ParameterEstimator but checking for variances - this should
+        remove the VarianceEstimator being required by the user
+        
+        """
+        scale_variances = kwargs.get('scale_variances', False)
+        
+        if options is None:
+            options = {}
+        
+        all_component_variances = True
+        for comp in self.components:
+            if comp.variance is None:
+                all_component_variances = False
+            if not all_component_variances:
+                break
+        
+        if not all_component_variances:
+            self.create_estimator(options, estimator='v_estimator', **kwargs)
+            self.run_ve_opt('ipopt',
+                            tee=True,
+                            solver_options=options,
+                            tolerance=1e-5,
+                            max_iter=15,
+                            #method='alternate',
+                            subset_lambdas=self.reduce_spectra_data_set()
+                            )
+            
+        self.create_estimator(options, estimator='p_estimator', **kwargs)
+        variances = self.components.variances
+        
+        if 'v_estimator' in self.results:
+            self.initialize_from_trajectory(source=self.results['v_estimator'])
+            self.scale_variables_from_trajectory(source=self.results['v_estimator'])
+            variances = self.results['v_estimator'].sigma_sq
+        
+        if scale_variances:
+            variances = self._scale_variances(variances)
+        
+        options = dict()
+        options['nlp_scaling_method'] = 'user-scaling'
+        self.run_pe_opt('ipopt',
+                        tee=True,
+                        solver_opts=options,
+                        variances=variances)
+        
+        return None
+    
+    @staticmethod
+    def _scale_variances(variances):
+        
+        max_var = max(variances.values())
+        scaled_vars = {comp: var/max_var for comp, var in variances.items()}
+        return scaled_vars
+
     def _run_opt(self, estimator, *args, **kwargs):
         """Runs the respective optimization for the estimator"""
         
