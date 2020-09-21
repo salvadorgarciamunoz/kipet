@@ -31,11 +31,12 @@ colors_rgb = [(0,    0.4470,    0.7410),
 # Convert to rgb format used in plotly
 colors = ['rgb(' + ','.join([str(int(255*c)) for c in color]) + ')' for color in colors_rgb]
 
-exp_to_pred = {'C': 'Z',
-               'Cm': 'Z',
-               'U': 'X',
-               'S': None,
-               }
+exp_data_maps = {'Z': ['C', 'Cm'],
+                 'X': ['U'],
+                 'S': None,
+                 }
+
+plot_vars = ['Z', 'X', 'S']
 
 class ResultsObject(object):
     """Container for all of the results. Includes plotting functions"""
@@ -111,62 +112,66 @@ class ResultsObject(object):
                     setattr(self, name, data_frame)        
                 else:
                     raise RuntimeError('load_from_pyomo_model function not supported for models with variables with dimension > 2')
-        
+    
     def _make_plots(self, var, predict, filename=None, show_plot=True):
         """Makes the actual plots and filters out the data that is missing from
         the model.
         
         """
-        if hasattr(self, var) and getattr(self, var) is not None:    
-            exp = getattr(self, var)
-            pred = None
-            
-            if predict and hasattr(self, exp_to_pred[var]) and getattr(self, exp_to_pred[var]) is not None:
-                pred = getattr(self, exp_to_pred[var])
+        if hasattr(self, var) and getattr(self, var) is not None and len(getattr(self, var)) > 0:    
+            pred = getattr(self, var)
+            exp = None
                 
             fig = go.Figure()    
             
-            if var not in ['S', 'Z']:
-                
-                if pred is not None:
-                    for i, col in enumerate(pred.columns):
-                        fig.add_trace(
-                            go.Scatter(x=pred.index,
-                                   y=pred[col],
-                                   name=col + ' (pred)',
-                                   line=dict(color=colors[i])
-                                   ))
-                for i, col in enumerate(exp.columns):
-                    fig.add_trace(
-                        go.Scatter(x=exp.index,
-                               y=exp[col],
-                               name=col + ' (exp)',
-                               mode='markers',
-                               marker=dict(size=10, opacity=0.5, color=colors[i])),
-                           )
-       
-            else:
-                for i, col in enumerate(exp.columns):
-                    fig.add_trace(
-                        go.Scatter(x=exp.index,
-                               y=exp[col],
-                               name=col,
-                               line=dict(color=colors[i]),
-                           )
-                        )
+            if exp_data_maps[var] is not None:
+      
+                for exp_var in exp_data_maps[var]:
+        
+                    marker_options = {'size': 10,
+                                      'opacity': 0.5,
+                                     }
+                    label = 'spectral'
                     
-                if var == 'S':
-                    fig.update_layout(
-                        title="Absorbance Profile",
-                        xaxis_title="Wavelength (cm)",
-                        yaxis_title="Absorbance (L/(mol cm))",
-                        )
-                else:
-                    fig.update_layout(
-                        title="Concentration Profile",
-                        xaxis_title="Time",
-                        yaxis_title="Concentration",
-                        )
+                    if exp_var == 'Cm':
+                        marker_options = {'size': 15,
+                                          'opacity': 0.75,
+                                         }
+                        label = 'measured'
+                    
+                    if predict and hasattr(self, exp_var) and getattr(self, exp_var) is not None and len(getattr(self, exp_var)) > 0:
+                        exp = getattr(self, exp_var)
+           
+                        for i, col in enumerate(exp.columns):
+                            fig.add_trace(
+                                go.Scatter(x=exp.index,
+                                        y=exp[col],
+                                        name=col + f' ({label})',
+                                        mode='markers',
+                                        marker={**marker_options, 'color' :colors[i]}),
+                                    )
+       
+            for i, col in enumerate(pred.columns):
+                fig.add_trace(
+                    go.Scatter(x=pred.index,
+                           y=pred[col],
+                           name=col,
+                           line=dict(color=colors[i]),
+                       )
+                    )
+                
+            if var == 'S':
+                fig.update_layout(
+                    title="Absorbance Profile",
+                    xaxis_title="Wavelength (cm)",
+                    yaxis_title="Absorbance (L/(mol cm))",
+                    )
+            else:
+                fig.update_layout(
+                    title="Concentration Profile",
+                    xaxis_title="Time",
+                    yaxis_title="Concentration",
+                    )
             #x_data = [t for t in model.alltime]
             #x_axis_mod = 0.025*(x_data[-1] - x_data[0])
             #fig.update_xaxes(range=[x_data[0]-x_axis_mod, x_data[-1]+x_axis_mod])
@@ -180,7 +185,7 @@ class ResultsObject(object):
     
         return None
     
-    def plot(self, var=None, predict=True, filename=None, show_plot=True, simulation=False):
+    def plot(self, var=None, predict=True, filename=None, show_plot=True):
         """Function to plot experimental data and model predictions using plotly.
         Automatically finds the concentration and complementary state data in 
         the model (if the the model has the attribute, it will be checked)
@@ -189,7 +194,7 @@ class ResultsObject(object):
             model (pyomo Concrete): the model object after optimization
                 This can be a single model or a dict
             
-            var (str): the variable C, Cm, or U to be displayed
+            var (str): the variable Z, U, S to be displayed
             
             filename (str): optional filename
             
@@ -199,27 +204,16 @@ class ResultsObject(object):
             None
         
         """
-        
-        if not simulation:
-            _predict = predict
-            if var is None:
-                for _var in exp_to_pred.keys():
-                    if _var == 'S':
-                        _predict = False
-                    
-                    if hasattr(self, _var) and getattr(self, _var) is not None: 
-                        self._make_plots(_var, _predict, filename, show_plot)
-                    
-            else:
-                if var == 'S':
-                    predict = False
-                self._make_plots(var, predict, filename, show_plot)
+        vars_to_plot = plot_vars if var is None else [var]
             
-        else:
-            self._make_plots('Z', False, filename, show_plot)
-
-        return None
-    
+        for _var in vars_to_plot:
+            _predict = predict
+            if _var == 'S':
+                _predict = False
+            
+            if hasattr(self, _var) and getattr(self, _var) is not None: 
+                self._make_plots(_var, _predict, filename, show_plot)
+                
     @property
     def parameters(self):
         for k, v in self.P.items():

@@ -95,6 +95,7 @@ if __name__ == "__main__":
     # variance estimation run faster and has been shown to not decrease the accuracy of the variance 
     # prediction for large noisey data sets.
 
+    
 
     init_sigmas = 1e-10
     # This will provide a list of sigma values based on the different delta values evaluated.

@@ -1,7 +1,7 @@
 """
 Read/Write functions used for data in Kipet
 """
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stdout
 import inspect
 import os
 from pathlib import Path
@@ -349,4 +349,3 @@ def df_from_pyomo_data(varobject):
     dfs.columns = [v[1] for v in dfs.columns]
 
     return dfs
-

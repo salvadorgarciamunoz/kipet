@@ -75,6 +75,129 @@ class KipetModelBlock():
             raise ValueError('KipetModelBlock can only add KipetModel instances.')
             
         return None
+    
+class AttrDict(dict):
+
+    "This class lets you use nested dicts like accessing attributes"
+    
+    def __init__(self, *args, **kwargs):
+        self.update(*args, **kwargs)
+    
+    def __getattr__(self, name):
+        try:
+            return self[name]
+        except KeyError:
+            raise AttributeError(name)
+
+    def __setitem__(self, key, item):
+        
+        if isinstance(item, dict):
+            return super(AttrDict, self).__setitem__(key, AttrDict(item))
+        else:
+            return dict.__setitem__(self, key, item)
+
+    def update(self, *args, **kwargs):
+        for k, v in dict(*args, **kwargs).items():
+            self[k] = v
+
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
+    
+class Settings():
+    
+    """This is a container for all of the options that can be used in Kipet
+    Since it can be confusing due to the large number of options, this should
+    make it easier for the user to see everything in one spot.
+    
+    """
+    def __init__(self):
+        
+        self.general = AttrDict()
+        self.variance_estimator = AttrDict()
+        self.parameter_estimator = AttrDict()
+        self.collocation = AttrDict()
+        self.solver = AttrDict()
+        
+        # Initialize to the defaults (can be used at anytime)
+        self.reset()
+        
+    def __str__(self):
+        
+        m = 20
+          
+        settings = 'Settings\n\n'
+        
+        settings += 'General Settings:\n'
+        for k, v in self.general.items():
+            settings += f'{str(k).rjust(m)} : {v}\n'
+        
+        settings += '\nCollocation Settings:\n'
+        for k, v in self.collocation.items():
+            settings += f'{str(k).rjust(m)} : {v}\n'
+            
+        settings += '\nVarianceEstimator Settings:\n'
+        for k, v in self.variance_estimator.items():
+            settings += f'{str(k).rjust(m)} : {v}\n'
+        
+        settings += '\nParameterEstimator Settings:\n'
+        for k, v in self.parameter_estimator.items():
+            settings += f'{str(k).rjust(m)} : {v}\n'
+        
+        settings += '\nSolver Settings:\n'
+        for k, v in self.solver.items():
+            settings += f'{str(k).rjust(m)} : {v}\n'
+        
+        return settings
+        
+    def __repr__(self):
+        return self.__str__()
+    
+    def reset(self, specific_settings=None):
+        """Initializes the settings dicts to their default values"""
+        
+        general = {'scale_variances': False,
+                   # If true, PE is intialized with VE results
+                   'initialize_pe' : True,
+                    # If true, PE is scaled with VE results
+                   'scale_pe' : True,
+            }
+        
+        collocation = {'method': 'dae.collocation',
+                       'ncp': 3,
+                       'nfe': 50,
+                       'scheme': 'LAGRANGE-RADAU',
+            }
+        
+        ve_opt = { 'solver': 'ipopt',
+                   'tee': True,
+                   'solver_options': AttrDict(),
+                   'tolerance': 1e-5,
+                   'max_iter': 15,
+                   'method': 'originalchenetal',
+                   'use_subset_lambdas': False,
+                   'freq_subset_lambdas': 4,
+                   'secant_point': 1e-11,
+                   'initial_sigmas': 1e-10,
+            }
+    
+        pe_opt = { 'solver': 'ipopt',
+                   'tee': True,
+                   'solver_options': AttrDict(),
+                   'covariance': False,
+            }
+    
+        solver = {#'nlp_scaling_method': 'user-scaling',
+                  'linear_solver': 'ma57',
+            }
+    
+        self.collocation = AttrDict(collocation)
+        self.general = AttrDict(general)
+        self.variance_estimator = AttrDict(ve_opt)
+        self.parameter_estimator = AttrDict(pe_opt)
+        self.solver = AttrDict(solver)
+        
+        return None
         
     
 class KipetModel():
@@ -88,13 +211,13 @@ class KipetModel():
         self.name = kwargs.get('name', 'Model-1')
         self.model = None
         self.builder = TemplateBuilder()
-        self.options = {'solver' : 'ipopt'}
         self.components = ComponentBlock()   
         self.parameters = ParameterBlock()
         self.datasets = DataBlock()
         self.equations = None
         self.constants = None
-        self.results = {}
+        self.results_dict = {}
+        self.settings = Settings()
         
     def __repr__(self):
         
@@ -220,7 +343,7 @@ class KipetModel():
         if len(self.parameters) > 0:
             self.builder.add_parameters(self.parameters)
         else:
-            raise ValueError('The model has no parameters')
+            self.allow_optimization = False   
         
         if len(self.datasets) > 0:
             self.builder.input_data(self.datasets)
@@ -285,10 +408,10 @@ class KipetModel():
         solver = options.pop('solver', 'ipopt')
         solver_options = options.pop('solver_options', [])
     
-        self.results['sim'] = simulator.run_sim(solver,
-                                          tee=False,
-                                          solver_options=solver_options,
-                                          )
+        self.results = simulator.run_sim(solver,
+                                         tee=False,
+                                         solver_options=solver_options,
+                                         )
     
         return None
     
@@ -312,7 +435,7 @@ class KipetModel():
         self.create_estimator(options, estimator='p_estimator', **kwargs)
         return None
         
-    def create_estimator(self, options, estimator=None, **kwargs):
+    def create_estimator(self, estimator=None, **kwargs):
         """This function handles creating the Estimator object"""
         
         if not self.allow_optimization:
@@ -322,12 +445,6 @@ class KipetModel():
         ncp = kwargs.pop('ncp', 3)
         nfe = kwargs.pop('nfe', 50)
         scheme = kwargs.pop('scheme', 'LAGRANGE-RADAU')
-        
-        default_options = {
-            'solver' : 'ipopt',
-            }
-        
-        options = options.copy() if options is not None else default_options
         
         if estimator == 'v_estimator':
             Estimator = VarianceEstimator
@@ -363,53 +480,62 @@ class KipetModel():
         self._run_opt('p_estimator', *args, **kwargs)
         return None
     
-    def run_opt(self, *args, options=None, **kwargs):
+    def _update_related_settings(self):
+        
+        # Start with what is known
+        if self.settings.parameter_estimator['covariance']:
+            if self.settings.parameter_estimator['solver'] not in ['k_aug', 'ipopt_sens']:
+                raise ValueError('Solver must be k_aug or ipopt_sens for covariance matrix')
+        
+        # If using sensitivity solvers switch covariance to True
+        if self.settings.parameter_estimator['solver'] in ['k_aug', 'ipopt_sens']:
+            self.settings.parameter_estimator['covariance'] = True
+        
+        #Subset of lambdas
+        if self.settings.variance_estimator['use_subset_lambdas']:
+            self.settings.variance_estimator['subset_lambdas'] = self.reduce_spectra_data_set(self.settings.variance_estimator['freq_subset_lambdas']) 
+        
+    
+    def run_opt(self):
         """Run ParameterEstimator but checking for variances - this should
-        remove the VarianceEstimator being required by the user
+        remove the VarianceEstimator being required to be implemented by the user
         
         """
-        scale_variances = kwargs.get('scale_variances', False)
-        
-        if options is None:
-            options = {}
-        
-        all_component_variances = True
-        for comp in self.components:
-            if comp.variance is None:
-                all_component_variances = False
-            if not all_component_variances:
-                break
-        
-        if not all_component_variances:
-            self.create_estimator(options, estimator='v_estimator', **kwargs)
-            self.run_ve_opt('ipopt',
-                            tee=True,
-                            solver_options=options,
-                            tolerance=1e-5,
-                            max_iter=15,
-                            #method='alternate',
-                            subset_lambdas=self.reduce_spectra_data_set()
-                            )
+        if not self.allow_optimization:
+            raise ValueError('The model is incomplete for parameter optimization')
             
-        self.create_estimator(options, estimator='p_estimator', **kwargs)
+        self._update_related_settings()
+        
+        # Check if all component variances are given; if not run VarianceEstimator
+        if not self.components.has_all_variances:
+            
+            self.create_estimator(estimator='v_estimator', **self.settings.collocation)
+            settings_run_ve_opt = self.settings.variance_estimator
+            self.run_ve_opt(**settings_run_ve_opt)
+            
+        # Create ParameterEstimator
+        self.create_estimator(estimator='p_estimator', **self.settings.collocation)
         variances = self.components.variances
         
-        if 'v_estimator' in self.results:
-            self.initialize_from_trajectory(source=self.results['v_estimator'])
-            self.scale_variables_from_trajectory(source=self.results['v_estimator'])
-            variances = self.results['v_estimator'].sigma_sq
+        # If variance calculated using VarianceEstimator, initialize PE isntance
+        if 'v_estimator' in self.results_dict:
+            if self.settings.general['initialize_pe']:
+                self.initialize_from_trajectory(source=self.results_dict['v_estimator'])
+            if self.settings.general['scale_pe']:
+                self.scale_variables_from_trajectory(source=self.results_dict['v_estimator'])
+            variances = self.results_dict['v_estimator'].sigma_sq
         
-        if scale_variances:
+        if self.settings.general['scale_variances']:
             variances = self._scale_variances(variances)
         
-        options = dict()
-        options['nlp_scaling_method'] = 'user-scaling'
-        self.run_pe_opt('ipopt',
-                        tee=True,
-                        solver_opts=options,
-                        variances=variances)
+        settings_run_pe_opt = self.settings.parameter_estimator
+        settings_run_pe_opt['solver_opts'] = self.settings.solver
+        settings_run_pe_opt['variances'] = variances
         
-        return None
+        self.run_pe_opt(**settings_run_pe_opt)
+        self.results = self.results_dict['p_estimator']
+        
+        return self.results
     
     @staticmethod
     def _scale_variances(variances):
@@ -424,8 +550,8 @@ class KipetModel():
         if not hasattr(self, estimator):
             raise AttributeError(f'KipetModel has no attribute {estimator}')
             
-        self.results[estimator] = getattr(self, estimator).run_opt(*args, **kwargs)
-        return self.results[estimator]
+        self.results_dict[estimator] = getattr(self, estimator).run_opt(*args, **kwargs)
+        return self.results_dict[estimator]
     
     def initialize_from_trajectory(self, variable=None, source=None):
         """Wrapper for the initialize_from_trajectory method in
@@ -475,7 +601,3 @@ class KipetModel():
         self.using_reduced_model = True
         
         return models_dict_reduced, parameter_data
-    
-    @property
-    def result(self):
-        return self.results['p_estimator']

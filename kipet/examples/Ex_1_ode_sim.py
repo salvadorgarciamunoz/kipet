@@ -15,10 +15,6 @@ if __name__ == "__main__":
         if int(sys.argv[1]):
             with_plots = False
     
-    #=========================================================================
-    #USER INPUT SECTION - REQUIRED MODEL BUILDING ACTIONS
-    #=========================================================================
-    
     kipet_model = KipetModel()
     
     # Add the model parameters
@@ -48,5 +44,4 @@ if __name__ == "__main__":
     kipet_model.simulate()
     
     if with_plots:
-        # Plot the results using results['sim'] and simulation=True
-        kipet_model.results['sim'].plot(simulation=True)
+        kipet_model.results.plot()

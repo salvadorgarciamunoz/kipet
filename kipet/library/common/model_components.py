@@ -6,6 +6,8 @@ Data input handling for parameters, components, and models
 
 class ParameterBlock():
     
+    """Data abstraction for multiple ModelParameter instances"""
+    
     def __init__(self):
         
         self.parameters = {}
@@ -15,6 +17,10 @@ class ParameterBlock():
         return self.parameters[value]
          
     def __str__(self):
+        
+        #f'{str(k).rjust(m)} : {v}\n'
+        
+        #name_len_max = max(len(self.parame.name))
         
         format_string = "{:<10}{:<10}{:<10}\n"
         param_str = 'ParameterBlock:\n'
@@ -312,6 +318,17 @@ class ComponentBlock():
     def init_values(self):
         return {comp.name: comp.init for comp in self.components.values()}
         
+    @property
+    def has_all_variances(self):
+    
+        all_component_variances = True
+        for comp in self.components.values():
+            if comp.variance is None:
+                all_component_variances = False
+            if not all_component_variances:
+                break
+        return all_component_variances
+    
     def _add_component_with_terms(self, name, state, init, variance=None):
         """Adds the parameter using explicit inputs for the name, init, and 
         bounds

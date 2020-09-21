@@ -446,7 +446,11 @@ class TemplateBuilder(object):
             ComponentBlockObject (ComponentBlock): Model components
         """
         for component in ComponentBlockObject:
-            self._add_state_variable(component.name, component.init, data_type=component.state)
+            if component.state == 'state':
+                state = 'complementary_states'
+            else:
+                state = component.state
+            self._add_state_variable(component.name, component.init, data_type=state)
 
 
     def add_mixture_component(self, *args):
