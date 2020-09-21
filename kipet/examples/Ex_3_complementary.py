@@ -1,24 +1,13 @@
-#  _________________________________________________________________________
-#
-#  Kipet: Kinetic parameter estimation toolkit
-#  Copyright (c) 2016 Eli Lilly.
-#  _________________________________________________________________________
+"""Example 3: Simulation using complementatry states with new KipetModel"""
 
-# Sample Problem 3 
-# Simulation of ODE system using pyomo discretization and IPOPT
-#
-#		\frac{dZ_a}{dt} = -k1(T)*Z_	              Z_a(0) = 1.0
-#		\frac{dZ_b}{dt} = 0.5*k1(T)*Z_a-k2(T)*Z_b  Z_b(0) = 0.0
-#		\frac{dZ_c}{dt} = 3*k(T)*Z_b               Z_c(0) = 0.0
-#       \frac{dT}{dt} = heat transfer              T(0) = 290.0
-#       \frac{dV}{dt} = 100+240*t                  V(0) = 100.0
+# Standard library imports
+import sys # Only needed for running the example from the command line
 
-from kipet.library.TemplateBuilder import *
-from kipet.library.PyomoSimulator import *
+# Third party imports
+from pyomo.core import exp
 
-import matplotlib.pyplot as plt
-from pyomo.core import *
-import sys
+# Kipet library imports
+from kipet.kipet import KipetModel
 
 if __name__ == "__main__":
 
@@ -31,17 +20,15 @@ if __name__ == "__main__":
     #USER INPUT SECTION - REQUIRED MODEL BUILDING ACTIONS
     #=========================================================================
           
-    # create template model 
-    builder = TemplateBuilder()    
-    builder.add_mixture_component('A',1.0)
-    builder.add_mixture_component('B',0.0)
-    builder.add_mixture_component('C',0.0)
-
-    # add our additional states that affect the reaction system
-    # temperature and Volume, with the initial values set
-    builder.add_complementary_state_variable('T',290.0)
-    builder.add_complementary_state_variable('V',100.0)
+    kipet_model = KipetModel(name='Ex-3')
     
+    # Declare the components and give the initial values
+    kipet_model.add_component('A', state='concentration', init=1.0)
+    kipet_model.add_component('B', state='concentration', init=0.0)
+    kipet_model.add_component('C', state='concentration', init=0.0)
+    
+    kipet_model.add_component('T', state='state', init=290)
+    kipet_model.add_component('V', state='state', init=100)
     
     # define explicit system of ODEs where the m.X are the additional variables
     # which are elements of continuous time (notice how the kinetic parameters 
@@ -65,37 +52,14 @@ if __name__ == "__main__":
         exprs['T'] = (T1+T2+T3)/Den
         exprs['V'] = vo
         return exprs
-
-    builder.set_odes_rule(rule_odes)
     
-    # Then we can create an instance of a pyomo model template as before    
-    pyomo_model = builder.create_pyomo_model(0.0,2.0)
-
-    #=========================================================================
-    #USER INPUT SECTION - SIMULATION
-    #=========================================================================
-  
-    # create instance of simulator since we wish to simulate the system
-    simulator = PyomoSimulator(pyomo_model)
+    kipet_model.add_equations(rule_odes)
+    kipet_model.create_pyomo_model(0.0, 2.0)
     
-    # define the discretization scheme for the concentration and temperature profiles
-    simulator.apply_discretization('dae.collocation',nfe=20,ncp=1,scheme='LAGRANGE-RADAU')
+    kipet_model.settings.collocation.nfe = 20
+    kipet_model.settings.collocation.ncp = 1
 
-    # simulate
-    results_pyomo = simulator.run_sim('ipopt',tee=True)
+    kipet_model.simulate()  
 
     if with_plots:
-        # display concentration results
-        results_pyomo.Z.plot.line(legend=True)
-        plt.xlabel("time (s)")
-        plt.ylabel("Concentration (mol/L)")
-        plt.title("Concentration Profile")
-
-        
-        results_pyomo.X.plot.line(legend=True)
-        plt.ylim([100,600])
-        plt.xlabel("time (s)")
-        plt.ylabel("Temperature (K)")
-        plt.title("Temperature Profile")
-        
-        plt.show()
+        kipet_model.results.plot()

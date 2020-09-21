@@ -1,31 +1,12 @@
+"""Example 2: Estimation using alternate variance method with new KipetModel"""
 
-#  _________________________________________________________________________
-#
-#  Kipet: Kinetic parameter estimation toolkit
-#  Copyright (c) 2016 Eli Lilly.
-#  _________________________________________________________________________
+# Standard library imports
+import sys # Only needed for running the example from the command line
 
-# Sample Problem 
-# Estimation with unknow variancesof spectral data using pyomo discretization 
-#
-#		\frac{dZ_a}{dt} = -k_1*Z_a	                Z_a(0) = 1
-#		\frac{dZ_b}{dt} = k_1*Z_a - k_2*Z_b		Z_b(0) = 0
-#               \frac{dZ_c}{dt} = k_2*Z_b	                Z_c(0) = 0
-#               C_k(t_i) = Z_k(t_i) + w(t_i)    for all t_i in measurement points
-#               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
-#       Initial concentration 
+# Third party imports
 
-from __future__ import print_function
-from kipet.library.TemplateBuilder import *
-from kipet.library.PyomoSimulator import *
-from kipet.library.ParameterEstimator import *
-from kipet.library.VarianceEstimator import *
-from kipet.library.data_tools import *
-import matplotlib.pyplot as plt
-import os
-import sys
-import inspect
-import six
+# Kipet library imports
+from kipet.kipet import KipetModel
 
 if __name__ == "__main__":
 
@@ -33,31 +14,21 @@ if __name__ == "__main__":
     if len(sys.argv)==2:
         if int(sys.argv[1]):
             with_plots = False
- 
-        
-    #=========================================================================
-    #USER INPUT SECTION - REQUIRED MODEL BUILDING ACTIONS
-    #=========================================================================
        
+    kipet_model = KipetModel(name='Ex-2')
     
-    # Load spectral data from the relevant file location. As described in section 4.3.1
-    #################################################################################
-    dataDirectory = os.path.abspath(
-        os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
-            inspect.currentframe() ) ) ), 'data_sets'))
-    filename =  os.path.join(dataDirectory,'Dij.txt')
-    D_frame = read_spectral_data_from_txt(filename)
-
-    # Then we build dae block for as described in the section 4.2.1. Note the addition
-    # of the data using .add_spectral_data
-    #################################################################################    
-    builder = TemplateBuilder()    
-    components = {'A':1e-3,'B':0,'C':0}
-    builder.add_mixture_component(components)
-    builder.add_parameter('k1', init=2.0, bounds=(1.0,5.0)) 
-    #There is also the option of providing initial values: Just add init=... as additional argument as above.
-    builder.add_parameter('k2',init = 0.2, bounds=(0.0,1))
-    builder.add_spectral_data(D_frame)
+    # Add the model parameters
+    kipet_model.add_parameter('k1', init=2, bounds=(1.0, 5.0))
+    kipet_model.add_parameter('k2', init=0.2, bounds=(0.0, 1.0))
+    
+    # Declare the components and give the initial values
+    kipet_model.add_component('A', state='concentration', init=1e-3)
+    kipet_model.add_component('B', state='concentration', init=0.0)
+    kipet_model.add_component('C', state='concentration', init=0.0)
+    
+    # Use this function to replace the old filename set-up
+    filename = kipet_model.set_directory('Dij.txt')
+    kipet_model.add_dataset('D_frame', category='spectral', file=filename)
 
     # define explicit system of ODEs
     def rule_odes(m,t):
@@ -67,103 +38,47 @@ if __name__ == "__main__":
         exprs['C'] = m.P['k2']*m.Z[t,'B']
         return exprs
     
-    builder.set_odes_rule(rule_odes)
+    kipet_model.add_equations(rule_odes)
     
-    builder.bound_profile(var = 'S', bounds = (0,200))
-    opt_model = builder.create_pyomo_model(0.0,10.0)
-    
-    #=========================================================================
-    #USER INPUT SECTION - VARIANCE ESTIMATION 
-    #=========================================================================
-    # For this problem we have an input D matrix that has some noise in it
-    # We can therefore use the variance estimator described in the Overview section
-    # of the documentation and Section 4.3.3
-    v_estimator = VarianceEstimator(opt_model)
-    v_estimator.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
-    
-    # It is often requried for larger problems to give the solver some direct instructions
-    # These must be given in the form of a dictionary
-    options = {}
-    # While this problem should solve without changing the deault options, example code is 
-    # given commented out below. See Section 5.6 for more options and advice.
-    # options['bound_push'] = 1e-8
-    # options['tol'] = 1e-9
-    options['linear_solver'] = 'ma57'
-    options['max_iter'] = 2000
-    
-    # The set A_set is then decided. This set, explained in Section 4.3.3 is used to make the
-    # variance estimation run faster and has been shown to not decrease the accuracy of the variance 
-    # prediction for large noisey data sets.
+    # Any calls that need to be made to the TemplateBuilder can be accessed
+    # using the builder attribute
+    kipet_model.builder.bound_profile(var='S', bounds=(0, 200))
+    # If no times are given to the builder, it will use the times in the data
+    kipet_model.create_pyomo_model()
 
+    # Display the KipetModel object attributes
+    print(kipet_model)
     
-
-    init_sigmas = 1e-10
-    # This will provide a list of sigma values based on the different delta values evaluated.
-    results_variances = v_estimator.run_opt('ipopt',
-                                            method = 'alternate',
-                                            tee=False,
-                                            solver_opts=options,
-                                            secant_point = 1e-11,
-                                            initial_sigmas = init_sigmas)                                            
+    # Change some of the default settings
+    # Settings can be set like this:
+    # options = {}
+    # options['linear_solver'] = 'ma57'
+    # options['max_iter'] = 2000
+    # kipet_model.settings.collocation.update({'ncp': 3, 'nfe': 100})
+    # kipet_model.settings.variance_estimator.solver_options.update(options)
+    # kipet_model.settings.variance_estimator.update({'method': 'alternate', 'tee': False})
+    # kipet_model.settings.parameter_estimator.update({'solver': 'ipopt_sens', 'covariance': True})
     
-   
-    # Variances can then be displayed 
-    print("\nThe estimated variances are:\n")
-    for k,v in six.iteritems(results_variances.sigma_sq):
-        print(k,v)
-
-    # and the sigmas for the parameter estimation step are now known and fixed
-   # sigmas = sigmas
+    # Or like this:
+    kipet_model.settings.collocation.ncp = 3
+    kipet_model.settings.collocation.nfe = 100
+    kipet_model.settings.variance_estimator.solver_options.linear_solver = 'ma57'
+    kipet_model.settings.variance_estimator.solver_options.max_iter = 2000
+    kipet_model.settings.variance_estimator.method = 'alternate'
+    kipet_model.settings.parameter_estimator.solver = 'ipopt_sens'
+    kipet_model.settings.parameter_estimator.covariance = True
+    kipet_model.settings.parameter_estimator.tee = False
     
-    sigmas = results_variances.sigma_sq
-    #=========================================================================
-    # USER INPUT SECTION - PARAMETER ESTIMATION 
-    #=========================================================================
-    # In order to run the paramter estimation we create a pyomo model as described in section 4.3.4
-    opt_model = builder.create_pyomo_model(0.0,10.0)
-
-    # and define our parameter estimation problem and discretization strategy
-    p_estimator = ParameterEstimator(opt_model)
-    p_estimator.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
+    # Show the KipetModel settings
+    print(kipet_model.settings)
     
-    # Certain problems may require initializations and scaling and these can be provided from the 
-    # varininace estimation step. This is optional.
-    p_estimator.initialize_from_trajectory('Z',results_variances.Z)
-    p_estimator.initialize_from_trajectory('S',results_variances.S)
-    p_estimator.initialize_from_trajectory('C',results_variances.C)
-
-    # Scaling for Ipopt can also be provided from the variance estimator's solution
-    # these details are elaborated on in the manual
-    p_estimator.scale_variables_from_trajectory('Z',results_variances.Z)
-    p_estimator.scale_variables_from_trajectory('S',results_variances.S)
-    p_estimator.scale_variables_from_trajectory('C',results_variances.C)
+    # This is all you need to run KIPET!
+    kipet_model.run_opt()
     
-    # Again we provide options for the solver, this time providing the scaling that we set above
-    options = dict()
-    #options['nlp_scaling_method'] = 'user-scaling'
-    options['linear_solver'] = 'ma57'
-    # finally we run the optimization
-    results_pyomo = p_estimator.run_opt('ipopt_sens',
-                                      tee=True,
-                                      solver_opts = options,
-                                      covariance = True,
-                                      variances=sigmas)
-
-    # And display the results
+    # Display the results
     print("The estimated parameters are:")
-    for k,v in six.iteritems(results_pyomo.P):
-        print(k, v)
-        
-    # display results
-    if with_plots:
-        results_pyomo.C.plot.line(legend=True)
-        plt.xlabel("time (s)")
-        plt.ylabel("Concentration (mol/L)")
-        plt.title("Concentration Profile")
-
-        results_pyomo.S.plot.line(legend=True)
-        plt.xlabel("Wavelength (cm)")
-        plt.ylabel("Absorbance (L/(mol cm))")
-        plt.title("Absorbance  Profile")
+    kipet_model.results.parameters
     
-        plt.show()
+    # New plotting method
+    if with_plots:
+        kipet_model.results.plot()
