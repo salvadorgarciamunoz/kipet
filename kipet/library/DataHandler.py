@@ -15,7 +15,7 @@ from plotly import __version__
 from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
 
 from kipet.library.data_tools import *
-from kipet.library.common.plot_results import colors
+from kipet.library.ResultsObject import colors
 
 data_categories = ['concentration', 'spectral', 'state']
 
@@ -234,7 +234,7 @@ class DataSet(object):
                                      y=self.data[cols],
                                      mode='markers',
                                      name=cols,
-                                     marker=dict(size=10, color=colors[i])),
+                                     marker=dict(size=10, opacity=0.5, color=colors[i])),
                           )
            
         fig.update_layout(title_text=f'{self.category.capitalize()} data: {self.name}',

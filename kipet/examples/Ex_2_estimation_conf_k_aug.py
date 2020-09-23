@@ -128,7 +128,7 @@ if __name__ == "__main__":
     #options['bound_push'] =1e-6
     # finally we run the optimization
     #k_aug=SolverFactory('k_aug', executable='/home/shortm/k_aug/bin/k_aug')
-    results_pyomo = p_estimator.run_opt('k_aug',
+    results_pyomo = p_estimator.run_opt('ipopt_sens',
                                         tee=True,
                                         solver_opts = options,
                                         variances=sigmas,

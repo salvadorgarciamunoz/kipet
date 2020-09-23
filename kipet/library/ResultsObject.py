@@ -1,5 +1,6 @@
 # Standard library imports
 import time
+from pathlib import Path
 
 # Thirdparty library imports
 import datetime
@@ -31,12 +32,17 @@ colors_rgb = [(0,    0.4470,    0.7410),
 # Convert to rgb format used in plotly
 colors = ['rgb(' + ','.join([str(int(255*c)) for c in color]) + ')' for color in colors_rgb]
 
+colors += ['#4285F4', '#DB4437', '#F4B400', '#0F9D58',
+                     '#185ABC', '#B31412', '#EA8600', '#137333',
+                     '#d2e3fc', '#ceead6']
+
 exp_data_maps = {'Z': ['C', 'Cm'],
                  'X': ['U'],
                  'S': None,
+                 'Y': None,
                  }
 
-plot_vars = ['Z', 'X', 'S']
+plot_vars = ['Z', 'X', 'S', 'Y']
 
 class ResultsObject(object):
     """Container for all of the results. Includes plotting functions"""
@@ -113,79 +119,93 @@ class ResultsObject(object):
                 else:
                     raise RuntimeError('load_from_pyomo_model function not supported for models with variables with dimension > 2')
     
-    def _make_plots(self, var, predict, filename=None, show_plot=True):
+    def _make_plots(self, pred, var, show_exp, extra_data, filename=None, show_plot=True):
         """Makes the actual plots and filters out the data that is missing from
         the model.
         
-        """
-        if hasattr(self, var) and getattr(self, var) is not None and len(getattr(self, var)) > 0:    
-            pred = getattr(self, var)
-            exp = None
-                
-            fig = go.Figure()    
-            
-            if exp_data_maps[var] is not None:
-      
-                for exp_var in exp_data_maps[var]:
+        """   
+        exp = None
+        fig = go.Figure()    
         
-                    marker_options = {'size': 10,
-                                      'opacity': 0.5,
+        if exp_data_maps[var] is not None:
+  
+            for exp_var in exp_data_maps[var]:
+    
+                marker_options = {'size': 10,
+                                  'opacity': 0.5,
+                                 }
+                label = 'spectral'
+                
+                if exp_var == 'Cm':
+                    marker_options = {'size': 15,
+                                      'opacity': 0.75,
                                      }
-                    label = 'spectral'
-                    
-                    if exp_var == 'Cm':
-                        marker_options = {'size': 15,
-                                          'opacity': 0.75,
-                                         }
-                        label = 'measured'
-                    
-                    if predict and hasattr(self, exp_var) and getattr(self, exp_var) is not None and len(getattr(self, exp_var)) > 0:
-                        exp = getattr(self, exp_var)
-           
-                        for i, col in enumerate(exp.columns):
-                            fig.add_trace(
-                                go.Scatter(x=exp.index,
-                                        y=exp[col],
-                                        name=col + f' ({label})',
-                                        mode='markers',
-                                        marker={**marker_options, 'color' :colors[i]}),
-                                    )
+                    label = 'measured'
+                
+                if show_exp and hasattr(self, exp_var) and getattr(self, exp_var) is not None and len(getattr(self, exp_var)) > 0:
+                    exp = getattr(self, exp_var)
        
-            for i, col in enumerate(pred.columns):
-                fig.add_trace(
-                    go.Scatter(x=pred.index,
-                           y=pred[col],
-                           name=col,
-                           line=dict(color=colors[i]),
-                       )
+                    for i, col in enumerate(exp.columns):
+                        fig.add_trace(
+                            go.Scatter(x=exp.index,
+                                    y=exp[col],
+                                    name=col + f' ({label})',
+                                    mode='markers',
+                                    marker={**marker_options, 'color' :colors[i]}),
+                                )
+   
+        for i, col in enumerate(pred.columns):
+            fig.add_trace(
+                go.Scatter(x=pred.index,
+                       y=pred[col],
+                       name=col,
+                       line=dict(color=colors[i], width=4),
+                   )
+                )
+            
+        if extra_data is not None:
+            
+            extra_data_marker_options = {'size': 10,
+                                        'opacity': 0.5,
+                                        }
+            
+            fig.add_trace(
+                go.Scatter(x=extra_data.index,
+                           y=extra_data.values,
+                           name=col + f'extra_data',
+                           mode='markers',
+                           marker={**extra_data_marker_options, 'color' :colors[i+1]}),
                     )
                 
-            if var == 'S':
-                fig.update_layout(
-                    title="Absorbance Profile",
-                    xaxis_title="Wavelength (cm)",
-                    yaxis_title="Absorbance (L/(mol cm))",
-                    )
-            else:
-                fig.update_layout(
-                    title="Concentration Profile",
-                    xaxis_title="Time",
-                    yaxis_title="Concentration",
-                    )
-            #x_data = [t for t in model.alltime]
-            #x_axis_mod = 0.025*(x_data[-1] - x_data[0])
-            #fig.update_xaxes(range=[x_data[0]-x_axis_mod, x_data[-1]+x_axis_mod])
-            fig.update_xaxes(zeroline=True, zerolinewidth=2, zerolinecolor='black')
-            fig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor='black')
-        
-            if show_plot:
-                if filename is None:
-                    filename = f'chart_{str(time.time())[-4:]}.html'
-                plot(fig, filename=filename)
+            
+        if var == 'S':
+            fig.update_layout(
+                title="Absorbance Profile",
+                xaxis_title="Wavelength (cm)",
+                yaxis_title="Absorbance (L/(mol cm))",
+                )
+        else:
+            fig.update_layout(
+                title="Concentration Profile",
+                xaxis_title="Time",
+                yaxis_title="Concentration",
+                )
+        x_data = [t for t in pred.index]
+        x_axis_mod = 0.025*(x_data[-1] - x_data[0])
+        fig.update_xaxes(range=[x_data[0]-x_axis_mod, x_data[-1]+x_axis_mod])
+        fig.update_xaxes(zeroline=True, zerolinewidth=2, zerolinecolor='#4e4e4e')
+        fig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor='#4e4e4e')
+    
+        #chart_dir = Path('..', 'charts')
+    
+        if show_plot:
+            if filename is None:
+                filename = f'../charts/chart_{str(time.time())[-4:]}.html'
+            plot(fig, filename=filename)
     
         return None
     
-    def plot(self, var=None, predict=True, filename=None, show_plot=True):
+    def plot(self, var=None, subset=None, show_exp=True, extra_data=None, filename=None, show_plot=True):
         """Function to plot experimental data and model predictions using plotly.
         Automatically finds the concentration and complementary state data in 
         the model (if the the model has the attribute, it will be checked)
@@ -204,15 +224,20 @@ class ResultsObject(object):
             None
         
         """
-        vars_to_plot = plot_vars if var is None else [var]
+        vars_to_plot = exp_data_maps.keys() if var is None else [var]
             
         for _var in vars_to_plot:
-            _predict = predict
+            _show_exp = show_exp
             if _var == 'S':
-                _predict = False
+                _show_exp = False
             
-            if hasattr(self, _var) and getattr(self, _var) is not None: 
-                self._make_plots(_var, _predict, filename, show_plot)
+            if hasattr(self, _var) and getattr(self, _var) is not None and len(getattr(self, _var)) > 0:
+                if subset is not None and subset in getattr(self, _var).columns:
+                    pred = pd.DataFrame(getattr(self, _var)[subset])
+                else:
+                    pred = getattr(self, _var)
+                    
+                self._make_plots(pred, _var, _show_exp, extra_data, filename, show_plot)
                 
     @property
     def parameters(self):

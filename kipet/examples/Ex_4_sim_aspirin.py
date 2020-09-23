@@ -1,37 +1,15 @@
-#  _________________________________________________________________________
-#
-#  Kipet: Kinetic parameter estimation toolkit
-#  Copyright (c) 2016 Eli Lilly.
-#  _________________________________________________________________________
+"""Example 4: Simulated Asprin reaction with new KipetModel
 
-# Aspirin Example
-#
-#		\frac{dZ_aa}{dt} = -r_0-r_1-r_3-\frac{\dot{v}}{V}*Z_aa
-# 	    	\frac{dZ_ha}{dt} = r_0+r_1+r_2+2r_3-\frac{\dot{v}}{V}*Z_ha
-#        \frac{dZ_asaa}{dt} = r_1-r_2-\frac{\dot{v}}{V}*Z_asaa
-#        \frac{dZ_h2o}{dt} = -r_2-r_3+\frac{f}{V}*C_h2o^in-\frac{\dot{v}}{V}*Z_asaa
+"""
+# Standard library imports
+import sys # Only needed for running the example from the command line
 
-#        \frac{dm_{sa}}{dt} = -M_{sa}*V*r_d
-#        \frac{dm_{asa}}{dt} = -M_{asa}*V*r_c
-#        \frac{dV}{dt} = V*\sum_i^{ns}\upsilon_i*(\sum_j^{6}\gamma_i*r_j+\epsilon_i*\frac{f}{V}*C_h2o^in)
+# Third party imports
+import pandas as pd
+from pyomo.environ import exp
 
-#        r_0 = k_0*Z_sa*Z_aa
-#        r_1 = k_1*Z_asa*Z_aa
-#        r_2 = k_2*Z_asaa*Z_h2o
-#        r_3 = k_3*Z_aa*Z_h2o
-#        r_d = k_d*(Z_sa^{sat}-Z_sa)^d
-#        r_c = k_c*(max(Z_asa-Z_sa^{sat}))^c
-
-from kipet.library.TemplateBuilder import *
-from kipet.library.PyomoSimulator import *
-from kipet.library.ParameterEstimator import *
-from kipet.library.VarianceEstimator import *
-from kipet.library.data_tools import *
-
-import matplotlib.pyplot as plt
-import numpy as np
-import sys
-import os
+# Kipet library imports
+from kipet.kipet import KipetModel
 
 if __name__ == "__main__":
     
@@ -40,32 +18,22 @@ if __name__ == "__main__":
         if int(sys.argv[1]):
             with_plots = False
     
-    #=========================================================================
-    #USER INPUT SECTION - REQUIRED MODEL BUILDING ACTIONS
-    #=========================================================================
- 
-    dataDirectory = os.path.abspath(
-        os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
-            inspect.currentframe() ) ) ), 'data_sets'))
-    traj =  os.path.join(dataDirectory,'extra_states.txt')
-
-    dataDirectory = os.path.abspath(
-        os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
-            inspect.currentframe() ) ) ), 'data_sets'))
-    conc =  os.path.join(dataDirectory,'concentrations.txt')    
+    # This holds the model
+    kipet_model = KipetModel()
+    # A KipetModel instance can be used to hold data, if desired
+    data_model = KipetModel()
     
-    fixed_traj = read_absorption_data_from_txt(traj)
-    C = read_absorption_data_from_txt(conc)
+    # Use this function to replace the old filename set-up
+    filename = data_model.set_directory('extra_states.txt')
+    data_model.add_dataset('traj', category='state', file=filename)
+    
+    filename = data_model.set_directory('concentrations.txt')
+    data_model.add_dataset('conc', category='concentration', file=filename)  
+    
+    fixed_traj = data_model.datasets['traj'].data
+    C = data_model.datasets['conc'].data
 
-    meas_times=sorted(C.index)
-    #print(meas_times)
-    # How many measurement times are there
-    nfe_x = len(meas_times)
-    #print(nfe_x)# create template model
-
-    builder = TemplateBuilder()
-
-    # components
+    # Components
     components = dict()
     components['SA'] = 1.0714                  # Salicitilc acid
     components['AA'] = 9.3828               # Acetic anhydride
@@ -74,9 +42,10 @@ if __name__ == "__main__":
     components['ASAA'] = 0.000015                # Acetylsalicylic anhydride
     components['H2O'] = 0.0                 # water
 
-    builder.add_mixture_component(components)
+    for comp, init_value in components.items():
+        kipet_model.add_component(comp, state='concentration', init=init_value)
 
-    # add parameters
+    # Parameters
     params = dict()
     params['k0'] = 0.0360309
     params['k1'] = 0.1596062
@@ -86,19 +55,22 @@ if __name__ == "__main__":
     params['kc'] = 0.7566864
     params['Csa'] = 2.06269996
 
-    builder.add_parameter(params)
+    for param, init_value in params.items():
+        kipet_model.add_parameter(param, init=init_value)
 
-    # add additional state variables
+    # Additional state variables
     extra_states = dict()
     extra_states['V'] = 0.0202
     extra_states['Masa'] = 0.0
     extra_states['Msa'] = 9.537
     
-    builder.add_complementary_state_variable(extra_states)
+    for comp, init_value in extra_states.items():
+        kipet_model.add_component(comp, state='state', init=init_value)
 
+    # Algebraics
     algebraics = ['f','r0','r1','r2','r3','r4','r5','v_sum','Csat']
 
-    builder.add_algebraic_variable(algebraics)
+    kipet_model.add_algebraic_variables(algebraics)
 
     gammas = dict()
     gammas['SA']=    [-1, 0, 0, 0, 1, 0]
@@ -107,7 +79,6 @@ if __name__ == "__main__":
     gammas['HA']=    [ 1, 1, 1, 2, 0, 0]
     gammas['ASAA']=  [ 0, 1,-1, 0, 0, 0]
     gammas['H2O']=   [ 0, 0,-1,-1, 0, 0]
-
 
     epsilon = dict()
     epsilon['SA']= 0.0
@@ -136,7 +107,6 @@ if __name__ == "__main__":
         step = 1.0/(1.0+exp(-m.X[t,'Msa']/1e-4))
         rd = m.P['kd']*(m.P['Csa']-m.Z[t,'SA']+1e-6)**1.90*step
         r.append(m.Y[t,'r4']-rd)
-        #r.append(m.Y[t,'r4'])
         
         # crystalization rate
         diff = m.Z[t,'ASA'] - m.Y[t,'Csat']
@@ -153,7 +123,7 @@ if __name__ == "__main__":
 
         return r
 
-    builder.set_algebraics_rule(rule_algebraics)
+    kipet_model.add_algebraics(rule_algebraics)
     
     def rule_odes(m,t):
         exprs = dict()
@@ -175,92 +145,46 @@ if __name__ == "__main__":
         exprs['Msa'] = -138.121*V*m.Y[t,'r4']
         return exprs
 
-    builder.set_odes_rule(rule_odes)
+    kipet_model.add_equations(rule_odes)
+    
+    # Create the model
+    kipet_model.create_pyomo_model(0, 210.5257)
 
-    model = builder.create_pyomo_model(0.0,210.5257)    
+    # Settings
+    kipet_model.settings.collocation.nfe = 100
+    
+    kipet_model.settings.simulator.solver_opts.update({'halt_on_ampl_error' :'yes'})
+    
+    # Create the simulator - since there are several additional initializations here,
+    # the simulator needs to be created and not automated
+    kipet_model.create_simulator()
+    
+    # Initialize the trajectories using saved data
+    filename_initZ = kipet_model.set_directory('init_Z.csv')
+    filename_initX = kipet_model.set_directory('init_X.csv')
+    filename_initY = kipet_model.set_directory('init_Y.csv')
 
-    #=========================================================================
-    #USER INPUT SECTION - SIMULATION
-    #=========================================================================
-  
-    sim = PyomoSimulator(model)
-    # defines the discrete points wanted in the concentration profile
-    sim.apply_discretization('dae.collocation',nfe=100,ncp=3,scheme='LAGRANGE-RADAU')
-    fe_l = sim.model.alltime.get_finite_elements()
-    fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
-    nfe = len(fe_list)  #: Create a list with the step-size
-    print(nfe)
-    # sys.exit()
-    # good initialization
+    initialization = pd.read_csv(filename_initZ, index_col=0)
+    kipet_model.initialize_from_trajectory('Z', initialization, 'simulator')
+    
+    initialization = pd.read_csv(filename_initX, index_col=0)
+    kipet_model.initialize_from_trajectory('X', initialization, 'simulator')
+    
+    initialization = pd.read_csv(filename_initY, index_col=0)
+    kipet_model.initialize_from_trajectory('Y', initialization, 'simulator')
 
-    filename_initZ = os.path.join(dataDirectory, 'init_Z.csv')#Use absolute paths
-    initialization = pd.read_csv(filename_initZ,index_col=0)
-    sim.initialize_from_trajectory('Z',initialization)
-    filename_initX = os.path.join(dataDirectory, 'init_X.csv')#Use absolute paths
-    initialization = pd.read_csv(filename_initX,index_col=0)
-    sim.initialize_from_trajectory('X',initialization)
-    filename_initY = os.path.join(dataDirectory, 'init_Y.csv')#Use absolute paths
-    initialization = pd.read_csv(filename_initY,index_col=0)
-    sim.initialize_from_trajectory('Y',initialization)
-            
-    sim.fix_from_trajectory('Y','Csat',fixed_traj)
-    sim.fix_from_trajectory('Y','f',fixed_traj)
+    kipet_model.simulator.fix_from_trajectory('Y', 'Csat', fixed_traj) 
+    kipet_model.simulator.fix_from_trajectory('Y', 'f', fixed_traj)
 
-    with open("f0.txt", "w") as f:
-        for t in sim.model.alltime:
-            val = value(sim.model.Y[t, 'f'])
-            f.write('\t' + str(t) + '\t' + str(val) + '\n')
-        f.close()
+    # Finally, run the simulation
+    kipet_model.run_simulation()
 
-
-    options = {'halt_on_ampl_error' :'yes'}
-    results = sim.run_sim('ipopt',
-                          tee=True,
-                          solver_opts=options)
-    if with_plots:
-        # display concentration results    
-        results.Z.plot.line(legend=True)
-        plt.xlabel("time (s)")
-        plt.ylabel("Concentration (mol/L)")
-        plt.title("Concentration Profile")
-
-        C.plot()
-        
-        plt.figure()
-        
-        results.Y['Csat'].plot.line()
-        plt.plot(fixed_traj['Csat'],'*')
-        plt.xlabel("time (s)")
-        plt.ylabel("Csat")
-        plt.title("Saturation Concentration")
-        
-        plt.figure()
-        
-        results.X['V'].plot.line()
-        plt.plot(fixed_traj['V'],'*')
-        plt.xlabel("time (s)")
-        plt.ylabel("volumne (L)")
-        plt.title("Volume Profile")
-
-        plt.figure()
-        
-        results.X['Msa'].plot.line()
-        plt.plot(fixed_traj['Msa'],'*')
-        plt.xlabel("time (s)")
-        plt.ylabel("m_dot (g)")
-        plt.title("Msa Profile")
-
-        plt.figure()
-        results.Y['f'].plot.line()
-        plt.xlabel("time (s)")
-        plt.ylabel("flow (K)")
-        plt.title("Inlet flow Profile")
-
-        plt.figure()
-        results.X['Masa'].plot.line()
-        plt.plot(fixed_traj['Masa'],'*')
-        plt.xlabel("time (s)")
-        plt.ylabel("m_dot (g)")
-        plt.title("Masa Profile")
-        
-        plt.show()
+    # Plot the results
+    if with_plots:   
+        kipet_model.results.plot('Z')
+        data_model.datasets['conc'].show_data()
+        kipet_model.results.plot('Y', 'Csat', extra_data=fixed_traj['Csat'])
+        kipet_model.results.plot('X', 'V', extra_data=fixed_traj['V'])
+        kipet_model.results.plot('X', 'Msa', extra_data=fixed_traj['Msa'])
+        kipet_model.results.plot('Y', 'f')
+        kipet_model.results.plot('X', 'Masa', extra_data=fixed_traj['Masa'])

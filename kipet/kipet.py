@@ -8,6 +8,7 @@ without requiring a plethora of imports
 import copy
 
 # Third party imports
+import pandas as pd
 
 # Kipet library imports
 import kipet.library.data_tools as data_tools
@@ -124,7 +125,7 @@ class Settings():
         
     def __str__(self):
         
-        m = 20
+        m = 25
           
         settings = 'Settings\n\n'
         
@@ -134,6 +135,10 @@ class Settings():
         
         settings += '\nCollocation Settings:\n'
         for k, v in self.collocation.items():
+            settings += f'{str(k).rjust(m)} : {v}\n'
+            
+        settings += '\nSimulation Settings:\n'
+        for k, v in self.simulator.items():
             settings += f'{str(k).rjust(m)} : {v}\n'
             
         settings += '\nVarianceEstimator Settings:\n'
@@ -169,9 +174,14 @@ class Settings():
                        'scheme': 'LAGRANGE-RADAU',
             }
         
+        sim_opt = {'solver': 'ipopt',
+                   'tee': False,
+                   'solver_opts': AttrDict(),
+            }
+        
         ve_opt = { 'solver': 'ipopt',
                    'tee': True,
-                   'solver_options': AttrDict(),
+                   'solver_opts': AttrDict(),
                    'tolerance': 1e-5,
                    'max_iter': 15,
                    'method': 'originalchenetal',
@@ -179,19 +189,42 @@ class Settings():
                    'freq_subset_lambdas': 4,
                    'secant_point': 1e-11,
                    'initial_sigmas': 1e-10,
+                   'max_device_variance': False,
             }
     
         pe_opt = { 'solver': 'ipopt',
                    'tee': True,
-                   'solver_options': AttrDict(),
+                   'solver_opts': AttrDict(),
                    'covariance': False,
+                   'with_d_vars': False,
+                   'symbolic_solver_labels': False,
+                   'estimability': False,
+                   'report_time': False,
+                   'model_variance': True,
+                   'inputs': None,
+                   'inputs_sub': None,
+                   'trajectories': None,
+                   'fixedtraj': False,
+                   'fixedy': False,
+                   'yfix': None,
+                   'yfixtraj': None,
+                   'jump': False,
+                   'jump_states': None,
+                   'jump_times': None,
+                   'feed_times': None,       
+                   'unwanted_G': False,
+                   'time_variant_G': False,
+                   'time_invariant_G': False,
+                   'St': dict(),
+                   'Z_in': dict(),      
             }
     
-        solver = {#'nlp_scaling_method': 'user-scaling',
+        solver = {'nlp_scaling_method': 'gradient-based',
                   'linear_solver': 'ma57',
             }
     
         self.collocation = AttrDict(collocation)
+        self.simulator = AttrDict(sim_opt)
         self.general = AttrDict(general)
         self.variance_estimator = AttrDict(ve_opt)
         self.parameter_estimator = AttrDict(pe_opt)
@@ -219,13 +252,21 @@ class KipetModel():
         self.results_dict = {}
         self.settings = Settings()
         
+        self.odes = None
+        self.algs = None
+        
     def __repr__(self):
         
+        m = 20
+        
         kipet_str = f'KipetTemplate Object {self.name}:\n\n'
-        kipet_str += f'Has ODEs: {hasattr(self, "odes")}\n'
-        kipet_str += f'Has Model: {hasattr(self, "model") and getattr(self, "model") is not None}\n'
+        kipet_str += f'{"ODEs".rjust(m)} : {hasattr(self, "odes") and getattr(self, "odes") is not None}\n'
+        kipet_str += f'{"Algebraics".rjust(m)} : {hasattr(self, "odes") and getattr(self, "odes") is not None}\n'
+        kipet_str += f'{"Model".rjust(m)} : {hasattr(self, "model") and getattr(self, "model") is not None}\n'
         kipet_str += '\n'
+        
         kipet_str += f'{self.components}\n'
+        kipet_str += f'Algebraic Variables:\n{", ".join(self.algebraic_variables)}\n\n'
         kipet_str += f'{self.parameters}\n'
         kipet_str += f'{self.datasets}\n'
         
@@ -309,6 +350,13 @@ class KipetModel():
         self.datasets.add_dataset(*args, **kwargs)
         return None
     
+    def add_algebraic_variables(self, *args, **kwargs):
+        
+        if isinstance(args[0], list):
+            self.algebraic_variables = args[0]
+        self.builder.add_algebraic_variable(*args, **kwargs)
+        return None
+    
     def set_directory(self, filename, directory=DEFAULT_DIR):
         """Wrapper for the set_directory method. This replaces the awkward way
         of ensuring the correct directory for the data is used."""
@@ -319,6 +367,12 @@ class KipetModel():
         """Wrapper for the set_odes method used in the builder"""
         
         self.odes = ode_fun
+        return None
+    
+    def add_algebraics(self, algebraics):
+        """Wrapper for the set_algebraics method used in the builder"""
+        
+        self.algs = algebraics
         return None
         
     def create_pyomo_model(self, *args, **kwargs):
@@ -357,26 +411,33 @@ class KipetModel():
             self.builder.set_odes_rule(self.odes)
         else:
             raise ValueError('The model requires a set of ODEs')
+            
+        if hasattr(self, 'algs'):
+            self.builder.set_algebraics_rule(self.algs)
         
         self.builder.set_parameter_scaling(scale_parameters)
-        self.builder.add_state_variance(self.components.variances)
+        #self.builder.add_state_variance(self.components.variances)
         self.model = self.builder.create_pyomo_model(*args, **kwargs)
         
         return None
     
     def simulate(self, options=None, **kwargs):
         """This should try to handle all of the simulation cases"""
+    
+        self.create_simulator(options, **kwargs)
+        self.run_simulation()
         
-        method = kwargs.pop('method', 'dae.collocation')
-        ncp = kwargs.pop('ncp', 3)
-        nfe = kwargs.pop('nfe', 50)
-        scheme = kwargs.pop('scheme', 'LAGRANGE-RADAU')
+        return None
+    
+    def create_simulator(self):
+        """This should try to handle all of the simulation cases"""
         
-        default_options = {
-            'solver' : 'ipopt',
-            }
+        kwargs = self.settings.collocation
         
-        options = options.copy() if options is not None else default_options
+        method = kwargs.get('method', 'dae.collocation')
+        ncp = kwargs.get('ncp', 3)
+        nfe = kwargs.get('nfe', 50)
+        scheme = kwargs.get('scheme', 'LAGRANGE-RADAU')
         
         if method == 'fe':
             simulation_class = FESimulator
@@ -397,21 +458,16 @@ class KipetModel():
         if method == 'fe':
             simulator.call_fe_factory()
         
-        self.run_simulation(simulator, options)
+        self.simulator = simulator
         
         return None
-    
-    def run_simulation(self, simulator, options):
+        
+    def run_simulation(self):
         """Runs the simulations, may be combined with the above at a later date
+        
         """
-    
-        solver = options.pop('solver', 'ipopt')
-        solver_options = options.pop('solver_options', [])
-    
-        self.results = simulator.run_sim(solver,
-                                         tee=False,
-                                         solver_options=solver_options,
-                                         )
+        simulator_options = self.settings.simulator
+        self.results = self.simulator.run_sim(**simulator_options)
     
         return None
     
@@ -495,6 +551,11 @@ class KipetModel():
         if self.settings.variance_estimator['use_subset_lambdas']:
             self.settings.variance_estimator['subset_lambdas'] = self.reduce_spectra_data_set(self.settings.variance_estimator['freq_subset_lambdas']) 
         
+        if self.settings.general.scale_pe:
+            self.settings.solver.nlp_scaling_method = 'user-scaling'
+    
+        if self.settings.variance_estimator.max_device_variance:
+            self.settings.parameter_estimator.model_variance = False
     
     def run_opt(self):
         """Run ParameterEstimator but checking for variances - this should
@@ -504,6 +565,7 @@ class KipetModel():
         if not self.allow_optimization:
             raise ValueError('The model is incomplete for parameter optimization')
             
+        # Some settings are required together, this method checks this
         self._update_related_settings()
         
         # Check if all component variances are given; if not run VarianceEstimator
@@ -511,7 +573,11 @@ class KipetModel():
             
             self.create_estimator(estimator='v_estimator', **self.settings.collocation)
             settings_run_ve_opt = self.settings.variance_estimator
-            self.run_ve_opt(**settings_run_ve_opt)
+            
+            if self.settings.variance_estimator.max_device_variance:
+                max_device_variance = self.v_estimator.solve_max_device_variance(**settings_run_ve_opt)
+            else:
+                self.run_ve_opt(**settings_run_ve_opt)
             
         # Create ParameterEstimator
         self.create_estimator(estimator='p_estimator', **self.settings.collocation)
@@ -524,6 +590,9 @@ class KipetModel():
             if self.settings.general['scale_pe']:
                 self.scale_variables_from_trajectory(source=self.results_dict['v_estimator'])
             variances = self.results_dict['v_estimator'].sigma_sq
+        
+        if self.settings.variance_estimator.max_device_variance:
+            variances = max_device_variance
         
         if self.settings.general['scale_variances']:
             variances = self._scale_variances(variances)
@@ -553,33 +622,56 @@ class KipetModel():
         self.results_dict[estimator] = getattr(self, estimator).run_opt(*args, **kwargs)
         return self.results_dict[estimator]
     
-    def initialize_from_trajectory(self, variable=None, source=None):
+    def initialize_from_trajectory(self, variable=None, source=None, obj='p_estimator'):
         """Wrapper for the initialize_from_trajectory method in
         ParameterEstimator
         
         """
-        self._from_trajectory('initialize', variable, source)
+        self._from_trajectory('initialize', variable, source, obj)
         return None
     
-    def scale_variables_from_trajectory(self, variable=None, source=None):
+    def scale_variables_from_trajectory(self, variable=None, source=None, obj='p_estimator'):
         """Wrapper for the scale_varialbes_from_trajectory method in
         ParameterEstimator
         
         """
-        self._from_trajectory('scale_variables', variable, source)
+        self._from_trajectory('scale_variables', variable, source, obj)
         return None
         
-    def _from_trajectory(self, category, variable, source):
+    @staticmethod
+    def _get_source_data(source, var):
+        """Get the correct data from a ResultsObject or a DataFrame"""
+        
+        if isinstance(source, pd.DataFrame):
+            return source
+        else:
+            return getattr(source, var)
+    
+    def _from_trajectory(self, category, variable, source, obj):
         """Generic initialization/scaling function"""
         
-        method = getattr(self.p_estimator, f'{category}_from_trajectory')
+        estimator = getattr(self, obj)
+        method = getattr(estimator, f'{category}_from_trajectory')
+        
         if variable is None:
             for var in ['Z', 'C', 'S']:
-                method(var, getattr(source, var))   
+                method(var, self._get_source_data(source, var))   
         else:
-            method(variable, getattr(source, variable))
+            method(variable, self._get_source_data(source, variable))
         return None
     
+    # def fix_from_trajectory(self, variable_name, variable_index, trajectories):
+    #     """Wrapper for fix_from_trajectory in PyomoSimulator"""
+        
+    #     if not hasattr(self, 'simulator'):
+    #         raise AttributeError('KipetModel has no simulator')
+    #     if not hasattr(self.model, variable_name):
+    #         raise AttributeError(f'KipetModel has no algebraic variable {variable_name}')
+    #     else:
+    #         self.simulator.fix_from_trajectory(self, variable_name, variable_index, trajectories)
+                                               
+    #     return None
+                                               
     def set_known_absorbing_species(self, *args, **kwargs):
         """Wrapper for set_known_absorbing_species in TemplateBuilder
         

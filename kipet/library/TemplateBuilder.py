@@ -30,63 +30,6 @@ except ImportError:
 logger = logging.getLogger('ModelBuilderLogger')
     
 
-# class KineticParameter():
-#     """A simple class for holding kinetic parameter data"""
-
-#     def __init__(self, name=None, init=None, bounds=None): #, variance=None):
-
-#         if name is None:
-#             raise ValueError('KineticParameter requires a name (k1, k2, etc.)')
-        
-#         if init is None:
-#             raise ValueError('KineticParameter requires an initial value "init = float"')
-    
-#         if bounds is None:
-#             raise Warning('KineticParameter needs a bounds tuple for optimization')
-
-#         self.name = name
-#         self.bounds = bounds
-#         self.init = init
-        
-#     def __str__(self):
-#         return f'KineticParameter: {self.name}, bounds={self.bounds}, init={self.init}, variance={self.uncertainty}'
-
-#     def __repr__(self):
-#         return f'KineticParameter: {self.name}, bounds={self.bounds}, init={self.init}, variance={self.uncertainty}'
-
-
-# class Component():
-#     """A simple class for holding component information"""
-    
-#     def __init__(self, name=None, init=None, variance=None, state=None):
-    
-#         if name is None:
-#             raise ValueError('Component requires a name (Should match provided data')
-        
-#         if init is None:
-#             raise ValueError('Compnent requires an initial value "init = ..."')
-    
-#         if variance is None:
-#             raise Warning('Component variance not provided and is being set to one')
-#             variance = 1
-            
-#         if state is None:
-#             raise ValueError('Component requires a state (complementary, concentration)')
-        
-#         self.name = name
-#         self.init = init
-#         self.sigma = sigma
-#         self.state = state
-
-#     def __str__(self):
-#         return f'Component: {self.name}, init={self.init}, sigma={self.sigma}'
-    
-#     def __repr__(self):
-#         return f'Component: {self.name}, init={self.init}, sigma={self.sigma}'
-
-
-# Goal - remove all data checking and handling from TemplateBuilder and move to DataHandler
-
 class TemplateBuilder(object):
     """Helper class for creation of models.
 
