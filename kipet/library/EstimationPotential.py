@@ -29,6 +29,7 @@ from kipet.library.common.read_write_tools import df_from_pyomo_data
 from kipet.library.ParameterEstimator import ParameterEstimator
 from kipet.library.PyomoSimulator import PyomoSimulator
 from kipet.library.TemplateBuilder import TemplateBuilder
+from kipet.library.ResultsObject import ResultsObject
 from kipet.library.common.VisitorClasses import ReplacementVisitor
 from kipet.library.common.objectives import (
     conc_objective,
@@ -86,7 +87,7 @@ class EstimationPotential():
         self._options = options.copy()
         
         self.debug = self._options.pop('debug', False)
-        self.verbose = self._options.pop('verbose', False)
+        self.verbose = self._options.pop('verbose', True)
         self.nfe = self._options.pop('nfe', 50)
         self.ncp = self._options.pop('ncp', 3)
         self.bound_approach = self._options.pop('bound_approach', 1e-2)
@@ -231,6 +232,9 @@ class EstimationPotential():
                 for k, v in self.model.K.items():
                     self.model.K[k] = self.model.K[k] * self.model.P[k].value
                     self.model.P[k].set_value(1)
+                    print(self.model.K.display())
+                    print(self.model.P.display())
+                    
                 
                 if number_of_active_bounds == 0:
                     if self.verbose:
@@ -368,96 +372,150 @@ class EstimationPotential():
         else:
             self.model.P.pprint()
             
-        return {p: self.model.K[p].value for p in Se}
+        results = self._get_results(Se)
+            
+        return {p: self.model.K[p].value for p in Se}, results
     
-    def plot_results(self):
-        """This function plots the profiles from the final model after
-        parameter fitting.
+    # def plot_results(self):
+    #     """This function plots the profiles from the final model after
+    #     parameter fitting.
         
-        Args:
-            None
+    #     Args:
+    #         None
             
-        Returns:
-            None
+    #     Returns:
+    #         None
             
-        """
-        line_options = {
-            'linewidth' : 3,
-            }
+    #     """
+    #     line_options = {
+    #         'linewidth' : 3,
+    #         }
         
-        marker_options = {
-            'linewidth' : 1,
-            'markersize' : 10,
-            'alpha' : 0.5,
-            }
+    #     marker_options = {
+    #         'linewidth' : 1,
+    #         'markersize' : 10,
+    #         'alpha' : 0.5,
+    #         }
         
-        title_options = {
-            'fontsize' : 18,
-            }
+    #     title_options = {
+    #         'fontsize' : 18,
+    #         }
         
-        axis_options = {
-            'fontsize' : 16,
-            }
+    #     axis_options = {
+    #         'fontsize' : 16,
+    #         }
         
-        exp_data = list(self.model.measured_data.keys())
+    #     exp_data = list(self.model.measured_data.keys())
         
-        if len(self.model.mixture_components.value) > 0:
-            dfz = df_from_pyomo_data(self.model.Z)       
-            dfc = None
+    #     if len(self.model.mixture_components.value) > 0:
+    #         dfz = df_from_pyomo_data(self.model.Z)       
+    #         dfc = None
         
-            if len(self.model.mixture_components.value & self.model.measured_data.value) > 0:        
-                dfc = df_from_pyomo_data(self.model.C)
+    #         if len(self.model.mixture_components.value & self.model.measured_data.value) > 0:        
+    #             dfc = df_from_pyomo_data(self.model.Cm)
             
-                for col in dfc.columns:
-                    if col not in exp_data:
-                        dfc.drop(columns=[col], inplace=True)
+    #             for col in dfc.columns:
+    #                 if col not in exp_data:
+    #                     dfc.drop(columns=[col], inplace=True)
             
-            plt.figure(figsize=(4,3))
+    #         plt.figure(figsize=(4,3))
             
-            for col in dfz.columns:
-                plt.plot(dfz[col], label=col + ' (pred)', **line_options)
-                if dfc is not None:
-                    if col in dfc.columns:
-                        plt.plot(dfc[col], 'o', label=col + ' (exp)', **marker_options)
+    #         for col in dfz.columns:
+    #             plt.plot(dfz[col], label=col + ' (pred)', **line_options)
+    #             if dfc is not None:
+    #                 if col in dfc.columns:
+    #                     plt.plot(dfc[col], 'o', label=col + ' (exp)', **marker_options)
                     
-            plt.xlabel("Time [h]", **axis_options)
-            plt.ylabel("Concentration (mol/L)", **axis_options)
-            plt.title("Concentration Profile", **title_options)
-            plt.xticks(fontsize=14)
-            plt.yticks(fontsize=14)
+    #         plt.xlabel("Time [h]", **axis_options)
+    #         plt.ylabel("Concentration (mol/L)", **axis_options)
+    #         plt.title("Concentration Profile", **title_options)
+    #         plt.xticks(fontsize=14)
+    #         plt.yticks(fontsize=14)
             
-            plt.legend()
-            plt.show()
+    #         plt.legend()
+    #         plt.show()
             
-        if len(self.model.complementary_states.value) > 0:
-            dfx = df_from_pyomo_data(self.model.X)  
-            dfu = None
+    #     if len(self.model.complementary_states.value) > 0:
+    #         dfx = df_from_pyomo_data(self.model.X)  
+    #         dfu = None
             
-            if len(self.model.complementary_states.value & self.model.measured_data.value) > 0:
-                dfu = df_from_pyomo_data(self.model.U)  
+    #         if len(self.model.complementary_states.value & self.model.measured_data.value) > 0:
+    #             dfu = df_from_pyomo_data(self.model.U)  
             
-                for col in dfu.columns:
-                    if col not in exp_data:
-                        dfu.drop(columns=[col], inplace=True)
+    #             for col in dfu.columns:
+    #                 if col not in exp_data:
+    #                     dfu.drop(columns=[col], inplace=True)
             
-            plt.figure()
+    #         plt.figure()
             
-            for col in dfx.columns:
-                plt.plot(dfx[col], label=col + ' (pred)', **line_options)
-                if dfu is not None:
-                    if col in dfu.columns:
-                        plt.plot(dfu[col], 'o', label=col + ' (exp)', **marker_options)
+    #         for col in dfx.columns:
+    #             plt.plot(dfx[col], label=col + ' (pred)', **line_options)
+    #             if dfu is not None:
+    #                 if col in dfu.columns:
+    #                     plt.plot(dfu[col], 'o', label=col + ' (exp)', **marker_options)
             
-            plt.xlabel("Time [h]", **axis_options)
-            plt.ylabel("Temperature [K]", **axis_options)       
-            plt.title("Complementary State Profiles", **title_options)
-            plt.xticks(fontsize=14)
-            plt.yticks(fontsize=14)
+    #         plt.xlabel("Time [h]", **axis_options)
+    #         plt.ylabel("Temperature [K]", **axis_options)       
+    #         plt.title("Complementary State Profiles", **title_options)
+    #         plt.xticks(fontsize=14)
+    #         plt.yticks(fontsize=14)
         
-            plt.legend()
-            plt.show()
+    #         plt.legend()
+    #         plt.show()
     
-        return None
+    #     return None
+    
+    def _get_results(self, Se):
+        
+        scaled_parameter_var = 'K'
+    
+        results = ResultsObject()
+        
+        results.estimable_parameters = Se
+        
+        #results.objective = self.objective_value
+        #results.parameter_covariance = self.cov_mat
+
+        # if self._spectra_given:
+        #     results.load_from_pyomo_model(self.model,
+        #                                   to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
+        #     if hasattr(self, '_abs_components'):
+        #         results.load_from_pyomo_model(self.model,
+        #                                       to_load=['Cs'])
+        #     if hasattr(self, 'huplc_absorbing'):
+        #         results.load_from_pyomo_model(self.model,
+        #                                       to_load=['Dhat_bar'])
+     
+        # elif self._concentration_given:
+        results.load_from_pyomo_model(self.model,
+                                          to_load=['Z', 'dZdt', 'X', 'U', 'dXdt', 'Cm', 'Y'])
+        # else:
+        #     raise RuntimeError(
+        #         'Must either provide concentration data or spectra in order to solve the parameter estimation problem')
+
+        # if self._spectra_given:
+        #     self.compute_D_given_SC(results)
+
+        if hasattr(self.model, scaled_parameter_var): 
+            results.P = {name: self.model.P[name].value*getattr(self.model, scaled_parameter_var)[name].value for name in self.model.parameter_names}
+        else:
+            results.P = {name: self.model.P[name].value for name in self.model.parameter_names}
+
+        # if hasattr(self.model, 'Pinit'):
+        #     param_valsinit = dict()
+        #     for name in self.model.initparameter_names:
+        #         param_valsinit[name] = self.model.init_conditions[name].value
+        #     results.Pinit = param_valsinit
+
+        # if self.termination_condition!=None and self.termination_condition!=TerminationCondition.optimal:
+        #     raise Exception("The current iteration was unsuccessful.")
+        # else:
+        #     if self._estimability == True:
+        #         return self.hessian, results
+        #     else:
+        #         return results
+
+        return results
     
     def _model_preparation(self):
         """Helper function that should prepare the models when called from the
@@ -474,26 +532,28 @@ class EstimationPotential():
         #self.model.objective = self._rule_objective(self.model, self.model_builder)
         self.parameter_order = {i : name for i, name in enumerate(self.model.P)}
         
-        simulation_data = self.simulation_data
-        if simulation_data is None and self.simulate_start:
+        # simulation_data = self.simulation_data
+        # if simulation_data is None and self.simulate_start:
         
-            simulator = PyomoSimulator(sim_model)
-            simulator.apply_discretization('dae.collocation',
-                                        ncp = self.ncp,
-                                        nfe = self.nfe,
-                                        scheme = 'LAGRANGE-RADAU')
+        #     simulator = PyomoSimulator(sim_model)
+        #     simulator.apply_discretization('dae.collocation',
+        #                                 ncp = self.ncp,
+        #                                 nfe = self.nfe,
+        #                                 scheme = 'LAGRANGE-RADAU')
         
-            for k, v in simulator.model.P.items():
-                simulator.model.P[k].fix(1)
+        #     for k, v in simulator.model.P.items():
+        #         simulator.model.P[k].fix(1)
         
-            simulator.model.objective = self._rule_objective(self.model, self.model_builder)
-            options = {'solver_opts' : dict(linear_solver='ma57')}
+        #     simulator.model.objective = self._rule_objective(self.model, self.model_builder)
+        #     options = {'solver_opts' : dict(linear_solver='ma57')}
             
-            simulation_data = simulator.run_sim('ipopt_sens',
-                                              tee=True,
-                                              solver_options=options,
-                                              )
-        print(type(self.model))
+        #     simulation_data = simulator.run_sim('ipopt',
+        #                                       tee=True,
+        #                                       solver_options=options,
+        #                                       )
+        # print(type(self.model))
+        
+        
         
         # The model needs to be discretized
         model_pe = ParameterEstimator(self.model)
@@ -502,16 +562,18 @@ class EstimationPotential():
                                             nfe = self.nfe,
                                             scheme = 'LAGRANGE-RADAU')
         
+       
+            
         
-        if hasattr(simulation_data, 'X'):
-            #print(f'Here is the X data:\n{simulation_data.X}')
-            model_pe.initialize_from_trajectory('X', simulation_data.X)
-            model_pe.initialize_from_trajectory('dXdt', simulation_data.dXdt)
+        # if hasattr(simulation_data, 'X'):
+        #     #print(f'Here is the X data:\n{simulation_data.X}')
+        #     model_pe.initialize_from_trajectory('X', simulation_data.X)
+        #     model_pe.initialize_from_trajectory('dXdt', simulation_data.dXdt)
         
-        if hasattr(simulation_data, 'Z'):
-            #print(f'Here is the Z data:\n{simulation_data.Z}')
-            model_pe.initialize_from_trajectory('Z', simulation_data.Z)
-            model_pe.initialize_from_trajectory('dZdt', simulation_data.dZdt)
+        # if hasattr(simulation_data, 'Z'):
+        #     #print(f'Here is the Z data:\n{simulation_data.Z}')
+        #     model_pe.initialize_from_trajectory('Z', simulation_data.Z)
+        #     model_pe.initialize_from_trajectory('dZdt', simulation_data.dZdt)
         
         for k, v in self.model.P.items():
             ub = self.rho
@@ -700,6 +762,8 @@ class EstimationPotential():
         Z_mat_T = coo_matrix(np.mat(Z).T).tocsr()
         Hess = Hess_coo.tocsr()
         red_hessian = Z_mat_T * Hess * Z_mat
+    
+        print(red_hessian.todense())
         
         return red_hessian.todense()
     
@@ -885,7 +949,6 @@ def reduce_models(models_dict_provided,
     if method not in list_of_methods:
         raise ValueError(f'The model reduction method must be one of the following: {", ".join(list_of_methods)}')
     
-    
     if method == 'reduced_hessian':
         if parameter_dict is None:
             raise ValueError('The reduced Hessian parameter selection method requires initial parameter values')
@@ -897,19 +960,20 @@ def reduce_models(models_dict_provided,
     all_param.update(p for p in parameters.keys())
     
     options = {
-            'verbose' : False,
+            'verbose' : True,
                     }
     
     # Loop through to perform EP on each model
     params_est = {}
+    results = {}
     set_of_est_params = set()
     for name, model in models_dict.items():
         
         if method == 'reduced_hessian':
             print(f'Starting EP analysis of {name}')
             est_param = EstimationPotential(model, simulation_data=simulation_data, options=options)
-            params_est[name] = est_param.estimate()
-    
+            params_est[name], results[name] = est_param.estimate()
+            #print(est_param.model.objective.expr.to_string())
     # Add model's estimable parameters to global set
     for param_set in params_est.values():
         set_of_est_params.update(param_set)
@@ -926,12 +990,11 @@ def reduce_models(models_dict_provided,
         for param in all_param.difference(update_set):   
             parameter_to_change = param
             if parameter_to_change in model.P.keys():
-    
+   
                 change_value = [v[0] for p, v in parameters.items() if p == parameter_to_change][0]
             
                 for k, v in model.odes.items(): 
                     ep_updated_expr = _update_expression(v.body, model.P[parameter_to_change], change_value)
-                    print(ep_updated_expr)
                     model.odes[k] = ep_updated_expr == 0
         
                 model.parameter_names.remove(param)
@@ -966,17 +1029,21 @@ def reduce_models(models_dict_provided,
     parameter_names = list(new_initial_values.keys())
     pe_dict = {k: list(v.keys()) for k, v in params_est.items()}
     
-    parameter_data = {
-        'names' : parameter_names,
-        'est_params_model': pe_dict,
-        'initial_values': new_parameter_data,
+    for model in models_dict_reduced.values():
+        for param, value in model.K.items():
+            model.K[param].set_value(new_parameter_data[param][0])
+    
+    results_data = {
+        'reduced_model': models_dict_reduced,
+        'initial_values': new_parameter_data, 
+        'results': results,
         }
 
-    return models_dict_reduced, parameter_data
+    return results_data
 
 
 def _update_expression(expr, replacement_param, change_value):
-    """Takes the non-estiambale parameter and replaces it with its intitial
+    """Takes the noparam_infon-estiambale parameter and replaces it with its intitial
     value
     
     Args:

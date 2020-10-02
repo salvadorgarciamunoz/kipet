@@ -50,9 +50,16 @@ class ParameterBlock():
 
     def add_parameter_list(self, param_list):
         """Handles lists of parameters or single parameters added to the model
+       
         """
+        #if isinstance(param_list, list):
         for param in param_list:
-            self.add_parameter(*param)         
+            self.add_parameter(*param)        
+        
+        # elif isinstance(param_list, dict):
+        #     for param, value in param_list.items():
+        #         print(param, value)
+        #         self.add_component({param: value})
         
         return None
     
@@ -161,6 +168,18 @@ class ParameterBlock():
             else:
                 raise ValueError('Invalid factor passed: must be scalar (float, int) or an array with length equal to the number of parameters')
 
+    def update(self, attr, values):
+        """Update attributes using a dictionary"""
+        if isinstance(values, dict):
+            for key, val in values.items():
+                if key in self.names: 
+                    setattr(self[key], attr, val)
+       
+    @property 
+    def names(self):
+        return [param for param in self.parameters]
+
+
 class ModelParameter():
     """A simple class for holding kinetic parameter data
     
@@ -248,8 +267,17 @@ class ComponentBlock():
     def add_component_list(self, comp_list):
         """Handles lists of parameters or single parameters added to the model
         """
+        # if isinstance(comp_list, list):
         for comp in comp_list:
             self.add_component(*comp)         
+        
+        # elif isinstance(comp_list, dict):
+        #     for comp, value in comp_list.items():
+        #         comp_as_list = [comp]
+        #         if not isinstance(value, list):
+        #             value = [value]
+        #         comp_as_list += [v for v in value]
+        #         self.add_component(*comp_as_list)
         
         return None
     
@@ -259,6 +287,12 @@ class ComponentBlock():
           
         C = ModelComponent('A', state='concentration', init=1.0, variance=0.002)
         """        
+        # if isinstance(args[0], list):
+        #     self.add_component_list(args[0])
+
+        # if isinstance(args[0], dict):
+        #     self.add_component_list(args[0])
+        
         state = kwargs.pop('state', None)
         init = kwargs.pop('init', None)
         variance = kwargs.pop('variance', None)
@@ -319,6 +353,10 @@ class ComponentBlock():
         return {comp.name: comp.init for comp in self.components.values()}
         
     @property
+    def names(self):
+        return [comp.name for comp in self.components.values()]
+    
+    @property
     def has_all_variances(self):
     
         all_component_variances = True
@@ -354,6 +392,13 @@ class ComponentBlock():
         self.components[comp.name] = comp
             
         return None
+    
+    def update(self, attr, values):
+        """Update attributes using a dictionary"""
+        if isinstance(values, dict):
+            for key, val in values.items():
+                if key in self.names: 
+                    setattr(self[key], attr, val)
 
 class ModelComponent():
     """A simple class for holding component information"""

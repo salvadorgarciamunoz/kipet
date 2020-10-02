@@ -27,34 +27,35 @@ class FESimulator(PyomoSimulator):
                     model (ConcreteModel): The original Pyomo model created in the Kipet script
         """
         super(FESimulator, self).__init__(model)
-        self.p_sim =  PyomoSimulator(model)
+        self.p_sim = PyomoSimulator(model)
         self.c_sim = self.p_sim.model.clone()
         self.param_dict = {}
         self.param_name = "P"
 
         # check all parameters are fixed before simulating
-        for p_sim_data in six.itervalues(self.p_sim.model.P):
+        for p_sim_data in self.p_sim.model.P.values():
             if not p_sim_data.fixed:
                 raise RuntimeError('For simulation fix all parameters. Parameter {} is unfixed'.format(p_sim_data.cname()))
 
         #Build the parameter dictionary in the format that fe_factory uses    
-        for k,v in six.iteritems(self.p_sim.model.P):
-            self.param_dict["P",k] = v.value
+        for k, v in self.p_sim.model.P.items():
+            self.param_dict["P", k] = v.value
 
         #Build the initial condition dictionary in the format that fe_factory uses
         self.ics_ = {} 
 
-        for t, k in six.iteritems(self.p_sim.model.Z):
+        for t, k in self.p_sim.model.Z.items():
             st = self.p_sim.model.start_time
             if t[0] == st:
                 self.ics_['Z', t[1]] = k.value
                 
         #Now to set the additional state values
-        for t, v in six.iteritems(self.p_sim.model.X):
+        for t, v in self.p_sim.model.X.items():
             if t[0] == st:
                 self.ics_['X',t[1]] = v.value
 
-    def call_fe_factory(self, inputs_sub=None, jump_states=None, jump_times=None, feed_times=None):#added for inclusion of discrete jumps CS
+    #def call_fe_factory(self, inputs_sub=None, jump_states=None, jump_times=None, feed_times=None):#added for inclusion of discrete jumps CS
+    def call_fe_factory(self, inputs_sub=None, dosing_points=None):    
         """
         call_fe_factory:
     
@@ -70,9 +71,9 @@ class FESimulator(PyomoSimulator):
         #added for inclusion of inputs of different kind CS
         self.inputs_sub=inputs_sub
 
-        self.jump_times=jump_times
-        self.jump_states=jump_states
-        self.feed_times=feed_times
+        #self.jump_times=jump_times
+        #self.jump_states=jump_states
+        #self.feed_times=feed_times
         
         init = fe_initialize(self.p_sim.model, self.c_sim,
                          init_con="init_conditions_c",
@@ -82,6 +83,8 @@ class FESimulator(PyomoSimulator):
     
         init.load_initial_conditions(init_cond=self.ics_)
 
-        if jump_times!=None and jump_states!=None:
-            init.load_discrete_jump(jump_states, jump_times, feed_times) #added for inclusion of discrete jumps
+        # if jump_times!=None and jump_states!=None:
+            # init.load_discrete_jump(jump_states, jump_times, feed_times)
+        if dosing_points != None:
+            init.load_discrete_jump(dosing_points)
         init.run()

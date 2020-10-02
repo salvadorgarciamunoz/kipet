@@ -158,6 +158,7 @@ class PyomoSimulator(Simulator):
             if hasattr(self.model, 'K'):
                 print('Scaling the parameters')
                 self.scale_parameters()
+            
         else:
             print('***WARNING: Model already discretized. Ignoring second discretization')
             

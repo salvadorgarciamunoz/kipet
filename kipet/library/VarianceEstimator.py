@@ -359,7 +359,12 @@ class VarianceEstimator(Optimizer):
         set_A = kwds.pop('subset_lambdas', list())
         delta = kwds.pop('delta', dict())
         
-        residuals, sigma_vals, stop_it, results = _solve_sigma_given_delta(self, solver, subset_lambdas= set_A, solver_opts = solver_opts, tee=tee, delta = delta)
+        residuals, sigma_vals, stop_it, results = _solve_sigma_given_delta(self, 
+                                                                           solver, 
+                                                                           subset_lambdas= set_A, 
+                                                                           solver_opts = solver_opts, 
+                                                                           tee=tee, 
+                                                                           delta = delta)
         all_variances = sigma_vals
         all_variances['device'] = delta
         return all_variances

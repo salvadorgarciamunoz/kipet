@@ -127,33 +127,6 @@ class ResultsObject(object):
         exp = None
         fig = go.Figure()    
         
-        if exp_data_maps[var] is not None:
-  
-            for exp_var in exp_data_maps[var]:
-    
-                marker_options = {'size': 10,
-                                  'opacity': 0.5,
-                                 }
-                label = 'spectral'
-                
-                if exp_var == 'Cm':
-                    marker_options = {'size': 15,
-                                      'opacity': 0.75,
-                                     }
-                    label = 'measured'
-                
-                if show_exp and hasattr(self, exp_var) and getattr(self, exp_var) is not None and len(getattr(self, exp_var)) > 0:
-                    exp = getattr(self, exp_var)
-       
-                    for i, col in enumerate(exp.columns):
-                        fig.add_trace(
-                            go.Scatter(x=exp.index,
-                                    y=exp[col],
-                                    name=col + f' ({label})',
-                                    mode='markers',
-                                    marker={**marker_options, 'color' :colors[i]}),
-                                )
-   
         for i, col in enumerate(pred.columns):
             fig.add_trace(
                 go.Scatter(x=pred.index,
@@ -162,22 +135,113 @@ class ResultsObject(object):
                        line=dict(color=colors[i], width=4),
                    )
                 )
+        
+            if exp_data_maps[var] is not None:
+  
+                for exp_var in exp_data_maps[var]:      
+                    if show_exp and hasattr(self, exp_var) and getattr(self, exp_var) is not None and len(getattr(self, exp_var)) > 0:
+                        exp = getattr(self, exp_var)
+                        
+                        marker_options = {'size': 10,
+                                          'opacity': 0.5,
+                                         }
+                        label = 'spectral'
+                        
+                        if exp_var in ['Cm', 'U']:
+                            marker_options = {'size': 15,
+                                              'opacity': 0.75,
+                                             }
+                            label = 'measured'    
+                    
+                        if col in exp.columns:
+                            fig.add_trace(
+                            go.Scatter(x=exp.index,
+                                    y=exp[col],
+                                    name=col + f' ({label})',
+                                    mode='markers',
+                                    marker={**marker_options, 'color':colors[i]}),
+                                )
             
-        if extra_data is not None:
-            
-            extra_data_marker_options = {'size': 10,
-                                        'opacity': 0.5,
-                                        }
-            
-            fig.add_trace(
-                go.Scatter(x=extra_data.index,
-                           y=extra_data.values,
-                           name=col + f'extra_data',
-                           mode='markers',
-                           marker={**extra_data_marker_options, 'color' :colors[i+1]}),
-                    )
+            if extra_data is not None:
                 
+                if isinstance(extra_data['data'], pd.DataFrame):
+                    col_check = col in pd.DataFrame(extra_data['data']).columns
+                    data = extra_data['data']
+                elif isinstance(extra_data['data'], pd.Series):
+                    col_check = col == extra_data['data'].name
+                    data = pd.DataFrame(extra_data['data'])
+                    data.columns = [col]
+                else:
+                    raise ValueError('Extra data must be a pandas DataFrame or Series object')
+                
+                if col_check:
+                    #data = extra_data['data']
+                    mode = extra_data.get('mode', 'line')
+                    label = extra_data.get('label', 'extra')
+                    color = extra_data.get('color', colors[i])
+                    line_dict = extra_data.get('line_options', {'color': color,
+                                                                'dash': 'dash',
+                                                                'width': 4,
+                                                                })
+                    
+                    marker_dict = extra_data.get('marker_options', {'size': 10,
+                                                                    'opacity': 0.5,
+                                                                    'color': color,
+                                                                    })
+                    
+                    trace_dict = line_dict if mode == 'line' else marker_dict
+                    
+                    fig.add_trace(
+                        go.Scatter({'x': data.index,
+                                    'y': data[col],
+                                    'name': col + f' {label}',
+                                    'mode': f'{mode}s',
+                                     f'{mode}': {**trace_dict}}
+                                   ),
+                            )
+                
+        if extra_data is not None:
+            counter = i + 1
+            if isinstance(extra_data['data'], pd.DataFrame):
+                col_check = col in pd.DataFrame(extra_data['data']).columns
+                data = extra_data['data']
+            elif isinstance(extra_data['data'], pd.Series):
+                col_check = col == extra_data['data'].name
+                data = pd.DataFrame(extra_data['data'])
+                data.columns = [col]
+            else:
+                raise ValueError('Extra data must be a pandas DataFrame or Series object')
             
+            for col in data.columns:
+                if col in pred.columns:
+                    continue
+                
+                mode = extra_data.get('mode', 'line')
+                label = extra_data.get('label', 'extra')
+                color = extra_data.get('color', colors[counter])
+                line_dict = extra_data.get('line_options', {'color': color,
+                                                            'dash': 'dash',
+                                                            'width': 4,
+                                                            })
+                
+                marker_dict = extra_data.get('marker_options', {'size': 10,
+                                                                'opacity': 0.5,
+                                                                'color': color,
+                                                                })
+                
+                trace_dict = line_dict if mode == 'line' else marker_dict
+                
+                fig.add_trace(
+                    go.Scatter({'x': data.index,
+                                'y': data[col],
+                                'name': col + f' {label}',
+                                'mode': f'{mode}s',
+                                 f'{mode}': {**trace_dict}}
+                               ),
+                        )
+                counter += 1
+        
+                
         if var == 'S':
             fig.update_layout(
                 title="Absorbance Profile",
@@ -191,6 +255,7 @@ class ResultsObject(object):
                 yaxis_title="Concentration",
                 )
         x_data = [t for t in pred.index]
+        
         x_axis_mod = 0.025*(x_data[-1] - x_data[0])
         fig.update_xaxes(range=[x_data[0]-x_axis_mod, x_data[-1]+x_axis_mod])
         fig.update_xaxes(zeroline=True, zerolinewidth=2, zerolinecolor='#4e4e4e')
@@ -241,11 +306,17 @@ class ResultsObject(object):
                 
     @property
     def parameters(self):
+        return self.P
+            
+    @property
+    def show_parameters(self):
+        print('The estimated parameters are:')
         for k, v in self.P.items():
             print(k, v)
             
     @property
     def variances(self):
+        print('The estimated variances are:')
         for k, v in self.sigma_sq.items():
             print(k, v)
 

@@ -12,6 +12,8 @@ import pandas as pd
 from pyomo.environ import *
 from pyomo.dae import *
 
+from kipet.library.common.scaling import scale_models
+
 try:
     if sys.version_info.major > 3:
         import importlib
@@ -186,6 +188,20 @@ class TemplateBuilder(object):
             raise RuntimeError('initextraparams must be a dictionary species_name:value or a list with species_names')
 
 
+    def add_state_variance(self, sigma_dict):
+        """Provide a variance for the measured states
+        
+        Args:
+            sigma (dict): A dictionary of the measured states with known 
+            variance. Provide the value of sigma (standard deviation).
+            
+        Returns:
+            None
+        """
+        self._state_sigmas = {'A': 0.0001, 'T': 0.0625}
+        # perhaps make this more secure later on and account for different input types
+        return None
+
     def set_parameter_scaling(self, use_scaling: bool):
         """Makes an option to use the scaling method implemented for estimability
         
@@ -212,37 +228,6 @@ class TemplateBuilder(object):
         """
         self._times = times
         
-    def add_state_variance(self, sigma_dict):
-        """Provide a variance for the measured states
-        
-        Args:
-            sigma (dict): A dictionary of the measured states with known 
-            variance. Provide the value of sigma (standard deviation).
-            
-        Returns:
-            None
-        """
-        self._state_sigmas = sigma_dict
-        # perhaps make this more secure later on and account for different input types
-        return None
-    
-    # def add_model_constants(self, constant_dict):
-    #     """Add constants to the model (nominal parameters that are changed in
-    #     the estimability calculations)
-        
-    #     Args:
-    #         constant_dict (dict): A dict containing the nominal parameter
-    #         values.
-            
-    #     Returns:
-    #         None
-    #     """
-    #     if isinstance(constant_dict, dict):
-    #         self._model_constants = constant_dict
-    #     else:
-    #         raise TypeError('Model constants must be given as a dict')
-            
-    #     return None
     
     def add_parameters(self, ParameterBlockObject):
         
@@ -388,12 +373,18 @@ class TemplateBuilder(object):
         Args:
             ComponentBlockObject (ComponentBlock): Model components
         """
+        sigma_dict = {}
+        
         for component in ComponentBlockObject:
             if component.state == 'state':
                 state = 'complementary_states'
             else:
                 state = component.state
             self._add_state_variable(component.name, component.init, data_type=state)
+            
+            sigma_dict[component.name] = component.variance
+            
+        self._state_sigmas = sigma_dict
 
 
     def add_mixture_component(self, *args):
@@ -456,6 +447,8 @@ class TemplateBuilder(object):
         for db in DataBlockObject:
             if db.category == 'state':     
                 self.add_data(db.data, 'complementary_states')
+            elif db.category == 'trajectory':
+                continue
             else:
                 self.add_data(db.data, db.category)
         
@@ -925,7 +918,7 @@ class TemplateBuilder(object):
         else:
             if start_time is None and end_time is None:
                 try:    
-                    start_time = self.datablock.time_span[0]
+                    start_time = 0 #self.datablock.time_span[0]
                     end_time = self.datablock.time_span[1]
                 except:
                     raise ValueError('A model requires a start and end time or a dataset')
@@ -1201,15 +1194,15 @@ class TemplateBuilder(object):
                             initialize=p_dict)
 
         # set bounds P
-        for k, v in self._parameters_bounds.items():
-            factor = 1
-            if self._scale_parameters:
-                factor = self._parameters_init[k]
+        # for k, v in self._parameters_bounds.items():
+        #     factor = 1
+        #     if self._scale_parameters:
+        #         factor = self._parameters_init[k]
             
-            lb = v[0]/factor
-            ub = v[1]/factor
-            pyomo_model.P[k].setlb(lb)
-            pyomo_model.P[k].setub(ub)
+        #     lb = v[0]/factor
+        #     ub = v[1]/factor
+        #     pyomo_model.P[k].setlb(lb)
+        #     pyomo_model.P[k].setub(ub)
 
 
         if self._estim_init==True:#added for the estimation of initial conditions which have to be complementary state vars CS
@@ -1463,6 +1456,10 @@ class TemplateBuilder(object):
                                            self._initextra_est_list,
                                            check=False)
 
+
+        # k_vals = {k: v.value for k, v in pyomo_model.P.items()}
+        # if self._scale_parameters:
+        #     scale_models(pyomo_model, k_vals)
 
         return pyomo_model
 

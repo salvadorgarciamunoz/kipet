@@ -17,7 +17,7 @@ from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
 from kipet.library.data_tools import *
 from kipet.library.ResultsObject import colors
 
-data_categories = ['concentration', 'spectral', 'state']
+data_categories = ['concentration', 'spectral', 'state', 'trajectory']
 
 class DataBlock():
     
@@ -37,7 +37,15 @@ class DataBlock():
         
         for dataset in self.datasets.values():
             
-            data_str += format_string.format(f'{dataset.name}', f'{dataset.category}', f'{dataset.species}', f'{dataset.data.shape}', f'{dataset.file.name}')
+            species_str = ', '.join([s for s in dataset.species[:3]])
+            if len(dataset.species) > 3:
+                species_str += f', ...'
+            
+            if dataset.file is not None:
+                data_str += format_string.format(f'{dataset.name}', f'{dataset.category}', f'{species_str}', f'{dataset.data.shape}', f'{dataset.file.name}')
+            else:
+                data_str += format_string.format(f'{dataset.name}', f'{dataset.category}', f'{species_str}', f'{dataset.data.shape}', 'None')
+                
         
         return data_str
 
@@ -132,6 +140,11 @@ class DataBlock():
         return None
 
     @property
+    def names(self):
+        return [dataset.name for dataset in self.datasets.values()]
+        
+
+    @property
     def time_span(self):
         
         start_time = min([dataset.time_span[0] for dataset in self.datasets.values()])
@@ -189,6 +202,9 @@ class DataSet(object):
                 raise ValueError('Data must be a pandas DataFrame instance')
             
         elif self.data is None and self.file is not None:
+            # if self.category == 'spectral':
+            #     self.data = read_file
+            
             self.data = read_file(self.file)
             
         else:
@@ -196,6 +212,10 @@ class DataSet(object):
     
         return None
     
+    def remove_negatives(self):
+        """Replaces the negative values with zero"""
+        self.data[self.data < 0] = 0
+        return None
     
     def show_data(self):
         """Method to show the data using Plotly"""
@@ -204,7 +224,7 @@ class DataSet(object):
             print('No data to plot')
             return None
         
-        if self.category in ['concentration', 'state']:
+        if self.category in ['concentration', 'state', 'trajectory']:
             self._plot_2D_data()
             
         if self.category == 'spectral':
@@ -293,7 +313,7 @@ class DataSet(object):
     
     @property
     def species(self):
-        if self.data is not None and self.category == 'concentration':
+        if self.data is not None and self.category in ['concentration', 'state', 'trajectory']:
             return list(self.data.columns)
         elif self.data is None:
             return []

@@ -99,7 +99,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         def rule_objective(m):
             obj = 0
             for t in m.allmeas_times:
-                obj += sum((m.C[t, k] - m.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components)
+                obj += sum((m.Cm[t, k] - m.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components)
             return obj
             
         m.objective = Objective(rule=rule_objective)
@@ -727,7 +727,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         for c in self._sublist_components:
             count_t = 0
             for t in self._allmeas_times:
-                a = model.C[c][t]
+                a = model.Cm[c][t]
                 b = model.Z[c][t]
                 r = ((a - b) ** 2)
                 self.residuals[t, c] = r

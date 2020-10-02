@@ -53,15 +53,16 @@ class PEMixins(object):
         nc = self._n_actual
         residuals = dict()
         
-        for index, value in model_obj.C.items():
-            
-            res_index = list(index)
-            if exp_index:
-                res_index.insert(0, exp_index)
-                
-            res_index = tuple(res_index)
-            
-            residuals[res_index] = (value.value - model_obj.Z[index].value)**2 
+        conc_data = ['C', 'Cm']
+        
+        for model_var in conc_data:     
+            if hasattr(model_obj, model_var) and getattr(model_obj, model_var) is not None:     
+                for index, value in getattr(model_obj, model_var).items():
+                    res_index = list(index)
+                    if exp_index:
+                        res_index.insert(0, exp_index)                 
+                    res_index = tuple(res_index)             
+                    residuals[res_index] = (value.value - model_obj.Z[index].value)**2 
              
         return residuals
     
@@ -91,6 +92,10 @@ class PEMixins(object):
         """Computes the covariance for post calculation anaylsis
         
         """        
+        print(f'Var: {variances}')
+        
+        
+        
         nparams = self._n_params
 
         H = hessian[-nparams:, :]

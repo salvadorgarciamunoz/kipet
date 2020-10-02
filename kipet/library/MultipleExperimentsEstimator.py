@@ -863,7 +863,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
                 os.remove('result_red_hess.txt')
            
             hessian = self.order_k_aug_hessian(unordered_hessian, var_loc)
-          
+            print(sigma_sq)
             self._compute_covariance(hessian, sigma_sq)
 
     def solve_conc_full_problem(self, solver, **kwds):
@@ -1231,6 +1231,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
             self.variances = sigma_sq
             
         print("\nSOLVING PARAMETER ESTIMATION FOR INDIVIDUAL DATASETS - For initialization")
+        print(self.variances)
 
         def is_empty(any_structure): #function for cases below to check if dict is empty!
             if any_structure:
@@ -1651,6 +1652,8 @@ class MultipleExperimentsEstimator(PEMixins, object):
                     ind_var[i] = j/maxx
                 var_scaled[s] = ind_var
             self.variances = var_scaled
+        
+        print(self.variances)
         
         def build_individual_blocks(m, exp):
             """This function forms the rule for the construction of the individual blocks 

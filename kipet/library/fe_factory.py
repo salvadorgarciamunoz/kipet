@@ -20,7 +20,6 @@ from kipet.library.common.VisitorClasses import ReplacementVisitor
 
 __author__ = 'David M Thierry'  #: April 2018
 
-
 class fe_initialize(object):
     def __init__(self, tgt_mod, src_mod, init_con=None, param_name=None, param_values=None, inputs=None, inputs_sub=None,jump_times=None,jump_states=None):
         # type: (ConcreteModel, ConcreteModel, str, list, dict, dict, dict) -> None
@@ -428,28 +427,20 @@ class fe_initialize(object):
         self.cycle_ics(fe)
 
     #Inclusion of discrete jumps: (CS)
-    def load_discrete_jump(self, var_dic, jump_times, feed_times):
+    #def load_discrete_jump(self, var_dic, jump_times, feed_times):
+    def load_discrete_jump(self, dosing_points):
         """Method is used to define and load the places where discrete jumps are located, e.g.
         dosing points or external inputs.
         Args:
-            var_dic (dict): dictionary containing which variables are inputted and by how much
-            jump_times (dict): dict containing the times that each variable is inputted
-            feed_times (list): list of additional time points needed for inputs
+            dosing_points: A list of DosingPoint objects
 
         Returns:
             None
         """
         self.jump = True
-        self.disc_jump_v_dict = var_dic
-        self.jump_times_dict = jump_times #now dictionary
-        self.feed_times_set = feed_times
-        count = 0
-        for i in self.jump_times_dict.keys():
-            for j in self.jump_times_dict[i].items():
-                count += 1
-        if len(self.feed_times_set) > count:
-            raise Exception("Error: Check feed time points in set feed_times and in jump_times again.\n"
-                            "There are more time points in feed_times than jump_times provided.")
+        self.dosing_points = dosing_points
+        
+        return None
 
     def cycle_ics(self, curr_fe):
         """Cycles the initial conditions of the initializing model.
@@ -492,13 +483,9 @@ class fe_initialize(object):
         Args:
             fe (int): The current finite element to be patched (tgt_model).
         """
-        ###########################
         ts = getattr(self.mod, self.time_set)
         ttgt = getattr(self.tgt, self.time_set)
-        # with open('model_mod.txt', 'w') as f1:
-        #     self.mod.pprint(ostream = f1)
-        # with open('model_tgt.txt', 'w') as f2:
-        #     self.tgt.pprint(ostream = f2)
+       
         for v in self.mod.component_objects(Var, active=True):
             v_tgt = getattr(self.tgt, v.name)
             if v.name in self.weird_vars:  #: This has got to work.
@@ -539,65 +526,39 @@ class fe_initialize(object):
                         except ValueError:
                             print("Error at {}, {}".format(v.name, (t_src,) + key))
                         v_tgt[(t_tgt,) + key].set_value(val)
-        ##############################
-        #Inclusion of discrete jumps: (CS)
+        
         if self.jump:
-            vs = ReplacementVisitor()  #: trick to replace variables
-            kn=0
-            for ki in self.jump_times_dict.keys():
-                if not isinstance(ki, str):
-                    print("ki is not str")
-                vtjumpkeydict = self.jump_times_dict[ki]
-                for l in vtjumpkeydict.keys():
-                    self.jump_time = vtjumpkeydict[l]
-                    self.jump_fe, self.jump_cp = fe_cp(ttgt,self.jump_time)
-                    if self.jump_time not in self.feed_times_set:
-                        raise Exception("Error: Check feed time points in set feed_times and in jump_times again.\n"
-                                        "They do not match.\n"
-                                        "Jump_time is not included in feed_times.")
-                    elif fe == self.jump_fe+1:
-                                #################################
-                        for v in self.disc_jump_v_dict.keys():
-                            if not isinstance(v, str):
-                                print("v is not str")
-                                sys.exit()
-                            vkeydict = self.disc_jump_v_dict[v]
-                            # print(len(self.feed_times_set))
-                            # print(len(self.jump_times_dict.keys()))
-                            for k in vkeydict.keys():
-                                if k==l:##############!!!!!#Match in between two components of dictionaries
-                                    var = getattr(self.tgt, v)
-                                    con_name = 'd' + v + 'dt_disc_eq'
-                                    con = getattr(self.tgt, con_name)
-                                    self.tgt.add_component(v + "_dummy_eq_" + str(kn), ConstraintList())
-                                    conlist = getattr(self.tgt, v + "_dummy_eq_" + str(kn))
-                                    varname = v + "_dummy_" + str(kn)
-                                    self.tgt.add_component(varname, Var([0]))  #: this is now indexed [0]
-                                    vdummy = getattr(self.tgt, varname)
-                                    vs.change_replacement(vdummy[0])   #: who is replacing.
-                                    jump_delta = vkeydict[k]
-                                    self.tgt.add_component(v + '_jumpdelta' + str(kn), Param(initialize=jump_delta))
-                                    jump_param  = getattr(self.tgt, v + '_jumpdelta' + str(kn))
-                                    if not isinstance(k, tuple):
-                                        k = (k,)
-                                    exprjump = vdummy[0] - var[(self.jump_time,)+k] == jump_param  #: this changed
-                                    self.tgt.add_component("jumpdelta_expr"+str(kn), Constraint(expr=exprjump))
-                                    for kcp in range(1,self.ncp+1):
-                                        curr_time = t_ij(ttgt,self.jump_fe+1,kcp)
-                                        if not isinstance(k, tuple):
-                                            knew = (k,)
-                                        else:
-                                            knew = k
-                                        idx = (curr_time,) +  knew
-                                        con[idx].deactivate()
-                                        e=con[idx].expr
-                                        suspect_var = e.args[0].args[1].args[0].args[0].args[1]  #: seems that this is the correct variable
-                                        vs.change_suspect(id(suspect_var))  #: who to replace
-                                        e_new = vs.dfs_postorder_stack(e)  #: replace
-                                        con[idx].set_value(e_new)
-                                        conlist.add(con[idx].expr)
-                    kn=kn+1
-            #########################################
+            num = 0
+            vs = ReplacementVisitor()
+            for model_var, dosing_point_list in self.dosing_points.items():
+                for dosing_point in dosing_point_list:   
+                    self.jump_fe, self.jump_cp = fe_cp(ttgt, dosing_point.time)
+                    if fe == self.jump_fe+1:
+                        con_name = f'd{model_var}dt_disc_eq'
+                        varname = f'{model_var}_dummy_{num}'
+                        con = getattr(self.tgt, con_name)
+                        self.tgt.add_component(f'{model_var}_dummy_eq_{num}', ConstraintList())
+                        conlist = getattr(self.tgt, f'{model_var}_dummy_eq_{num}')
+                        self.tgt.add_component(varname, Var([0]))
+                        vdummy = getattr(self.tgt, varname)
+                        vs.change_replacement(vdummy[0])
+                        self.tgt.add_component(f'{model_var}_jumpdelta{num}', Param(initialize=dosing_point.step))
+                        jump_param  = getattr(self.tgt, f'{model_var}_jumpdelta{num}')
+                        exprjump = vdummy[0] - getattr(self.tgt, model_var)[(dosing_point.time,) + (dosing_point.component,)] == jump_param
+                        self.tgt.add_component(f'jumpdelta_expr{num}', Constraint(expr=exprjump))
+                        
+                        for kcp in range(1, self.ncp + 1):
+                            curr_time = t_ij(ttgt,self.jump_fe + 1, kcp)
+                            idx = (curr_time,) + (dosing_point.component,)
+                            con[idx].deactivate()
+                            var_expr = con[idx].expr
+                            suspect_var = var_expr.args[0].args[1].args[0].args[0].args[1]
+                            vs.change_suspect(id(suspect_var))  #: who to replace
+                            e_new = vs.dfs_postorder_stack(var_expr)  #: replace
+                            con[idx].set_value(e_new)
+                            conlist.add(con[idx].expr)
+                    num += 1
+                                    
     def adjust_h(self, fe):
         # type: (int) -> None
         """Adjust the h_i parameter of the initializing model.

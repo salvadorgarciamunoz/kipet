@@ -24,7 +24,6 @@ from kipet.library.common.read_hessian import *
 from kipet.library.spectra_methods.G_handling import (
     decompose_G_test,
     g_handling_status_messages,
-    g_handling_check_options,
     )
 from kipet.library.common.objectives import (
     conc_objective, 
@@ -53,6 +52,7 @@ class ParameterEstimator(PEMixins, Optimizer):
         self.termination_condition = None
         
         # This should be a subclass or a mixin
+        self.G_contribution = None
         self.unwanted_G = False
         self.time_variant_G = False
         self.time_invariant_G = False
@@ -158,9 +158,7 @@ class ParameterEstimator(PEMixins, Optimizer):
         
         # user should input if the unwanted contribuiton is involved, and what type it is.
         # If it's time_invariant, St or Z_in should be inputed to check the rank of kernal of Omega matrix. KH.L
-        unwanted_G = kwds.pop('unwanted_G', False)
-        time_variant_G = kwds.pop('time_variant_G', False)
-        time_invariant_G = kwds.pop('time_invariant_G', False)
+        G_contribution = kwds.pop('G_contribution', None)
         St = kwds.pop('St', dict())
         Z_in = kwds.pop('Z_in', dict())
 
@@ -171,17 +169,14 @@ class ParameterEstimator(PEMixins, Optimizer):
         if not self.model.alltime.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
 
-        self.unwanted_G = unwanted_G
-        self.time_variant_G = time_variant_G
-        self.time_invariant_G = time_invariant_G
-
+        self.G_contribution = G_contribution
+       
         if report_time:
             start = time.time()
 
         opt = SolverFactory(self.solver)
         
-        g_handling_check_options(self)
-        if self.time_invariant_G:
+        if self.G_contribution == 'time_invariant_G':
             decompose_G_test(self, St, Z_in)
         g_handling_status_messages(self)
         
@@ -368,32 +363,6 @@ class ParameterEstimator(PEMixins, Optimizer):
                     warnings.warn("Ignored {} since is not a mixture component of the model".format(k))
 
         return list_components
-    
-    # def final_func(self):
-        
-        # estimation with model variance and device:
-
-        # def rule_objective(m):
-        #     expr = 0
-            
-        #     g_options = {
-        #         'unwanted_G': self.unwanted_G,
-        #         'time_variant_G': self.time_variant_G,
-        #         'time_invariant_G_no_decompose': self.time_invariant_G_no_decompose,
-        #         }
-            
-        #     D_bar = True
-        #     if with_d_vars:
-        #         D_bar = False
-
-        #     print('This is D_bar')
-        #     print(D_bar)
-        #     print(list_components)
-        #     expr += absorption_objective(model, 
-        #                                  sigma_device = sigma_sq['device'],
-        #                                  D_bar = D_bar,
-        #                                  g_options = g_options,
-        #                                  species_list = list_components)
             
     def _get_objective_expr(self, model, with_d_vars, component_set, sigma_sq, device=False):
     
@@ -416,12 +385,11 @@ class ParameterEstimator(PEMixins, Optimizer):
                                 D_bar = sum(model.Cs[t, k] * model.S[l, k] for k in model._abs_components)
                         else:
                             if hasattr(model, 'huplc_absorbing') and hasattr(model, 'solid_spec_arg1'):
-                                D_bar = sum(
-                                    model.C[t, k] * model.S[l, k] for k in component_set if k not in model.solid_spec_arg1)
+                                D_bar = sum(model.C[t, k] * model.S[l, k] for k in component_set if k not in model.solid_spec_arg1)
                             else:
                                 D_bar = sum(model.C[t, k] * model.S[l, k] for k in component_set)
                             
-                if self.unwanted_G or self.time_variant_G:
+                if self.G_contribution == 'time_variant_G':
                     expr += (model.D[t, l] - D_bar - model.qr[t]*model.g[l]) ** 2 / (sigma_sq['device'])
                 elif self.time_invariant_G_no_decompose:
                     expr += (model.D[t, l] - D_bar - model.g[l]) ** 2 / (sigma_sq['device'])
@@ -515,7 +483,7 @@ class ParameterEstimator(PEMixins, Optimizer):
         def _qr_end_constraint(model):
             return model.qr[model.alltime[-1]] == 1.0
         
-        if self.time_variant_G or self.unwanted_G:
+        if self.G_contribution == 'time_variant_G':
             model.qr_end_cons = Constraint(rule = _qr_end_constraint)
         
         
@@ -978,8 +946,6 @@ class ParameterEstimator(PEMixins, Optimizer):
 
     def _compute_covariance(self, hessian, variances):
         """Computes the covariance for post calculation anaylsis
-        
-        
         
         """        
         nt = self._n_allmeas_times

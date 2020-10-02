@@ -41,13 +41,13 @@ def conc_objective(model, *args, **kwargs):
     
         if model.mixture_components & model.measured_data:
             for index, values in model.Cm.items():
-                obj += _concentration_term(model, index, **kwargs)
+                obj += _concentration_term(model, index, var='Cm', **kwargs)
       
     elif source == 'spectra':
       
         if model.mixture_components:
             for index, values in model.C.items():
-                obj += _concentration_term(model, index, **kwargs)
+                obj += _concentration_term(model, index, var='C', **kwargs)
       
     return obj
 
@@ -111,46 +111,47 @@ def absorption_objective(model, *args, **kwargs):
         This is the concentration based objective function
 
     """
-    sigma_device = kwargs.get('sigma_device', 1), 
-    D_bar = kwargs.get('D_bar', False)
-    g_options = kwargs.get('g_options', None)
+    sigma_device = kwargs.get('device_variance', 1)
+    g_option = kwargs.get('g_option', None)
+    with_d_vars = kwargs.get('with_d_vars', True)
+    shared_spectra = kwargs.get('shared_spectra', True)
     list_components = kwargs.get('species_list', None)
-    
-    D_bar = calc_D_bar(model, D_bar, list_components)
 
     obj=0
 
     for index, values in model.D.items():
-        obj += _absorption_term(model,
-                                index,
-                                sigma_device=sigma_device,
-                                D_bar=D_bar,
-                                g_options=g_options)
+        obj += _spectral_term_MEE(model,
+                                  index,
+                                  sigma_device,
+                                  g_option,
+                                  shared_spectra,
+                                  with_d_vars,
+                                  list_components)
     return obj
 
-def calc_D_bar(model, D_bar_use, list_components):
+# def calc_D_bar(model, D_bar_use, list_components):
     
-    if D_bar_use is False:
-        D_bar = model.D_bar
-    else:
-        D_bar = {}
-        if hasattr(model, '_abs_components'):
-            d_bar_list = model._abs_components
-            c_var = 'Cs'
-        else:
-            d_bar_list = list_components
-            c_var = 'C'    
+#     if D_bar_use is False:
+#         D_bar = model.D_bar
+#     else:
+#         D_bar = {}
+#         if hasattr(model, '_abs_components'):
+#             d_bar_list = model._abs_components
+#             c_var = 'Cs'
+#         else:
+#             d_bar_list = list_components
+#             c_var = 'C'    
             
-        if hasattr(model, 'huplc_absorbing') and hasattr(model, 'solid_spec_arg1'):
-            d_bar_list = [k for k in d_bar_list if k not in model.solid_spec_arg1]
+#         if hasattr(model, 'huplc_absorbing') and hasattr(model, 'solid_spec_arg1'):
+#             d_bar_list = [k for k in d_bar_list if k not in model.solid_spec_arg1]
                  
-        for t in model.meas_times:
-            for l in model.meas_lambdas:
-                D_bar[t, l] = sum(getattr(model, c_var)[t, k] * model.S[l, k] for k in d_bar_list)
+#         for t in model.meas_times:
+#             for l in model.meas_lambdas:
+#                 D_bar[t, l] = sum(getattr(model, c_var)[t, k] * model.S[l, k] for k in d_bar_list)
 
-    return D_bar
+#     return D_bar
         
-def _concentration_term(model, index, **kwargs):
+def _concentration_term(model, index, var='C', **kwargs):
     """
     
     Parameters
@@ -174,7 +175,7 @@ def _concentration_term(model, index, **kwargs):
     else:
         variance = custom_sigma[index[1]]
     
-    objective_concentration_term = (model.Cm[index] - model.Z[index]) ** 2  / variance
+    objective_concentration_term = (getattr(model, var)[index] - model.Z[index]) ** 2  / variance
     
     return objective_concentration_term
     
@@ -249,5 +250,22 @@ def _absorption_term(model, index, sigma_device=1, D_bar=None, g_options=None):
 
     return objective_absorption_term
     
+def _spectral_term_MEE(model, index, sigma_device, g_option, shared_spectra, with_d_vars, list_components):
     
-    
+    t = index[0]
+    l = index[1]
+    if with_d_vars:
+        base = model.D[t, l] - model.D_bar[t, l]
+    else:
+        D_bar = sum(model.C[t, k] * model.S[l, k] for k in list_components)
+        base = model.D[t, l] - D_bar
+        
+    G_term = 0
+    if g_option == 'time_variant_G':
+        G_term -= model.qr[t]*model.g[l]
+    elif g_option == 'time_invariant_G_decompose' and shared_spectra or g_option == 'time_invariant_G_no_decompose':
+        G_term -= model.g[l]
+   
+    objective_spectral_term = (base + G_term)**2/sigma_device
+    return objective_spectral_term
+
