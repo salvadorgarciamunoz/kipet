@@ -48,6 +48,7 @@ class KipetModelBlock():
         self.settings = Settings(category='block')
         self.variances = {}
         self.no_variances_provided = False
+        self.results = {}
         
     def __getitem__(self, value):
         
@@ -82,6 +83,21 @@ class KipetModelBlock():
     
     def add_model(self, model):
         
+        if isinstance(model, KipetModel):
+            self.models[model.name] = model
+        else:
+            raise ValueError('KipetModelBlock can only add KipetModel instances.')
+            
+        return None
+    
+    def new_reaction(self, name):
+        
+        self.models[name] = KipetModel(name=name)
+        
+        return self.models[name]
+    
+    def add_reaction(self, kipet_model_instance):
+    
         if isinstance(model, KipetModel):
             self.models[model.name] = model
         else:
@@ -132,8 +148,16 @@ class KipetModelBlock():
         
     def run_opt(self, *args, **kwargs):
         
-        self.create_multiple_experiments_estimator(*args, **kwargs)
-        self.run_multiple_experiments_estimator()
+        if len(self.models) > 1:
+            self.create_multiple_experiments_estimator(*args, **kwargs)
+            self.run_multiple_experiments_estimator()
+        
+        else:
+            reaction_model = self.models[list(self.models.keys())[0]]
+            results = reaction_model.run_opt()
+            self.results[reaction_model.name] = results
+            
+        return None
         
     def run_multiple_experiments_estimator(self, **kwargs):
         
@@ -271,6 +295,16 @@ class KipetModelBlock():
                 data_types.add(dataset.category)
         return data_types
     
+    @property
+    def show_parameters(self):
+        for reaction, model in self.models.items():
+            print(f'{reaction}')
+            model.results.show_parameters
+            
+    def plot(self, *args, **kwargs):
+        for reaction, model in self.models.items():
+            model.results.plot(*args, **kwargs)
+        
     
 class AttrDict(dict):
 
