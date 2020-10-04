@@ -91,4 +91,4 @@ if __name__ == "__main__":
     results = kipet_model.reduce_model()
     
     # results is a standard ResultsObject
-    results.plot()
+    results.plot(show_plot=with_plots)

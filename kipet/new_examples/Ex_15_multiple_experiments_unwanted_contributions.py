@@ -104,4 +104,4 @@ if __name__ == "__main__":
     # Plot the results
     for model, results in model_block.results.items():
         results.show_parameters
-        results.plot()
+        results.plot(show_plot=with_plots)

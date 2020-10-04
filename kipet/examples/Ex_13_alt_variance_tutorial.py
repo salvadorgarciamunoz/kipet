@@ -12,7 +12,7 @@
 #               C_k(t_i) = Z_k(t_i) + w(t_i)    for all t_i in measurement points
 #               D_{i,j} = \sum_{k=0}^{Nc}C_k(t_i)S(l_j) + \xi_{i,j} for all t_i, for all l_j 
 #       Initial concentration 
-
+#%%
 from __future__ import print_function
 from kipet.library.TemplateBuilder import *
 from kipet.library.PyomoSimulator import *
@@ -43,6 +43,7 @@ if __name__ == "__main__":
             inspect.currentframe() ) ) ), 'data_sets'))
     filename =  os.path.join(dataDirectory,'varest.csv')
     D_frame = read_spectral_data_from_csv(filename, negatives_to_zero = True)
+    D_frame[D_frame < 0] = 0
 
     # Then we build dae block for as described in the section 4.2.1. Note the addition
     # of the data using .add_spectral_data
@@ -67,6 +68,8 @@ if __name__ == "__main__":
     builder.bound_profile(var = 'S', bounds = (0,100))
     opt_model = builder.create_pyomo_model(0.0,10.0)
     
+    
+    #opt_model = kipet_model.model
     #=========================================================================
     #USER INPUT SECTION - VARIANCE ESTIMATION 
     #=========================================================================
@@ -133,7 +136,7 @@ if __name__ == "__main__":
     # USER INPUT SECTION - PARAMETER ESTIMATION 
     #=========================================================================
     # In order to run the paramter estimation we create a pyomo model as described in section 4.3.4
-    opt_model = builder.create_pyomo_model(0.0,10.0)
+    #opt_model = builder.create_pyomo_model(0.0,10.0)
 
     # and define our parameter estimation problem and discretization strategy
     p_estimator = ParameterEstimator(opt_model)

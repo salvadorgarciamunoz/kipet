@@ -60,6 +60,5 @@ if __name__ == "__main__":
     # Display the results
     kipet_model.results.show_parameters
     
-       # New plotting methods
-    if with_plots:
-        kipet_model.results.plot()
+    # New plotting methods
+    kipet_model.results.plot(show_plot=with_plots)

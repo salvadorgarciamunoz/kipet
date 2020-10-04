@@ -20,7 +20,7 @@ class WavelengthSelectionMixins():
         lof = self.p_estimator.lack_of_fit()
         return lof
         
-    def wavelength_correlation(self, corr_plot=True):
+    def wavelength_correlation(self, corr_plot=False):
         """Wrapper for wavelength_correlation method in ParameterEstimator"""
         
         correlations = self.p_estimator.wavelength_correlation()
@@ -79,7 +79,8 @@ class WavelengthSelectionMixins():
         builder_before_data = copy.copy(self.builder)
         builder_before_data.clear_data()
         
-        end_time = self.settings.general.simulation_times[1]
+        #end_time = self.settings.general.simulation_times[1]
+        end_time = self.p_estimator.model.end_time.value
         
         nfe = self.settings.collocation.nfe
         ncp = self.settings.collocation.ncp

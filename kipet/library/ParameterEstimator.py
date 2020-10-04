@@ -1142,6 +1142,8 @@ class ParameterEstimator(PEMixins, Optimizer):
         # This is the filter for creating the new data subset
         new_D = self._calc_new_D(subset)
         
+        
+        print(end_time, new_D)
         # Now that we have a new DataFrame, we need to build the entire problem from this
         # An entire new ParameterEstimation problem should be set up, on the outside of
         # this function and class structure, from the model already developed by the user.
@@ -1416,8 +1418,8 @@ def construct_model_from_reduced_set(builder_clone, end_time, D):
     if not isinstance(D, pd.DataFrame):
         raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
 
-    if not isinstance(end_time, int):
-        raise RuntimeError('nfe needs to be type int. Number of finite elements must be defined')
+    #if not isinstance(end_time, int):
+    #    raise RuntimeError('nfe needs to be type int. Number of finite elements must be defined')
 
     builder_clone.add_spectral_data(D)
     opt_model = builder_clone.create_pyomo_model(0.0, end_time)

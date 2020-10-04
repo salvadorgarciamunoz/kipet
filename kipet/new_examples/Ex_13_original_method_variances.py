@@ -1,7 +1,6 @@
 """Example 13: Original method for variance estimation with new KipetModel
 
 """
-
 # Standard library imports
 import sys # Only needed for running the example from the command line
 
@@ -41,7 +40,6 @@ if __name__ == "__main__":
         return exprs
 
     kipet_model.add_equations(rule_odes)
-    kipet_model.bound_profile(var='S', bounds=(0, 100))
 
     # Settings
     kipet_model.settings.general.no_user_scaling = True
@@ -55,6 +53,6 @@ if __name__ == "__main__":
     # Display the results
     kipet_model.results.show_parameters
     
-       # New plotting methods
+    # New plotting methods
     if with_plots:
         kipet_model.results.plot()

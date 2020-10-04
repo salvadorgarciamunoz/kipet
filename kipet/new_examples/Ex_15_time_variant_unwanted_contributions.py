@@ -56,5 +56,4 @@ if __name__ == "__main__":
     # Run KIPET
     kipet_model.run_opt()
 
-    if with_plots:
-        kipet_model.results.plot()
+    kipet_model.results.plot(show_plot=with_plots)

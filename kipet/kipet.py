@@ -10,6 +10,7 @@ and perform the calculations as singles or MEE
 # Standard library imports
 import collections
 import copy
+import pathlib
 
 # Third party imports
 import numpy as np
@@ -408,6 +409,7 @@ class Settings():
                    'scale_parameters' : False,
                    'simulation_times': None,
                    'no_user_scaling': False,
+                   #'data_directory': pathlib.Path(__file__).resolve().parent.joinpath('new_examples','data_sets'),
             }
         
         collocation = {'method': 'dae.collocation',
@@ -494,6 +496,7 @@ class Settings():
                    'no_user_scaling': False,
                    'use_wavelength_subset': True,
                    'freq_wavelength_subset': 2,
+                   'data_directory': 'data_sets',
             }
         
         collocation = {'method': 'dae.collocation',
@@ -797,7 +800,8 @@ class KipetModel(WavelengthSelectionMixins):
         """Wrapper for the set_directory method. This replaces the awkward way
         of ensuring the correct directory for the data is used."""
 
-        self.data_directory = set_directory(filename, directory)
+        #self.data_directory = self.settings.general.data_directory.joinpath(filename)
+        #set_directory(filename, directory)
         return set_directory(filename, directory)
     
     def get_directory(self, directory=DEFAULT_DIR):
@@ -1073,6 +1077,8 @@ class KipetModel(WavelengthSelectionMixins):
         if kwargs['method'] == 'direct_sigmas':
             worst_case_device_var = self.v_estimator.solve_max_device_variance(**kwargs)
             kwargs['device_range'] = (self.settings.variance_estimator.best_accuracy, worst_case_device_var)
+            
+        print(kwargs)
             
         self._run_opt('v_estimator', *args, **kwargs)
         

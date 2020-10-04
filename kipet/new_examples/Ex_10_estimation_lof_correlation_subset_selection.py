@@ -57,13 +57,13 @@ if __name__ == "__main__":
     print(kipet_model.settings)
     
     # This is all you need to run KIPET!
-    kipet_model.set_times(0, 10)
+    #kipet_model.set_times(0, 10)
     kipet_model.run_opt()
     
     # Display the results
     kipet_model.results.show_parameters
         
-    kipet_model.results.plot()
+    kipet_model.results.plot(show_plot=with_plots)
     
    
     """Wavelength subset selection methods"""
@@ -87,5 +87,5 @@ if __name__ == "__main__":
     subset_results.show_parameters
     
     # display results
-    if with_plots:
-        subset_results.plot()
+    #if with_plots:
+    subset_results.plot(show_plot=with_plots)

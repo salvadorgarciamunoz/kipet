@@ -11,7 +11,8 @@ from kipet.library.ResultsObject import *
 def interpolate_trajectory(t, tr):
     
     tr_val = np.zeros((len(t)))
-    times = [ti for ti in t]
+    times = [float(ti) for ti in t]
+    indx = tr.index.astype(float)
 
     for i, t_indx in enumerate(times):
 
@@ -19,15 +20,15 @@ def interpolate_trajectory(t, tr):
             tr_val[i] = tr.iloc[0]
             continue        
 
-        indx_left = bisect.bisect_left(tr.index[1:], times[i])
+        indx_left = bisect.bisect_left(indx[1:], times[i])
         if indx_left == len(tr) - 1:
             tr_val[i] = tr.iloc[indx_left]
             continue
         
-        dx = tr.index[indx_left + 1] - tr.index[indx_left]
+        dx = indx[indx_left + 1] - indx[indx_left]
         dy = tr.iloc[indx_left + 1] - tr.iloc[indx_left]
         m = dy/dx
-        val = tr.iloc[indx_left] +  (times[i] - tr.index[indx_left]) * m
+        val = tr.iloc[indx_left] +  (times[i] - indx[indx_left]) * m
         tr_val[i] = val
     
     return tr_val 

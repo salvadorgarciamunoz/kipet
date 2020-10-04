@@ -256,8 +256,8 @@ class ResultsObject(object):
                 )
         x_data = [t for t in pred.index]
         
-        x_axis_mod = 0.025*(x_data[-1] - x_data[0])
-        fig.update_xaxes(range=[x_data[0]-x_axis_mod, x_data[-1]+x_axis_mod])
+        x_axis_mod = 0.025*(float(x_data[-1]) - float(x_data[0]))
+        fig.update_xaxes(range=[float(x_data[0])-x_axis_mod, float(x_data[-1])+x_axis_mod])
         fig.update_xaxes(zeroline=True, zerolinewidth=2, zerolinecolor='#4e4e4e')
         fig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor='#4e4e4e')
     

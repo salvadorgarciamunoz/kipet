@@ -55,7 +55,7 @@ if __name__ == "__main__":
     sim_model.set_times(0, 20)
     sim_model.create_pyomo_model() 
     sim_model.simulate()
-    sim_model.results.plot('Z')
+    sim_model.results.plot('Z', show_plot=with_plots)
 
     # Add some noise and save the data
     data = sim_model.add_noise_to_data(sim_model.results.Z, 0.02)
@@ -138,4 +138,4 @@ if __name__ == "__main__":
     
     # Results and plot
     final_model.results.show_parameters
-    final_model.results.plot()
+    final_model.results.plot(show_plot=with_plots)

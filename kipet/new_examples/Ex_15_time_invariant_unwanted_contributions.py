@@ -74,8 +74,7 @@ if __name__ == "__main__":
     kipet_model.run_opt()
     kipet_model.results.show_parameters
 
-    if with_plots:
-        kipet_model.results.plot()
+    kipet_model.results.plot(show_plot=with_plots)
         
     """We can now compare the results with the known profiles"""
     
@@ -100,5 +99,5 @@ if __name__ == "__main__":
         
     # Use the "label" kwarg to add some info to the legend in the plot
     if with_plots:
-        kipet_model.results.plot('S', extra_data={'data': S_matched, 'label': 'matched'})
+        kipet_model.results.plot('S', show_plot=with_plots, extra_data={'data': S_matched, 'label': 'matched'})
         

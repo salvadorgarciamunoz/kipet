@@ -26,7 +26,8 @@ def set_directory(filename, data_dir=DEFAULT_DIR):
         filename (Path): the full filename of the data
     
     """
-    dataDirectory = Path().absolute().joinpath(data_dir, filename)
+    calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
+    dataDirectory = Path(calling_file_name).joinpath(data_dir, filename)
     return dataDirectory
 
 def read_file(filename, directory=DEFAULT_DIR, **kwargs):       

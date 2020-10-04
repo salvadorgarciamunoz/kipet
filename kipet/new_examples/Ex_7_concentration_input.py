@@ -7,7 +7,8 @@ import sys # Only needed for running the example from the command line
 
 # Kipet library imports
 from kipet.kipet import KipetModel
-                                                                                                    
+from kipet.library.common.read_write_tools import set_directory                                             
+                                                       
 if __name__ == "__main__":
 
     with_plots = True

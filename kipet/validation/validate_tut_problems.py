@@ -9,6 +9,7 @@ import inspect
 import subprocess
 
 import imp
+import time
 
 #try:
     #imp.find_module('casadi')
@@ -18,7 +19,13 @@ import imp
 
 examplesMainDir = os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(inspect.getfile(
-        inspect.currentframe()))), '..','examples'))
+        inspect.currentframe()))), '..', 'new_examples'))
+
+from pathlib import Path
+
+emd = Path().absolute().joinpath('new_examples')
+print(emd)
+print(examplesMainDir)
 
 class TestExamples(unittest.TestCase):
 
@@ -46,9 +53,11 @@ class TestExamples(unittest.TestCase):
         for n, f in enumerate(examples_tutorial):
             print(f'Running tutorial example ({n + 1}/{number_of_examples}): {f}')
             
+            start = time.time()
             flagpy = subprocess.call([sys.executable,os.path.join(examples_tutorial_dir,f),'1'],
                                 stdout=self.std_out,
                                 stderr=subprocess.STDOUT)
+            end = time.time()
             if flagpy!=0: 
                 print(f"\n\t #### {f} FAILED ####\n")
                 countpy = countpy + 1
@@ -56,7 +65,7 @@ class TestExamples(unittest.TestCase):
                 flagps=1
 
             else:
-                print(f"\n\t #### {f} PASSED ####\n")
+                print(f"\n\t #### {f} PASSED {end-start} seconds ####\n")
             continue
         print(countpy,"files in",examples_tutorial_dir,"failed")
         return {self.assertEqual(int(flagpy),0),self.assertEqual(int(flagps),0)}
@@ -64,6 +73,7 @@ class TestExamples(unittest.TestCase):
     def test_tutorial_examples(self):
         print('##############Tutorial Problems#############')
         examples_dir = os.path.join(examplesMainDir)
+        print(examples_dir)
         self._schedule(examples_dir)
 
     def run_all_examples(self):

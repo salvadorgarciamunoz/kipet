@@ -16,7 +16,7 @@ if __name__ == "__main__":
     if len(sys.argv)==2:
         if int(sys.argv[1]):
             with_plots = False
- 
+   
     kipet_model = KipetModel()
     
     # Use this function to replace the old filename set-up

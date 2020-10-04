@@ -923,6 +923,8 @@ class TemplateBuilder(object):
                 except:
                     raise ValueError('A model requires a start and end time or a dataset')
             
+        print(start_time, end_time)
+            
         # Model
         pyomo_model = ConcreteModel()
 
@@ -1194,15 +1196,15 @@ class TemplateBuilder(object):
                             initialize=p_dict)
 
         # set bounds P
-        # for k, v in self._parameters_bounds.items():
-        #     factor = 1
-        #     if self._scale_parameters:
-        #         factor = self._parameters_init[k]
+        for k, v in self._parameters_bounds.items():
+            factor = 1
+            if self._scale_parameters:
+                factor = self._parameters_init[k]
             
-        #     lb = v[0]/factor
-        #     ub = v[1]/factor
-        #     pyomo_model.P[k].setlb(lb)
-        #     pyomo_model.P[k].setub(ub)
+            lb = v[0]/factor
+            ub = v[1]/factor
+            pyomo_model.P[k].setlb(lb)
+            pyomo_model.P[k].setub(ub)
 
 
         if self._estim_init==True:#added for the estimation of initial conditions which have to be complementary state vars CS
