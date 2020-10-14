@@ -17,14 +17,16 @@ if __name__ == "__main__":
     
     kipet_model = KipetModel()
     
+    r1 = kipet_model.new_reaction('reaction-1')
+    
     # Add the model parameters
-    kipet_model.add_parameter('k1', 2)
-    kipet_model.add_parameter('k2', 0.2)
+    r1.add_parameter('k1', 2)
+    r1.add_parameter('k2', 0.2)
     
     # Declare the components and give the initial values
-    kipet_model.add_component('A', state='concentration', init=1)
-    kipet_model.add_component('B', state='concentration', init=0.0)
-    kipet_model.add_component('C', state='concentration', init=0.0)
+    r1.add_component('A', state='concentration', init=1)
+    r1.add_component('B', state='concentration', init=0.0)
+    r1.add_component('C', state='concentration', init=0.0)
     
     # Define explicit system of ODEs
     def rule_odes(m,t):
@@ -35,13 +37,13 @@ if __name__ == "__main__":
         return exprs
 
     # Add the rules to the model
-    kipet_model.add_equations(rule_odes)
+    r1.add_equations(rule_odes)
     
     # Create the model - simulations require times
-    kipet_model.set_times(0, 10)
+    r1.set_times(0, 10)
     
     # Simulate with default options
-    kipet_model.simulate()
+    r1.simulate()
     
     if with_plots:
-        kipet_model.results.plot()
+        r1.results.plot()
