@@ -7,8 +7,7 @@ import sys # Only needed for running the example from the command line
 
 # Kipet library imports
 from kipet.kipet import KipetModel
-from kipet.library.common.read_write_tools import set_directory                                             
-                                                       
+                                                                                                    
 if __name__ == "__main__":
 
     with_plots = True
@@ -16,21 +15,23 @@ if __name__ == "__main__":
         if int(sys.argv[1]):
             with_plots = False
  
-    kipet_model = KipetModel(name='Ex-7')
-    
+    kipet_model = KipetModel()
+ 
+    r1 = kipet_model.new_reaction('reaction-1')   
+ 
     # Add the model parameters
-    kipet_model.add_parameter('k1', init=2.0, bounds=(0.0, 5.0))
-    kipet_model.add_parameter('k2', init=0.2, bounds=(0.0, 1.0))
+    r1.add_parameter('k1', init=2.0, bounds=(0.0, 5.0))
+    r1.add_parameter('k2', init=0.2, bounds=(0.0, 2.0))
     
     # Declare the components and give the initial values
-    kipet_model.add_component('A', state='concentration', init=1e-3, variance=1e-10)
-    kipet_model.add_component('B', state='concentration', init=0.0, variance=1e-11)
-    kipet_model.add_component('C', state='concentration', init=0.0, variance=1e-10)
+    r1.add_component('A', state='concentration', init=0.001)
+    r1.add_component('B', state='concentration', init=0.0)
+    r1.add_component('C', state='concentration', init=0.0)
    
     # Use this function to replace the old filename set-up
-    filename = kipet_model.set_directory('Ex_1_C_data.txt')
+    filename = r1.set_directory('Ex_1_C_data.txt')
     
-    kipet_model.add_dataset('C_data', category='concentration', file=filename)
+    r1.add_dataset('C_data', category='concentration', file=filename)
     
     # Define the reaction model
     def rule_odes(m,t):
@@ -40,16 +41,16 @@ if __name__ == "__main__":
         exprs['C'] = m.P['k2']*m.Z[t,'B']
         return exprs 
     
-    kipet_model.add_equations(rule_odes)
+    r1.add_equations(rule_odes)
     
     # Settings
-    kipet_model.settings.collocation.nfe = 60
+    r1.settings.collocation.nfe = 60
     
     # Run KIPET
-    kipet_model.run_opt()  
+    r1.run_opt()  
     
     # Display the results
-    kipet_model.results.show_parameters
+    r1.results.show_parameters
 
     if with_plots:
-        kipet_model.results.plot()
+        r1.results.plot()
