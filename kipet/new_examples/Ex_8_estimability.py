@@ -14,22 +14,24 @@ from kipet.library.EstimabilityAnalyzer import *
 if __name__ == "__main__":
  
     kipet_model = KipetModel()   
-    
+ 
+    r1 = kipet_model.new_reaction('reaction-1')   
+ 
     # Add the model parameters
-    kipet_model.add_parameter('k1', bounds=(0.1,2))
-    kipet_model.add_parameter('k2', bounds=(0.0,2))
-    kipet_model.add_parameter('k3', bounds=(0.0,2))
-    kipet_model.add_parameter('k4', bounds=(0.0,2))
+    r1.add_parameter('k1', bounds=(0.1,2))
+    r1.add_parameter('k2', bounds=(0.0,2))
+    r1.add_parameter('k3', bounds=(0.0,2))
+    r1.add_parameter('k4', bounds=(0.0,2))
     
     # Declare the components and give the initial values
-    kipet_model.add_component('A', state='concentration', init=0.3)
-    kipet_model.add_component('B', state='concentration', init=0.0)
-    kipet_model.add_component('C', state='concentration', init=0.0)
-    kipet_model.add_component('D', state='concentration', init=0.01)
-    kipet_model.add_component('E', state='concentration', init=0.0)
+    r1.add_component('A', state='concentration', init=0.3)
+    r1.add_component('B', state='concentration', init=0.0)
+    r1.add_component('C', state='concentration', init=0.0)
+    r1.add_component('D', state='concentration', init=0.01)
+    r1.add_component('E', state='concentration', init=0.0)
     
-    filename = kipet_model.set_directory('new_estim_problem_conc.csv')
-    kipet_model.add_dataset('C_frame', category='concentration', file=filename) 
+    filename = r1.set_directory('new_estim_problem_conc.csv')
+    r1.add_dataset('C_frame', category='concentration', file=filename) 
     
     # define explicit system of ODEs
     def rule_odes(m,t):
@@ -42,15 +44,15 @@ if __name__ == "__main__":
         
         return exprs
     
-    kipet_model.add_equations(rule_odes)
-    kipet_model.set_times(0, 20)
-    kipet_model.create_pyomo_model()
+    r1.add_equations(rule_odes)
+    r1.set_times(0, 20)
+    r1.create_pyomo_model()
 
     """
     USER INPUT SECTION - ESTIMABILITY ANALYSIS
     """
     # Here we use the estimability analysis tools
-    e_analyzer = EstimabilityAnalyzer(kipet_model.model)
+    e_analyzer = EstimabilityAnalyzer(r1.model)
     # Problem needs to be discretized first
     e_analyzer.apply_discretization('dae.collocation',nfe=60,ncp=1,scheme='LAGRANGE-RADAU')
     # define the uncertainty surrounding each of the parameters
