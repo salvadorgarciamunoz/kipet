@@ -19,7 +19,9 @@ if __name__ == "__main__":
    
     """Simulation Model for generating data""" 
    
-    sim_model = KipetModel()
+    kipet_model = KipetModel()
+    
+    sim_model = kipet_model.new_reaction('simulation')
     
     sim_model.add_component('A', state='concentration', init=0.5)
     sim_model.add_component('B', state='concentration', init=0.0)
@@ -37,6 +39,7 @@ if __name__ == "__main__":
     sim_model.add_parameter('k4', 0.4)
     sim_model.add_parameter('k5', 0.02)
     sim_model.add_parameter('k6', 0.5)
+    
     # define explicit system of ODEs
     def rule_odes(m,t):
         exprs = dict()
@@ -53,22 +56,21 @@ if __name__ == "__main__":
     
     sim_model.add_equations(rule_odes)
     sim_model.set_times(0, 20)
-    sim_model.create_pyomo_model() 
     sim_model.simulate()
     sim_model.results.plot('Z', show_plot=with_plots)
 
     # Add some noise and save the data
-    data = sim_model.add_noise_to_data(sim_model.results.Z, 0.02)
+    data = kipet_model.add_noise_to_data(sim_model.results.Z, 0.02)
     filename = sim_model.set_directory('sim_data.csv')
     write_file(filename, data)
     
     """Make the model for estimability analysis"""
     
     # Clone the simulation model for the estimability analysis
-    kipet_model = sim_model.clone(model=False)
+    r1 = kipet_model.new_reaction('reaction-1', model_to_clone=sim_model, items_not_copied='model')
     
     # Add the generated data
-    kipet_model.add_dataset('C_data', category='concentration', file=filename)
+    r1.add_dataset('C_data', category='concentration', file=filename)
 
     # Change the parameter initial values and add bounds
     new_inits = {'k1': 0.2,
@@ -79,17 +81,17 @@ if __name__ == "__main__":
                  'k6': 0.45,
                  }
     
-    new_bounds = {k: (0, 1) for k in kipet_model.parameters.names}
+    new_bounds = {k: (0, 1) for k in r1.parameters.names}
     
-    kipet_model.parameters.update('init', new_inits)
-    kipet_model.parameters.update('bounds', new_bounds)
+    r1.parameters.update('init', new_inits)
+    r1.parameters.update('bounds', new_bounds)
     
-    kipet_model.create_pyomo_model()
+    r1.create_pyomo_model()
 
     """EstimabilityAnalyzer - this has not been updated completely"""
     
     # Here we use the estimability analysis tools
-    e_analyzer = EstimabilityAnalyzer(kipet_model.model)
+    e_analyzer = EstimabilityAnalyzer(r1.model)
     # Problem needs to be discretized first
     e_analyzer.apply_discretization('dae.collocation',nfe=50,ncp=3,scheme='LAGRANGE-RADAU')
     # define the uncertainty surrounding each of the parameters
@@ -109,13 +111,13 @@ if __name__ == "__main__":
     # We can then use this information to fix certain parameters and run the parameter estimation
     print("The parameters that can be estimated are:", params_to_select)
     
-    params_to_fix = list(set(kipet_model.parameters.names).difference(params_to_select))
+    params_to_fix = list(set(r1.parameters.names).difference(params_to_select))
     
     
     """Run the PE again"""
     
     # Clone the simulation model without the model
-    final_model = kipet_model.clone(model=False)
+    final_model = kipet_model.new_reaction('final', model_to_clone=sim_model, items_not_copied='model')
 
     # Add bounds to the parameter variables and change k5 to 0.032
     final_model.parameters.update('bounds', new_bounds)
