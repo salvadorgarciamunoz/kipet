@@ -22,6 +22,8 @@ if __name__ == "__main__":
     # This holds the model
     kipet_model = KipetModel()
     
+    r1 = kipet_model.new_reaction('simulation')
+    
     # components
     components = dict()
     components['AH'] = 0.395555
@@ -33,13 +35,13 @@ if __name__ == "__main__":
     components['P'] = 0.0
 
     for comp, init_value in components.items():
-        kipet_model.add_component(comp, state='concentration', init=init_value)
+        r1.add_component(comp, state='concentration', init=init_value)
 
     # add algebraics
     algebraics = [0, 1, 2, 3, 4, 5]  # the indices of the rate rxns
     # note the fifth component. Which basically works as an input
 
-    kipet_model.add_algebraic_variables(algebraics)
+    r1.add_algebraic_variables(algebraics)
 
     params = dict()
     params['k0'] = 49.7796
@@ -49,10 +51,10 @@ if __name__ == "__main__":
     params['k4'] = 3.87809
 
     for param, init_value in params.items():
-        kipet_model.add_parameter(param, init=init_value)
+        r1.add_parameter(param, init=init_value)
 
     # add additional state variables
-    kipet_model.add_component('V', state='state', init=0.0629418)
+    r1.add_component('V', state='state', init=0.0629418)
 
     # stoichiometric coefficients
     gammas = dict()
@@ -74,7 +76,7 @@ if __name__ == "__main__":
         return r
     #: there is no AE for Y[t,5] because step equn under rule_odes functions as the switch for the "C" equation
 
-    kipet_model.add_algebraics(rule_algebraics)
+    r1.add_algebraics(rule_algebraics)
  
     def rule_odes(m, t):
         exprs = dict()
@@ -90,44 +92,19 @@ if __name__ == "__main__":
                 exprs[c] += 0.02247311828 / (m.X[t, 'V'] * 210) * step
         return exprs
 
-    kipet_model.add_equations(rule_odes)
+    r1.add_equations(rule_odes)
     
     # Declare dosing algebraic
-    kipet_model.set_dosing_var(5)
+    r1.set_dosing_var(5)
     # Add dosing points 
-    kipet_model.add_dosing_point('AH', 100, 0.3)
-    kipet_model.add_dosing_point('A-', 300, 0.9)
+    r1.add_dosing_point('AH', 100, 0.3)
+    r1.add_dosing_point('A-', 300, 0.9)
 
-    kipet_model.set_times(0, 600)
+    r1.set_times(0, 600)
       
-    kipet_model.simulate()
+    r1.simulate()
     
     if with_plots:
-        kipet_model.results.plot('Z')
-        kipet_model.results.plot('X')
-        kipet_model.results.plot('Y')
-
-
-    # if with_plots:
-    #     # display concentration results    
-    #     results.Z.plot.line(legend=True)
-    #     plt.xlabel("time (s)")
-    #     plt.ylabel("Concentration (mol/L)")
-    #     plt.title("Concentration Profile")
-    #     plt.show()
-    
-    #     #results.Y[0].plot.line()
-    #     kipet_model.results.Y[1].plot.line(legend=True)
-    #     kipet_model.results.Y[2].plot.line(legend=True)
-    #     kipet_model.results.Y[3].plot.line(legend=True)
-    #     kipet_model.results.Y[4].plot.line(legend=True)
-    #     plt.xlabel("time (s)")
-    #     plt.ylabel("rxn rates (mol/L*s)")
-    #     plt.title("Rates of rxn")
-    #     plt.show()
-
-    #     results.X.plot.line(legend=True)
-    #     plt.xlabel("time (s)")
-    #     plt.ylabel("Volume (L)")
-    #     plt.title("total volume")
-    #     plt.show()
+        r1.results.plot('Z')
+        r1.results.plot('X')
+        r1.results.plot('Y')

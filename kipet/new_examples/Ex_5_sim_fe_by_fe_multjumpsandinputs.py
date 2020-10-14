@@ -21,11 +21,12 @@ if __name__ == "__main__":
     # Declare the model:
     kipet_model = KipetModel()
     
+    r1 = kipet_model.new_reaction('simulation')
+    
     # When the category is trajectory, it is used for initializations, scaling,
     # or fixing variables. It is not added to the pyomo model
-    filename = kipet_model.set_directory('Tempvalues.csv')
-    kipet_model.add_dataset('Ttraj', category='trajectory', file=filename)  
-        
+    filename = 'Tempvalues.csv'
+    
     # components
     components = dict()
     components['AH'] = 0.395555
@@ -37,13 +38,20 @@ if __name__ == "__main__":
     components['P'] = 0.0
 
     for comp, init_value in components.items():
-        kipet_model.add_component(comp, state='concentration', init=init_value)
+        r1.add_component(comp, state='concentration', init=init_value)
+        
+    # add additional state variables
+    r1.add_component('V', state='state', init=0.0629418)
+    # Add components that are to be fixed to a trajectory here as well
+    r1.add_component('Temp', state='trajectory')
+
+    r1.add_dataset(file=filename)  
 
     # add algebraics
     algebraics = ['0', '1', '2', '3', '4', '5', 'k4T', 'Temp']  # the indices of the rate rxns
     # note the fifth, sixth and seventh components. Which basically work as inputs
 
-    kipet_model.add_algebraic_variables(algebraics)
+    r1.add_algebraic_variables(algebraics)
     
     params = dict()
     params['k0'] = 49.7796
@@ -54,10 +62,8 @@ if __name__ == "__main__":
     params['E'] = 20.
 
     for param, init_value in params.items():
-        kipet_model.add_parameter(param, init=init_value)
+        r1.add_parameter(param, init=init_value)
 
-    # add additional state variables
-    kipet_model.add_component('V', state='state', init=0.0629418)
 
     # stoichiometric coefficients
     gammas = dict()
@@ -82,7 +88,7 @@ if __name__ == "__main__":
         return r
     #: there is no ae for Y[t,5] because step equn under rule_odes functions as the switch for the "C" equation
 
-    kipet_model.add_algebraics(rule_algebraics)
+    r1.add_algebraics(rule_algebraics)
 
     def rule_odes(m, t):
         exprs = dict()
@@ -98,25 +104,25 @@ if __name__ == "__main__":
                 exprs[c] += 0.02247311828 / (m.X[t, 'V'] * 210) * step
         return exprs
 
-    kipet_model.add_equations(rule_odes)
+    r1.add_equations(rule_odes)
     
     # Declare dosing algebraic
-    kipet_model.set_dosing_var('5')
+    r1.set_dosing_var('5')
     # Add dosing points or other jumps
-    kipet_model.add_dosing_point('AH', 101.035, 0.3)
-    kipet_model.add_dosing_point('A-', 400, 0.1)
-    kipet_model.add_dosing_point('V', 303.126, 0.01)
+    r1.add_dosing_point('AH', 101.035, 0.3)
+    r1.add_dosing_point('A-', 400, 0.1)
+    r1.add_dosing_point('V', 303.126, 0.01)
 
     # Fix certain variables to given data
-    kipet_model.fix_from_trajectory('Y',  'Temp', 'Ttraj')    
+    r1.fix_from_trajectory('Y',  'Temp', 'Traj')    
 
     # Make the model
-    kipet_model.set_times(0, 600)
+    r1.set_times(0, 600)
     
     # Run the simulation
-    kipet_model.simulate()
+    r1.simulate()
     
     # Plot the results
     if with_plots:
-        kipet_model.results.plot('Z', show_exp=False)
-        kipet_model.results.plot('X')
+        r1.results.plot('Z', show_exp=False)
+        r1.results.plot('X')
