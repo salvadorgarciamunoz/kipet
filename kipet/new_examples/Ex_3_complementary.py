@@ -16,14 +16,16 @@ if __name__ == "__main__":
         if int(sys.argv[1]):
             with_plots = False
 
-    kipet_model = KipetModel(name='Ex-3')
+    kipet_model = KipetModel()
+    
+    r1 = kipet_model.new_reaction('reaction-1')
     
     # Declare the components and give the initial values
-    kipet_model.add_component('A', state='concentration', init=1.0)
-    kipet_model.add_component('B', state='concentration', init=0.0)
-    kipet_model.add_component('C', state='concentration', init=0.0)
-    kipet_model.add_component('T', state='state', init=290)
-    kipet_model.add_component('V', state='state', init=100)
+    r1.add_component('A', state='concentration', init=1.0)
+    r1.add_component('B', state='concentration', init=0.0)
+    r1.add_component('C', state='concentration', init=0.0)
+    r1.add_component('T', state='state', init=290)
+    r1.add_component('V', state='state', init=100)
     
     # Define the ODEs
     def rule_odes(m,t):
@@ -46,13 +48,13 @@ if __name__ == "__main__":
         exprs['V'] = vo
         return exprs
     
-    kipet_model.add_equations(rule_odes)
-    kipet_model.set_times(0.0, 2.0)
+    r1.add_equations(rule_odes)
+    r1.set_times(0.0, 2.0)
     
-    kipet_model.settings.collocation.nfe = 20
-    kipet_model.settings.collocation.ncp = 1
+    r1.settings.collocation.nfe = 20
+    r1.settings.collocation.ncp = 1
 
-    kipet_model.simulate()  
+    r1.simulate()  
 
     if with_plots:
-        kipet_model.results.plot()
+        r1.results.plot()
