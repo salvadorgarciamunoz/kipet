@@ -45,7 +45,7 @@ if __name__ == "__main__":
     # Add components that are to be fixed to a trajectory here as well
     r1.add_component('Temp', state='trajectory')
 
-    r1.add_dataset(file=filename)  
+    r1.add_dataset('Traj', category='trajectory', file=filename)  
 
     # add algebraics
     algebraics = ['0', '1', '2', '3', '4', '5', 'k4T', 'Temp']  # the indices of the rate rxns

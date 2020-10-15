@@ -21,23 +21,7 @@ if __name__ == "__main__":
     # This holds the model
     kipet_model = KipetModel()
     
-    # Data set-up: Use trajectory as the category for initialization data
-    # as this is not added to the pyomo model
-    
-    filename = kipet_model.set_directory('extra_states.txt')
-    kipet_model.add_dataset('traj', category='trajectory', file=filename)
-    
-    filename = kipet_model.set_directory('concentrations.txt')
-    kipet_model.add_dataset('conc', category='trajectory', file=filename)
-    
-    filename = kipet_model.set_directory('init_Z.csv')
-    kipet_model.add_dataset('init_Z', category='trajectory', file=filename)
-    
-    filename = kipet_model.set_directory('init_X.csv')
-    kipet_model.add_dataset('init_X', category='trajectory', file=filename)
-    
-    filename = kipet_model.set_directory('init_Y.csv')
-    kipet_model.add_dataset('init_Y', category='trajectory', file=filename)
+    r1 = kipet_model.new_reaction('reaction-1')
 
     # Components
     components = dict()
@@ -49,7 +33,7 @@ if __name__ == "__main__":
     components['H2O'] = 0.0                 # water
 
     for comp, init_value in components.items():
-        kipet_model.add_component(comp, state='concentration', init=init_value)
+        r1.add_component(comp, state='concentration', init=init_value)
 
     # Parameters
     params = dict()
@@ -62,7 +46,7 @@ if __name__ == "__main__":
     params['Csa'] = 2.06269996
 
     for param, init_value in params.items():
-        kipet_model.add_parameter(param, init=init_value)
+        r1.add_parameter(param, init=init_value)
 
     # Additional state variables
     extra_states = dict()
@@ -71,12 +55,12 @@ if __name__ == "__main__":
     extra_states['Msa'] = 9.537
     
     for comp, init_value in extra_states.items():
-        kipet_model.add_component(comp, state='state', init=init_value)
+        r1.add_component(comp, state='state', init=init_value)
 
     # Algebraics
     algebraics = ['f','r0','r1','r2','r3','r4','r5','v_sum','Csat']
 
-    kipet_model.add_algebraic_variables(algebraics)
+    r1.add_algebraic_variables(algebraics)
 
     gammas = dict()
     gammas['SA']=    [-1, 0, 0, 0, 1, 0]
@@ -129,7 +113,7 @@ if __name__ == "__main__":
 
         return r
 
-    kipet_model.add_algebraics(rule_algebraics)
+    r1.add_algebraics(rule_algebraics)
     
     def rule_odes(m,t):
         exprs = dict()
@@ -151,33 +135,54 @@ if __name__ == "__main__":
         exprs['Msa'] = -138.121*V*m.Y[t,'r4']
         return exprs
 
-    kipet_model.add_equations(rule_odes)
+    r1.add_equations(rule_odes)
     
-    # Create the model
-    kipet_model.set_times(0, 210.5257)
+    # Data set-up: Use trajectory as the category for initialization data
+    # as this is not added to the pyomo model
+    
+    r1.add_component('f', state='trajectory')
+    r1.add_component('Csat', state='trajectory')
+    
+    filename = r1.set_directory('extra_states.txt')
+    r1.add_dataset('traj', category='trajectory', file=filename)
+    
+    filename = r1.set_directory('concentrations.txt')
+    r1.add_dataset('conc', category='trajectory', file=filename)
+    
+    filename = r1.set_directory('init_Z.csv')
+    r1.add_dataset('init_Z', category='trajectory', file=filename)
+    
+    filename = r1.set_directory('init_X.csv')
+    r1.add_dataset('init_X', category='trajectory', file=filename)
+    
+    filename = r1.set_directory('init_Y.csv')
+    r1.add_dataset('init_Y', category='trajectory', file=filename)
+
+    #Create the model
+    r1.set_times(0, 210.5257)
 
     # Settings
-    kipet_model.settings.collocation.nfe = 100
+    r1.settings.collocation.nfe = 100
     
-    kipet_model.settings.simulator.solver_opts.update({'halt_on_ampl_error' :'yes'})
+    r1.settings.simulator.solver_opts.update({'halt_on_ampl_error' :'yes'})
     
     # If you need to fix a trajectory or initialize, do so here:
-    kipet_model.fix_from_trajectory('Y', 'Csat', 'traj') 
-    kipet_model.fix_from_trajectory('Y', 'f', 'traj')
+    r1.fix_from_trajectory('Y', 'Csat', 'traj') 
+    r1.fix_from_trajectory('Y', 'f', 'traj')
     
-    kipet_model.initialize_from_trajectory('Z', 'init_Z')
-    kipet_model.initialize_from_trajectory('X', 'init_X')
-    kipet_model.initialize_from_trajectory('Y', 'init_Y')
+    r1.initialize_from_trajectory('Z', 'init_Z')
+    r1.initialize_from_trajectory('X', 'init_X')
+    r1.initialize_from_trajectory('Y', 'init_Y')
 
     # Run the simulation
-    kipet_model.simulate()
+    r1.simulate()
 
     # Plot the results
     if with_plots:   
-        kipet_model.results.plot('Z')
-        kipet_model.datasets['conc'].show_data()
-        kipet_model.results.plot('Y', 'Csat', extra_data={'data': kipet_model.datasets['traj'].data['Csat'], 'label': 'traj'})
-        kipet_model.results.plot('X', 'V', extra_data={'data': kipet_model.datasets['traj'].data['V'], 'label': 'traj'})
-        kipet_model.results.plot('X', 'Msa', extra_data={'data': kipet_model.datasets['traj'].data['Msa'], 'label': 'traj'})
-        kipet_model.results.plot('Y', 'f')
-        kipet_model.results.plot('X', 'Masa', extra_data={'data': kipet_model.datasets['traj'].data['Masa'], 'label': 'traj'})
+        r1.results.plot('Z')
+        r1.datasets['conc'].show_data()
+        r1.results.plot('Y', 'Csat', extra_data={'data': r1.datasets['traj'].data['Csat'], 'label': 'traj'})
+        r1.results.plot('X', 'V', extra_data={'data': r1.datasets['traj'].data['V'], 'label': 'traj'})
+        r1.results.plot('X', 'Msa', extra_data={'data': r1.datasets['traj'].data['Msa'], 'label': 'traj'})
+        r1.results.plot('Y', 'f')
+        r1.results.plot('X', 'Masa', extra_data={'data': r1.datasets['traj'].data['Masa'], 'label': 'traj'})

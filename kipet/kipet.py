@@ -589,66 +589,75 @@ class ReactionModel(WavelengthSelectionMixins):
         data = kwargs.get('data', None)
         category = kwargs.get('category', None)
         
-        if len(self.components) > 0:
+        # General data category
+        if category == 'trajectory':
+             if filename is not None:
+                 filename = self.set_directory(filename)
+                 kwargs['file'] = filename
+                 data = data_tools.read_file(filename)
+                 self.datasets.add_dataset(args[0], category='trajectory', data=data)
         
-            if category != 'spectral':    
-                if filename is not None:
-                    filename = self.set_directory(filename)
-                    kwargs['file'] = filename
-                    data = data_tools.read_file(filename)
-            
-                concentration_data_labels = []
-                state_data_labels = []
-                traj_data_labels = []
-
-        # Change how trajectory category is handled - this should not be so complicated here
-
-            if data is not None:
-                for col in data.columns:
-                    if col in self.components.names:
-                        if self.components[col].state == 'concentration':
-                            concentration_data_labels.append(col)
-                        elif self.components[col].state == 'state':
-                            state_data_labels.append(col)
-                        elif self.components[col].state == 'trajectory':
-                            traj_data_labels.append(col)
-                
-                if len(concentration_data_labels) > 0:
-                    conc_data = data.loc[:, concentration_data_labels]
-                    if name is None:
-                        name = 'C_data'
-                    self.datasets.add_dataset(name, category='concentration', data=conc_data)
-            
-                if len(state_data_labels) > 0:
-                    state_data = data.loc[:, state_data_labels]
-                    if name is None:
-                        name = 'U_data'
-                    self.datasets.add_dataset(name, category='state', data=state_data)
-                    
-                if len(traj_data_labels) > 0:
-                    traj_data = data.loc[:, traj_data_labels]
-                    if name is None:
-                        name = 'Traj'
-                    self.datasets.add_dataset(name, category='trajectory', data=traj_data)
-            
-            elif filename is not None and category == 'spectral':
-                filename = self.set_directory(filename)
-                data = data_tools.read_file(filename)
-                if name is None:
-                        name = 'D_data'
-                self.datasets.add_dataset(name, category=category, data=data)
-            
-            # elif filename is None and data is not None:
-            #     self.datasets.add_dataset(f'D_data', category=category, data=data)
-            
-                
-        
-            else:
-                raise ValueError('Unknown data category')
-            
         else:
-            raise AttributeError('Please add components to model before adding data')
+            if len(self.components) > 0:
+            
+                if category not in ['spectral']:    
+                    if filename is not None:
+                        filename = self.set_directory(filename)
+                        kwargs['file'] = filename
+                        data = data_tools.read_file(filename)
+                
+                    concentration_data_labels = []
+                    state_data_labels = []
+    
+            # Change how trajectory category is handled - this should not be so complicated here
+    
+                if data is not None and category in['concentration', 'state']:
+                    for col in data.columns:
+                        if col in self.components.names:
+                            if self.components[col].state == 'concentration':
+                                concentration_data_labels.append(col)
+                            elif self.components[col].state == 'state':
+                                state_data_labels.append(col)
+                    
+                    if len(concentration_data_labels) > 0:
+                        print(concentration_data_labels)
+                        conc_data = data.loc[:, concentration_data_labels]
+                        if name is None:
+                            name = 'C_data'
+                        self.datasets.add_dataset(name, category='concentration', data=conc_data)
+                
+                    if len(state_data_labels) > 0:
+                        print(state_data_labels)
+                        state_data = data.loc[:, state_data_labels]
+                        if name is None:
+                            name = 'U_data'
+                        self.datasets.add_dataset(name, category='state', data=state_data)
+                        
+                    # if len(traj_data_labels) > 0:
+                    #     print(traj_data_labels)
+                    #     traj_data = data.loc[:, traj_data_labels]
+                    #     if name is None:
+                    #         name = 'Traj'
+                    #     self.datasets.add_dataset(name, category='trajectory', data=traj_data)
+                
+                elif filename is not None and category == 'spectral':
+                    filename = self.set_directory(filename)
+                    data = data_tools.read_file(filename)
+                    if name is None:
+                            name = 'D_data'
+                    self.datasets.add_dataset(name, category=category, data=data)
+                
+                # elif filename is None and data is not None:
+                #     self.datasets.add_dataset(f'D_data', category=category, data=data)
+                
+                
         
+                else:
+                    raise ValueError('Unknown data category')
+                
+            else:
+                raise AttributeError('Please add components to model before adding data')
+            
         remove_negatives = kwargs.get('remove_negatives', False)
         if remove_negatives:
             self.datasets[name].remove_negatives()
