@@ -23,39 +23,36 @@ from kipet.kipet import KipetModel
 
 if __name__ == "__main__":
 
-    with_plots = False
+    with_plots = True
     if len(sys.argv)==2:
         if int(sys.argv[1]):
             with_plots = False
     
     kipet_model = KipetModel()
     
-    filename = kipet_model.set_directory('cstr_t_and_c.csv')
-    exp_data = pd.read_csv(filename, index_col=0)
-    
-    # Since this dataframe has state and concentration data, it must be
-    # entered separately
-    kipet_model.add_dataset('T_data', category='state', data=pd.DataFrame(exp_data['T']))
-    kipet_model.add_dataset('A_data', category='concentration', data=pd.DataFrame(exp_data['A']))
-    
+    r1 = kipet_model.new_reaction('cstr')
+    filename = r1.set_directory('cstr_t_and_c.csv')
+  
     # Perturb the initial parameter values by some factor
     factor = 1.2
     
     # Add the model parameters
-    kipet_model.add_parameter('Tf', init=293.15*factor, bounds=(250, 400))
-    kipet_model.add_parameter('Cfa', init=2500*factor, bounds=(0, 5000))
-    kipet_model.add_parameter('rho', init=1025*factor, bounds=(800, 2000))
-    kipet_model.add_parameter('delH', init=160*factor, bounds=(0, 400))
-    kipet_model.add_parameter('ER', init=255*factor, bounds=(0, 500))
-    kipet_model.add_parameter('k', init=2.5*factor, bounds=(0, 10))
-    kipet_model.add_parameter('Tfc', init=283.15*factor, bounds=(250, 400))
-    kipet_model.add_parameter('rhoc', init=1000*factor, bounds=(0, 2000))
-    kipet_model.add_parameter('h', init=3600*factor, bounds=(0, 5000))
+    r1.add_parameter('Tf', init=293.15*factor, bounds=(250, 400))
+    r1.add_parameter('Cfa', init=2500*factor, bounds=(0, 5000))
+    r1.add_parameter('rho', init=1025*factor, bounds=(800, 2000))
+    r1.add_parameter('delH', init=160*factor, bounds=(0, 400))
+    r1.add_parameter('ER', init=255*factor, bounds=(0, 500))
+    r1.add_parameter('k', init=2.5*factor, bounds=(0, 10))
+    r1.add_parameter('Tfc', init=283.15*factor, bounds=(250, 400))
+    r1.add_parameter('rhoc', init=1000*factor, bounds=(0, 2000))
+    r1.add_parameter('h', init=3600*factor, bounds=(0, 5000))
     
     # Declare the components and give the initial values
-    kipet_model.add_component('A', state='concentration', init=1000, variance=0.0001)
-    kipet_model.add_component('T', state='state', init=293.15, variance=0.0625)
-    kipet_model.add_component('Tc', state='state', init=293.15, variance=1)
+    r1.add_component('A', state='concentration', init=1000, variance=0.001)
+    r1.add_component('T', state='state', init=293.15, variance=0.0625)
+    r1.add_component('Tc', state='state', init=293.15, variance=1)
+   
+    r1.add_dataset(file=filename)
     
     constants = {
             'F' : 0.1, # m^3/h
@@ -81,14 +78,10 @@ if __name__ == "__main__":
         exprs['Tc'] = C['Fc']/C['Vc']*(m.P['Tfc']-m.X[t,'Tc']) + m.P['h']*C['A']/(m.P['rhoc'])/C['Cpc']/C['Vc']*(m.X[t,'T'] - m.X[t,'Tc'])
         return exprs
 
-    kipet_model.add_equations(rule_odes)
+    r1.add_equations(rule_odes)
 
-    # Parameter scaling is required for estimability
-    kipet_model.settings.general.scale_parameters = True
-    kipet_model.create_pyomo_model()
-    
-    # Run the model reduction method
-    results = kipet_model.reduce_model()
+    # Run the model reduction method - eventuallly the method can be placed here (other estimability methods)
+    results = r1.reduce_model()
     
     # results is a standard ResultsObject
     results.plot(show_plot=with_plots)
