@@ -32,7 +32,7 @@ from kipet.library.PyomoSimulator import PyomoSimulator
 from kipet.library.TemplateBuilder import TemplateBuilder
 from kipet.library.ResultsObject import ResultsObject
 from kipet.library.common.VisitorClasses import ReplacementVisitor
-from kipet.library.common.scaling import scale_parameters
+from kipet.library.post_model_build.scaling import scale_parameters
 from kipet.library.common.objectives import (
     conc_objective,
     comp_objective,

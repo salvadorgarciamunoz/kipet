@@ -17,7 +17,7 @@ from pyomo.environ import *
 from pyomo.dae import *
 
 # KIPET library imports
-from kipet.library.common.scaling import scale_models
+from kipet.library.post_model_build.scaling import scale_parameters
 from kipet.library.PyomoSimulator import PyomoSimulator
 
 logger = logging.getLogger('ModelBuilderLogger')
