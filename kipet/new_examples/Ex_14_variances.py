@@ -19,6 +19,8 @@ if __name__ == "__main__":
  
     kipet_model = KipetModel()
     
+    r1 = kipet_model.new_reaction('reaction-1')
+    
     components = dict()
     components['A'] = 3e-2
     components['B'] = 4e-2
@@ -28,15 +30,15 @@ if __name__ == "__main__":
     components['F'] = 0.0
     
     for comp, init_value in components.items():
-        kipet_model.add_component(comp, state='concentration', init=init_value)
+        r1.add_component(comp, state='concentration', init=init_value)
     
     # Use this function to replace the old filename set-up
-    filename = kipet_model.set_directory('varest3.csv')
-    kipet_model.add_dataset('D_frame', category='spectral', file=filename, remove_negatives=True)
+    filename = r1.set_directory('varest3.csv')
+    r1.add_dataset('D_frame', category='spectral', file=filename, remove_negatives=True)
 
-    kipet_model.add_parameter('k1', init=1.5, bounds=(0.5, 2.0)) 
-    kipet_model.add_parameter('k2', init=28.0, bounds=(1, 30))
-    kipet_model.add_parameter('k3', init=0.3, bounds=(0.001, 0.5))
+    r1.add_parameter('k1', init=1.5, bounds=(0.5, 2.0)) 
+    r1.add_parameter('k2', init=28.0, bounds=(1, 30))
+    r1.add_parameter('k3', init=0.3, bounds=(0.001, 0.5))
 
     def rule_odes(m,t):
         exprs = dict()
@@ -48,27 +50,27 @@ if __name__ == "__main__":
         exprs['F'] = m.P['k3']*m.Z[t,'B']
         return exprs
 
-    kipet_model.add_equations(rule_odes)
-    kipet_model.bound_profile(var='S', bounds=(0, 20))
+    r1.add_equations(rule_odes)
+    r1.bound_profile(var='S', bounds=(0, 20))
 
     # Settings
-    kipet_model.settings.general.no_user_scaling = True
-    kipet_model.settings.variance_estimator.tolerance = 1e-10
-    kipet_model.settings.parameter_estimator.tee = False
-    kipet_model.settings.parameter_estimator.solver = 'ipopt_sens'
+    r1.settings.general.no_user_scaling = True
+    r1.settings.variance_estimator.tolerance = 1e-10
+    r1.settings.parameter_estimator.tee = False
+    r1.settings.parameter_estimator.solver = 'ipopt_sens'
     
     # Additional settings for the alternate method
     use_alternate_method = False
     if use_alternate_method:
-        kipet_model.settings.variance_estimator.method = 'alternate'
-        kipet_model.settings.variance_estimator.secant_point = 6e-8
-        kipet_model.settings.variance_estimator.initial_sigmas = 1e-8
+        r1.settings.variance_estimator.method = 'alternate'
+        r1.settings.variance_estimator.secant_point = 6e-8
+        r1.settings.variance_estimator.initial_sigmas = 1e-8
     
     # This is all you need to run KIPET!
-    kipet_model.run_opt()
+    r1.run_opt()
     
     # Display the results
-    kipet_model.results.show_parameters
+    r1.results.show_parameters
     
     # New plotting methods
-    kipet_model.results.plot(show_plot=with_plots)
+    r1.results.plot(show_plot=with_plots)
