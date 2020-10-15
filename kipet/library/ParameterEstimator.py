@@ -180,54 +180,6 @@ class ParameterEstimator(PEMixins, Optimizer):
             decompose_G_test(self, St, Z_in)
         g_handling_status_messages(self)
         
-        def rule_init_conditionsnew(model, target_component):
-            start_time = model.start_time.value  # important!
-            
-            if target_component in model.Pinit.keys():
-                bla = model.X[start_time, target_component]
-            else:
-                bla = model.Z[start_time, target_component]
-            
-            return bla == model.init_conditions[target_component]
-        
-        if hasattr(self.model, 'Pinit'):
-            
-            self.allinitcomps = dict()
-            for k in self._mixture_components:
-                self.allinitcomps[k] = self.model.init_conditions[k].value
-            for i in self._complementary_states:
-                self.allinitcomps[i] = self.model.init_conditions[i].value
-
-            self.model.del_component('init_conditions')
-            self.model.del_component('init_conditions_c')
-
-            init_dict = dict()
-            for k, l in self.allinitcomps.items():
-                init_dict[k] = l
-
-            self._init_conditions = Var(self.model.states, initialize=init_dict)
-            self.model.add_component('init_conditions', self._init_conditions)
-            for k in self.allinitcomps.keys():
-                if k in self.model.Pinit.keys():
-                    st = self.model.start_time.value
-                    self.model.init_conditions[k].fixed = False
-                    self.model.init_conditions[k].stale = False
-                else:
-                    self.model.init_conditions[k].fixed = True
-                    self.model.init_conditions[k].stale = True
-
-            for k in self.model.Pinit.keys():
-                lb = self.model.Pinit[k].lb #just to take value for bounds and initial values from user input
-                ub = self.model.Pinit[k].ub #fixed var
-
-                self.model.init_conditions[k].setlb(lb)
-                self.model.init_conditions[k].setub(ub)
-
-            self.model.init_conditions_c = Constraint(self.model.states, rule=rule_init_conditionsnew)
-
-            Pinitset=[k for k in self.model.Pinit.keys()]
-            if hasattr(self.model, 'Pinitsetset')==False:
-                self.model.add_component('Pinitsetset', Set(initialize=Pinitset))
 
         if covariance:
             if self.solver != 'ipopt_sens' and self.solver != 'k_aug':
@@ -320,8 +272,7 @@ class ParameterEstimator(PEMixins, Optimizer):
                                               to_load=['Dhat_bar'])
      
         elif self._concentration_given:
-            results.load_from_pyomo_model(self.model,
-                                          to_load=['Z', 'dZdt', 'X', 'dXdt', 'Cm', 'Y'])
+            results.load_from_pyomo_model(self.model)
         else:
             raise RuntimeError(
                 'Must either provide concentration data or spectra in order to solve the parameter estimation problem')
@@ -333,12 +284,6 @@ class ParameterEstimator(PEMixins, Optimizer):
             results.P = {name: self.model.P[name].value*getattr(self.model, scaled_parameter_var)[name].value for name in self.model.parameter_names}
         else:
             results.P = {name: self.model.P[name].value for name in self.model.parameter_names}
-
-        if hasattr(self.model, 'Pinit'):
-            param_valsinit = dict()
-            for name in self.model.initparameter_names:
-                param_valsinit[name] = self.model.init_conditions[name].value
-            results.Pinit = param_valsinit
 
         if self.termination_condition!=None and self.termination_condition!=TerminationCondition.optimal:
             raise Exception("The current iteration was unsuccessful.")
@@ -760,6 +705,8 @@ class ParameterEstimator(PEMixins, Optimizer):
                 continue
             model.P.set_suffix_value(model.dof_v, count_vars)
             count_vars += 1
+
+        # Do the component initial values need to be considered in this matrix?
 
         if hasattr(model,'Pinit'):
             for k, v in self.model.Pinit.items():

@@ -43,6 +43,7 @@ exp_data_maps = {'Z': ['C', 'Cm'],
                  }
 
 plot_vars = ['Z', 'X', 'S', 'Y']
+result_vars = ['Z', 'C', 'Cm', 'K', 'S', 'X', 'dZdt', 'dXdt', 'P', 'Pinit', 'sigma_sq', 'estimable_parameters']
 
 class ResultsObject(object):
     """Container for all of the results. Includes plotting functions"""
@@ -59,8 +60,6 @@ class ResultsObject(object):
     def __str__(self):
         string = "\nRESULTS\n"
         
-        result_vars = ['Z', 'C', 'Cm', 'K', 'S', 'X', 'dZdt', 'dXdt', 'P', 'sigma_sq']
-        
         for var in result_vars:
             if hasattr(self, var) and getattr(self, var) is not None:
                 var_str = var
@@ -69,6 +68,9 @@ class ResultsObject(object):
                 string += f'{var_str}:\n {getattr(self, var)}\n\n'
         
         return string
+    
+    def __repr__(self):
+        return self.__str__()
 
     def compute_var_norm(self, variable_name, norm_type=np.inf):
         var = getattr(self,variable_name)
@@ -78,7 +80,7 @@ class ResultsObject(object):
     def load_from_pyomo_model(self, instance, to_load=None):
 
         if to_load is None:
-            to_load = []
+            to_load = result_vars
 
         model_variables = set()
         for block in instance.block_data_objects():
@@ -310,13 +312,13 @@ class ResultsObject(object):
             
     @property
     def show_parameters(self):
-        print('The estimated parameters are:')
+        print('\nThe estimated parameters are:')
         for k, v in self.P.items():
             print(k, v)
             
     @property
     def variances(self):
-        print('The estimated variances are:')
+        print('\nThe estimated variances are:')
         for k, v in self.sigma_sq.items():
             print(k, v)
 

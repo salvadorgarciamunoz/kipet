@@ -26,11 +26,13 @@ from pyomo.environ import (
     )
 
 from kipet.library.common.read_write_tools import df_from_pyomo_data
+from kipet.library.post_model_build.scaling import remove_scaling
 from kipet.library.ParameterEstimator import ParameterEstimator
 from kipet.library.PyomoSimulator import PyomoSimulator
 from kipet.library.TemplateBuilder import TemplateBuilder
 from kipet.library.ResultsObject import ResultsObject
 from kipet.library.common.VisitorClasses import ReplacementVisitor
+from kipet.library.common.scaling import scale_parameters
 from kipet.library.common.objectives import (
     conc_objective,
     comp_objective,
@@ -374,96 +376,7 @@ class EstimationPotential():
             
         results = self._get_results(Se)
             
-        return {p: self.model.K[p].value for p in Se}, results
-    
-    # def plot_results(self):
-    #     """This function plots the profiles from the final model after
-    #     parameter fitting.
-        
-    #     Args:
-    #         None
-            
-    #     Returns:
-    #         None
-            
-    #     """
-    #     line_options = {
-    #         'linewidth' : 3,
-    #         }
-        
-    #     marker_options = {
-    #         'linewidth' : 1,
-    #         'markersize' : 10,
-    #         'alpha' : 0.5,
-    #         }
-        
-    #     title_options = {
-    #         'fontsize' : 18,
-    #         }
-        
-    #     axis_options = {
-    #         'fontsize' : 16,
-    #         }
-        
-    #     exp_data = list(self.model.measured_data.keys())
-        
-    #     if len(self.model.mixture_components.value) > 0:
-    #         dfz = df_from_pyomo_data(self.model.Z)       
-    #         dfc = None
-        
-    #         if len(self.model.mixture_components.value & self.model.measured_data.value) > 0:        
-    #             dfc = df_from_pyomo_data(self.model.Cm)
-            
-    #             for col in dfc.columns:
-    #                 if col not in exp_data:
-    #                     dfc.drop(columns=[col], inplace=True)
-            
-    #         plt.figure(figsize=(4,3))
-            
-    #         for col in dfz.columns:
-    #             plt.plot(dfz[col], label=col + ' (pred)', **line_options)
-    #             if dfc is not None:
-    #                 if col in dfc.columns:
-    #                     plt.plot(dfc[col], 'o', label=col + ' (exp)', **marker_options)
-                    
-    #         plt.xlabel("Time [h]", **axis_options)
-    #         plt.ylabel("Concentration (mol/L)", **axis_options)
-    #         plt.title("Concentration Profile", **title_options)
-    #         plt.xticks(fontsize=14)
-    #         plt.yticks(fontsize=14)
-            
-    #         plt.legend()
-    #         plt.show()
-            
-    #     if len(self.model.complementary_states.value) > 0:
-    #         dfx = df_from_pyomo_data(self.model.X)  
-    #         dfu = None
-            
-    #         if len(self.model.complementary_states.value & self.model.measured_data.value) > 0:
-    #             dfu = df_from_pyomo_data(self.model.U)  
-            
-    #             for col in dfu.columns:
-    #                 if col not in exp_data:
-    #                     dfu.drop(columns=[col], inplace=True)
-            
-    #         plt.figure()
-            
-    #         for col in dfx.columns:
-    #             plt.plot(dfx[col], label=col + ' (pred)', **line_options)
-    #             if dfu is not None:
-    #                 if col in dfu.columns:
-    #                     plt.plot(dfu[col], 'o', label=col + ' (exp)', **marker_options)
-            
-    #         plt.xlabel("Time [h]", **axis_options)
-    #         plt.ylabel("Temperature [K]", **axis_options)       
-    #         plt.title("Complementary State Profiles", **title_options)
-    #         plt.xticks(fontsize=14)
-    #         plt.yticks(fontsize=14)
-        
-    #         plt.legend()
-    #         plt.show()
-    
-    #     return None
+        return results, self.model
     
     def _get_results(self, Se):
         
@@ -529,7 +442,6 @@ class EstimationPotential():
         if not hasattr(self.model, 'objective'):
             self.model.objective = self._rule_objective(self.model)
         
-        #self.model.objective = self._rule_objective(self.model, self.model_builder)
         self.parameter_order = {i : name for i, name in enumerate(self.model.P)}
         
         # simulation_data = self.simulation_data
@@ -558,28 +470,18 @@ class EstimationPotential():
         # The model needs to be discretized
         model_pe = ParameterEstimator(self.model)
         model_pe.apply_discretization('dae.collocation',
-                                            ncp = self.ncp,
-                                            nfe = self.nfe,
-                                            scheme = 'LAGRANGE-RADAU')
+                                      ncp = self.ncp,
+                                      nfe = self.nfe,
+                                      scheme = 'LAGRANGE-RADAU')
         
-       
+        scale_parameters(self.model)
             
-        
-        # if hasattr(simulation_data, 'X'):
-        #     #print(f'Here is the X data:\n{simulation_data.X}')
-        #     model_pe.initialize_from_trajectory('X', simulation_data.X)
-        #     model_pe.initialize_from_trajectory('dXdt', simulation_data.dXdt)
-        
-        # if hasattr(simulation_data, 'Z'):
-        #     #print(f'Here is the Z data:\n{simulation_data.Z}')
-        #     model_pe.initialize_from_trajectory('Z', simulation_data.Z)
-        #     model_pe.initialize_from_trajectory('dZdt', simulation_data.dZdt)
-        
         for k, v in self.model.P.items():
             ub = self.rho
             lb = 1/self.rho
             self.model.P[k].setlb(lb)
             self.model.P[k].setub(ub)
+            self.model.P[k].set_value(1)
             self.model.P[k].unfix()
      
         return None
@@ -897,149 +799,221 @@ class EstimationPotential():
         
         return df_U_update
 
-def reduce_models(models_dict_provided,
-                  parameter_dict=None,
-                  method='reduced_hessian',
-                  simulation_data=None,
-                  ):
-    """Uses the EstimationPotential module to find out which parameters
-    can be estimated using each experiment and reduces the model
-    accordingly
+# def reduce_models(models_dict_provided,
+#                   parameter_dict=None,
+#                   method='reduced_hessian',
+#                   simulation_data=None,
+#                   ):
+#     """Uses the EstimationPotential module to find out which parameters
+#     can be estimated using each experiment and reduces the model
+#     accordingly
     
-    This can take a single model or a dict of models. It then proceeds to 
-    find the global set of estimable parameters as well. These are returned
-    in the parameter dict that contains the names of the global set, the
-    model specific parameter sets, and a dict of parameter initial values and
-    bounds that can be used in further methods.
+#     This can take a single model or a dict of models. It then proceeds to 
+#     find the global set of estimable parameters as well. These are returned
+#     in the parameter dict that contains the names of the global set, the
+#     model specific parameter sets, and a dict of parameter initial values and
+#     bounds that can be used in further methods.
+    
+#     Args:
+#         models_dict_provided (dict): model or dict of models
+        
+#         parameter_dict (dict): parameters and their initial values
+        
+#         method (str): model reduction method
+        
+#         simulation_data (pd.DataFrame): simulation data used for a warmstart
+        
+#     Returns:
+#         models_dict_reduced (dict): dict of reduced models
+        
+#         parameter_data (dict): parameter data that may be useful
+        
+#         Example:
+            
+#         {'names': ['Cfa', 'rho', 'ER', 'k', 'Tfc'],
+#          'esp_params_model': {'model_1': ['Cfa', 'Tfc', 'ER', 'rho', 'k']},
+#          'initial_values': {'Cfa': (2490.7798699208106, (0, 5000)),
+#           'rho': (1335.058139853457, (800, 2000)),
+#           'ER': (253.78019656674874, (0.0, 500)),
+#           'k': (2.4789686423018376, (0.0, 10)),
+#           'Tfc': (262.9381531048641, (250, 400))}}
+    
+#     """
+#     if not isinstance(models_dict_provided, dict):
+#         try:
+#             models_dict_provided = [models_dict_provided]
+#             models_dict_provided = {f'model_{i + 1}': model for i, model in enumerate(models_dict_provided)}
+#         except:
+#             raise ValueError('You passed something other than a model or a dict of models')
+    
+#     list_of_methods = ['reduced_hessian']
+    
+#     if method not in list_of_methods:
+#         raise ValueError(f'The model reduction method must be one of the following: {", ".join(list_of_methods)}')
+    
+#     if method == 'reduced_hessian':
+#         if parameter_dict is None:
+#             raise ValueError('The reduced Hessian parameter selection method requires initial parameter values')
+        
+#     models_dict = copy.deepcopy(models_dict_provided)
+#     parameters = parameter_dict
+    
+#     all_param = set()
+#     all_param.update(p for p in parameters.keys())
+    
+#     options = {
+#             'verbose' : True,
+#                     }
+    
+#     # Loop through to perform EP on each model
+#     params_est = {}
+#     results = {}
+#     reduced_model = {}
+#     set_of_est_params = set()
+#     for name, model in models_dict.items():
+        
+#         if method == 'reduced_hessian':
+#             print(f'Starting EP analysis of {name}')
+#             est_param = EstimationPotential(model, simulation_data=simulation_data, options=options)
+#             params_est[name], results[name], reduced_model[name] = est_param.estimate()
+#             #print(est_param.model.objective.expr.to_string())
+#     # Add model's estimable parameters to global set
+#     for param_set in params_est.values():
+#         set_of_est_params.update(param_set)
+    
+    
+#     mod = replace_non_estimable_parameters(reduced_model['model_1'], set_of_est_params)
+#     #mod = reduced_model['model_1']
+    
+#     return params_est, results, mod, set_of_est_params
+    
+    # models_dict_reduced = {}
+    
+    # # How does this look with MP?
+
+    # # Remove the non-estimable parameters from the odes
+    
+    # for key, model in reduced_model.items():
+    #     print(model)
+    #     update_set = set_of_est_params
+    
+def reduce_model(model, options=None, **kwargs):
+    """Reduces a single model using the reduced hessian parameter selection
+    method. It takes a pyomo ConcreteModel using P as the parameters to be fit
+    and K as the scaled parameter values.
     
     Args:
-        models_dict_provided (dict): model or dict of models
+        model (ConcreteModel): The full model to be reduced
         
-        parameter_dict (dict): parameters and their initial values
+        simulation_data (ResultsObject): simulation data for initialization
         
-        method (str): model reduction method
-        
-        simulation_data (pd.DataFrame): simulation data used for a warmstart
+        options (dict): defaults to None, for future option implementations
         
     Returns:
-        models_dict_reduced (dict): dict of reduced models
-        
-        parameter_data (dict): parameter data that may be useful
-        
-        Example:
-            
-        {'names': ['Cfa', 'rho', 'ER', 'k', 'Tfc'],
-         'esp_params_model': {'model_1': ['Cfa', 'Tfc', 'ER', 'rho', 'k']},
-         'initial_values': {'Cfa': (2490.7798699208106, (0, 5000)),
-          'rho': (1335.058139853457, (800, 2000)),
-          'ER': (253.78019656674874, (0.0, 500)),
-          'k': (2.4789686423018376, (0.0, 10)),
-          'Tfc': (262.9381531048641, (250, 400))}}
+        results (ResultsObject): returns the results from the parameter
+            selection and optimization
+        reduced_model (ConcreteModel): returns the reduced model with full
+            parameter set
     
     """
-    if not isinstance(models_dict_provided, dict):
-        try:
-            models_dict_provided = [models_dict_provided]
-            models_dict_provided = {f'model_{i + 1}': model for i, model in enumerate(models_dict_provided)}
-        except:
-            raise ValueError('You passed something other than a model or a dict of models')
+    simulation_data = kwargs.get('simulation_data', None)
+    replace = kwargs.get('replace', True)
+    no_scaling = kwargs.get('no_scaling', True)
     
-    list_of_methods = ['reduced_hessian']
-    
-    if method not in list_of_methods:
-        raise ValueError(f'The model reduction method must be one of the following: {", ".join(list_of_methods)}')
-    
-    if method == 'reduced_hessian':
-        if parameter_dict is None:
-            raise ValueError('The reduced Hessian parameter selection method requires initial parameter values')
+    if options is None:
+        options = {}
         
-    models_dict = copy.deepcopy(models_dict_provided)
-    parameters = parameter_dict
-    
-    all_param = set()
-    all_param.update(p for p in parameters.keys())
-    
-    options = {
-            'verbose' : True,
-                    }
-    
-    # Loop through to perform EP on each model
-    params_est = {}
-    results = {}
-    set_of_est_params = set()
-    for name, model in models_dict.items():
+    orig_bounds = {k: v.bounds for k, v in model.P.items()}
         
-        if method == 'reduced_hessian':
-            print(f'Starting EP analysis of {name}')
-            est_param = EstimationPotential(model, simulation_data=simulation_data, options=options)
-            params_est[name], results[name] = est_param.estimate()
-            #print(est_param.model.objective.expr.to_string())
-    # Add model's estimable parameters to global set
-    for param_set in params_est.values():
-        set_of_est_params.update(param_set)
+    est_param = EstimationPotential(model, simulation_data=None, options=options)
+    results, reduced_model = est_param.estimate()
     
-    models_dict_reduced = {}
+    if replace:
+        reduced_model = replace_non_estimable_parameters(reduced_model, results.estimable_parameters)
     
-    # How does this look with MP?
-
-    # Remove the non-estimable parameters from the odes
-    for key, model in models_dict.items():
-
-        update_set = set_of_est_params
-
-        for param in all_param.difference(update_set):   
-            parameter_to_change = param
-            if parameter_to_change in model.P.keys():
-   
-                change_value = [v[0] for p, v in parameters.items() if p == parameter_to_change][0]
-            
-                for k, v in model.odes.items(): 
-                    ep_updated_expr = _update_expression(v.body, model.P[parameter_to_change], change_value)
-                    model.odes[k] = ep_updated_expr == 0
+    if no_scaling:
+        remove_scaling(reduced_model, bounds=orig_bounds)
         
-                model.parameter_names.remove(param)
-                del model.P[param]
-    
-        models_dict_reduced[key] = model
+    return results, reduced_model
 
-    # Calculate initial values based on averages of EP output
-    initial_values = pd.DataFrame(np.zeros((len(models_dict), len(set_of_est_params))), index=models_dict.keys(), columns=list(set_of_est_params))
+def replace_non_estimable_parameters(model, set_of_est_params):
+    """Takes a model and a set of estimable parameters and removes the 
+    unestimable parameters from the model by fixing them to their current 
+    values in the model
+    
+    Args:
+        model (ConcreteModel): The full model to be reduced
+        
+        set_of_est_params (set): Parameters found to be estimable
+        
+    Returns:
+        model (ConcreteModel): The model with parameters replaced
+        
+    """
+    all_model_params = set([k for k in model.P.keys()])
+    params_to_change = all_model_params.difference(set_of_est_params)
+    
+    for param in params_to_change:   
+        if param in model.P.keys():
+            if hasattr(model, 'K'):
+                change_value = model.K[param].value
+            else:
+                change_value = model.P[param].value
+        
+            for k, v in model.odes.items():
+                ep_updated_expr = _update_expression(v.body, model.P[param], change_value)
+                if hasattr(model, 'K'):
+                    ep_updated_expr = _update_expression(ep_updated_expr, model.K[param], 1)
+                model.odes[k] = ep_updated_expr == 0
+    
+            model.parameter_names.remove(param)
+            del model.P[param]
+            if hasattr(model, 'K'):
+                del model.K[param]
 
-    for exp, param_data in params_est.items(): 
-        for param in param_data:
-            initial_values.loc[exp, param] = param_data[param]
-    
-    dividers = dict(zip(initial_values.columns, np.count_nonzero(initial_values, axis=0)))
-    
-    init_val_sum = initial_values.sum()
-    
-    for param in dividers.keys():
-        init_val_sum.loc[param] = init_val_sum.loc[param]/dividers[param]
-    
-    init_vals = init_val_sum.to_dict()
-    init_bounds = {p: parameters[p][1] for p in parameters.keys() if p in set_of_est_params}
-    
-    # Redeclare the d_init_guess values using the new values provided by EP
-    d_init_guess = {p: (init_vals[p], init_bounds[p]) for p in init_bounds.keys()}
-    
-    new_parameter_data = d_init_guess
-    new_initial_values = {k: v[0] for k, v in new_parameter_data.items()}
-    
-    # The parameter names need to be updated as well
-    parameter_names = list(new_initial_values.keys())
-    pe_dict = {k: list(v.keys()) for k, v in params_est.items()}
-    
-    for model in models_dict_reduced.values():
-        for param, value in model.K.items():
-            model.K[param].set_value(new_parameter_data[param][0])
-    
-    results_data = {
-        'reduced_model': models_dict_reduced,
-        'initial_values': new_parameter_data, 
-        'results': results,
-        }
+    return model
 
-    return results_data
+
+#%%
+    # # Calculate initial values based on averages of EP output
+    # initial_values = pd.DataFrame(np.zeros((len(models_dict), len(set_of_est_params))), index=models_dict.keys(), columns=list(set_of_est_params))
+
+    # for exp, param_data in params_est.items(): 
+    #     for param in param_data:
+    #         initial_values.loc[exp, param] = param_data[param]
+    
+    # dividers = dict(zip(initial_values.columns, np.count_nonzero(initial_values, axis=0)))
+    
+    # init_val_sum = initial_values.sum()
+    
+    # for param in dividers.keys():
+    #     init_val_sum.loc[param] = init_val_sum.loc[param]/dividers[param]
+    
+    # init_vals = init_val_sum.to_dict()
+    # init_bounds = {p: parameters[p][1] for p in parameters.keys() if p in set_of_est_params}
+    
+    # # Redeclare the d_init_guess values using the new values provided by EP
+    # d_init_guess = {p: (init_vals[p], init_bounds[p]) for p in init_bounds.keys()}
+    
+    # new_parameter_data = d_init_guess
+    # new_initial_values = {k: v[0] for k, v in new_parameter_data.items()}
+    
+    # # The parameter names need to be updated as well
+    # parameter_names = list(new_initial_values.keys())
+    # pe_dict = {k: list(v.keys()) for k, v in params_est.items()}
+    
+    # # The actual model is not being output -- change this
+    # for model in models_dict_reduced.values():
+    #     for param, value in model.K.items():
+    #         model.K[param].set_value(new_parameter_data[param][0])
+    
+    # results_data = {
+    #     'reduced_model': models_dict_reduced,
+    #     'initial_values': new_parameter_data, 
+    #     'results': results,
+    #     }
+
+    # return results_data
 
 
 def _update_expression(expr, replacement_param, change_value):

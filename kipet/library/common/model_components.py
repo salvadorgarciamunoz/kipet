@@ -178,6 +178,10 @@ class ParameterBlock():
     @property 
     def names(self):
         return [param for param in self.parameters]
+    
+    @property
+    def bounds(self):
+        return {p: self.parameters[p].bounds for p in self.parameters}
 
 
 class ModelParameter():

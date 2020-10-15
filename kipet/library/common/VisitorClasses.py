@@ -36,6 +36,13 @@ class ReplacementVisitor(EXPR.ExpressionReplacementVisitor):
                 return True, d
             else:
                 return True, node
+            
+        if node.is_parameter_type():
+            if id(node) == self._suspect:
+                d = self._replacement
+                return True, d
+            else:
+                return True, node
 
         return False, None
     

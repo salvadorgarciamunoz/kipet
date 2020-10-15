@@ -155,13 +155,20 @@ class PyomoSimulator(Simulator):
 
             self._default_initialization()
             
-            if hasattr(self.model, 'K'):
-                print('Scaling the parameters')
-                self.scale_parameters()
+            # if hasattr(self.model, 'K'):
+            #     print('Scaling the parameters')
+            #     self.scale_parameters()
             
         else:
             print('***WARNING: Model already discretized. Ignoring second discretization')
             
+    def scale_model(self):
+        if hasattr(self.model, 'K'):
+            print('Scaling the parameters')
+            self.scale_parameters()
+            
+        return None
+    
     def scale_parameters(self):
         """If scaling, this multiplies the constants in model.K to each
         parameter in model.P.
@@ -198,6 +205,9 @@ class PyomoSimulator(Simulator):
 
         if variable_name in ['X', 'dXdt', 'Z', 'dZdt']:
             raise NotImplementedError("Fixing state variables is not allowd. Only algebraics can be fixed")
+
+        print(trajectories)
+        print(variable_index)
 
         single_traj = trajectories[variable_index]
         sim_alltimes = sorted(self._alltimes)

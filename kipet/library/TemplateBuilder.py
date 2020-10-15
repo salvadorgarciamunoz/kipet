@@ -1,3 +1,6 @@
+"""TemplateBuilder - handles inputs for generating the Pyomo model"""
+
+# Standard library imports
 import copy
 import inspect
 import itertools
@@ -7,31 +10,18 @@ import six
 import sys
 import warnings
 
+# Third party imports
 import numpy as np
 import pandas as pd
 from pyomo.environ import *
 from pyomo.dae import *
 
+# KIPET library imports
 from kipet.library.common.scaling import scale_models
-
-try:
-    if sys.version_info.major > 3:
-        import importlib
-        importlib.util.find_spec("casadi")
-    else:
-        import imp
-        imp.find_module('casadi')
-
-    from kipet.library.CasadiModel import CasadiModel
-    from kipet.library.CasadiModel import KipetCasadiStruct
-    found_casadi = True
-
-except ImportError:
-    found_casadi = False
+from kipet.library.PyomoSimulator import PyomoSimulator
 
 logger = logging.getLogger('ModelBuilderLogger')
     
-
 class TemplateBuilder(object):
     """Helper class for creation of models.
 
@@ -126,9 +116,9 @@ class TemplateBuilder(object):
         self._all_state_data = list()
 
         #New for estimate initial conditions of complementary states CS:
-        self._estim_init = False
-        self._allinitcomponents=dict()
-        self._initextra_est_list = None
+        # self._estim_init = False
+        # self._allinitcomponents=dict()
+        # self._initextra_est_list = None
         
         # bounds and init for unwanted contributions KH.L
         self._qr_bounds = None
@@ -176,16 +166,16 @@ class TemplateBuilder(object):
         else:
             raise RuntimeError('concentrations must be an dictionary component_name:init_condition')
         
-         #For initial condition parameter estimates:
-        initextraparams = kwargs.pop('initextraparams', dict())
-        if isinstance(initextraparams, dict):
-            for k, v in initextraparams.items():
-                self._initextraparams[k] = v
-        elif isinstance(initextraparams, list):
-            for k in initextraparams:
-                self._initextraparams[k] = None
-        else:
-            raise RuntimeError('initextraparams must be a dictionary species_name:value or a list with species_names')
+        #  #For initial condition parameter estimates:
+        # initextraparams = kwargs.pop('initextraparams', dict())
+        # if isinstance(initextraparams, dict):
+        #     for k, v in initextraparams.items():
+        #         self._initextraparams[k] = v
+        # elif isinstance(initextraparams, list):
+        #     for k in initextraparams:
+        #         self._initextraparams[k] = None
+        # else:
+        #     raise RuntimeError('initextraparams must be a dictionary species_name:value or a list with species_names')
 
 
     def add_state_variance(self, sigma_dict):
@@ -374,10 +364,15 @@ class TemplateBuilder(object):
             ComponentBlockObject (ComponentBlock): Model components
         """
         sigma_dict = {}
+        known_dict = ComponentBlockObject.known_values
+        
+        self.template_component_data = ComponentBlockObject
         
         for component in ComponentBlockObject:
             if component.state == 'state':
                 state = 'complementary_states'
+            elif component.state == 'trajectory':
+                continue
             else:
                 state = component.state
             self._add_state_variable(component.name, component.init, data_type=state)
@@ -385,7 +380,7 @@ class TemplateBuilder(object):
             sigma_dict[component.name] = component.variance
             
         self._state_sigmas = sigma_dict
-
+        self._init_known = known_dict
 
     def add_mixture_component(self, *args):
         """Add a component (reactive or product) to the model.
@@ -495,10 +490,6 @@ class TemplateBuilder(object):
             None
 
         """
-        # print(data)
-        # print(data_type)
-        # print(label)
-        
         built_in_data_types = {
             'concentration' : 'Cm',
             'complementary_states' : 'U',
@@ -923,8 +914,6 @@ class TemplateBuilder(object):
                 except:
                     raise ValueError('A model requires a start and end time or a dataset')
             
-        print(start_time, end_time)
-            
         # Model
         pyomo_model = ConcreteModel()
 
@@ -1082,22 +1071,38 @@ class TemplateBuilder(object):
         pyomo_model.meas_times = Set(initialize=m_times, ordered=True)
         pyomo_model.feed_times = Set(initialize=feed_times, ordered=True)  # For inclusion of discrete feeds CS
         pyomo_model.meas_lambdas = Set(initialize=m_lambdas, ordered=True)
-        
         pyomo_model.alltime = ContinuousSet(initialize=pyomo_model.allmeas_times,
                                          bounds=(start_time, end_time)) #add for new data structure CS
-
-        # Parameters
-        
-        pyomo_model.init_conditions = Param(pyomo_model.states,
-                                            initialize=self._init_conditions,
-                                            mutable=True)
         pyomo_model.start_time = Param(initialize=start_time)
         pyomo_model.end_time = Param(initialize=end_time)
 
-        ######################################################################
-        # Variables
-        ######################################################################
+        # Initial conditions fixed or unknown
+        pyomo_model.init_conditions = Var(pyomo_model.states,
+                                          initialize=self._init_conditions,
+                                          )
+        unknown_init = {}
         
+        for var, obj in pyomo_model.init_conditions.items():
+            if self.template_component_data[var].known:
+                obj.fix()
+            else:
+                lb = self.template_component_data[var].bounds[0]
+                ub = self.template_component_data[var].bounds[1]
+                init = self.template_component_data[var].init
+                obj.setlb(lb)
+                obj.setub(ub)
+                unknown_init[var] = init
+        
+        if len(unknown_init) > 0:
+            pyomo_model._unknown_init_set = Set(initialize=list(unknown_init_conditions_initialization.keys()))
+            pyomo_model.Pinit = Var(pyomo_model._unknown_init_set,
+                                initialize=unknown_init)
+            
+            pyomo_model.del_component('P_all')    
+            pyomo_model.P_all = Set(initialize=pyomo_model.parameter_names | pyomo_model._unknown_init_set,
+                                 ordered=True)
+        
+        """Variables"""
         # Declaration and initialization of predicted concentrations and states
         
         model_pred_var_name = {
@@ -1162,12 +1167,7 @@ class TemplateBuilder(object):
                           #  print(f'initial values: {time}, {comp}')
                             getattr(pyomo_model, var)[time, comp].value = self._init_conditions[comp]
 
-        # End intialization for C and U
-        
-        
-        ######################################################################
-        # Parameters
-        ######################################################################
+        """Parameters"""
     
         p_dict = dict()
         for param, init_value in self._parameters.items():
@@ -1206,36 +1206,6 @@ class TemplateBuilder(object):
             pyomo_model.P[k].setlb(lb)
             pyomo_model.P[k].setub(ub)
 
-
-        if self._estim_init==True:#added for the estimation of initial conditions which have to be complementary state vars CS
-            pyomo_model.initparameter_names = Set(initialize=self._initextraest)
-            # pyomo_model.initparameter_names.pprint()
-            pyomo_model.add_component('initextraparams', Set(initialize=self._initextraest))
-            pinit_dict = dict()
-            for p, v in self._initextraparams.items():
-                if v is not None and v is not pd.DataFrame:
-                    pinit_dict[p] = v
-
-                # added for option of providing initial guesses CS:
-                elif p in self._initextraparams_init.keys():
-                    for p, l in self._initextraparams_init.items():
-                        pinit_dict[p] = l
-                else:
-                    for p, s in self._initextraparams_bounds.items():
-                        lb = s[0]
-                        ub = s[1]
-                        pinit_dict[p] = (ub - lb) / 2
-            pyomo_model.Pinit = Var(pyomo_model.initparameter_names,initialize=pinit_dict)
-
-            for k, v in self._initextraparams_bounds.items():
-                lb = v[0]
-                ub = v[1]
-                pyomo_model.Pinit[k].setlb(lb)
-                pyomo_model.Pinit[k].setub(ub)
-            for k in pyomo_model.initparameter_names:
-                pyomo_model.Pinit[k].fixed = True #Just added for bound etc functionalities, variable is init_conditions
-                # but Pinit is set to the value after solution of the parameter estimation problem CS
-
         #for optional smoothing parameters (CS):
         if isinstance(self._smoothparameters, dict) and self._smoothparam_data is not None:
             ps_dict = dict()
@@ -1253,8 +1223,6 @@ class TemplateBuilder(object):
 
             pyomo_model.Ps = Param(pyomo_model.alltime, pyomo_model.smoothparameter_names, initialize=ps_dict2, mutable=True, default=20.)#here just set to some value that is noc
 
-        
-        
         pyomo_model.Y = Var(pyomo_model.alltime,
                             pyomo_model.algebraics,
                             initialize=1.0)
@@ -1307,7 +1275,7 @@ class TemplateBuilder(object):
                                     bounds=(0, None),
                                     initialize=1)
         
-        # unwanted contributions: create variables qr and g KH.L
+        #unwanted contributions: create variables qr and g KH.L
         if self._qr_bounds is not None:
             qr_bounds = self._qr_bounds
         elif self._qr_bounds is None:
@@ -1319,7 +1287,6 @@ class TemplateBuilder(object):
             qr_init = 1.0
             
         pyomo_model.qr = Var(pyomo_model.alltime, bounds=qr_bounds, initialize=qr_init)
-        
         
         if self._g_bounds is not None:
             g_bounds = self._g_bounds
@@ -1333,7 +1300,6 @@ class TemplateBuilder(object):
             
         pyomo_model.g = Var(pyomo_model.meas_lambdas, bounds=g_bounds, initialize=g_init)
         
-        ####### Added for new add data CS:
         if self._huplc_data is not None and self._is_huplc_abs_set:
             self.set_huplc_absorbing_species(pyomo_model, self._huplc_absorbing, self._vol, self._solid_spec, check=False)
 
@@ -1346,23 +1312,30 @@ class TemplateBuilder(object):
             Dhat_bounds = (None, None)
         else:
             Dhat_bounds = (0.0, None)
-            
-
-        ###########
 
         # validate the model before writing constraints
         self._validate_data(pyomo_model, start_time, end_time)
 
         # add ode contraints to pyomo model
         def rule_init_conditions(m, k):
-            st = start_time
             if k in m.mixture_components:
-                return m.Z[st, k] == self._init_conditions[k]
+                return m.Z[m.start_time, k] - m.init_conditions[k] == 0
             else:
-                return m.X[st, k] == self._init_conditions[k]
+                return m.X[m.start_time, k] - m.init_conditions[k] == 0
 
         pyomo_model.init_conditions_c = \
             Constraint(pyomo_model.states, rule=rule_init_conditions)
+            
+        if hasattr(pyomo_model, 'Pinit'):
+            
+            def rule_Pinit_conditions(m, k):
+                if k in m.mixture_components:
+                    return m.Pinit[k] - m.init_conditions[k] == 0
+                else:
+                    return m.Pinit[k] - m.init_conditions[k] == 0
+    
+            pyomo_model.Pinit_conditions_c = \
+                Constraint(pyomo_model._unknown_init_set, rule=rule_Pinit_conditions)
 
         # the generation of the constraints is not efficient but not critical
         if self._odes:
@@ -1453,120 +1426,12 @@ class TemplateBuilder(object):
                                              check=False
                                              )
         
-        if self._estim_init:  #: in case of a second call after known_absorbing has been declared
-            self.set_estinit_extra_species(pyomo_model,
-                                           self._initextra_est_list,
-                                           check=False)
-
-
-        # k_vals = {k: v.value for k, v in pyomo_model.P.items()}
-        # if self._scale_parameters:
-        #     scale_models(pyomo_model, k_vals)
+        # if self._estim_init:  #: in case of a second call after known_absorbing has been declared
+        #     self.set_estinit_extra_species(pyomo_model,
+        #                                    self._initextra_est_list,
+        #                                    check=False)
 
         return pyomo_model
-
-    def create_casadi_model(self, start_time, end_time):
-        """Create a casadi model.
-
-        Casadi models are for simulation purposes mainly
-
-        Args:
-            start_time (float): initial time considered in the model
-
-            end_time (float): final time considered in the model
-
-        Returns:
-            CasadiModel
-
-        """
-        if found_casadi:
-            # Model
-            casadi_model = CasadiModel()
-
-            # Sets
-            casadi_model.mixture_components = copy.deepcopy(self._component_names)
-            casadi_model.parameter_names = self._parameters.keys()
-            casadi_model.complementary_states = copy.deepcopy(self._complementary_states)
-            casadi_model.states = casadi_model.mixture_components.union(casadi_model.complementary_states)
-            casadi_model.algebraics = self._algebraics
-
-            m_times = list()
-            m_lambdas = list()
-            if self._spectral_data is not None and self._absorption_data is not None:
-                raise RuntimeError('Either add absorption data or spectral data but not both')
-
-            if self._spectral_data is not None:
-                list_times = list(self._spectral_data.index)
-                list_lambdas = list(self._spectral_data.columns)
-                m_times = sorted(list_times)
-                m_lambdas = sorted(list_lambdas)
-            if self._absorption_data is not None:
-                if not self._meas_times:
-                    raise RuntimeError('Need to add measumerement times')
-                list_times = list(self._meas_times)
-                list_lambdas = list(self._absorption_data.index)
-                m_times = sorted(list_times)
-                m_lambdas = sorted(list_lambdas)
-
-            if m_times:
-                if m_times[0] < start_time:
-                    raise RuntimeError(
-                        'Measurement time {0} not within ({1},{2})'.format(m_times[0], start_time, end_time))
-                if m_times[-1] > end_time:
-                    raise RuntimeError(
-                        'Measurement time {0} not within ({1},{2})'.format(m_times[-1], start_time, end_time))
-
-            casadi_model.meas_times = m_times
-            casadi_model.allmeas_times = m_times
-            casadi_model.meas_lambdas = m_lambdas
-
-            # Variables
-            casadi_model.Z = KipetCasadiStruct('Z', list(casadi_model.mixture_components), dummy_index=True)
-            casadi_model.X = KipetCasadiStruct('X', list(casadi_model.complementary_states), dummy_index=True)
-            casadi_model.Y = KipetCasadiStruct('Y', list(casadi_model.algebraics), dummy_index=True)
-            casadi_model.P = KipetCasadiStruct('P', list(casadi_model.parameter_names))
-            casadi_model.C = KipetCasadiStruct('C', list(casadi_model.allmeas_times))
-            casadi_model.S = KipetCasadiStruct('S', list(casadi_model.meas_lambdas))
-
-            if self._parameters_bounds:
-                warnings.warn('Casadi_model do not take bounds on parameters. This is ignored in the integration')
-
-            # Parameters
-            casadi_model.init_conditions = self._init_conditions
-            casadi_model.start_time = start_time
-            casadi_model.end_time = end_time
-
-            if self._absorption_data is not None:
-                for l in casadi_model.meas_lambdas:
-                    for k in casadi_model.mixture_components:
-                        casadi_model.S[l, k] = float(self._absorption_data[k][l])
-
-            if self._spectral_data is not None:
-                casadi_model.D = dict()
-                for t in casadi_model.meas_times:
-                    for l in casadi_model.meas_lambdas:
-                        casadi_model.D[t, l] = float(self._spectral_data[l][t])
-
-            # Fixes parameters that were given numeric values
-            for p, v in self._parameters.items():
-                if v is not None:
-                    casadi_model.P[p] = v
-            # validate the model before writing constraints
-            self._validate_data(casadi_model, start_time, end_time)
-            # ignores the time indes t=0
-            if self._odes:
-                casadi_model.odes = self._odes(casadi_model, 0)
-                for k in casadi_model.states:
-                    if not k in casadi_model.odes.keys():
-                        raise RuntimeError('Missing ode expresion for component {}'.format(k))
-
-            if self._algebraic_constraints:
-                alg_const = self._algebraic_constraints(casadi_model, 0)
-                for c in alg_const:
-                    casadi_model.alg_exprs.append(c)
-            return casadi_model
-        else:
-            raise RuntimeError('Install casadi to create casadi models')
 
     @property
     def num_parameters(self):
@@ -1645,94 +1510,96 @@ class TemplateBuilder(object):
             model.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
             model.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
 
-    def set_estinit_extra_species(self, model, initextra_est_list, check=True):#added for the estimation of initial conditions which have to be complementary state vars CS
-        # type: (ConcreteModel, list, bool) -> None
-        """Sets the non absorbing component of the model.
+    # def set_estinit_extra_species(self, model, initextra_est_list, check=True):#added for the estimation of initial conditions which have to be complementary state vars CS
+    #     # type: (ConcreteModel, list, bool) -> None
+    #     """Sets the non absorbing component of the model.
 
-        Args:
-            initextra_est_list: List of to be estimated initial conditions of complementary state variables.
-            model: The corresponding model.
-            check: Safeguard against setting this up twice.
-        """
-        if hasattr(model, 'estim_init'):
-            print("To be estimated initial conditions of complementary state variables were already set up before.")
-            return
+    #     Args:
+    #         initextra_est_list: List of to be estimated initial conditions of complementary state variables.
+    #         model: The corresponding model.
+    #         check: Safeguard against setting this up twice.
+    #     """
+    #     if hasattr(model, 'estim_init'):
+    #         print("To be estimated initial conditions of complementary state variables were already set up before.")
+    #         return
 
-        if (self._initextra_est_list and check):
-            raise RuntimeError('To be estimated initial conditions of complementary state variables have been already set up.')
+    #     if (self._initextra_est_list and check):
+    #         raise RuntimeError('To be estimated initial conditions of complementary state variables have been already set up.')
 
-        self._initextraest = initextra_est_list
-        self._estim_init = True
-        model.estim_init=Param(initialize=self._estim_init)
+    #     self._initextraest = initextra_est_list
+    #     self._estim_init = True
+    #     model.estim_init=Param(initialize=self._estim_init)
+        
+    #     return None
 
-    def add_init_extra(self, *args, **kwds):#added for the estimation of initial conditions which have to be complementary state vars CS
-        """Add a kinetic parameter(s) to the model.
+    # def add_init_extra(self, *args, **kwds):#added for the estimation of initial conditions which have to be complementary state vars CS
+    #     """Add a kinetic parameter(s) to the model.
 
-        Note:
-            Plan to change this method add parameters as PYOMO variables
+    #     Note:
+    #         Plan to change this method add parameters as PYOMO variables
 
-            This method tries to mimic a template implementation. Depending
-            on the argument type it will behave differently
+    #         This method tries to mimic a template implementation. Depending
+    #         on the argument type it will behave differently
 
-        Args:
-            param1 (str): Species name. Creates a variable species
+    #     Args:
+    #         param1 (str): Species name. Creates a variable species
 
-            param1 (list): Species names. Creates a list of variable species
+    #         param1 (list): Species names. Creates a list of variable species
 
-            param1 (dict): Map species name(s) to value(s). Creates a fixed parameter(s)
+    #         param1 (dict): Map species name(s) to value(s). Creates a fixed parameter(s)
 
-        Returns:
-            None
+    #     Returns:
+    #         None
 
-        """
-        bounds = kwds.pop('bounds', None)
-        init = kwds.pop('init', None)
-        self._estim_init=True
+    #     """
+    #     bounds = kwds.pop('bounds', None)
+    #     init = kwds.pop('init', None)
+    #     self._estim_init=True
 
-        if len(args) == 1:
-            name = args[0]
-            if isinstance(name, six.string_types):
-                self._initextraparams[name] = None
-                if bounds is not None:
-                    self._initextraparams_bounds[name] = bounds
-                if init is not None:
-                    self._initextraparams_init[name] = init
-            elif isinstance(name, list) or isinstance(name, set):
-                if bounds is not None:
-                    if len(bounds) != len(name):
-                        raise RuntimeError('the list of bounds must be equal to the list of species')
-                for i, n in enumerate(name):
-                    self._initextraparams[n] = None
-                    if bounds is not None:
-                        self._initextraparams_bounds[n] = bounds[i]
-                    if init is not None:
-                        self._initextraparams_init[n] = init[i]
-            elif isinstance(name, dict):
-                if bounds is not None:
-                    if len(bounds) != len(name):
-                        raise RuntimeError('the list of bounds must be equal to the list of species')
-                for k, v in name.items():
-                    self._initextraparams[k] = v
-                    if bounds is not None:
-                        self._initextraparams_bounds[k] = bounds[k]
-                        print(bounds[k])
-                    if init is not None:
-                        self._initextraparams_init[k] = init[k]
-            else:
-                raise RuntimeError('Species data not supported. Try str')
-        elif len(args) == 2:
-            first = args[0]
-            second = args[1]
-            if isinstance(first, six.string_types):
-                self._initextraparams[first] = second
-                if bounds is not None:
-                    self._initextraparams_bounds[first] = bounds
-                if init is not None:
-                    self._initextraparams_init[first] = init
-            else:
-                raise RuntimeError('Species argument not supported. Try str,val')
-        else:
-            raise RuntimeError('Species argument not supported. Try str,val')
+    #     if len(args) == 1:
+    #         name = args[0]
+    #         if isinstance(name, six.string_types):
+    #             self._initextraparams[name] = None
+    #             if bounds is not None:
+    #                 self._initextraparams_bounds[name] = bounds
+    #             if init is not None:
+    #                 self._initextraparams_init[name] = init
+    #         elif isinstance(name, list) or isinstance(name, set):
+    #             if bounds is not None:
+    #                 if len(bounds) != len(name):
+    #                     raise RuntimeError('the list of bounds must be equal to the list of species')
+    #             for i, n in enumerate(name):
+    #                 self._initextraparams[n] = None
+    #                 if bounds is not None:
+    #                     self._initextraparams_bounds[n] = bounds[i]
+    #                 if init is not None:
+    #                     self._initextraparams_init[n] = init[i]
+    #         elif isinstance(name, dict):
+    #             if bounds is not None:
+    #                 if len(bounds) != len(name):
+    #                     raise RuntimeError('the list of bounds must be equal to the list of species')
+    #             for k, v in name.items():
+    #                 self._initextraparams[k] = v
+    #                 if bounds is not None:
+    #                     self._initextraparams_bounds[k] = bounds[k]
+    #                     print(bounds[k])
+    #                 if init is not None:
+    #                     self._initextraparams_init[k] = init[k]
+    #         else:
+    #             raise RuntimeError('Species data not supported. Try str')
+    #     elif len(args) == 2:
+    #         first = args[0]
+    #         second = args[1]
+    #         if isinstance(first, six.string_types):
+    #             self._initextraparams[first] = second
+    #             if bounds is not None:
+    #                 self._initextraparams_bounds[first] = bounds
+    #             if init is not None:
+    #                 self._initextraparams_init[first] = init
+    #         else:
+    #             raise RuntimeError('Species argument not supported. Try str,val')
+    #     else:
+    #         raise RuntimeError('Species argument not supported. Try str,val')
 
     def set_non_absorbing_species(self, model, non_abs_list, check=True):
         # type: (ConcreteModel, list, bool) -> None
