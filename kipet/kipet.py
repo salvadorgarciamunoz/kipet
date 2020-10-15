@@ -11,33 +11,42 @@ and perform the calculations as singles or MEE
 import collections
 import copy
 import pathlib
+import weakref
 
 # Third party imports
 import numpy as np
 import pandas as pd
+from pyomo.environ import Var
 
 # Kipet library imports
 import kipet.library.data_tools as data_tools
-from kipet.library.EstimationPotential import EstimationPotential, reduce_models
+from kipet.library.EstimationPotential import (
+    reduce_model,
+    replace_non_estimable_parameters,
+    )
 from kipet.library.FESimulator import FESimulator
+from kipet.library.MEE_new import MultipleExperimentsEstimator
 from kipet.library.ParameterEstimator import ParameterEstimator
 from kipet.library.PyomoSimulator import PyomoSimulator
 from kipet.library.TemplateBuilder import TemplateBuilder
 from kipet.library.VarianceEstimator import VarianceEstimator
-from kipet.library.MEE_new import MultipleExperimentsEstimator
 
-from kipet.library.DataHandler import DataBlock, DataSet
-from kipet.library.common.model_components import ParameterBlock, ComponentBlock
-from kipet.library.common.read_write_tools import set_directory
-from kipet.library.common.scaling import scale_models
-from kipet.library.mixins.TopLevelMixins import WavelengthSelectionMixins
 from kipet.library.common.pre_process_tools import decrease_wavelengths
+from kipet.library.common.read_write_tools import set_directory
+from kipet.library.post_model_build.scaling import scale_models
+
+from kipet.library.mixins.TopLevelMixins import WavelengthSelectionMixins
+
+from kipet.library.top_level.datahandler import DataBlock, DataSet
+from kipet.library.top_level.helper import DosingPoint
+from kipet.library.top_level.model_components import ParameterBlock, ComponentBlock
+from kipet.library.top_level.settings import Settings
 
 DEFAULT_DIR = 'data_sets'
 
-class KipetModelBlock():
+class KipetModel():
     
-    """This will hold a dict of KipetModel instances
+    """This will hold a dict of ReactionModel instances
     
     It is not necessary unless many different methods are needed for the 
     underlying KipetModel instances
@@ -47,7 +56,7 @@ class KipetModelBlock():
         
         self.models = {}
         self.settings = Settings(category='block')
-        self.variances = {}
+        #self.variances = {}
         self.no_variances_provided = False
         self.results = {}
         
@@ -57,7 +66,7 @@ class KipetModelBlock():
          
     def __str__(self):
         
-        block_str = "KipetModelBlock - for multiple KipetModels\n\n"
+        block_str = "KipetModel\n\n"
         
         for name, model in self.models.items():
             block_str += f'{name}\tDatasets: {len(model.datasets)}\n'
@@ -84,68 +93,103 @@ class KipetModelBlock():
     
     def add_model(self, model):
         
-        if isinstance(model, KipetModel):
+        if isinstance(model, ReactionModel):
             self.models[model.name] = model
         else:
-            raise ValueError('KipetModelBlock can only add KipetModel instances.')
+            raise ValueError('KipetModel can only add ReactionModel instances.')
             
         return None
     
-    def new_reaction(self, name):
+    @staticmethod
+    def add_noise_to_data(data, noise):
+        """Wrapper for adding noise to data after data has been added to
+        the specific ReactionModel
         
-        self.models[name] = KipetModel(name=name)
+        """
+        return data_tools.add_noise_to_signal(data, noise)       
+    
+    def new_reaction(self, name, model_to_clone=None, items_not_copied=None):
+        
+        """New reactions can be added to KIPET using this function
+        
+        Args:
+            name (str): The name of the model/experiment used in all references
+                made to it in KIPET, especially in python dicts
+            model_to_clone (ReactionModel): You can copy an existing ReactionModel by
+                adding it here
+            items_not_copied (list): This is a list of strings for the various
+                attributes in the ReactionModel that should not be copied
+                example: ['datasets'] ==> does not copy the dataset into the 
+                new model
+                
+        Returns:
+            self.models[name] (ReactionModel): This is the newly created
+                ReactionModel instance
+                
+        """
+        if model_to_clone is None:
+        
+            self.models[name] = ReactionModel(name=name)
+            self.models[name].settings.general.data_directory = self.settings.general.data_directory
+        
+        else:
+            if isinstance(model_to_clone, ReactionModel):
+                kwargs = {}
+                kwargs['name'] = name
+                if items_not_copied is not None:
+                    if isinstance(items_not_copied, str):
+                        items_not_copied = [items_not_copied]
+                    if isinstance(items_not_copied, list):
+                        for item in items_not_copied:
+                            kwargs[item] = False
+                self.models[name] = model_to_clone.clone(**kwargs)             
+            else:
+                raise ValueError('KipetModel can only add ReactionModel instances.')
         
         return self.models[name]
     
     def add_reaction(self, kipet_model_instance):
     
-        if isinstance(model, KipetModel):
+        if isinstance(model, ReactionModel):
             self.models[model.name] = model
+            self.models[model.name].settings.general.data_directory = self.settings.general.data_directory
         else:
-            raise ValueError('KipetModelBlock can only add KipetModel instances.')
-            
+            raise ValueError('KipetModel can only add ReactionModel instances.')
+
         return None
     
     def create_multiple_experiments_estimator(self, *args, **kwargs):
         """A quick wrapper for MEE without big changes
         
         """
-        variances = kwargs.pop('variances', None)
+        #variances = kwargs.pop('variances', None)
         
-        self.variances_provided = True
-        if variances is None or len(variances) == 0:
-            self.variances_provided = False
+        # self.variances_provided = True
+        # if variances is None or len(variances) == 0:
+        #     self.variances_provided = False
         
         if 'spectral' in self.data_types:
             self.settings.parameter_estimator.spectra_problem = True
         else:
             self.settings.parameter_estimator.spectra_problem = False    
-        
-        self.datasets = {}
-        self.start_time = {}
-        self.end_time = {}
-        self.builders = {}
-        self.variances = {}
+            
+        # self.variances = {}
 
         for name, model in self.models.items():
-            
             model.settings.collocation = self.settings.collocation
             model.populate_template()
             
             for dataset in model.datasets:
                 if self.settings.general.use_wavelength_subset:
-                    freq = self.settings.general.freq_wavelength_subset
-                    self.datasets[name] = decrease_wavelengths(dataset.data, freq)
-                    model.datasets[dataset.name].data = self.datasets[name]
-                else:
-                    self.datasets[name] = dataset.data
-                self.start_time[name] = dataset.time_span[0]
-                self.end_time[name] = dataset.time_span[1]
-                self.builders[name] = model.builder
-                if variances is not None:
-                    self.variances[name] = variances
+                    if model.datasets[dataset.name].category == 'spectral':
+                        freq = self.settings.general.freq_wavelength_subset
+                        model.datasets[dataset.name].data = decrease_wavelengths(dataset.data, freq)
+               
+                # if variances is not None:
+                #     self.variances[name] = variances
                 
-        self.mee = MultipleExperimentsEstimator(self.datasets)
+        self.mee = MultipleExperimentsEstimator(self.models)
+        self.mee.spectra_problem = self.settings.parameter_estimator.spectra_problem
         
     def run_opt(self, *args, **kwargs):
         
@@ -170,10 +214,10 @@ class KipetModelBlock():
         """
         run_full_model = kwargs.get('multiple_experiments', True)
         
-        if not self.variances_provided:
-            self.calculate_variances()
-        else:
-            self.mee.variances = self.variances
+        #if not self.variances_provided:
+        self.calculate_variances()
+        #else:
+        #    self.mee.variances = self.variances
         self.calculate_parameters()
         
         if run_full_model:
@@ -182,27 +226,32 @@ class KipetModelBlock():
         return None
         
     def calculate_variances(self):
-        """Uses the KipetModel framework to calculate variances instead of 
+        """Uses the ReactionModel framework to calculate variances instead of 
         repeating this in the MEE
         
         """
         variance_dict = {}
+        self.mee.variances = {}
         
         for model in self.models.values():
             
-            model.create_variance_estimator(**self.settings.collocation)
-            model.run_ve_opt()
-            variance_dict[model.name] = model.results_dict['v_estimator']
+            if len(model.variances) == 0:
+                model.create_variance_estimator(**self.settings.collocation)
+                model.run_ve_opt()
+                variance_dict[model.name] = model.results_dict['v_estimator'].sigma_sq
+                self.mee.variances[model.name] = variance_dict[model.name]
+            else:
+                variance_dict[model.name] = model.variances
+                self.mee.variances[model.name] = variance_dict[model.name]
         
         self.results_variances = variance_dict
         self.mee._variance_solved = True
         self.mee.variance_results = variance_dict
-        self.mee.variances = {k: v.sigma_sq for k, v in variance_dict.items()}
         self.mee.opt_model = {k: v.model for k, v in self.models.items()}
         return variance_dict
     
     def calculate_parameters(self):
-        """Uses the KipetModel framework to calculate parameters instead of 
+        """Uses the ReactionModel framework to calculate parameters instead of 
         repeating this in the MEE
         
         """
@@ -213,12 +262,13 @@ class KipetModelBlock():
             
             settings_run_pe_opt = model.settings.parameter_estimator
             settings_run_pe_opt['solver_opts'] = model.settings.solver
-            if self.variances_provided:
-                settings_run_pe_opt['variances'] = self.variances[model.name]
-            else:
-                settings_run_pe_opt['variances'] = self.results_variances[model.name].sigma_sq
-            
+            settings_run_pe_opt['variances'] = self.results_variances[model.name]
             model.create_parameter_estimator(**self.settings.collocation)
+            # if model.settings.parameter_estimator.G_contribution is not None:
+            #     model._unwated_G_initialization(model.p_model)
+            
+            # print(model.settings.parameter_estimator)
+                
             model.run_pe_opt(**settings_run_pe_opt)
             parameter_dict[model.name] = model.results_dict['p_estimator']
             parameter_estimator_model_dict[model.name] = model.p_estimator
@@ -307,261 +357,7 @@ class KipetModelBlock():
             model.results.plot(*args, **kwargs)
         
     
-class AttrDict(dict):
-
-    "This class lets you use nested dicts like accessing attributes"
-    
-    def __init__(self, *args, **kwargs):
-        self.update(*args, **kwargs)
-    
-    def __getattr__(self, name):
-        try:
-            return self[name]
-        except KeyError:
-            raise AttributeError(name)
-
-    def __setitem__(self, key, item):
-        
-        if isinstance(item, dict):
-            return super(AttrDict, self).__setitem__(key, AttrDict(item))
-        else:
-            return dict.__setitem__(self, key, item)
-
-    def update(self, *args, **kwargs):
-        for k, v in dict(*args, **kwargs).items():
-            self[k] = v
-
-    __setattr__ = dict.__setitem__
-    __delattr__ = dict.__delitem__
-
-        
-class Settings():
-    
-    """This is a container for all of the options that can be used in Kipet
-    Since it can be confusing due to the large number of options, this should
-    make it easier for the user to see everything in one spot.
-    
-    """
-    def __init__(self, category='model'):
-        
-        self.general = AttrDict()
-        self.variance_estimator = AttrDict()
-        self.parameter_estimator = AttrDict()
-        self.collocation = AttrDict()
-        self.solver = AttrDict()
-        
-        # Initialize to the defaults (can be used at anytime)
-        
-        if category == 'model':
-            self.reset_model()
-        else:
-            self.reset_block()
-        
-    def __str__(self):
-        
-        m = 25
-          
-        settings = 'Settings\n\n'
-        
-        if hasattr(self, 'general'):
-            settings += 'General Settings:\n'
-            for k, v in self.general.items():
-                settings += f'{str(k).rjust(m)} : {v}\n'
-        
-        if hasattr(self, 'collocation'):
-            settings += '\nCollocation Settings:\n'
-            for k, v in self.collocation.items():
-                settings += f'{str(k).rjust(m)} : {v}\n'
-            
-        if hasattr(self, 'simulator'):
-            settings += '\nSimulation Settings:\n'
-            for k, v in self.simulator.items():
-                settings += f'{str(k).rjust(m)} : {v}\n'
-            
-        if hasattr(self, 'variance_estimator'):
-            settings += '\nVarianceEstimator Settings:\n'
-            for k, v in self.variance_estimator.items():
-                settings += f'{str(k).rjust(m)} : {v}\n'
-    
-        if hasattr(self, 'parameter_estimator'):
-            settings += '\nParameterEstimator Settings:\n'
-            for k, v in self.parameter_estimator.items():
-                settings += f'{str(k).rjust(m)} : {v}\n'
-        
-        if hasattr(self, 'solver'):
-            settings += '\nSolver Settings:\n'
-            for k, v in self.solver.items():
-                settings += f'{str(k).rjust(m)} : {v}\n'
-        
-        return settings
-        
-    def __repr__(self):
-        return self.__str__()
-    
-    def reset_model(self, specific_settings=None):
-        """Initializes the settings dicts to their default values"""
-        
-        general = {'scale_variances': False,
-                   # If true, PE is intialized with VE results
-                   'initialize_pe' : True,
-                    # If true, PE is scaled with VE results
-                   'scale_pe' : True,
-                   'scale_parameters' : False,
-                   'simulation_times': None,
-                   'no_user_scaling': False,
-                   #'data_directory': pathlib.Path(__file__).resolve().parent.joinpath('new_examples','data_sets'),
-            }
-        
-        collocation = {'method': 'dae.collocation',
-                       'ncp': 3,
-                       'nfe': 50,
-                       'scheme': 'LAGRANGE-RADAU',
-            }
-        
-        sim_opt = {'solver': 'ipopt',
-                   'method': 'dae.collocation',
-                   'tee': False,
-                   'solver_opts': AttrDict(),
-            }
-        
-        ve_opt = { 'solver': 'ipopt',
-                   'tee': True,
-                   'solver_opts': AttrDict(),
-                   'tolerance': 1e-5,
-                   'max_iter': 15,
-                   'method': 'originalchenetal',
-                   'use_subset_lambdas': False,
-                   'freq_subset_lambdas': 4,
-                   'secant_point': 1e-11,
-                   'initial_sigmas': 1e-10,
-                   'max_device_variance': False,
-                   'use_delta': False,
-                   'delta': 1e-07,
-                   'individual_species' : False,
-                   'fixed_device_variance': None,
-                   'device_range': None,
-                   'best_accuracy': None,
-                   'num_points': None,
-                   'with_plots': False,
-            }
-    
-        pe_opt = { 'solver': 'ipopt',
-                   'tee': True,
-                   'solver_opts': AttrDict(),
-                   'covariance': False,
-                   'with_d_vars': False,
-                   'symbolic_solver_labels': False,
-                   'estimability': False,
-                   'report_time': False,
-                   'model_variance': True,
-                   'inputs': None,
-                   'inputs_sub': None,
-                   'trajectories': None,
-                   'fixedtraj': False,
-                   'fixedy': False,
-                   'yfix': None,
-                   'yfixtraj': None,
-                   'jump': False,
-                   'jump_states': None,
-                   'jump_times': None,
-                   'feed_times': None,       
-                   'G_contribution': None,
-                   'St': dict(),
-                   'Z_in': dict(),      
-            }
-    
-        solver = {'nlp_scaling_method': 'gradient-based',
-                  'linear_solver': 'ma57',
-            }
-    
-        self.collocation = AttrDict(collocation)
-        self.simulator = AttrDict(sim_opt)
-        self.general = AttrDict(general)
-        self.variance_estimator = AttrDict(ve_opt)
-        self.parameter_estimator = AttrDict(pe_opt)
-        self.solver = AttrDict(solver)
-        
-        return None
-    
-    def reset_block(self, specific_settings=None):
-        """Initializes the settings dicts to their default values"""
-        
-        general = {'scale_variances': False,
-                   # If true, PE is intialized with VE results
-                   'initialize_pe' : True,
-                    # If true, PE is scaled with VE results
-                   'scale_pe' : True,
-                   'scale_parameters' : False,
-                   'simulation_times': None,
-                   'no_user_scaling': False,
-                   'use_wavelength_subset': True,
-                   'freq_wavelength_subset': 2,
-                   'data_directory': 'data_sets',
-            }
-        
-        collocation = {'method': 'dae.collocation',
-                       'ncp': 3,
-                       'nfe': 50,
-                       'scheme': 'LAGRANGE-RADAU',
-            }
-    
-        v_estimator = {'solver': 'ipopt',
-                       'solver_opts': AttrDict(),
-                       'tee': False,
-                       'norm_order': np.inf,
-                       'max_iter': 400,
-                       'tol': 5e-05,
-                       'subset_lambdas': None,
-                       'lsq_ipopt': False,
-                       'init_C': None,
-                       'start_time': {},
-                       'end_time': {},
-                       }
-    
-        
-        p_estimator = {'solver': 'ipopt',
-                       'solver_opts': AttrDict(),
-                       'tee': False,
-                       'subset_lambdas': None,
-                       'start_time': {},
-                       'end_time': {},
-                       'sigma_sq': {},
-                       'spectra_problem': True,
-                       'scaled_variance': False,
-                       }
-    
-        solver = {#'nlp_scaling_method': 'gradient-based',
-                  'linear_solver': 'ma57',
-            }
-    
-        self.collocation = AttrDict(collocation)
-        self.general = AttrDict(general)
-        self.parameter_estimator = AttrDict(p_estimator)
-        self.variance_estimator = AttrDict(v_estimator)
-        self.solver = AttrDict(solver)
-        
-        return None
-        
-class DosingPoint():
-    """Small class to handle the dosing points in a cleaner manner"""
-    
-    def __init__(self, component, time, step):
-        
-        self.component = component
-        self.time = time
-        self.step = step
-    
-    def __repr__(self):
-        return f'{self.component}: {self.time}, {self.step}'
-    
-    def __str__(self):
-        return self.__repr__()
-    
-    @property
-    def as_list(self):
-        return [self.component, self.time, self.step]
-    
-class KipetModel(WavelengthSelectionMixins):
+class ReactionModel(WavelengthSelectionMixins):
     
     """This should consolidate all of the Kipet classes into a single class to
     enable a simpler framework for using the software. 
@@ -580,6 +376,8 @@ class KipetModel(WavelengthSelectionMixins):
         self.settings = Settings(category='model')
         self.algebraic_variables = []
         
+        self.variances = {}
+        
         self.odes = None
         self.algs = None
         
@@ -596,7 +394,7 @@ class KipetModel(WavelengthSelectionMixins):
         
         m = 20
         
-        kipet_str = f'KipetTemplate Object {self.name}:\n\n'
+        kipet_str = f'ReactionModel Object {self.name}:\n\n'
         kipet_str += f'{"ODEs".rjust(m)} : {hasattr(self, "odes") and getattr(self, "odes") is not None}\n'
         kipet_str += f'{"Algebraics".rjust(m)} : {hasattr(self, "odes") and getattr(self, "odes") is not None}\n'
         kipet_str += f'{"Model".rjust(m)} : {hasattr(self, "model") and getattr(self, "model") is not None}\n'
@@ -612,10 +410,22 @@ class KipetModel(WavelengthSelectionMixins):
     def __str__(self):
         return self.__repr__()
     
-    def test_wrapper(self, *args, **kwargs):
-        self.builder.add_qr_bounds_init(bounds = (0,None),init = 1.0)
-        self.builder.add_g_bounds_init(bounds = (0,None))
+    def _unwanted_G_initialization(self, *args, **kwargs):
+        """Prepare the ParameterEstimator model for unwanted G contributions
         
+        """
+        self.builder.add_qr_bounds_init(bounds=(0,None),init=1.1)
+        self.builder.add_g_bounds_init(bounds=(0,None))
+        
+        # qr_bounds = kwargs.pop('qr_bounds', None)
+        # qr_init = kwargs.pop('qr_init', 1.0)
+        # g_bounds = kwargs.pop('g_bounds', None)
+        # g_init = kwargs.pop('g_init', 0.1)
+        
+        # model.qr = Var(model.alltime, bounds=qr_bounds, initialize=qr_init)
+        # model.g = Var(model.meas_lambdas, bounds=g_bounds, initialize=g_init)
+        
+        return None
     
     def add_dosing_point(self, component, time, step):
         """Add a dosing point or several (check template for how this is handled)
@@ -626,7 +436,7 @@ class KipetModel(WavelengthSelectionMixins):
                            }
         
         if self.dosing_var is None:
-            raise AttributeError('KipetModel needs a designated algebraic variable for dosing')
+            raise AttributeError('ReactionModel needs a designated algebraic variable for dosing')
         
         if component not in self.components.names:
             raise ValueError('Invalid component name')
@@ -647,6 +457,8 @@ class KipetModel(WavelengthSelectionMixins):
         
     def set_dosing_var(self, var):
         
+        """Check when multiple dosing vars are needed"""
+        
         # if not isinstance(var, list):
         #     var = [var]
         
@@ -666,7 +478,7 @@ class KipetModel(WavelengthSelectionMixins):
         return None
     
     def clone(self, *args, **kwargs):
-        """Makes a copy of the KipetModel and removes the data. This is done
+        """Makes a copy of the ReactionModel and removes the data. This is done
         to reuse the model, components, and parameters in an easier manner
         
         """
@@ -772,11 +584,74 @@ class KipetModel(WavelengthSelectionMixins):
             None
             
         """
-        self.datasets.add_dataset(*args, **kwargs)
+        name = kwargs.get('name', None)
+        filename = kwargs.get('file', None)
+        data = kwargs.get('data', None)
+        category = kwargs.get('category', None)
+        
+        if len(self.components) > 0:
+        
+            if category != 'spectral':    
+                if filename is not None:
+                    filename = self.set_directory(filename)
+                    kwargs['file'] = filename
+                    data = data_tools.read_file(filename)
+            
+                concentration_data_labels = []
+                state_data_labels = []
+                traj_data_labels = []
+
+        # Change how trajectory category is handled - this should not be so complicated here
+
+            if data is not None:
+                for col in data.columns:
+                    if col in self.components.names:
+                        if self.components[col].state == 'concentration':
+                            concentration_data_labels.append(col)
+                        elif self.components[col].state == 'state':
+                            state_data_labels.append(col)
+                        elif self.components[col].state == 'trajectory':
+                            traj_data_labels.append(col)
+                
+                if len(concentration_data_labels) > 0:
+                    conc_data = data.loc[:, concentration_data_labels]
+                    if name is None:
+                        name = 'C_data'
+                    self.datasets.add_dataset(name, category='concentration', data=conc_data)
+            
+                if len(state_data_labels) > 0:
+                    state_data = data.loc[:, state_data_labels]
+                    if name is None:
+                        name = 'U_data'
+                    self.datasets.add_dataset(name, category='state', data=state_data)
+                    
+                if len(traj_data_labels) > 0:
+                    traj_data = data.loc[:, traj_data_labels]
+                    if name is None:
+                        name = 'Traj'
+                    self.datasets.add_dataset(name, category='trajectory', data=traj_data)
+            
+            elif filename is not None and category == 'spectral':
+                filename = self.set_directory(filename)
+                data = data_tools.read_file(filename)
+                if name is None:
+                        name = 'D_data'
+                self.datasets.add_dataset(name, category=category, data=data)
+            
+            # elif filename is None and data is not None:
+            #     self.datasets.add_dataset(f'D_data', category=category, data=data)
+            
+                
+        
+            else:
+                raise ValueError('Unknown data category')
+            
+        else:
+            raise AttributeError('Please add components to model before adding data')
         
         remove_negatives = kwargs.get('remove_negatives', False)
         if remove_negatives:
-            self.datasets[args[0]].remove_negatives()
+            self.datasets[name].remove_negatives()
         
         return None
     
@@ -796,12 +671,11 @@ class KipetModel(WavelengthSelectionMixins):
         self.settings.general.simulation_times = (start_time, end_time)
         return None
     
-    def set_directory(self, filename, directory=DEFAULT_DIR):
+    def set_directory(self, filename):
         """Wrapper for the set_directory method. This replaces the awkward way
         of ensuring the correct directory for the data is used."""
 
-        #self.data_directory = self.settings.general.data_directory.joinpath(filename)
-        #set_directory(filename, directory)
+        directory = self.settings.general.data_directory
         return set_directory(filename, directory)
     
     def get_directory(self, directory=DEFAULT_DIR):
@@ -860,13 +734,13 @@ class KipetModel(WavelengthSelectionMixins):
         if self._has_dosing_points:
             self._add_feed_times()
         
+        if self.settings.parameter_estimator.G_contribution is not None:
+            self._unwanted_G_initialization()
+        
         start_time, end_time = None, None
         if self.settings.general.simulation_times is not None:
             start_time, end_time = self.settings.general.simulation_times
-            
-        # if self.settings.general.scale_parameters:
-        #     self.builder.set_parameter_scaling(True)
-        
+       
         return start_time, end_time
         
     def create_pyomo_model(self, *args, **kwargs):
@@ -885,9 +759,6 @@ class KipetModel(WavelengthSelectionMixins):
             del self.model
             
         start_time, end_time = self.populate_template(*args, **kwargs)
-            
-        print(start_time, end_time)
-        
         self.model = self.builder.create_pyomo_model(start_time, end_time)
         
         if self._has_non_absorbing_species:
@@ -895,7 +766,6 @@ class KipetModel(WavelengthSelectionMixins):
         
         if hasattr(self,'fixed_params') and len(self.fixed_params) > 0:
             for param in self.fixed_params:
-                print(param)
                 self.model.P[param].fix()
             
         return None
@@ -1078,8 +948,6 @@ class KipetModel(WavelengthSelectionMixins):
             worst_case_device_var = self.v_estimator.solve_max_device_variance(**kwargs)
             kwargs['device_range'] = (self.settings.variance_estimator.best_accuracy, worst_case_device_var)
             
-        print(kwargs)
-            
         self._run_opt('v_estimator', *args, **kwargs)
         
         return None
@@ -1160,11 +1028,18 @@ class KipetModel(WavelengthSelectionMixins):
                 
         elif not has_all_variances and not has_spectral_data:
             for comp in self.components:
-                comp.variance = 1
+                try:
+                    comp.variance = self.variances[comp.name]
+                except:
+                    print('No variance information for {come.name} found, setting equal to unity')
+                    comp.variance = 1
                 
         # Create ParameterEstimator
         self.create_estimator(estimator='p_estimator', **self.settings.collocation)
+        #if self.settings.parameter_estimator.G_contribution is not None:
+            #self._unwanted_G_initialization(self.p_model)
         variances = self.components.variances
+        self.variances = variances
         
         # If variance calculated using VarianceEstimator, initialize PE isntance
         if 'v_estimator' in self.results_dict:
@@ -1172,20 +1047,20 @@ class KipetModel(WavelengthSelectionMixins):
                 self.initialize_from_variance_trajectory()
             if self.settings.general['scale_pe']:
                 self.scale_variables_from_variance_trajectory()
-            variances = self.results_dict['v_estimator'].sigma_sq
+            self.variances = self.results_dict['v_estimator'].sigma_sq
         
         elif self.settings.variance_estimator.max_device_variance:
-            variances = max_device_variance
+            self.variances = max_device_variance
         
         # elif variances_with_delta is not None: 
         #     variances = variances_with_delta
             
         if self.settings.general['scale_variances']:
-            variances = self._scale_variances(variances)
+            self.variances = self._scale_variances(variances)
         
         settings_run_pe_opt = self.settings.parameter_estimator
         settings_run_pe_opt['solver_opts'] = self.settings.solver
-        settings_run_pe_opt['variances'] = variances
+        settings_run_pe_opt['variances'] = self.variances
         
         self.run_pe_opt(**settings_run_pe_opt)
         self.results = self.results_dict['p_estimator']
@@ -1203,7 +1078,7 @@ class KipetModel(WavelengthSelectionMixins):
         """Runs the respective optimization for the estimator"""
         
         if not hasattr(self, estimator):
-            raise AttributeError(f'KipetModel has no attribute {estimator}')
+            raise AttributeError(f'ReactionModel has no attribute {estimator}')
             
         self.results_dict[estimator] = getattr(self, estimator).run_opt(*args, **kwargs)
         return self.results_dict[estimator]
@@ -1275,25 +1150,42 @@ class KipetModel(WavelengthSelectionMixins):
     def scale(self):
         """Scale the model"""
         
-        k_vals = {k: v.value for k, v in self.model.P.items()}
-        scale_models(self.model, k_vals)
+        parameter_dict = self.parameters.as_dict(bounds=False)    
+        scaled_parameter_dict, scaled_models_dict = scale_models(self.model,
+                                                                 parameter_dict,
+                                                                 name=self.name,
+                                                                 )         
+        return scaled_parameter_dict, scaled_models_dict
     
-    def reduce_model(self):
+    def reduce_model(self, **kwargs):
         """This calls the reduce_models method in the EstimationPotential
         module to reduce the model based on the reduced hessian parameter
-        selection method. 
+        selection method.
+        
+        Args:
+            kwargs:
+                replace (bool): defaults to True, option to replace the
+                    parameters deemed unestimable from the model with constants
+                no_scaling (bool): defaults to True, removes the scaling
+                    constants from the model and restores the parameter values
+                    and their bounds.
+                    
+        Returns:
+            results (ResultsObject): A standard results object with the reduced
+                model results
+        
         """
+        if self.model is None:
+            self.create_pyomo_model()
+        
         parameter_dict = self.parameters.as_dict(bounds=True)
-
-        results_dict = reduce_models(self.model,
-                                     parameter_dict=parameter_dict,
-                                    )
+        results, reduced_model = reduce_model(self.model, **kwargs)
         
-        self.reduced_model = results_dict['reduced_model']['model_1']
+        self.reduced_model = reduced_model
         self.using_reduced_model = True
-        self.reduced_model_results = results_dict['results']['model_1']
+        self.reduced_model_results = results
         
-        return results_dict['results']['model_1']
+        return results
     
     def set_non_absorbing_species(self, non_abs_list):
         """Wrapper for set_non_absorbing_species in TemplateBuilder"""
@@ -1302,9 +1194,12 @@ class KipetModel(WavelengthSelectionMixins):
         self.non_abs_list = non_abs_list
         return None
         
-    @staticmethod
-    def add_noise_to_data(var, noise):
-        """Wrapper for adding noise to data"""
+    def add_noise_to_data(self, var, noise, overwrite=False):
+        """Wrapper for adding noise to data after data has been added to
+        the specific ReactionModel
         
-        return data_tools.add_noise_to_signal(var, noise)        
-            
+        """
+        dataframe = self.datasets[var].data
+        if overwrite:
+            self.datasets[var].data = dataframe
+        return data_tools.add_noise_to_signal(dataframe, noise)        
