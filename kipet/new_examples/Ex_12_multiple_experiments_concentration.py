@@ -56,10 +56,6 @@ if __name__ == "__main__":
     
     # Add the dataset for the second model
     r2.add_dataset(data=noised_data[::10])
-
-    # Concentration data requires variances as input
-    #user_provided_variances = {'A':1e-10,'B':1e-10,'C':1e-10}
-    #user_provided_variances = {}    
     
     # If you want the confidence intervals, change the default solver
     kipet_model.settings.parameter_estimator.solver = 'ipopt_sens'
