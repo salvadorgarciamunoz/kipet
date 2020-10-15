@@ -8,7 +8,7 @@ import sys # Only needed for running the example from the command line
 # Third party imports
 
 # Kipet library imports
-from kipet.kipet import KipetModel, KipetModelBlock
+from kipet.kipet import KipetModel
 
 if __name__ == "__main__":
 
@@ -20,14 +20,16 @@ if __name__ == "__main__":
     # Create the general model shared amongst datasets   
     kipet_model = KipetModel()
     
+    r1 = kipet_model.new_reaction('reaction-1')
+    
     # Add the model parameters
-    kipet_model.add_parameter('k1', init=1.3, bounds=(0.0, 2.0))
-    kipet_model.add_parameter('k2', init=0.25, bounds=(0.0, 0.5))
+    r1.add_parameter('k1', init=1.3, bounds=(0.0, 2.0))
+    r1.add_parameter('k2', init=0.25, bounds=(0.0, 0.5))
     
     # Declare the components and give the initial values
-    kipet_model.add_component('A', state='concentration', init=1e-2)
-    kipet_model.add_component('B', state='concentration', init=0.0)
-    kipet_model.add_component('C', state='concentration', init=0.0)
+    r1.add_component('A', state='concentration', init=1e-2)
+    r1.add_component('B', state='concentration', init=0.0)
+    r1.add_component('C', state='concentration', init=0.0)
     
     # define explicit system of ODEs
     def rule_odes(m,t):
@@ -37,22 +39,19 @@ if __name__ == "__main__":
         exprs['C'] = m.P['k2']*m.Z[t,'B']
         return exprs
     
-    kipet_model.add_equations(rule_odes)
+    r1.add_equations(rule_odes)
     
-    # Needed for the unwanted contributions
-    # kipet_model.builder.add_qr_bounds_init(bounds = (0,None),init = 1.0)
-    # kipet_model.builder.add_g_bounds_init(bounds = (0,None))
-    kipet_model.test_wrapper()
+    filename1 = 'Dij_multexp_tiv_G.txt'
+    filename2 = 'Dij_multexp_tv_G.txt'
+    filename3 = 'Dij_multexp_no_G.txt'
     
-    filename1 = kipet_model.set_directory('Dij_multexp_tiv_G.txt')
-    filename2 = kipet_model.set_directory('Dij_multexp_tv_G.txt')
-    filename3 = kipet_model.set_directory('Dij_multexp_no_G.txt')
+    
+    # Create the other two models
+    r2 = kipet_model.new_reaction(name='reaction-2', model_to_clone=r1, items_not_copied='datasets')
+    r3 = kipet_model.new_reaction(name='reaction-3', model_to_clone=r1, items_not_copied='datasets')
     
     # Model 1
-    
-    # For clarity, the first model is cloned although this is not necessary
-    kipet_model1 = kipet_model.clone(name='Model-1')
-    kipet_model1.add_dataset('D_frame1', category='spectral', file=filename1)
+    r1.add_dataset(category='spectral', file=filename1)
 
     # Set up the parameter estimator
     Ex1_St = dict()
@@ -60,48 +59,29 @@ if __name__ == "__main__":
     Ex1_St["r2"] = [0, -1 ,0]
 
     # Each model has it's own unwanted G settings for the parameter estimator
-    kipet_model1.settings.parameter_estimator.G_contribution = 'time_invariant_G'
-    kipet_model1.settings.parameter_estimator.St = Ex1_St
+    r1.settings.parameter_estimator.G_contribution = 'time_invariant_G'
+    r1.settings.parameter_estimator.St = Ex1_St
     
-    # Model 2
-    
-    # Repeat for the second model - the only difference is the dataset    
-    kipet_model2 = kipet_model.clone(name='Model-2')
-    kipet_model2.add_dataset('D_frame2', category='spectral', file=filename2)
-    kipet_model2.settings.parameter_estimator.G_contribution = 'time_variant_G'
+    # Model 2 
+    r2.add_dataset(category='spectral', file=filename2)
+    r2.settings.parameter_estimator.G_contribution = 'time_variant_G'
 
-    # Model 3
- 
-    # Repeat for the third model - the only difference is the dataset    
-    kipet_model3 = kipet_model.clone(name='Model-3')
-    kipet_model3.add_dataset('D_frame3', category='spectral', file=filename3)
-
-    # Create the KipetModelBlock instance to hold the KipetModels
-    model_block = KipetModelBlock()
-    model_block.add_model(kipet_model1)
-    model_block.add_model(kipet_model2)
-    model_block.add_model(kipet_model3)
+    # Model 3  
+    r3.add_dataset(category='spectral', file=filename3)
     
     # Settings
-    model_block.settings.general.use_wavelength_subset = False
-    
-    model_block.settings.solver.linear_solver = 'ma27'
-    
-    model_block.settings.parameter_estimator.tee = False
-    model_block.settings.parameter_estimator.shared_spectra = True
-    model_block.settings.parameter_estimator.solver = 'ipopt'
-    #model_block.settings.parameter_estimator.covariance = True
-    model_block.settings.parameter_estimator.scaled_variance = True
-    
-    model_block.settings.collocation.nfe = 100
+    kipet_model.settings.general.use_wavelength_subset = False
+    kipet_model.settings.solver.linear_solver = 'ma57'
+    kipet_model.settings.parameter_estimator.shared_spectra = True
+    kipet_model.settings.parameter_estimator.solver = 'ipopt'
+    kipet_model.settings.parameter_estimator.scaled_variance = False
+    kipet_model.settings.parameter_estimator.tee = True
+    kipet_model.settings.collocation.nfe = 100
 
     # Perform the parameter estimation
-    model_block.run_opt()
-    
-    # If you only want to solve each problem individually:
-    #model_block.run_opt(multiple_experiments=False)
-    
+    kipet_model.run_opt()
+
     # Plot the results
-    for model, results in model_block.results.items():
+    for model, results in kipet_model.results.items():
         results.show_parameters
         results.plot(show_plot=with_plots)

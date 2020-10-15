@@ -45,13 +45,8 @@ if __name__ == "__main__":
     # Settings
     r1.settings.general.initialize_pe = False
     r1.settings.general.no_user_scaling = True
-    
     r1.settings.collocation.nfe = 100
     r1.settings.parameter_estimator.G_contribution = 'time_variant_G'
-
-    # Unwanted contribution handling
-    r1.builder.add_qr_bounds_init(bounds=(0,None),init=1.1)
-    r1.builder.add_g_bounds_init(bounds=(0,None))
 
     # Run KIPET
     r1.run_opt()
