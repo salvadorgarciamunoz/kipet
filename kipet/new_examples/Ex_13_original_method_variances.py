@@ -18,18 +18,21 @@ if __name__ == "__main__":
  
     kipet_model = KipetModel()
     
+    r1 = kipet_model.new_reaction('reaction-1')
+    
     # Use this function to replace the old filename set-up
-    filename = kipet_model.set_directory('varest2.csv')
-    kipet_model.add_dataset('D_frame', category='spectral', file=filename, remove_negatives=True)
+    # filename = r1.set_directory('varest2.csv')
 
     # Add the model parameters
-    kipet_model.add_parameter('k1', init=1.2, bounds=(0.01, 5.0))
-    kipet_model.add_parameter('k2', init=0.2, bounds=(0.001, 5.0))
+    r1.add_parameter('k1', init=1.2, bounds=(0.01, 5.0))
+    r1.add_parameter('k2', init=0.2, bounds=(0.001, 5.0))
     
     # Declare the components and give the initial values
-    kipet_model.add_component('A', state='concentration', init=1e-2)
-    kipet_model.add_component('B', state='concentration', init=0.0)
-    kipet_model.add_component('C', state='concentration', init=0.0)
+    r1.add_component('A', state='concentration', init=1e-2)
+    r1.add_component('B', state='concentration', init=0.0)
+    r1.add_component('C', state='concentration', init=0.0)
+    
+    r1.add_dataset(category='spectral', file='varest2.csv', remove_negatives=True)
 
     # define explicit system of ODEs
     def rule_odes(m,t):
@@ -39,20 +42,20 @@ if __name__ == "__main__":
         exprs['C'] = m.P['k2']*m.Z[t,'B']
         return exprs
 
-    kipet_model.add_equations(rule_odes)
+    r1.add_equations(rule_odes)
 
     # Settings
-    kipet_model.settings.general.no_user_scaling = True
-    kipet_model.settings.variance_estimator.tolerance = 1e-10
-    kipet_model.settings.parameter_estimator.tee = False
-    kipet_model.settings.parameter_estimator.solver = 'ipopt_sens'
+    r1.settings.general.no_user_scaling = True
+    r1.settings.variance_estimator.tolerance = 1e-10
+    r1.settings.parameter_estimator.tee = False
+    r1.settings.parameter_estimator.solver = 'ipopt_sens'
     
     # This is all you need to run KIPET!
-    kipet_model.run_opt()
+    r1.run_opt()
     
     # Display the results
-    kipet_model.results.show_parameters
+    r1.results.show_parameters
     
     # New plotting methods
     if with_plots:
-        kipet_model.results.plot()
+        r1.results.plot()
