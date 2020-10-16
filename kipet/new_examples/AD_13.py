@@ -30,9 +30,9 @@ if __name__ == "__main__":
     r1.add_component('C', state='concentration', init=0.0)
    
     # Use this function to replace the old filename set-up
-    filename = r1.set_directory('Ex_1_C_data_withoutA.csv')
+    filename = 'Ex_1_C_data_withoutA.csv'
     
-    r1.add_dataset('C_data', category='concentration', file=filename)
+    r1.add_dataset(file=filename)
     
     # Define the reaction model
     def rule_odes(m,t):
@@ -43,7 +43,8 @@ if __name__ == "__main__":
         return exprs 
     
     r1.add_equations(rule_odes)
-    
+
+
     # Repeat for the second model - the only difference is the dataset    
     r2 = kipet_model.new_reaction(name='reaction-2', model_to_clone=r1, items_not_copied='datasets')
     # Simulated second dataset with noise

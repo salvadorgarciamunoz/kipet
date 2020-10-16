@@ -140,9 +140,6 @@ if __name__ == "__main__":
     # Data set-up: Use trajectory as the category for initialization data
     # as this is not added to the pyomo model
     
-    r1.add_component('f', state='trajectory')
-    r1.add_component('Csat', state='trajectory')
-    
     filename = r1.set_directory('extra_states.txt')
     r1.add_dataset('traj', category='trajectory', file=filename)
     
