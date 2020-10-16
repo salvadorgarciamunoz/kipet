@@ -43,7 +43,7 @@ if __name__ == "__main__":
             inspect.currentframe() ) ) ), 'data_sets'))
     filename =  os.path.join(dataDirectory,'varest2.csv')
     D_frame = read_spectral_data_from_csv(filename, negatives_to_zero = True)
-    D_frame[D_frame < 0] = 0
+
     # Then we build dae block for as described in the section 4.2.1. Note the addition
     # of the data using .add_spectral_data
     #################################################################################    
@@ -54,7 +54,6 @@ if __name__ == "__main__":
     #There is also the option of providing initial values: Just add init=... as additional argument as above.
     builder.add_parameter('k2',init = 0.2, bounds=(0.001,1.0))
     builder.add_spectral_data(D_frame)
-    
 
     # define explicit system of ODEs
     def rule_odes(m,t):
@@ -74,8 +73,6 @@ if __name__ == "__main__":
     # We can therefore use the variance estimator described in the Overview section
     # of the documentation and Section 4.3.3 or we can use the alternative methodology,
     # whereby we directly solve for the sigmas given different values of device variance
-    #opt_model = kipet_model.model
-    
     v_estimator = VarianceEstimator(opt_model)
     v_estimator.apply_discretization('dae.collocation',nfe=50,ncp=3,scheme='LAGRANGE-RADAU')
     
@@ -116,13 +113,13 @@ if __name__ == "__main__":
     sigmas = results_variances.sigma_sq
     for k,v in six.iteritems(sigmas):
         print(k,v)
-#%%
+
     #=========================================================================
     # USER INPUT SECTION - PARAMETER ESTIMATION 
     #=========================================================================
     # In order to run the paramter estimation we create a pyomo model as described in section 4.3.4
-    #opt_model = builder.create_pyomo_model(0.0,10.0)
-    opt_model = kipet_model.model
+    opt_model = builder.create_pyomo_model(0.0,10.0)
+
     # and define our parameter estimation problem and discretization strategy
     p_estimator = ParameterEstimator(opt_model)
     p_estimator.apply_discretization('dae.collocation',nfe=50,ncp=3,scheme='LAGRANGE-RADAU')
