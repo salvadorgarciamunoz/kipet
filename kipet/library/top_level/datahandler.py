@@ -76,7 +76,6 @@ class DataBlock():
         builder.add_parameter('k1', 1.0, (0.01, 10))
             
         """        
-        print(kwargs)
         category = kwargs.pop('category', None)
         data = kwargs.pop('data', None)
         file = kwargs.pop('file', None)
@@ -327,26 +326,4 @@ class DataSet(object):
 
 if __name__ == '__main__':
 
-    dataDirectory = os.path.abspath(
-        os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
-            inspect.currentframe() ) ) ), '..', 'examples/data_sets'))
-    
-    # Concentration Test
-    filename =  os.path.join(dataDirectory,'Ex_1_C_data.txt')
-    C_frame = read_concentration_data_from_txt(filename)
-    
-    dc = DataBlock('C1', 'concentration', C_frame)
-    dc1 = DataBlock('C2', 'concentration')
-    dc2 = DataBlock('C3', 'concentration', file=filename, description='Concentration', units=('mol/L', 'min'))
-    
-    
-    dc1.show_data()
-    
-    # Spectra Test
-    filename =  os.path.join(dataDirectory,'Dij.txt')
-    D_frame = read_file(filename)
-    
-    ds = DataBlock('S1', 'spectral', D_frame)
-    ds1 = DataBlock('S2', 'spectral', file=filename)
-    
-    #ds1.show_data()
+    pass
