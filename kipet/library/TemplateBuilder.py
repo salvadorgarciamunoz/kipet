@@ -1094,7 +1094,7 @@ class TemplateBuilder(object):
                 unknown_init[var] = init
         
         if len(unknown_init) > 0:
-            pyomo_model._unknown_init_set = Set(initialize=list(unknown_init_conditions_initialization.keys()))
+            pyomo_model._unknown_init_set = Set(initialize=list(unknown_init.keys()))
             pyomo_model.Pinit = Var(pyomo_model._unknown_init_set,
                                 initialize=unknown_init)
             
