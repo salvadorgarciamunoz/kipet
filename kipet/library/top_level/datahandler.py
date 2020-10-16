@@ -76,6 +76,7 @@ class DataBlock():
         builder.add_parameter('k1', 1.0, (0.01, 10))
             
         """        
+        print(kwargs)
         category = kwargs.pop('category', None)
         data = kwargs.pop('data', None)
         file = kwargs.pop('file', None)
