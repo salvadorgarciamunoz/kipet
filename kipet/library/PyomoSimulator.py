@@ -206,9 +206,6 @@ class PyomoSimulator(Simulator):
         if variable_name in ['X', 'dXdt', 'Z', 'dZdt']:
             raise NotImplementedError("Fixing state variables is not allowd. Only algebraics can be fixed")
 
-        print(trajectories)
-        print(variable_index)
-
         single_traj = trajectories[variable_index]
         sim_alltimes = sorted(self._alltimes)
         var = getattr(self.model, variable_name)
