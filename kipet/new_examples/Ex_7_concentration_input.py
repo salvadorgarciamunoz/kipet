@@ -6,7 +6,7 @@ import sys # Only needed for running the example from the command line
 # Third party imports
 
 # Kipet library imports
-import kipet
+from kipet import KipetModel
                                                                                                     
 if __name__ == "__main__":
 
@@ -15,7 +15,7 @@ if __name__ == "__main__":
         if int(sys.argv[1]):
             with_plots = False
  
-    kipet_model = kipet.KipetModel()
+    kipet_model = KipetModel()
  
     r1 = kipet_model.new_reaction('reaction-1')   
  
