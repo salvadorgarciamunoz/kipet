@@ -8,7 +8,7 @@ KipetModel framework
 # Third party imports
 
 # Kipet library imports
-from kipet.kipet import KipetModel
+from kipet import KipetModel
 from kipet.library.EstimabilityAnalyzer import *
 
 if __name__ == "__main__":

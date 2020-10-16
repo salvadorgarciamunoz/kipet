@@ -7,7 +7,7 @@ import sys # Only needed for running the example from the command line
 from pyomo.core import exp
 
 # Kipet library imports
-from kipet.kipet import KipetModel
+from kipet import KipetModel
 
 if __name__ == "__main__":
 

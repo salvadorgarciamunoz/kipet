@@ -7,7 +7,7 @@ import sys # Only needed for running the example from the command line
 # Third party imports
 
 # Kipet library imports
-from kipet.kipet import KipetModel
+from kipet import KipetModel
 from kipet.library.common.read_write_tools import write_file
 from kipet.library.EstimabilityAnalyzer import EstimabilityAnalyzer
 

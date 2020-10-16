@@ -6,7 +6,7 @@ import sys # Only needed for running the example from the command line
 # Third party imports
 
 # Kipet library imports
-from kipet.kipet import KipetModel
+from kipet import KipetModel
                                                                                                     
 if __name__ == "__main__":
 

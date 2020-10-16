@@ -7,7 +7,7 @@ import sys
 # Third party imports
 
 # KIPET library imports
-from kipet.kipet import KipetModel
+from kipet import KipetModel
 
 if __name__ == "__main__":
 
