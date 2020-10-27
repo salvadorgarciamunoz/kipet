@@ -306,6 +306,7 @@ class ComponentBlock():
         variance = kwargs.pop('variance', None)
         known = kwargs.pop('known', True)
         bounds = kwargs.pop('bounds', None)
+        absorbing = kwargs.pop('absorbing', True)
         
         if len(args) == 1:
             if isinstance(args[0], ModelComponent):
@@ -320,14 +321,14 @@ class ComponentBlock():
                 self._add_component_with_terms(*args)
                 
             elif isinstance(args[0], str):
-                self._add_component_with_terms(args[0], state, init, variance, known, bounds)
+                self._add_component_with_terms(args[0], state, init, variance, known, bounds, absorbing)
                 
             else:
                 raise ValueError('For a component a name, state, and initial value are required')
             
         elif len(args) >= 2:
             
-            _args = [args[0], None, None, None, True, None]
+            _args = [args[0], None, None, None, True, None, True]
             print(args)
             print(len(args))
             
@@ -381,7 +382,7 @@ class ComponentBlock():
                 break
         return all_component_variances
     
-    def _add_component_with_terms(self, name, state, init=None, variance=None, known=True, bounds=None):
+    def _add_component_with_terms(self, name, state, init=None, variance=None, known=True, bounds=None, absorbing=True):
         """Adds the parameter using explicit inputs for the name, init, and 
         bounds
         
@@ -400,6 +401,7 @@ class ComponentBlock():
                               init=init,
                               known=known,
                               bounds=bounds,
+                              absorbing=absorbing,
                               )
         
         if variance is not None:
@@ -419,7 +421,7 @@ class ComponentBlock():
 class ModelComponent():
     """A simple class for holding component information"""
     
-    def __init__(self, name=None, state=None, init=None, variance=None, known=True, bounds=None):
+    def __init__(self, name=None, state=None, init=None, variance=None, known=True, bounds=None, absorbing=True):
     
         if name is None:
             raise ValueError('Component requires a name (Should match provided data')
@@ -448,10 +450,11 @@ class ModelComponent():
         self.state = state
         self.known = known
         self.bounds = bounds
+        self.absorbing = absorbing
 
     def __str__(self):
-        return f'Component: {self.name}, {self.state}, init={self.init}, variance={self.variance}, init_known={self.known}'
+        return f'Component: {self.name}, {self.state}, init={self.init}, variance={self.variance}, init_known={self.known}, absorbing={self.absorbing}'
     
     def __repr__(self):
-        return f'Component: {self.name}, {self.state}, init={self.init}, variance={self.variance}, init_known={self.known}'
+        return f'Component: {self.name}, {self.state}, init={self.init}, variance={self.variance}, init_known={self.known}, absorbing={self.absorbing}'
 

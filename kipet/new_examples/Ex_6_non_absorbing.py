@@ -24,9 +24,9 @@ if __name__ == "__main__":
     r1.add_parameter('k2', init=0.2, bounds=(0.01, 2.0))
     
     # Declare the components and give the initial values
-    r1.add_component('A', state='concentration', init=1e-3)
+    r1.add_component('A', state='concentration', init=7.5e-4)
     r1.add_component('B', state='concentration', init=0.0)
-    r1.add_component('C', state='concentration', init=0.0)
+    r1.add_component('C', state='concentration', init=0.0, absorbing=False)
     
     # Use this function to replace the old filename set-up
     filename = r1.set_directory('Dij.txt')
@@ -42,9 +42,6 @@ if __name__ == "__main__":
     
     r1.add_equations(rule_odes)
     
-    # If no times are given to the builder, it will use the times in the data
-    r1.set_non_absorbing_species(['C'])
-
     # Settings
     r1.settings.collocation.ncp = 1
     r1.settings.collocation.nfe = 60
@@ -53,12 +50,12 @@ if __name__ == "__main__":
     r1.settings.variance_estimator.tolerance = 1e-4
     r1.settings.parameter_estimator.tee = False
     
-    # This is all you need to run KIPET!
+
     r1.run_opt()
     
     # Display the results
     r1.results.show_parameters
     
-       # New plotting methods
+        # New plotting methods
     if with_plots:
         r1.results.plot()

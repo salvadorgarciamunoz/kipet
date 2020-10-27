@@ -770,6 +770,7 @@ class ReactionModel(WavelengthSelectionMixins):
         start_time, end_time = self.populate_template(*args, **kwargs)
         self.model = self.builder.create_pyomo_model(start_time, end_time)
         
+        self.set_non_absorbing_species()
         if self._has_non_absorbing_species:
             self.builder.set_non_absorbing_species(self.model, self.non_abs_list, check=True)    
         
@@ -1196,10 +1197,16 @@ class ReactionModel(WavelengthSelectionMixins):
         
         return results
     
-    def set_non_absorbing_species(self, non_abs_list):
+    def set_non_absorbing_species(self):
         """Wrapper for set_non_absorbing_species in TemplateBuilder"""
         
-        self._has_non_absorbing_species = True
+        non_abs_list = []
+        
+        for comp in self.components:
+            if not comp.absorbing: 
+                self._has_non_absorbing_species = True
+                non_abs_list.append(comp.name)
+            
         self.non_abs_list = non_abs_list
         return None
         
