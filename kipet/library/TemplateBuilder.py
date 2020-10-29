@@ -65,6 +65,7 @@ class TemplateBuilder(object):
 
         """
         self._component_names = set()
+        self._component_units = dict()
         self._parameters = dict()
         self._parameters_init = dict()  # added for parameter initial guess CS
         self._parameters_bounds = dict()
@@ -84,6 +85,8 @@ class TemplateBuilder(object):
         self._spectral_data = None
         self._concentration_data = None
         self._complementary_states_data = None # added for complementary state data (Est.) KM
+        self._custom_data = None
+        self._custom_objective = None
         self._huplc_data = None #added for additional data CS
         self._smoothparam_data = None  # added for additional smoothing parameter data CS
         self._absorption_data = None
@@ -188,7 +191,7 @@ class TemplateBuilder(object):
         Returns:
             None
         """
-        self._state_sigmas = {'A': 0.0001, 'T': 0.0625}
+        self._state_sigmas = sigma_dict #{'A': 0.0001, 'T': 0.0625}
         # perhaps make this more secure later on and account for different input types
         return None
 
@@ -351,6 +354,25 @@ class TemplateBuilder(object):
                 self._init_conditions[name] = init_condition
             else:
                 raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try str, float')
+                
+        elif len(args) == 3:
+            name = args[0]
+            init_condition = args[1]
+            units = args[2]
+
+            if not isinstance(init_condition, numbers.Number):
+                raise RuntimeError('The second argument must be a number. Try str, float')
+
+            if isinstance(name, six.string_types):
+                getattr(self, f'_{built_in_data_types[data_type][0]}').add(name)
+                self._init_conditions[name] = init_condition
+            else:
+                raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try str, float')
+            
+            from pyomo.environ import units as u
+            self.u = u
+            self._component_units[name] = u._pint_registry(units)
+             
         else:
             raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try str, float')
 
@@ -496,10 +518,11 @@ class TemplateBuilder(object):
             'spectral' : 'D',
             'huplc' : 'Dhat',
             'smoothparam' : 'Ps',
+            'custom' : 'UD',
             }
         
-        state_data = ['C', 'U', 'Cm']
-        deriv_data = ['C', 'U', 'D', 'Dhat', 'Cm']
+        state_data = ['C', 'U', 'Cm', 'UD']
+        deriv_data = ['C', 'U', 'D', 'Dhat', 'Cm', 'UD']
         
         if label is None:
             try:
@@ -580,6 +603,23 @@ class TemplateBuilder(object):
             for i, c in enumerate(comp_state_headers):
                 overwrite = True if i == 0 else False
                 self.add_complementary_states_data(pd.DataFrame(exp_data[c].dropna()), overwrite=overwrite)
+        
+        return None
+    
+    def add_user_defined_data(self, data, overwrite=True):
+        """Add concentration data as a wrapper to _add_state_data
+
+        Args:
+            data (DataFrame): DataFrame with measurement times as
+                              indices and concentrations as columns.
+
+        Returns:
+            None
+
+        """
+        self._add_state_data(data,
+                             data_type='custom',
+                             overwrite=overwrite)
         
         return None
         
@@ -758,6 +798,8 @@ class TemplateBuilder(object):
                         self._y_bounds[n] = bounds[i]
             else:
                 raise RuntimeError('To add an algebraic please pass name')
+                
+        return None
 
     # read bounds and initialize for qr and g (unwanted contri variables) from users KH.L
     def add_qr_bounds_init(self, **kwds):
@@ -767,12 +809,16 @@ class TemplateBuilder(object):
         self._qr_bounds = bounds
         self._qr_init = init
         
+        return None
+        
     def add_g_bounds_init(self, **kwds):
         bounds = kwds.pop('bounds', None)
         init = kwds.pop('init', None)
         
         self._g_bounds = bounds
         self._g_init = init
+    
+        return None
     
     def set_odes_rule(self, rule):
         """Set the ode expressions.
@@ -790,6 +836,8 @@ class TemplateBuilder(object):
         if len(inspector.args) != 2:
             raise RuntimeError('The rule should have two inputs')
         self._odes = rule
+        
+        return None
 
     def set_algebraics_rule(self, rule):
         """Set the algebraic expressions.
@@ -807,6 +855,26 @@ class TemplateBuilder(object):
         if len(inspector.args) != 2:
             raise RuntimeError('The rule should have two inputs')
         self._algebraic_constraints = rule
+        
+        return None
+
+    def set_objective_rule(self, algebraic_vars):
+        """Set the algebraic expressions.
+
+        Defines the algebraic equations for the system
+
+        Args:
+            algebraic_vars (str, list): str or list of algebraic variables
+
+        Returns:
+            None
+
+        """
+        if not isinstance(algebraic_vars, list):
+            algebraic_vars = list(algebraic_vars)
+        self._custom_objective = algebraic_vars
+        
+        return None
 
     def bound_profile(self, var, bounds, comp=None, profile_range=None):
         """function that allows the user to bound a certain profile to some value
@@ -844,7 +912,7 @@ class TemplateBuilder(object):
 
         self._prof_bounds.append([var, comp, profile_range, bounds])
 
-    def _validate_data(self, model, start_time, end_time):
+    def _validate_data(self, model):
         """Verify all inputs to the model make sense.
 
         This method is not suppose to be used by users. Only for developers use
@@ -864,7 +932,7 @@ class TemplateBuilder(object):
             warnings.warn('The Model does not have any mixture components')
         else:
             if self._odes:
-                dummy_balances = self._odes(model, start_time)
+                dummy_balances = self._odes(model, model.start_time)
                 if len(self._component_names) + len(self._complementary_states) != len(dummy_balances):
                     print(
                         'WARNING: The number of ODEs is not the same as the number of state variables.\n If this is the desired behavior, some odes must be added after the model is created.')
@@ -875,7 +943,7 @@ class TemplateBuilder(object):
 
         if self._algebraics:
             if self._algebraic_constraints:
-                dummy_balances = self._algebraic_constraints(model, start_time)
+                dummy_balances = self._algebraic_constraints(model, model.start_time)
                 if len(self._algebraics) != len(dummy_balances):
                     print(
                         'WARNING: The number of algebraic equations is not the same as the number of algebraic variables.\n If this is the desired behavior, some algebraics must be added after the model is created.')
@@ -887,20 +955,417 @@ class TemplateBuilder(object):
             if not self._meas_times:
                 raise RuntimeError('Need to add measurement times')
 
-    def create_pyomo_model(self, start_time=None, end_time=None, parameter_normalization=False):
-        """Create a pyomo model.
 
-        This method is the core method for further simulation or optimization studies
-
-        Args:
-            start_time (float): initial time considered in the model
-
-            end_time (float): final time considered in the model
-
-        Returns:
-            Pyomo ConcreteModel
-
+    def _add_algebraic_var(self, model):
+        """If algebraics are present, add the algebraic variable to the model
         """
+        if len(self._algebraics) > 0:
+            
+            model.Y = Var(model.alltime,
+                          model.algebraics,
+                          initialize=1.0)
+            
+            for t in model.alltime:
+                for k, v in self._y_bounds.items():
+                    lb = v[0]
+                    ub = v[1]
+                    model.Y[t, k].setlb(lb)
+                    model.Y[t, k].setub(ub)
+        
+        return None
+    
+    def _add_initial_conditions(self, model):
+        """Set up the initial conditions for the model"""
+        
+        model.init_conditions = Var(model.states,
+                                    initialize=self._init_conditions,
+                                    )
+        unknown_init = {}
+        
+        for var, obj in model.init_conditions.items():
+            if self.template_component_data[var].known:
+                obj.fix()
+            else:
+                lb = self.template_component_data[var].bounds[0]
+                ub = self.template_component_data[var].bounds[1]
+                init = self.template_component_data[var].init
+                obj.setlb(lb)
+                obj.setub(ub)
+                unknown_init[var] = init
+        
+        if len(unknown_init) > 0:
+            model._unknown_init_set = Set(initialize=list(unknown_init.keys()))
+            model.Pinit = Var(model._unknown_init_set,
+                              initialize=unknown_init)
+            
+            model.del_component('P_all')    
+            model.P_all = Set(initialize=model.parameter_names | model._unknown_init_set,
+                                 ordered=True)
+
+        def rule_init_conditions(m, k):
+            if k in m.mixture_components:
+                return m.Z[m.start_time, k] - m.init_conditions[k] == 0
+            else:
+                return m.X[m.start_time, k] - m.init_conditions[k] == 0
+
+        model.init_conditions_c = \
+            Constraint(model.states, rule=rule_init_conditions)
+            
+        if hasattr(model, 'Pinit'):
+            
+            def rule_Pinit_conditions(m, k):
+                if k in m.mixture_components:
+                    return m.Pinit[k] - m.init_conditions[k] == 0
+                else:
+                    return m.Pinit[k] - m.init_conditions[k] == 0
+    
+            model.Pinit_conditions_c = \
+                Constraint(model._unknown_init_set, rule=rule_Pinit_conditions)
+
+        return None
+
+    def _add_model_variables(self, model):
+        """Adds the model variables to the pyomo model"""
+        
+        model_pred_var_name = {
+                'Z' : model.mixture_components,
+                'X' : model.complementary_states,
+                    }
+        
+        for var, model_set in model_pred_var_name.items():
+            # Check if any data for the variable type exists (Pyomo 5.7 update)
+            if hasattr(model_set, 'ordered_data') and len(model_set.ordered_data()) == 0:
+                continue
+            
+            setattr(model, var, Var(model.alltime,
+                                          model_set,
+                                          # bounds=(0.0,None),
+                                          #units=self._component_units,
+                                          initialize=1) 
+                    )    
+        
+            for time, comp in getattr(model, var):
+                if time == model.start_time.value:
+                    getattr(model, var)[time, comp].value = self._init_conditions[comp]
+                   
+            setattr(model, f'd{var}dt', DerivativeVar(getattr(model, var),
+                                                     # units=self.u.mol/self.u.l,
+                                                      wrt=model.alltime)
+                    )
+
+        # Variables of provided data - set as fixed variables complementary to above
+        fixed_var_name = {
+               # 'C' : self._spectral_data,
+                'Cm' : self._concentration_data,
+                'U' : self._complementary_states_data,
+                'UD' : self._custom_data,
+                    }
+        
+        for var, data in fixed_var_name.items():
+            c_dict = dict()
+            if hasattr(self, f'_is_{var}_deriv'):
+                if getattr(self, f'_is_{var}_deriv') == True:
+                    c_bounds = (None, None)
+                else:
+                    c_bounds = (0.0, None)
+                
+                if data is not None:    
+                    for i, row in data.iterrows():
+                         c_dict.update({(i, col): float(row[col]) for col in data.columns if not np.isnan(float(row[col]))})
+                
+                    setattr(model, f'{var}_indx', Set(initialize=list(c_dict.keys()), ordered=True))
+                    setattr(model, var, Var(getattr(model, f'{var}_indx'),
+                                                  bounds=c_bounds,
+                                                  initialize=c_dict,
+                                                  #units=self._component_units,
+                                                  )
+                            )
+                    
+                    for k, v in getattr(model, var).items():
+                        getattr(model, var)[k].fixed = True
+                
+                else:
+                    setattr(model, var, Var(model.allmeas_times,
+                                    model.mixture_components,
+                                    bounds=c_bounds,
+                                    initialize=1))
+        
+                    for time, comp in getattr(model, var):
+                        if time == model.start_time.value:
+                          #  print(f'initial values: {time}, {comp}')
+                            getattr(model, var)[time, comp].value = self._init_conditions[comp]
+
+        return None
+    
+    def _add_model_parameters(self, model):
+        """Add the model parameters to the pyomo model"""
+        
+        p_dict = dict()
+        for param, init_value in self._parameters.items():
+            if init_value is not None and init_value is not pd.DataFrame:
+                p_dict[param] = init_value
+
+            # added for option of providing initial guesses CS:
+            elif param in self._parameters_init.keys():
+                p_dict[param] = self._parameters_init[param]
+                #for param, init_value in self._parameters_init.items():
+                    #p_dict[p] = init_value
+            else:
+                for param, bounds in self._parameters_bounds.items():
+                    lb = bounds[0]
+                    ub = bounds[1]
+                    p_dict[param] = (ub + lb) / 2
+
+        if self._scale_parameters:
+            model.P = Var(model.parameter_names,
+                            bounds = (0.1, 10),
+                            initialize=1)
+
+        else:
+            model.P = Var(model.parameter_names,
+                            # bounds = (0.0,None),
+                            initialize=p_dict)
+
+        # set bounds P
+        for k, v in self._parameters_bounds.items():
+            factor = 1
+            if self._scale_parameters:
+                factor = self._parameters_init[k]
+            
+            lb = v[0]/factor
+            ub = v[1]/factor
+            model.P[k].setlb(lb)
+            model.P[k].setub(ub)
+
+        #for optional smoothing parameters (CS):
+        if isinstance(self._smoothparameters, dict) and self._smoothparam_data is not None:
+            ps_dict = dict()
+            for k in self._smoothparam_data.columns:
+                for c in model.allsmooth_times:
+                    ps_dict[c, k] = float(self._smoothparam_data[k][c])
+
+            ps_dict2 = dict()
+            for p in self._smoothparameters.keys():
+                for t in model.alltime:
+                    if t in model.allsmooth_times:
+                        ps_dict2[t, p] = float(ps_dict[t, p])
+                    else:
+                        ps_dict2[t, p] = 0.0
+
+            model.Ps = Param(model.alltime, model.smoothparameter_names, initialize=ps_dict2, mutable=True, default=20.)#here just set to some value that is noc
+
+        # Fixes parameters that were given numeric values
+        for p, v in self._parameters.items():
+            if v is not None:
+                pyomo_model.P[p].value = v
+                pyomo_model.P[p].fixed = True
+
+        return None
+
+    def _add_unwanted_contribution_variables(self, model):
+        """Add the bounds for the unwanted contributions, if any"""
+        
+        if self._qr_bounds is not None:
+            qr_bounds = self._qr_bounds
+        elif self._qr_bounds is None:
+            qr_bounds = None
+            
+        if self._qr_init is not None:
+            qr_init = self._qr_init
+        elif self._qr_init is None:
+            qr_init = 1.0
+            
+        model.qr = Var(model.alltime, bounds=qr_bounds, initialize=qr_init)
+        
+        if self._g_bounds is not None:
+            g_bounds = self._g_bounds
+        elif self._g_bounds is None:
+            g_bounds = None
+            
+        if self._g_init is not None:
+            g_init = self._g_init
+        elif self._g_init is None:
+            g_init = 0.1
+            
+        model.g = Var(model.meas_lambdas, bounds=g_bounds, initialize=g_init)
+        
+        return None
+
+    def _add_model_odes(self, model):
+        """Adds the ODE system to the model, if any"""
+        
+        if self._odes:
+            def rule_odes(m, t, k):
+                exprs = self._odes(m, t)
+            
+                if t == m.start_time.value:
+                    return Constraint.Skip
+                else:
+                    if k in m.mixture_components:
+                        if k in exprs.keys():
+                            return m.dZdt[t, k] == exprs[k]
+                        else:
+                            return Constraint.Skip
+                    else:
+                        if k in exprs.keys():
+                            return m.dXdt[t, k] == exprs[k]
+                        else:
+                            return Constraint.Skip
+
+            model.odes = Constraint(model.alltime,
+                                    model.states,
+                                    rule=rule_odes)
+        return None
+    
+    def _add_algebraic_constraints(self, model):
+        """Adds the algebraic constraints the model, if any"""
+        
+        if self._algebraic_constraints:
+            n_alg_eqns = len(self._algebraic_constraints(model, model.start_time))
+
+            def rule_algebraics(m, t, k):
+                alg_const = self._algebraic_constraints(m, t)[k]
+                return alg_const == 0.0
+
+            model.algebraic_consts = Constraint(model.alltime,
+                                                range(n_alg_eqns),
+                                                rule=rule_algebraics)
+        return None
+    
+    def _add_objective_custom(self, model):
+        """Adds the custom objectives, if any and uses the model variable
+        UD for the data. This is where the custom data is stored.
+        
+        """
+        def custom_obj(m, t, y):
+            exprs = m.UD[t, y] - m.Y[t, y]
+            return exprs**2
+        
+        obj = 0
+        var_name = []
+        for index, values in model.UD.items():
+            if index[1] not in self._custom_objective:
+                continue
+            if index[1] not in var_name:
+                var_name.append(index[1])
+            obj += custom_obj(model, index[0], index[1])
+            
+        model.custom_obj = obj
+       
+        return None
+
+    def _add_spectral_variables(self, model):
+        """Add D and C variables for the spectral data"""
+        
+        if self._spectral_data is not None:
+            s_data_dict = dict()
+            for t in model.meas_times:
+                for l in model.meas_lambdas:
+                    if t in model.meas_times:
+                        s_data_dict[t, l] = float(self._spectral_data[l][t])
+                    else:
+                        s_data_dict[t, l] = float('nan')
+
+            model.D = Param(model.meas_times,
+                            model.meas_lambdas,
+                            initialize=s_data_dict)
+            
+            model.C = Var(model.meas_times,
+                          model.mixture_components,
+                          bounds=(0, None),
+                          initialize=1)
+            
+        return None
+
+    def _check_absorbing_species(self, model):
+        """Set up the appropriate S depending on absorbing species"""
+        
+        if self._absorption_data is not None:
+            s_dict = dict()
+            for k in self._absorption_data.columns:
+                for l in self._absorption_data.index:
+                    s_dict[l, k] = float(self._absorption_data[k][l])
+        else:
+            s_dict = 1.0
+        
+        if self._is_D_deriv == True:
+            s_bounds = (None, None)
+        else:
+            s_bounds = (0.0, None)
+        
+        if self.has_spectral_data():    
+        
+            if self._is_non_abs_set:
+                self.set_non_absorbing_species(model, self._non_absorbing, check=False)
+                model.S = Var(model.meas_lambdas,
+                              model.abs_components,
+                              bounds=s_bounds,
+                              initialize=s_dict)
+            else:
+                model.S = Var(model.meas_lambdas,
+                              model.mixture_components,
+                              bounds=s_bounds,
+                              initialize=s_dict)
+
+            if self._absorption_data is not None:
+                for l in model.meas_lambdas:
+                    for k in model.mixture_components:
+                        model.S[l, k].fixed = True
+                        
+        return None
+    
+    def _apply_bounds_to_variables(self, model):
+        """User specified bounds to certain model variables are added here"""
+        
+        for bound_set in self._prof_bounds:
+            var = bound_set[0]
+            component_name = bound_set[1]
+            if bound_set[2] is not None:
+                bound_time_start = bound_set[2][0]
+                bound_time_end = bound_set[2][1]
+            upper_bound = bound_set[3][1]
+            lower_bound = bound_set[3][0]
+            
+            for time, comp in getattr(model, var):
+                if component_name == comp or component_name is None:
+                    if bound_set[2] is not None:
+                        if time >= bound_time_start and time < bound_time_end:
+                            getattr(model, var)[time, comp].setlb(lower_bound)
+                            getattr(model, var)[time, comp].setub(upper_bound)
+                    else:
+                        getattr(model, var)[time, comp].setlb(lower_bound)
+                        getattr(model, var)[time, comp].setub(upper_bound)
+                        
+        return None
+
+    def _add_model_smoothing_parameters(self, model):
+        """Adds smoothing parameters to the model, if any.
+        These are optional smoothing parameter values (mutable) read from a file
+        
+        """
+        if self._smoothparam_data is not None:
+            model.smoothparameter_names = Set(initialize=self._smoothparameters.keys()) #added for mutable parameters
+            model.smooth_param_datatimes = Set(initialize=sorted(self._smoothparam_data.index))
+            
+            help_dict=dict()
+            for k in self._smoothparam_data.index:
+                for j in self._smoothparam_data.columns:
+                    help_dict[k, j]=float(self._smoothparam_data[j][k])
+            
+            model.smooth_param_data = Param(self._smoothparam_data.index, sorted(self._smoothparam_data.columns), initialize=help_dict)
+
+        return None
+
+    def _set_up_times(self, model, start_time, end_time):
+        
+        list_times = self._meas_times
+        m_times = sorted(list_times)
+        list_feedtimes = self._feed_times  # For inclusion of discrete feeds CS
+        feed_times = sorted(list_feedtimes)  # For inclusion of discrete feeds CS
+        m_lambdas = list()
+        m_alltimes = m_times
+        conc_times = list()
+        
         if self._times is not None:
             if start_time is None:
                 start_time = self._times[0]
@@ -913,42 +1378,6 @@ class TemplateBuilder(object):
                     end_time = self.datablock.time_span[1]
                 except:
                     raise ValueError('A model requires a start and end time or a dataset')
-            
-        # Model
-        pyomo_model = ConcreteModel()
-
-        # Sets
-        pyomo_model.mixture_components = Set(initialize=self._component_names)
-        pyomo_model.parameter_names = Set(initialize=self._parameters.keys())
-        pyomo_model.complementary_states = Set(initialize=self._complementary_states)
-        pyomo_model.states = pyomo_model.mixture_components | pyomo_model.complementary_states
-        pyomo_model.algebraics = Set(initialize=self._algebraics.keys())
-
-        # New Set for actual data inputs
-        pyomo_model.measured_data = Set(initialize=self._all_state_data)
-        # Make constants that are equal to the initial guess and set params to 1
-        
-        list_times = self._meas_times
-        m_times = sorted(list_times)
-        list_feedtimes = self._feed_times  # For inclusion of discrete feeds CS
-        feed_times = sorted(list_feedtimes)  # For inclusion of discrete feeds CS
-        m_lambdas = list()
-        m_alltimes = m_times
-        conc_times = list()
-
-        if self._smoothparam_data is not None:#added for optional smoothing parameter values (mutable) read from file CS
-            pyomo_model.smoothparameter_names = Set(initialize=self._smoothparameters.keys()) #added for mutable parameters
-            pyomo_model.smooth_param_datatimes = Set(initialize=sorted(self._smoothparam_data.index))
-            help_dict=dict()
-            for k in self._smoothparam_data.index:
-                for j in self._smoothparam_data.columns:
-                    help_dict[k, j]=float(self._smoothparam_data[j][k])
-            pyomo_model.smooth_param_data = Param(self._smoothparam_data.index, sorted(self._smoothparam_data.columns), initialize=help_dict)
-
-        if self._spectral_data is not None and self._absorption_data is not None:
-            raise RuntimeError('Either add absorption data or spectral data but not both')
-
-        # I don't know why m_times is changed for each of these - what if there are more than one?
 
         if self._spectral_data is not None and self._huplc_data is None:
             list_times = list_times.union(set(self._spectral_data.index))
@@ -973,14 +1402,19 @@ class TemplateBuilder(object):
             m_alltimes = sorted(list_times)#has to be changed for including huplc data with conc data!
             m_concs = sorted(list_concs)
 
-        # New complementary state data KM - This should only be T
         if self._complementary_states_data is not None:
             list_times = list_times.union(set(self._complementary_states_data.index))
             list_comps = list(self._complementary_states_data.columns)
             m_times = sorted(list_times)
             m_alltimes = sorted(list_times)
             m_comps = sorted(list_comps)
-
+            
+        if self._custom_data is not None:
+            list_times = list_times.union(set(self._custom_data.index))
+            list_custom = list(self._custom_data.columns)
+            m_times = sorted(list_times)
+            m_alltimes = sorted(list_times)
+            m_custom = sorted(list_custom)
 
         #For inclusion of h/uplc data:
         if self._huplc_data is not None and self._spectral_data is None: #added for additional H/UPLC data (CS)
@@ -1015,44 +1449,15 @@ class TemplateBuilder(object):
 
         if self._huplc_data is not None:
             if m_huplctimes:
-                if m_huplctimes[0] < start_time:
-                    raise RuntimeError(
-                        'Measurement time {0} not within ({1},{2})'.format(m_huplctimes[0], start_time, end_time))
-                if m_huplctimes[-1] > end_time:
-                    raise RuntimeError(
-                        'Measurement time {0} not within ({1},{2})'.format(m_huplctimes[-1], start_time, end_time))
-
+                self._check_time_inputs(m_huplctimes, start_time, end_time)
+                
         if self._smoothparam_data is not None:
             if m_allsmoothtimes:
-                if m_allsmoothtimes[0] < start_time:
-                    raise RuntimeError(
-                        'Measurement time {0} not within ({1},{2})'.format(m_allsmoothtimes[0], start_time, end_time))
-                if m_allsmoothtimes[-1] > end_time:
-                    raise RuntimeError(
-                        'Measurement time {0} not within ({1},{2})'.format(m_allsmoothtimes[-1], start_time, end_time))
-
-            pyomo_model.allsmooth_times = Set(initialize=m_allsmoothtimes, ordered=True)
-
-        # Add given state standard deviations to the pyomo model
-        if self._state_sigmas is not None:
-            
-            state_sigmas = {k: v for k, v in self._state_sigmas.items() if k in pyomo_model.measured_data}
-            pyomo_model.sigma = Param(pyomo_model.measured_data, initialize=state_sigmas)
-        else:
-            pyomo_model.sigma = Param(pyomo_model.measured_data, initialize=1)
-        
-        if self._scale_parameters:
-            pyomo_model.K = Param(pyomo_model.parameter_names, 
-                                  initialize=self._parameters_init,
-                                  mutable=True,
-                                  default=1)
+                self._check_time_inputs(m_allsmoothtimes, start_time, end_time)
+            model.allsmooth_times = Set(initialize=m_allsmoothtimes, ordered=True)
 
         if m_alltimes:
-            if m_alltimes[0] < start_time:
-                raise RuntimeError('Measurement time {0} not within ({1},{2})'.format(m_alltimes[0], start_time, end_time))
-            if m_alltimes[-1] > end_time:
-                raise RuntimeError(
-                    'Measurement time {0} not within ({1},{2})'.format(m_alltimes[-1], start_time, end_time))
+            self._check_time_inputs(m_alltimes, start_time, end_time)
 
         self._m_lambdas = m_lambdas
 
@@ -1061,376 +1466,114 @@ class TemplateBuilder(object):
             list_feedtimes = list(self._feed_times)
             feed_times = sorted(list_feedtimes)
 
-        if self._huplc_data is not None:#added for addition huplc data CS
-            pyomo_model.huplcmeas_times = Set(initialize=m_huplctimes, ordered=True)
-            pyomo_model.huplctime = ContinuousSet(initialize=pyomo_model.huplcmeas_times,
+        if self._huplc_data is not None:
+            model.huplcmeas_times = Set(initialize=m_huplctimes, ordered=True)
+            model.huplctime = ContinuousSet(initialize=model.huplcmeas_times,
                                                   bounds=(start_time, end_time))
             
-        # all of these times are confusing - must it be this way?
-        pyomo_model.allmeas_times = Set(initialize=m_alltimes, ordered=True) #add for new data structure CS
-        pyomo_model.meas_times = Set(initialize=m_times, ordered=True)
-        pyomo_model.feed_times = Set(initialize=feed_times, ordered=True)  # For inclusion of discrete feeds CS
-        pyomo_model.meas_lambdas = Set(initialize=m_lambdas, ordered=True)
-        pyomo_model.alltime = ContinuousSet(initialize=pyomo_model.allmeas_times,
-                                         bounds=(start_time, end_time)) #add for new data structure CS
-        pyomo_model.start_time = Param(initialize=start_time)
-        pyomo_model.end_time = Param(initialize=end_time)
-
-        # Initial conditions fixed or unknown
-        pyomo_model.init_conditions = Var(pyomo_model.states,
-                                          initialize=self._init_conditions,
-                                          )
-        unknown_init = {}
+        model.allmeas_times = Set(initialize=m_alltimes, ordered=True) #add for new data structure CS
+        model.meas_times = Set(initialize=m_times, ordered=True)
+        model.feed_times = Set(initialize=feed_times, ordered=True)  # For inclusion of discrete feeds CS
+        model.meas_lambdas = Set(initialize=m_lambdas, ordered=True)
+        model.alltime = ContinuousSet(initialize=model.allmeas_times,
+                                      bounds=(start_time, end_time)) #add for new data structure CS
         
-        for var, obj in pyomo_model.init_conditions.items():
-            if self.template_component_data[var].known:
-                obj.fix()
-            else:
-                lb = self.template_component_data[var].bounds[0]
-                ub = self.template_component_data[var].bounds[1]
-                init = self.template_component_data[var].init
-                obj.setlb(lb)
-                obj.setub(ub)
-                unknown_init[var] = init
+        model.start_time = Param(initialize=start_time)
+        model.end_time = Param(initialize=end_time)
         
-        if len(unknown_init) > 0:
-            pyomo_model._unknown_init_set = Set(initialize=list(unknown_init.keys()))
-            pyomo_model.Pinit = Var(pyomo_model._unknown_init_set,
-                                initialize=unknown_init)
-            
-            pyomo_model.del_component('P_all')    
-            pyomo_model.P_all = Set(initialize=pyomo_model.parameter_names | pyomo_model._unknown_init_set,
-                                 ordered=True)
-        
-        """Variables"""
-        # Declaration and initialization of predicted concentrations and states
-        
-        model_pred_var_name = {
-                'Z' : pyomo_model.mixture_components,
-                'X' : pyomo_model.complementary_states,
-                    }
-        
-        for var, model_set in model_pred_var_name.items():
-        
-            setattr(pyomo_model, var, Var(pyomo_model.alltime,
-                                          model_set,
-                                          # bounds=(0.0,None),
-                                          initialize=1) 
-                    )    
-        
-            for time, comp in getattr(pyomo_model, var):
-                if time == pyomo_model.start_time.value:
-                    getattr(pyomo_model, var)[time, comp].value = self._init_conditions[comp]
-                   
-            setattr(pyomo_model, f'd{var}dt', DerivativeVar(getattr(pyomo_model, var),
-                                                            wrt=pyomo_model.alltime)
-                    )
-                   
-        # Variables of provided data - set as fixed variables complementary to above
-        
-        fixed_var_name = {
-               # 'C' : self._spectral_data,
-                'Cm' : self._concentration_data,
-                'U' : self._complementary_states_data,
-                    }
-        
-        for var, data in fixed_var_name.items():
-            c_dict = dict()
-            if hasattr(self, f'_is_{var}_deriv'):
-                if getattr(self, f'_is_{var}_deriv') == True:
-                    c_bounds = (None, None)
-                else:
-                    c_bounds = (0.0, None)
-        
-                if data is not None:    
-                    for i, row in data.iterrows():
-                         c_dict.update({(i, col): float(row[col]) for col in data.columns if not np.isnan(float(row[col]))})
-                
-                    setattr(pyomo_model, f'{var}_indx', Set(initialize=c_dict.keys(), ordered=True))
-                    setattr(pyomo_model, var, Var(getattr(pyomo_model, f'{var}_indx'),
-                                                  bounds=c_bounds,
-                                                  initialize=c_dict,
-                                                  )
-                            )
-                    
-                    for k, v in getattr(pyomo_model, var).items():
-                        getattr(pyomo_model, var)[k].fixed = True
-                
-                else:
-                    setattr(pyomo_model, var, Var(pyomo_model.allmeas_times,
-                                    pyomo_model.mixture_components,
-                                    bounds=c_bounds,
-                                    initialize=1))
-        
-                    for time, comp in getattr(pyomo_model, var):
-                        if time == pyomo_model.start_time.value:
-                          #  print(f'initial values: {time}, {comp}')
-                            getattr(pyomo_model, var)[time, comp].value = self._init_conditions[comp]
-
-        """Parameters"""
+        return None
     
-        p_dict = dict()
-        for param, init_value in self._parameters.items():
-            if init_value is not None and init_value is not pd.DataFrame:
-                p_dict[param] = init_value
-
-            # added for option of providing initial guesses CS:
-            elif param in self._parameters_init.keys():
-                p_dict[param] = self._parameters_init[param]
-                #for param, init_value in self._parameters_init.items():
-                    #p_dict[p] = init_value
-            else:
-                for param, bounds in self._parameters_bounds.items():
-                    lb = bounds[0]
-                    ub = bounds[1]
-                    p_dict[param] = (ub + lb) / 2
-
-        if self._scale_parameters:
-            pyomo_model.P = Var(pyomo_model.parameter_names,
-                            bounds = (0.1, 10),
-                            initialize=1)
-
-        else:
-            pyomo_model.P = Var(pyomo_model.parameter_names,
-                            # bounds = (0.0,None),
-                            initialize=p_dict)
-
-        # set bounds P
-        for k, v in self._parameters_bounds.items():
-            factor = 1
-            if self._scale_parameters:
-                factor = self._parameters_init[k]
-            
-            lb = v[0]/factor
-            ub = v[1]/factor
-            pyomo_model.P[k].setlb(lb)
-            pyomo_model.P[k].setub(ub)
-
-        #for optional smoothing parameters (CS):
-        if isinstance(self._smoothparameters, dict) and self._smoothparam_data is not None:
-            ps_dict = dict()
-            for k in self._smoothparam_data.columns:
-                for c in pyomo_model.allsmooth_times:
-                    ps_dict[c, k] = float(self._smoothparam_data[k][c])
-
-            ps_dict2 = dict()
-            for p in self._smoothparameters.keys():
-                for t in pyomo_model.alltime:
-                    if t in pyomo_model.allsmooth_times:
-                        ps_dict2[t, p] = float(ps_dict[t, p])
-                    else:
-                        ps_dict2[t, p] = 0.0
-
-            pyomo_model.Ps = Param(pyomo_model.alltime, pyomo_model.smoothparameter_names, initialize=ps_dict2, mutable=True, default=20.)#here just set to some value that is noc
-
-        pyomo_model.Y = Var(pyomo_model.alltime,
-                            pyomo_model.algebraics,
-                            initialize=1.0)
-
-        # Add optional bounds for algebraic variables (CS):
-        for t in pyomo_model.alltime:
-            for k, v in self._y_bounds.items():
-                lb = v[0]
-                ub = v[1]
-                pyomo_model.Y[t, k].setlb(lb)
-                pyomo_model.Y[t, k].setub(ub)
-
-        # Can this be handled as above?
-
-        if self._absorption_data is not None:
-            s_dict = dict()
-            for k in self._absorption_data.columns:
-                for l in self._absorption_data.index:
-                    s_dict[l, k] = float(self._absorption_data[k][l])
-        else:
-            s_dict = 1.0
-
-        if self._is_D_deriv == True:
-            s_bounds = (None, None)
-        else:
-            s_bounds = (0.0, None)
-
-        # Fixes parameters that were given numeric values
-        for p, v in self._parameters.items():
-            if v is not None:
-                pyomo_model.P[p].value = v
-                pyomo_model.P[p].fixed = True
-
-        # spectral data
-        if self._spectral_data is not None: #changed for new data structure CS
-            s_data_dict = dict()
-            for t in pyomo_model.meas_times:
-                for l in pyomo_model.meas_lambdas:
-                    if t in pyomo_model.meas_times:
-                        s_data_dict[t, l] = float(self._spectral_data[l][t])
-                    else:
-                        s_data_dict[t, l] = float('nan') #missing time points are set to nan to filter out later
-
-            pyomo_model.D = Param(pyomo_model.meas_times,
-                                  pyomo_model.meas_lambdas,
-                                  initialize=s_data_dict)
-            
-            pyomo_model.C = Var(pyomo_model.meas_times,
-                                    pyomo_model.mixture_components,
-                                    bounds=(0, None),
-                                    initialize=1)
+    @staticmethod
+    def _check_time_inputs(time_set, start_time, end_time):
+        """Checks the first and last time of a measurement to see if it's in
+        the model time bounds
         
-        #unwanted contributions: create variables qr and g KH.L
-        if self._qr_bounds is not None:
-            qr_bounds = self._qr_bounds
-        elif self._qr_bounds is None:
-            qr_bounds = None
-            
-        if self._qr_init is not None:
-            qr_init = self._qr_init
-        elif self._qr_init is None:
-            qr_init = 1.0
-            
-        pyomo_model.qr = Var(pyomo_model.alltime, bounds=qr_bounds, initialize=qr_init)
+        """
+        if time_set[0] < start_time:
+            raise RuntimeError(f'Measurement time {time_set[0]} not within ({start_time}, {end_time})')
+        if time_set[-1] > end_time:
+            raise RuntimeError(f'Measurement time {time_set[-1]} not within ({start_time}, {end_time})')
+    
+        return None
+                               
+    def create_pyomo_model(self, start_time=None, end_time=None):
+        """Create a pyomo model.
+
+        This method is the core method for further simulation or optimization studies
+
+        Args:
+            start_time (float): initial time considered in the model
+
+            end_time (float): final time considered in the model
+
+        Returns:
+            Pyomo ConcreteModel
+
+        """
+        if self._spectral_data is not None and self._absorption_data is not None:
+            raise RuntimeError('Either add absorption data or spectral data but not both')
         
-        if self._g_bounds is not None:
-            g_bounds = self._g_bounds
-        elif self._g_bounds is None:
-            g_bounds = None
-            
-        if self._g_init is not None:
-            g_init = self._g_init
-        elif self._g_init is None:
-            g_init = 0.1
-            
-        pyomo_model.g = Var(pyomo_model.meas_lambdas, bounds=g_bounds, initialize=g_init)
+        pyomo_model = ConcreteModel()
+
+        # Declare Sets
+        pyomo_model.mixture_components = Set(initialize=list(self._component_names))
+        pyomo_model.parameter_names = Set(initialize=[k for k in self._parameters.keys()])
+        pyomo_model.complementary_states = Set(initialize=list(self._complementary_states))
+        pyomo_model.states = pyomo_model.mixture_components | pyomo_model.complementary_states
+       
+        pyomo_model.measured_data = Set(initialize=self._all_state_data)
         
+        # Set up the model time sets and parameters
+        self._set_up_times(pyomo_model, start_time, end_time)
+        
+        # Set up the model by calling the following methods:
+        self._add_model_variables(pyomo_model)
+        self._add_model_parameters(pyomo_model)
+            
+        pyomo_model.algebraics = Set(initialize=list(self._algebraics.keys()))
+            
+        self._add_algebraic_var(pyomo_model)    
+        self._add_initial_conditions(pyomo_model)
+        self._add_spectral_variables(pyomo_model)
+        self._add_model_smoothing_parameters(pyomo_model)
+        
+        # If unwanted contributions are being handled:
+        self._add_unwanted_contribution_variables(pyomo_model)
+
+        # Validate the model before writing constraints
+        self._validate_data(pyomo_model)
+
+        # Add constraints
+        self._add_model_odes(pyomo_model)
+        self._add_algebraic_constraints(pyomo_model)
+        
+        if self._custom_objective:
+            self._add_objective_custom(pyomo_model)
+        
+        # Check the absorbing species sets
+        self._check_absorbing_species(pyomo_model)
+        
+        # Add bounds, is specified
+        self._apply_bounds_to_variables(pyomo_model)
+       
+        # Add given state standard deviations to the pyomo model
+        if self._state_sigmas is not None:
+            state_sigmas = {k: v for k, v in self._state_sigmas.items() if k in pyomo_model.measured_data}
+            pyomo_model.sigma = Param(pyomo_model.measured_data, initialize=state_sigmas)
+        else:
+            pyomo_model.sigma = Param(pyomo_model.measured_data, initialize=1)
+ 
+        # In case of a second call after known_absorbing has been declared
         if self._huplc_data is not None and self._is_huplc_abs_set:
             self.set_huplc_absorbing_species(pyomo_model, self._huplc_absorbing, self._vol, self._solid_spec, check=False)
 
-            Dhat_dict = dict()
-            for k in self._huplc_data.columns:
-                for c in self._huplc_data.index:
-                    Dhat_dict[c, k] = float(self._huplc_data[k][c])
-
-        if self._is_Dhat_deriv == True:
-            Dhat_bounds = (None, None)
-        else:
-            Dhat_bounds = (0.0, None)
-
-        # validate the model before writing constraints
-        self._validate_data(pyomo_model, start_time, end_time)
-
-        # add ode contraints to pyomo model
-        def rule_init_conditions(m, k):
-            if k in m.mixture_components:
-                return m.Z[m.start_time, k] - m.init_conditions[k] == 0
-            else:
-                return m.X[m.start_time, k] - m.init_conditions[k] == 0
-
-        pyomo_model.init_conditions_c = \
-            Constraint(pyomo_model.states, rule=rule_init_conditions)
-            
-        if hasattr(pyomo_model, 'Pinit'):
-            
-            def rule_Pinit_conditions(m, k):
-                if k in m.mixture_components:
-                    return m.Pinit[k] - m.init_conditions[k] == 0
-                else:
-                    return m.Pinit[k] - m.init_conditions[k] == 0
-    
-            pyomo_model.Pinit_conditions_c = \
-                Constraint(pyomo_model._unknown_init_set, rule=rule_Pinit_conditions)
-
-        # the generation of the constraints is not efficient but not critical
-        if self._odes:
-            
-            def rule_odes(m, t, k):
-                exprs = self._odes(m, t)
-            
-                if t == m.start_time.value:
-                    return Constraint.Skip
-                else:
-                    if k in m.mixture_components:
-                        if k in exprs.keys():
-                            return m.dZdt[t, k] == exprs[k]
-                        else:
-                            return Constraint.Skip
-                    else:
-                        if k in exprs.keys():
-                            return m.dXdt[t, k] == exprs[k]
-                        else:
-                            return Constraint.Skip
-
-            pyomo_model.odes = Constraint(pyomo_model.alltime,
-                                          pyomo_model.states,
-                                          rule=rule_odes)
-
-        # the generation of the constraints is not efficient but not critical
-        if self._algebraic_constraints:
-            n_alg_eqns = len(self._algebraic_constraints(pyomo_model, start_time))
-
-            def rule_algebraics(m, t, k):
-                alg_const = self._algebraic_constraints(m, t)[k]
-                return alg_const == 0.0
-
-            pyomo_model.algebraic_consts = Constraint(pyomo_model.alltime,
-                                                      range(n_alg_eqns),
-                                                      rule=rule_algebraics)
-        #######################
-        ###Distinguish between S with non_absorbing components and S with no non_absorbing components (non_absorbing components excluded from S) (CS):
-        if self._is_non_abs_set:  #: in case of a second call after non_absorbing has been declared
-            self.set_non_absorbing_species(pyomo_model, self._non_absorbing, check=False)
-            pyomo_model.S = Var(pyomo_model.meas_lambdas,
-                                pyomo_model.abs_components,
-                                bounds=s_bounds,
-                                initialize=s_dict)
-        else:
-            pyomo_model.S = Var(pyomo_model.meas_lambdas,
-                                pyomo_model.mixture_components,
-                                bounds=s_bounds,
-                                initialize=s_dict)
-        ######################
-
-        if self._absorption_data is not None:
-            for l in pyomo_model.meas_lambdas:
-                for k in pyomo_model.mixture_components:
-                    pyomo_model.S[l, k].fixed = True
-
-        
-        # Iterate throught the component variables and apply the bounds to
-        # the speicifc time period provided
-        for bound_set in self._prof_bounds:
-            # Why would I set bounds on only S, U, or C - these are fixed, right?
-            var = bound_set[0]
-            component_name = bound_set[1]
-            if bound_set[2] is not None:
-                bound_time_start = bound_set[2][0]
-                bound_time_end = bound_set[2][1]
-            upper_bound = bound_set[3][1]
-            lower_bound = bound_set[3][0]
-            # if var == 'C':
-            #     var = 'Z'
-            #print(f'for {var}')
-            
-            for time, comp in getattr(pyomo_model, var):
-                if component_name == comp or component_name is None:
-                    if bound_set[2] is not None:
-                        if time >= bound_time_start and time < bound_time_end:
-                            getattr(pyomo_model, var)[time, comp].setlb(lower_bound)
-                            getattr(pyomo_model, var)[time, comp].setub(upper_bound)
-                    else:
-                        getattr(pyomo_model, var)[time, comp].setlb(lower_bound)
-                        getattr(pyomo_model, var)[time, comp].setub(upper_bound)
-
-        #: in case of a second call after known_absorbing has been declared
         if self._is_known_abs_set:  
             self.set_known_absorbing_species(pyomo_model,
                                              self._known_absorbance,
                                              self._known_absorbance_data,
                                              check=False
                                              )
-        
-        # if self._estim_init:  #: in case of a second call after known_absorbing has been declared
-        #     self.set_estinit_extra_species(pyomo_model,
-        #                                    self._initextra_est_list,
-        #                                    check=False)
-
+            
         return pyomo_model
 
     @property
