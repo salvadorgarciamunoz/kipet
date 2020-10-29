@@ -86,7 +86,7 @@ class PyomoSimulator(Simulator):
         self._allmeas_times=sorted(self.model.allmeas_times)
         self._ipopt_scaled = False
         self._spectra_given = hasattr(self.model, 'D')
-        self._concentration_given = hasattr(self.model, 'Cm')
+        self._concentration_given = hasattr(self.model, 'Cm') or hasattr(self.model, 'UD')
         self._conplementary_states_given = hasattr(self.model, 'U')
         self._absorption_given = hasattr(self.model,
                                          'S')  # added for special case of absorption data available but not concentration data CS
@@ -311,11 +311,14 @@ class PyomoSimulator(Simulator):
         if not self.model.alltime.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
 
-        try:
+        #try:
+        if hasattr(self.model, variable_name):
             var = getattr(self.model, variable_name)
             inner_set = rgetattr(self, set_time[variable_name])
-        except:
-            raise RuntimeError('Initialization of variable {} is not supported'.format(variable_name))
+            #except:
+        else:
+            return None
+            #raise RuntimeError('Initialization of variable {} is not supported'.format(variable_name))
 
         columns = trajectories.columns
         to_initialize = list()
@@ -423,11 +426,11 @@ class PyomoSimulator(Simulator):
         
         # variables
         Z_var = self.model.Z
-        dZ_var = self.model.dZdt
+        #dZ_var = self.model.dZdt
         P_var = self.model.P
-        X_var = self.model.X
-        U_var = self.model.U
-        dX_var = self.model.dXdt
+        #X_var = self.model.X
+        #U_var = self.model.U
+        #dX_var = self.model.dXdt
         if hasattr(self.model, 'Cm'):
             C_var = self.model.Cm  # added for estimation with inputs and conc data CS
         if self._huplc_given: #added for additional data CS
@@ -469,7 +472,7 @@ class PyomoSimulator(Simulator):
 
         # retriving solutions to results object
         results.load_from_pyomo_model(self.model,
-                                      to_load=['Z', 'dZdt', 'X', 'dXdt', 'Y'])
+                                      to_load=None)
 
         c_noise_results = []
 
