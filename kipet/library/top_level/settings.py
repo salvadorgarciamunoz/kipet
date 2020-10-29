@@ -139,7 +139,8 @@ class Settings():
                    'feed_times': None,       
                    'G_contribution': None,
                    'St': dict(),
-                   'Z_in': dict(),      
+                   'Z_in': dict(),
+                   'confidence': None,
             }
     
         solver = {'nlp_scaling_method': 'gradient-based',
@@ -200,6 +201,7 @@ class Settings():
                        'sigma_sq': {},
                        'spectra_problem': True,
                        'scaled_variance': False,
+                       'confidence': None,
                        }
     
         solver = {#'nlp_scaling_method': 'gradient-based',

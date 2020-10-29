@@ -4,6 +4,7 @@
 import copy
 import math
 import os
+import scipy.stats as st
 
 # Third party imports
 import numpy as np
@@ -14,15 +15,15 @@ from pyomo.environ import *
 from scipy.sparse import coo_matrix
 
 # KIPET library imports
-from kipet.library.common.objectives import conc_objective, absorption_objective
+from kipet.library.common.objectives import conc_objective, comp_objective, absorption_objective
 from kipet.library.common.read_hessian import split_sipopt_string
 from kipet.library.mixins.PEMixins import PEMixins
-from kipet.library.fe_factory import *
-from kipet.library.FESimulator import *
-from kipet.library.Optimizer import *
-from kipet.library.ParameterEstimator import *
-from kipet.library.PyomoSimulator import *
-from kipet.library.VarianceEstimator import *
+from kipet.library.core_methods.fe_factory import *
+from kipet.library.core_methods.FESimulator import *
+from kipet.library.core_methods.Optimizer import *
+from kipet.library.core_methods.ParameterEstimator import *
+from kipet.library.core_methods.PyomoSimulator import *
+from kipet.library.core_methods.VarianceEstimator import *
 
 __author__ = 'Michael Short, Kevin McBride'  #: February 2019 - October 2020
 
@@ -141,6 +142,11 @@ class MultipleExperimentsEstimator(PEMixins, object):
     def _display_covariance(self, variances_p):
         """Displays the covariance results to the console
         """
+        #print(self.confidence_interval)
+        number_of_stds = 1#st.norm.ppf(1-(1-self.confidence_interval)/2)
+        
+        print(number_of_stds)
+        
         print('\nParameters:')
         for exp in self.experiments:
             for k, p in self.model.experiment[exp].P.items():
@@ -153,7 +159,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
                 if p.is_fixed():
                     continue
                 std = (self.variance_scale*variances_p[i])** 0.5
-                print('{} ({},{})'.format(k, p.value - std, p.value + std))
+                print('{} ({},{})'.format(k, p.value - number_of_stds*std, p.value + number_of_stds*std))
                 
         if hasattr(self.model.experiment[exp], 'Pinit'):
             print('\nLocal Parameters:')
@@ -165,7 +171,10 @@ class MultipleExperimentsEstimator(PEMixins, object):
             for exp in self.experiments:
                 for i, k in enumerate(self.model.experiment[exp].Pinit.keys()):
                     self.model.experiment[exp].Pinit[k] = self.model.experiment[exp].init_conditions[k].value
-                    print('{} ({},{})'.format(k, self.model.experiment[exp].Pinit[k].value - variances_p[i] ** 0.5, self.model.experiment[exp].Pinit[k].value + variances_p[i] ** 0.5))
+                    #std = (self.variance_scale*variances_p[i])** 0.5
+                    print('{} ({},{})'.format(k, 
+                                              self.model.experiment[exp].Pinit[k].value - (number_of_stds*variances_p[i]**0.5), 
+                                              self.model.experiment[exp].Pinit[k].value + (number_of_stds*variances_p[i]**0.5)))
                             
         return None
         
@@ -417,6 +426,20 @@ class MultipleExperimentsEstimator(PEMixins, object):
         
         return hessian
         
+    def _scale_variances(self,):
+        """Option to scale the variances for MEE"""
+        var_scaled = dict()
+        for s,t in self.variances.items():
+            maxx = max(list(t.values()))
+            ind_var = dict()
+            for i,j in t.items():
+                ind_var[i] = j/maxx
+            var_scaled[s] = ind_var
+        self.variances = var_scaled
+        self.variance_scale = maxx
+        
+        return None
+        
     def solve_consolidated_model(self, 
                                  global_params,
                                  list_params_across_blocks,
@@ -431,7 +454,6 @@ class MultipleExperimentsEstimator(PEMixins, object):
         solver_opts = kwargs.get('solver_opts')
         tee = kwargs.get('tee')
         scaled_variance = kwargs.get('scaled_variance')
-        #covariance = kwargs.get('covariance')
         shared_spectra = kwargs.get('shared_spectra')
         solver = kwargs.get('solver')
         
@@ -441,16 +463,8 @@ class MultipleExperimentsEstimator(PEMixins, object):
         
         self.variance_scale = 1
         if scaled_variance == True:
-            var_scaled = dict()
-            for s,t in self.variances.items():
-                maxx = max(list(t.values()))
-                ind_var = dict()
-                for i,j in t.items():
-                    ind_var[i] = j/maxx
-                var_scaled[s] = ind_var
-            self.variances = var_scaled
-            self.variance_scale = maxx
-        
+            self._scale_variances()
+            
         def build_individual_blocks(m, exp):
             """This function forms the rule for the construction of the individual blocks 
             for multiple experiments, referenced in run_parameter_estimation. This function 
@@ -469,6 +483,10 @@ class MultipleExperimentsEstimator(PEMixins, object):
             with_d_vars= True
             
             m = self.initialization_model[exp].model
+            
+            # Quick fix - I don't know what is causing this
+            if hasattr(m, 'alltime_domain'):
+                m.del_component('alltime_domain')
             
             if with_d_vars and self._spectra_given:
                 m.D_bar = Var(m.meas_times,
@@ -489,7 +507,8 @@ class MultipleExperimentsEstimator(PEMixins, object):
                 spectral_term = 0
                 concentration_term = 0
                 measured_concentration_term = 0
-                weights = [1, 1, 1]
+                complementary_state_term = 0
+                weights = [1, 1, 1, 1]
                 obj_variances = self.variances
                 
                 if hasattr(m, 'D'):
@@ -504,10 +523,14 @@ class MultipleExperimentsEstimator(PEMixins, object):
                 
                 if hasattr(m, 'Cm'):
                     measured_concentration_term = conc_objective(m, variance=obj_variances[exp])
+                
+                if hasattr(m, 'U'):
+                    complementary_state_term = comp_objective(m, variance=obj_variances[exp])
                     
                 expr = weights[0]*spectral_term + \
                     weights[1]*concentration_term + \
-                    weights[2]*measured_concentration_term
+                    weights[2]*measured_concentration_term + \
+                    weights[3]*complementary_state_term
     
                 return m.error == expr
     

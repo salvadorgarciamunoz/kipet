@@ -27,10 +27,10 @@ from pyomo.environ import (
 
 from kipet.library.common.read_write_tools import df_from_pyomo_data
 from kipet.library.post_model_build.scaling import remove_scaling
-from kipet.library.ParameterEstimator import ParameterEstimator
-from kipet.library.PyomoSimulator import PyomoSimulator
-from kipet.library.TemplateBuilder import TemplateBuilder
-from kipet.library.ResultsObject import ResultsObject
+from kipet.library.core_methods.ParameterEstimator import ParameterEstimator
+from kipet.library.core_methods.PyomoSimulator import PyomoSimulator
+from kipet.library.core_methods.TemplateBuilder import TemplateBuilder
+from kipet.library.core_methods.ResultsObject import ResultsObject
 from kipet.library.common.VisitorClasses import ReplacementVisitor
 from kipet.library.post_model_build.scaling import scale_parameters
 from kipet.library.common.objectives import (

@@ -14,10 +14,10 @@ import plotly.graph_objs as go
 from plotly import __version__
 from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
 
-from kipet.library.data_tools import *
-from kipet.library.ResultsObject import colors
+from kipet.library.core_methods.data_tools import *
+from kipet.library.core_methods.ResultsObject import colors
 
-data_categories = ['concentration', 'spectral', 'state', 'trajectory']
+data_categories = ['concentration', 'spectral', 'state', 'trajectory', 'custom']
 
 class DataBlock():
     
@@ -224,7 +224,7 @@ class DataSet(object):
             print('No data to plot')
             return None
         
-        if self.category in ['concentration', 'state', 'trajectory']:
+        if self.category in ['concentration', 'state', 'trajectory', 'custom']:
             self._plot_2D_data()
             
         if self.category == 'spectral':
@@ -313,7 +313,7 @@ class DataSet(object):
     
     @property
     def species(self):
-        if self.data is not None and self.category in ['concentration', 'state', 'trajectory']:
+        if self.data is not None and self.category in ['concentration', 'state', 'trajectory', 'custom']:
             return list(self.data.columns)
         elif self.data is None:
             return []

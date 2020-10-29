@@ -4,6 +4,7 @@ from __future__ import print_function
 import copy
 import os
 import re
+import scipy.stats as st
 import time
 
 import matplotlib.pyplot as plt
@@ -17,8 +18,8 @@ from pyomo.opt import (
     TerminationCondition,
 )
 
-from kipet.library.Optimizer import *
-from kipet.library.TemplateBuilder import *
+from kipet.library.core_methods.Optimizer import *
+from kipet.library.core_methods.TemplateBuilder import *
 from kipet.library.common.read_hessian import *
 
 from kipet.library.spectra_methods.G_handling import (
@@ -28,6 +29,7 @@ from kipet.library.spectra_methods.G_handling import (
 from kipet.library.common.objectives import (
     conc_objective, 
     absorption_objective,
+    user_objective,
     )
 
 from kipet.library.mixins.PEMixins import PEMixins 
@@ -58,6 +60,8 @@ class ParameterEstimator(PEMixins, Optimizer):
         self.time_invariant_G = False
         self.time_invariant_G_decompose = False
         self.time_invariant_G_no_decompose = False
+        
+        self.confidence_interval = 0.6826894921373
 
         if hasattr(self.model, 'non_absorbing'):
             warnings.warn("Overriden by non_absorbing")
@@ -90,9 +94,6 @@ class ParameterEstimator(PEMixins, Optimizer):
             self.component_var = 'C'
             self.n_val = self._n_actual
             
-    def run_sim(self, solver, **kdws):
-        raise NotImplementedError("ParameterEstimator object does not have run_sim method. Call run_opt")
-
     def run_opt(self, solver, **kwds):
 
         """ Solves parameter estimation problem.
@@ -156,6 +157,10 @@ class ParameterEstimator(PEMixins, Optimizer):
         jump_times = kwds.pop("jump_times", None)
         feed_times = kwds.pop("feed_times", None)
         
+        confidence = kwds.pop('confidence_interval', None)
+        if confidence is None:
+            confidence = 0.6826894921373 # One standard deviation
+        
         # user should input if the unwanted contribuiton is involved, and what type it is.
         # If it's time_invariant, St or Z_in should be inputed to check the rank of kernal of Omega matrix. KH.L
         G_contribution = kwds.pop('G_contribution', None)
@@ -165,6 +170,7 @@ class ParameterEstimator(PEMixins, Optimizer):
         self.solver = solver
         self.model_variance = model_variance
         self._estimability = estimability
+        self.confidence_interval = confidence
 
         if not self.model.alltime.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
@@ -233,7 +239,7 @@ class ParameterEstimator(PEMixins, Optimizer):
                                        **kwds)
             
        
-        elif self._concentration_given:
+        elif self._concentration_given or self._custom_data_given:
             self.objective_value, self.cov_mat = self._solve_model_given_c(variances, 
                                       opt,
                                       tee=tee,
@@ -612,16 +618,24 @@ class ParameterEstimator(PEMixins, Optimizer):
             if penaltyparamcon == True:
                 rho = 100
                 sumpen = 0.0
-                obj += conc_objective(model, variance=sigma_sq)
+                obj += conc_objective(model, variance=sigma_sq)    
+                #obj += user_objective(model)
                 for t in model.allmeas_times:
                     sumpen += model.Y[t, 'npen']
                 fifth_term = rho * sumpen
                 obj += fifth_term
             else:
                 obj += conc_objective(model, variance=sigma_sq)
+                #obj += user_objective(model)
             return obj
 
         model.objective = Objective(rule=rule_objective)
+        
+        if hasattr(model, 'custom_obj'):
+            model.objective.expr += model.custom_obj
+        
+        #print(model.objective.expr.to_string())
+
 
         if warmstart==True:
             if hasattr(model,'dual') and hasattr(model,'ipopt_zL_out') and hasattr(model,'ipopt_zU_out') and hasattr(model,'ipopt_zL_in') and hasattr(model,'ipopt_zU_in'):
@@ -876,17 +890,27 @@ class ParameterEstimator(PEMixins, Optimizer):
         """
         Function to display calculated confidence intervals
         """
+        number_of_stds = st.norm.ppf(1-(1-self.confidence_interval)/2)
+        #print(f'STDS: {number_of_stds}')
+        
         print('\nConfidence intervals:')
         i = 0
         for k, p in self.model.P.items():
             if p.is_fixed():
                 continue
-            print('{} ({},{})'.format(k, p.value - variances[i] ** 0.5, p.value + variances[i] ** 0.5))
+            print('{} ({},{})'.format(k, 
+                                      p.value - number_of_stds*(variances[i]**0.5),
+                                      p.value + number_of_stds*(variances[i]** 0.5))
+                  )
             i += 1
         if hasattr(self.model, 'Pinit'): 
             for k in self.model.Pinit.keys():
                 self.model.Pinit[k] = self.model.init_conditions[k].value
-                print('{} ({},{})'.format(k, self.model.Pinit[k].value - variances[i] ** 0.5, self.model.Pinit[k].value + variances[i] ** 0.5))
+                print('{} ({},{})'.format(k, 
+                                          self.model.Pinit[k].value - number_of_stds*(variances[i]** 0.5),
+                                          self.model.Pinit[k].value + number_of_stds*(variances[i]** 0.5)
+                                          )
+                      )
                 i += 1
         
         return None

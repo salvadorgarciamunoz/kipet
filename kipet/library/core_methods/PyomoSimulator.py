@@ -5,8 +5,8 @@ import warnings
 from pyomo.dae import *
 from pyomo.environ import *
 
-from kipet.library.ResultsObject import *
-from kipet.library.Simulator import *
+from kipet.library.core_methods.ResultsObject import *
+from kipet.library.core_methods.Simulator import *
 from kipet.library.common.VisitorClasses import ScalingVisitor
 
 time_sets = ['model.alltime',

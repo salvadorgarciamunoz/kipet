@@ -19,17 +19,17 @@ import pandas as pd
 from pyomo.environ import Var
 
 # Kipet library imports
-import kipet.library.data_tools as data_tools
-from kipet.library.EstimationPotential import (
+import kipet.library.core_methods.data_tools as data_tools
+from kipet.library.core_methods.EstimationPotential import (
     reduce_model,
     replace_non_estimable_parameters,
     )
-from kipet.library.FESimulator import FESimulator
-from kipet.library.MEE_new import MultipleExperimentsEstimator
-from kipet.library.ParameterEstimator import ParameterEstimator
-from kipet.library.PyomoSimulator import PyomoSimulator
-from kipet.library.TemplateBuilder import TemplateBuilder
-from kipet.library.VarianceEstimator import VarianceEstimator
+from kipet.library.core_methods.FESimulator import FESimulator
+from kipet.library.core_methods.MEE_new import MultipleExperimentsEstimator
+from kipet.library.core_methods.ParameterEstimator import ParameterEstimator
+from kipet.library.core_methods.PyomoSimulator import PyomoSimulator
+from kipet.library.core_methods.TemplateBuilder import TemplateBuilder
+from kipet.library.core_methods.VarianceEstimator import VarianceEstimator
 
 from kipet.library.common.pre_process_tools import decrease_wavelengths
 from kipet.library.common.read_write_tools import set_directory
@@ -263,17 +263,14 @@ class KipetModel():
             settings_run_pe_opt = model.settings.parameter_estimator
             settings_run_pe_opt['solver_opts'] = model.settings.solver
             settings_run_pe_opt['variances'] = self.results_variances[model.name]
+            settings_run_pe_opt['confindence_interval'] = self.settings.parameter_estimator.confidence
             model.create_parameter_estimator(**self.settings.collocation)
-            # if model.settings.parameter_estimator.G_contribution is not None:
-            #     model._unwated_G_initialization(model.p_model)
-            
-            # print(model.settings.parameter_estimator)
-                
             model.run_pe_opt(**settings_run_pe_opt)
             parameter_dict[model.name] = model.results_dict['p_estimator']
             parameter_estimator_model_dict[model.name] = model.p_estimator
         
         self.mee.initialization_model = parameter_estimator_model_dict
+        self.mee.confidence_interval = self.settings.parameter_estimator.confidence
         
         list_components = {}
         for name, model in self.models.items():
@@ -380,6 +377,7 @@ class ReactionModel(WavelengthSelectionMixins):
         
         self.odes = None
         self.algs = None
+        self.custom_objective = None
         
         self.dosing_var = None
         self.dosing_points = None
@@ -580,14 +578,14 @@ class ReactionModel(WavelengthSelectionMixins):
         if len(args) > 0:
             name = args[0]
         filename = kwargs.get('file', None)
-        data = kwargs.get('data', None)
+        data = kwargs.pop('data', None)
         category = kwargs.get('category', None)
         
         # Check if file name is given and add directory (general)
         if filename is not None:
             filename = self.set_directory(filename)
             kwargs['file'] = filename
-            kwargs['data'] = None
+            #kwargs['data'] = None
             
             # Read data from file
             dataframe = data_tools.read_file(filename)
@@ -600,13 +598,13 @@ class ReactionModel(WavelengthSelectionMixins):
         
         # Now we have the dataframe of data - check labels for components
         if category is None:
-            self._check_data_category(name, dataframe)    
+            self._check_data_category(name, dataframe, **kwargs)    
         else:
-            self._add_categorized_dataset(name, category, dataframe)
+            self._add_categorized_dataset(name, dataframe, **kwargs)
         
         return None
     
-    def _check_data_category(self, name, data):
+    def _check_data_category(self, name, data, **kwargs):
         """Checks the category for data entered without a category"""
         
         # if components have already been entered, check them
@@ -637,11 +635,17 @@ class ReactionModel(WavelengthSelectionMixins):
         else:
             raise AttributeError('Data must have a cateogory or be matched to component data')
             
+        remove_negatives = kwargs.get('remove_negatives', False)
+        if remove_negatives:
+            self.datasets[df_name].remove_negatives()
+            
         return None
     
-    def _add_categorized_dataset(self, name, category, data, **kwargs):
+    def _add_categorized_dataset(self, name, data, **kwargs):
         """Specific function for adding concentration data"""
         
+        category = kwargs.get('category', None)
+
         # General trajectory data
         if category == 'trajectory':
             df_name = name if name is not None else 'Traj_data'
@@ -656,11 +660,12 @@ class ReactionModel(WavelengthSelectionMixins):
             df_name = name if name is not None else 'D_data'
             self.datasets.add_dataset(df_name, category=category, data=data)
         else:
-            raise ValueError('Unknown data category')
+            df_name = name if name is not None else 'UD_data'
+            self.datasets.add_dataset(df_name, category='custom', data=data)
                 
         remove_negatives = kwargs.get('remove_negatives', False)
         if remove_negatives:
-            self.datasets[name].remove_negatives()
+            self.datasets[df_name].remove_negatives()
         
         return None
     
@@ -708,6 +713,12 @@ class ReactionModel(WavelengthSelectionMixins):
         self.algs = algebraics
         return None
     
+    def add_objective_from_algebraic(self, algebraic_var):
+        """Wrapper for the set_algebraics method used in the builder"""
+        
+        self.custom_objective = algebraic_var
+        return None
+    
     def populate_template(self, *args, **kwargs):
         
         if len(self.components) > 0:
@@ -735,6 +746,9 @@ class ReactionModel(WavelengthSelectionMixins):
             
         if hasattr(self, 'algs') and self.algs is not None:
             self.builder.set_algebraics_rule(self.algs)
+            
+        if hasattr(self, 'custom_objective') and self.custom_objective is not None:
+            self.builder.set_objective_rule(self.custom_objective)
         
         scale_parameters = self.settings.general.scale_parameters
         self.builder.set_parameter_scaling(scale_parameters)
@@ -770,7 +784,6 @@ class ReactionModel(WavelengthSelectionMixins):
         start_time, end_time = self.populate_template(*args, **kwargs)
         self.model = self.builder.create_pyomo_model(start_time, end_time)
         
-        self.set_non_absorbing_species()
         if self._has_non_absorbing_species:
             self.builder.set_non_absorbing_species(self.model, self.non_abs_list, check=True)    
         
@@ -1197,16 +1210,10 @@ class ReactionModel(WavelengthSelectionMixins):
         
         return results
     
-    def set_non_absorbing_species(self):
+    def set_non_absorbing_species(self, non_abs_list):
         """Wrapper for set_non_absorbing_species in TemplateBuilder"""
         
-        non_abs_list = []
-        
-        for comp in self.components:
-            if not comp.absorbing: 
-                self._has_non_absorbing_species = True
-                non_abs_list.append(comp.name)
-            
+        self._has_non_absorbing_species = True
         self.non_abs_list = non_abs_list
         return None
         
@@ -1218,4 +1225,4 @@ class ReactionModel(WavelengthSelectionMixins):
         dataframe = self.datasets[var].data
         if overwrite:
             self.datasets[var].data = dataframe
-        return data_tools.add_noise_to_signal(dataframe, noise)        
+        return data_tools.add_noise_to_signal(dataframe, noise)    

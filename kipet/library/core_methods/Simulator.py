@@ -6,7 +6,7 @@ import scipy
 
 from pyomo.dae import *
 from pyomo.environ import *
-from kipet.library.ResultsObject import *
+from kipet.library.core_methods.ResultsObject import *
 
 def interpolate_trajectory(t, tr):
     

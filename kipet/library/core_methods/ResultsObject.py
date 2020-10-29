@@ -39,11 +39,11 @@ colors += ['#4285F4', '#DB4437', '#F4B400', '#0F9D58',
 exp_data_maps = {'Z': ['C', 'Cm'],
                  'X': ['U'],
                  'S': None,
-                 'Y': None,
+                 'Y': ['UD'],
                  }
 
 plot_vars = ['Z', 'X', 'S', 'Y']
-result_vars = ['Z', 'C', 'Cm', 'K', 'S', 'X', 'dZdt', 'dXdt', 'P', 'Pinit', 'sigma_sq', 'estimable_parameters']
+result_vars = ['Z', 'C', 'Cm', 'K', 'S', 'X', 'dZdt', 'dXdt', 'P', 'Pinit', 'sigma_sq', 'estimable_parameters', 'Y', 'UD']
 
 class ResultsObject(object):
     """Container for all of the results. Includes plotting functions"""
@@ -94,15 +94,10 @@ class ResultsObject(object):
             variables_to_load = user_variables.intersection(model_variables)
         else:
             variables_to_load = model_variables
-
-        # diff = user_variables.difference(model_variables)
-        # if diff:
-        #     print("WARNING: The following variables are not part of the model:")
-        #     print(diff) 
         
         for block in instance.block_data_objects():
             block_map = block.component_map(Var)
-            for name in variables_to_load:
+            for name in variables_to_load: 
                 v = block_map[name]
                 if v.dim()==0:
                     setattr(self, name, v.value)
@@ -203,6 +198,7 @@ class ResultsObject(object):
                             )
                 
         if extra_data is not None:
+            
             counter = i + 1
             if isinstance(extra_data['data'], pd.DataFrame):
                 col_check = col in pd.DataFrame(extra_data['data']).columns

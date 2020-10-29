@@ -7,7 +7,7 @@ import copy
 # Third party imports
 
 # Kipet library imports
-from kipet.library.ParameterEstimator import wavelength_subset_selection
+from kipet.library.core_methods.ParameterEstimator import wavelength_subset_selection
 
 
 class WavelengthSelectionMixins():

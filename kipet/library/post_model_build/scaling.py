@@ -8,7 +8,7 @@ import copy
 from pyomo.environ import Param
 
 # Kipet library imports
-from kipet.library.PyomoSimulator import PyomoSimulator
+from kipet.library.core_methods.PyomoSimulator import PyomoSimulator
 from kipet.library.common.VisitorClasses import ScalingVisitor, ReplacementVisitor  
 
 

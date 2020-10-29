@@ -15,8 +15,8 @@ from pyomo.environ import (
     Suffix,
     )
 
-from kipet.library.PyomoSimulator import *
-from kipet.library.ResultsObject import *
+from kipet.library.core_methods.PyomoSimulator import *
+from kipet.library.core_methods.ResultsObject import *
 from kipet.library.mixins.JumpsMixin import JumpsMixin
 
 

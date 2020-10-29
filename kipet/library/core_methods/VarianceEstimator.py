@@ -5,7 +5,7 @@ from pyomo.core import *
 from pyomo.dae import *
 from pyomo.environ import *
 
-from kipet.library.Optimizer import *
+from kipet.library.core_methods.Optimizer import *
 
 
 class VarianceEstimator(Optimizer):
