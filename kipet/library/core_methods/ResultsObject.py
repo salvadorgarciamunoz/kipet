@@ -116,7 +116,7 @@ class ResultsObject(object):
                 else:
                     raise RuntimeError('load_from_pyomo_model function not supported for models with variables with dimension > 2')
     
-    def _make_plots(self, pred, var, show_exp, extra_data, filename=None, show_plot=True):
+    def _make_plots(self, pred, var, show_exp, extra_data, filename=None, show_plot=True, description=None):
         """Makes the actual plots and filters out the data that is missing from
         the model.
         
@@ -239,19 +239,31 @@ class ResultsObject(object):
                         )
                 counter += 1
         
-                
-        if var == 'S':
+        if description is not None:
+            title = description.get('title', '')
+            xaxis_title = description.get('xaxis', '')
+            yaxis_title = description.get('yaxis', '')
+        
             fig.update_layout(
-                title="Absorbance Profile",
-                xaxis_title="Wavelength (cm)",
-                yaxis_title="Absorbance (L/(mol cm))",
+                title=title,
+                xaxis_title=xaxis_title,
+                yaxis_title=yaxis_title,
                 )
+        
         else:
-            fig.update_layout(
-                title="Concentration Profile",
-                xaxis_title="Time",
-                yaxis_title="Concentration",
-                )
+            if var == 'S':
+                fig.update_layout(
+                    title="Absorbance Profile",
+                    xaxis_title="Wavelength (cm)",
+                    yaxis_title="Absorbance (L/(mol cm))",
+                    )
+            else:
+                fig.update_layout(
+                    title="Concentration Profile",
+                    xaxis_title="Time",
+                    yaxis_title="Concentration",
+                    )
+                
         x_data = [t for t in pred.index]
         
         x_axis_mod = 0.025*(float(x_data[-1]) - float(x_data[0]))
@@ -268,7 +280,7 @@ class ResultsObject(object):
     
         return None
     
-    def plot(self, var=None, subset=None, show_exp=True, extra_data=None, filename=None, show_plot=True):
+    def plot(self, var=None, subset=None, show_exp=True, extra_data=None, filename=None, show_plot=True, description=None):
         """Function to plot experimental data and model predictions using plotly.
         Automatically finds the concentration and complementary state data in 
         the model (if the the model has the attribute, it will be checked)
@@ -300,7 +312,7 @@ class ResultsObject(object):
                 else:
                     pred = getattr(self, _var)
                     
-                self._make_plots(pred, _var, _show_exp, extra_data, filename, show_plot)
+                self._make_plots(pred, _var, _show_exp, extra_data, filename, show_plot, description)
                 
     @property
     def parameters(self):
