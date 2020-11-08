@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from pyomo import *
-from pyomo.core.base.sets import _SetProduct
+from pyomo.core.base.set import SetProduct
 from pyomo.core.expr.numvalue import NumericConstant
 from pyomo.dae import *
 from pyomo.environ import *
@@ -78,7 +78,7 @@ class fe_initialize(object):
             while queue:
                 n+=1
                 s = queue.pop(0)
-                if not isinstance(s, _SetProduct):
+                if not isinstance(s, SetProduct):
                     ans.append(s)
                 else:
                     queue.extend(s.set_tuple) 
