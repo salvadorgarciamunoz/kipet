@@ -275,16 +275,16 @@ class ResultsObject(object):
     
         if show_plot:
             if filename is None:
-                
-                default_dir = Path.cwd().parents[0]
-                default_chart_dir = default_dir.joinpath('charts')
-                
-                if not default_chart_dir.is_dir():
-                    default_chart_dir.mkdir(parents=True, exist_ok=False)
-
                 filename = f'chart_{str(time.time())[-4:]}.html'
-                filename = default_chart_dir.joinpath(filename)
-                print(f'Plot saved as: {filename}')
+                
+            default_dir = Path.cwd().parents[0]
+            default_chart_dir = default_dir.joinpath('charts')
+            
+            if not default_chart_dir.is_dir():
+                default_chart_dir.mkdir(parents=True, exist_ok=False)
+
+            filename = default_chart_dir.joinpath(filename)
+            print(f'Plot saved as: {filename}')
                 
             plot(fig, filename=filename.as_posix())
     
