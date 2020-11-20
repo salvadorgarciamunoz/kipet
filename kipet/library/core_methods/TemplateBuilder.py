@@ -124,6 +124,8 @@ class TemplateBuilder(object):
         # self._initextra_est_list = None
         
         # bounds and init for unwanted contributions KH.L
+        self._G_contribution = None
+        
         self._qr_bounds = None
         self._qr_init = None
         self._g_bounds = None
@@ -1358,14 +1360,6 @@ class TemplateBuilder(object):
 
     def _set_up_times(self, model, start_time, end_time):
         
-        list_times = self._meas_times
-        m_times = sorted(list_times)
-        list_feedtimes = self._feed_times  # For inclusion of discrete feeds CS
-        feed_times = sorted(list_feedtimes)  # For inclusion of discrete feeds CS
-        m_lambdas = list()
-        m_alltimes = m_times
-        conc_times = list()
-        
         if self._times is not None:
             if start_time is None:
                 start_time = self._times[0]
@@ -1378,6 +1372,14 @@ class TemplateBuilder(object):
                     end_time = self.datablock.time_span[1]
                 except:
                     raise ValueError('A model requires a start and end time or a dataset')
+        
+        list_times = self._meas_times
+        m_times = sorted(list_times)
+        list_feedtimes = self._feed_times  # For inclusion of discrete feeds CS
+        feed_times = sorted(list_feedtimes)  # For inclusion of discrete feeds CS
+        m_lambdas = list()
+        m_alltimes = m_times
+        conc_times = list()
 
         if self._spectral_data is not None and self._huplc_data is None:
             list_times = list_times.union(set(self._spectral_data.index))
@@ -1457,6 +1459,7 @@ class TemplateBuilder(object):
             model.allsmooth_times = Set(initialize=m_allsmoothtimes, ordered=True)
 
         if m_alltimes:
+            print(start_time, end_time)
             self._check_time_inputs(m_alltimes, start_time, end_time)
 
         self._m_lambdas = m_lambdas
@@ -1538,7 +1541,8 @@ class TemplateBuilder(object):
         self._add_model_smoothing_parameters(pyomo_model)
         
         # If unwanted contributions are being handled:
-        self._add_unwanted_contribution_variables(pyomo_model)
+        if self._G_contribution is not None:
+            self._add_unwanted_contribution_variables(pyomo_model)
 
         # Validate the model before writing constraints
         self._validate_data(pyomo_model)
@@ -1559,9 +1563,9 @@ class TemplateBuilder(object):
         # Add given state standard deviations to the pyomo model
         if self._state_sigmas is not None:
             state_sigmas = {k: v for k, v in self._state_sigmas.items() if k in pyomo_model.measured_data}
-            pyomo_model.sigma = Param(pyomo_model.measured_data, initialize=state_sigmas)
+            pyomo_model.sigma = Param(pyomo_model.measured_data, initialize=state_sigmas) #, mutable=True)
         else:
-            pyomo_model.sigma = Param(pyomo_model.measured_data, initialize=1)
+            pyomo_model.sigma = Param(pyomo_model.measured_data, initialize=1)#, mutable=True)
  
         # In case of a second call after known_absorbing has been declared
         if self._huplc_data is not None and self._is_huplc_abs_set:
