@@ -8,7 +8,7 @@ from pyomo.environ import (
     SolverFactory,
     )
 
-from kipet.library.ResultsObject import *
+from kipet.library.core_methods.ResultsObject import *
 from kipet.library.variance_methods.chen_method_pyomo import *
 from kipet.library.variance_methods.chen_method_scipy import *
 

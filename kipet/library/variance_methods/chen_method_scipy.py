@@ -8,7 +8,7 @@ from pyomo.environ import *
 from scipy.optimize import least_squares
 from scipy.sparse import coo_matrix
 
-from kipet.library.data_tools import stdout_redirector
+from kipet.library.core_methods.data_tools import stdout_redirector
 try:
     from StringIO import StringIO
 except ImportError:
