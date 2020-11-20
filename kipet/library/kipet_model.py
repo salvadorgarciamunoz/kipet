@@ -24,6 +24,9 @@ from kipet.library.core_methods.EstimationPotential import (
     reduce_model,
     replace_non_estimable_parameters,
     )
+# from kipet.library.core_methods.EstimationPotential_working import (
+#     reduce_model,
+#    )
 from kipet.library.core_methods.FESimulator import FESimulator
 from kipet.library.core_methods.MEE_new import MultipleExperimentsEstimator
 from kipet.library.core_methods.ParameterEstimator import ParameterEstimator
@@ -293,6 +296,8 @@ class KipetModel():
                                  **self.settings.parameter_estimator)
     
         self.results = results
+        for key, results_obj in self.results.items():
+            results_obj.file_dir = self.settings.general.charts_directory
         return results
     
     @property
@@ -351,8 +356,15 @@ class KipetModel():
             
     def plot(self, *args, **kwargs):
         for reaction, model in self.models.items():
+            file_dir = self.settings.general.charts_directory
+            kwargs['file_dir'] = file_dir
+            print(kwargs)
             model.results.plot(*args, **kwargs)
         
+    def test_version(self):
+        print('yes, this is new')
+        return None
+    
     
 class ReactionModel(WavelengthSelectionMixins):
     
@@ -685,21 +697,25 @@ class ReactionModel(WavelengthSelectionMixins):
         self.settings.general.simulation_times = (start_time, end_time)
         return None
     
-    def set_directory(self, filename):
+    def set_directory(self, filename, abs_dir=False):
         """Wrapper for the set_directory method. This replaces the awkward way
         of ensuring the correct directory for the data is used."""
 
         directory = self.settings.general.data_directory
-        return set_directory(filename, directory)
+        print(f'the dir is: {directory}')
+        file_path = pathlib.Path(directory).joinpath(filename)
+        print(file_path)
+        
+        return file_path
     
-    def get_directory(self, directory=DEFAULT_DIR):
-        """Due to the way KIPET was initially written, setting up the directory
-        is somewhat complicated because of validation. This method makes it 
-        simpler to get the correct directory regardless of where you are
-        """
-        filename = 'empty'
-        data_directory = set_directory(filename, directory).parent
-        return data_directory
+    # def get_directory(self, directory=DEFAULT_DIR):
+    #     """Due to the way KIPET was initially written, setting up the directory
+    #     is somewhat complicated because of validation. This method makes it 
+    #     simpler to get the correct directory regardless of where you are
+    #     """
+    #     filename = 'empty'
+    #     directory = self.settings.general.data_directory
+    #     return data_directory
     
     def add_equations(self, ode_fun):
         """Wrapper for the set_odes method used in the builder"""
@@ -756,12 +772,15 @@ class ReactionModel(WavelengthSelectionMixins):
         
         if self._has_dosing_points:
             self._add_feed_times()
+            
+        self.builder._G_contribution = self.settings.parameter_estimator.G_contribution
         
         if self.settings.parameter_estimator.G_contribution is not None:
             self._unwanted_G_initialization()
         
         start_time, end_time = None, None
         if self.settings.general.simulation_times is not None:
+            print(f'times are: {type(self.settings.general.simulation_times)}')
             start_time, end_time = self.settings.general.simulation_times
        
         return start_time, end_time
@@ -886,8 +905,9 @@ class ReactionModel(WavelengthSelectionMixins):
             self.call_fe_factory()
         
         simulator_options = self.settings.simulator
-        simulator_options.pop('method')
+        simulator_options.pop('method', None)
         self.results = self.simulator.run_sim(**simulator_options)
+        self.results.file_dir = self.settings.general.charts_directory
     
         return None
     
@@ -1087,6 +1107,7 @@ class ReactionModel(WavelengthSelectionMixins):
         
         self.run_pe_opt(**settings_run_pe_opt)
         self.results = self.results_dict['p_estimator']
+        self.results.file_dir = self.settings.general.charts_directory
         
         return self.results
     
@@ -1200,6 +1221,9 @@ class ReactionModel(WavelengthSelectionMixins):
         """
         if self.model is None:
             self.create_pyomo_model()
+            
+        # settings_rhps['solver_opts'] = self.settings.solver
+        kwargs['solver_opts'] = self.settings.solver
         
         parameter_dict = self.parameters.as_dict(bounds=True)
         results, reduced_model = reduce_model(self.model, **kwargs)
@@ -1209,6 +1233,41 @@ class ReactionModel(WavelengthSelectionMixins):
         self.reduced_model_results = results
         
         return results
+    
+    def reduce_model_old(self, **kwargs):
+        """This calls the reduce_models method in the EstimationPotential
+        module to reduce the model based on the reduced hessian parameter
+        selection method.
+        
+        Args:
+            kwargs:
+                replace (bool): defaults to True, option to replace the
+                    parameters deemed unestimable from the model with constants
+                no_scaling (bool): defaults to True, removes the scaling
+                    constants from the model and restores the parameter values
+                    and their bounds.
+                    
+        Returns:
+            results (ResultsObject): A standard results object with the reduced
+                model results
+        
+        """
+        if self.model is None:
+            self.create_pyomo_model()
+        
+        parameter_dict = self.parameters.as_dict(bounds=True)
+        
+        kwargs['times'] = (self.model.start_time.value, self.model.end_time.value)
+        
+        print(kwargs)
+        
+        reduce_model_old(self, **kwargs)
+        
+        # self.reduced_model = reduced_model
+        # self.using_reduced_model = True
+        # self.reduced_model_results = results
+        
+        return None #results
     
     def set_non_absorbing_species(self, non_abs_list):
         """Wrapper for set_non_absorbing_species in TemplateBuilder"""
@@ -1226,3 +1285,77 @@ class ReactionModel(WavelengthSelectionMixins):
         if overwrite:
             self.datasets[var].data = dataframe
         return data_tools.add_noise_to_signal(dataframe, noise)    
+    
+    def apply_pe_discretization(self, model_object, *args, **kwargs):
+        """Checks is the model is discretized and discretizes it in the case
+        that it is not
+        
+        Args:
+            model (ConcreteModel): A pyomo ConcreteModel
+            
+            ncp (int): number of collocation points used
+            
+            nfe (int): number of finite elements used
+            
+        Returns:
+            None
+            
+        """
+        method = kwargs.pop('method', 'dae.collocation')
+        ncp = kwargs.pop('ncp', 3)
+        nfe = kwargs.pop('nfe', 50)
+        scheme = kwargs.pop('scheme', 'LAGRANGE-RADAU')
+        
+        if not model_object.alltime.get_discretization_info():
+        
+            # You need to change this out of an Estimator
+            model_pe = ParameterEstimator(model_object)
+            model_pe.apply_discretization(method,
+                                          ncp=ncp,
+                                          nfe=nfe,
+                                          scheme=scheme)
+        
+        return None
+        
+    def rule_objective(self, model):
+        """This function defines the objective function for the estimability
+        
+        This is equation 5 from Chen and Biegler 2020. It has the following
+        form:
+            
+        .. math::
+            \min J = \frac{1}{2}(\mathbf{w}_m - \mathbf{w})^T V_{\mathbf{w}}^{-1}(\mathbf{w}_m - \mathbf{w})
+            
+        Originally KIPET was designed to only consider concentration data in
+        the estimability, but this version now includes complementary states
+        such as reactor and cooling temperatures. If complementary state data
+        is included in the model, it is detected and included in the objective
+        function.
+        
+        Args:
+            model (pyomo.core.base.PyomoModel.ConcreteModel): This is the pyomo
+            model instance for the estimability problem.
+                
+        Returns:
+            obj (pyomo.environ.Objective): This returns the objective function
+            for the estimability optimization.
+        
+        """
+        obj = 0
+        
+        from pyomo.environ import Objective
+        
+        print(model.sigma)
+    
+        for k in set(model.mixture_components.value_list) & set(model.measured_data.value_list):
+            for t, v in model.Cm.items():
+                obj += 0.5*(model.Cm[t] - model.Z[t]) ** 2 /  1#model.sigma[k]**2
+        
+        for k in set(model.complementary_states.value_list) & set(model.measured_data.value_list):
+            for t, v in model.U.items():
+                obj += 0.5*(model.X[t] - model.U[t]) ** 2 / 1#model.sigma[k]**2      
+    
+        model.objective = Objective(expr=obj)
+    
+        return None
+        
