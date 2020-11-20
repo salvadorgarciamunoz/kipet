@@ -19,17 +19,6 @@ def get_objective(model, *args, **kwargs):
     return Objective(rule=objective_expr)
 
 
-def user_objective(model, *args, **kwargs):
-    
-    """Should use an alegraic for the objective using a user defined data source"""
-    
-    obj=0
-    
-    for index, values in model.UD.items():
-        obj += (model.UD[index]*(model.Z[index[0],'B'] + model.Z[index[0],'C'] + 1e-12) - model.Z[index[0],'B']) ** 2
-    
-    return obj
-
 def conc_objective(model, *args, **kwargs):
     """
     
