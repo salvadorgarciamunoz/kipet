@@ -251,10 +251,10 @@ def read_settings_txt(settings_file='settings.txt'):
     
     """
     abs_file_path = Path(os.path.abspath(os.path.dirname(__file__)))
-    print(abs_file_path)
+    #print(abs_file_path)
     
     settings_file_abs = Path(__file__).parents[2].joinpath(settings_file)
-    print(settings_file_abs)
+    #print(settings_file_abs)
     
     user_fixed_settings = {}
     with settings_file_abs.open() as f: 
@@ -278,5 +278,5 @@ def read_settings_txt(settings_file='settings.txt'):
     return user_fixed_settings
 
 USER_DEFINED_SETTINGS = read_settings_txt()
-print(USER_DEFINED_SETTINGS)
+# print(USER_DEFINED_SETTINGS)
 
