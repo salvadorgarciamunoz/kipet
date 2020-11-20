@@ -29,7 +29,6 @@ from kipet.library.spectra_methods.G_handling import (
 from kipet.library.common.objectives import (
     conc_objective, 
     absorption_objective,
-    user_objective,
     )
 
 from kipet.library.mixins.PEMixins import PEMixins 
@@ -619,14 +618,12 @@ class ParameterEstimator(PEMixins, Optimizer):
                 rho = 100
                 sumpen = 0.0
                 obj += conc_objective(model, variance=sigma_sq)    
-                #obj += user_objective(model)
                 for t in model.allmeas_times:
                     sumpen += model.Y[t, 'npen']
                 fifth_term = rho * sumpen
                 obj += fifth_term
             else:
                 obj += conc_objective(model, variance=sigma_sq)
-                #obj += user_objective(model)
             return obj
 
         model.objective = Objective(rule=rule_objective)

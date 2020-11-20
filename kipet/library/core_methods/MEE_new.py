@@ -590,7 +590,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
             combined_model.spectra_linking = Constraint(self.experiments, list_waves_across_blocks, list_species_across_blocks, rule = wavelength_linking_rule)
         
         # Add in experimental weights
-        combined_model.obj = Objective(sense=minimize, expr=sum(b.error for b in combined_model.experiment[:]))
+        combined_model.objective = Objective(sense=minimize, expr=sum(b.error for b in combined_model.experiment[:]))
         self.model = combined_model
         
         if solver in ['k_aug', 'ipopt_sens']:
