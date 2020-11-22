@@ -1,7 +1,7 @@
 """
 Read/Write functions used for data in Kipet
 """
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stdout
 import inspect
 import os
 from pathlib import Path
@@ -13,7 +13,7 @@ import pandas as pd
 
 DEFAULT_DIR = 'data_sets'
 
-def _set_directory():
+def set_directory(filename, data_dir=DEFAULT_DIR):
     """Sets the current working directory plus the given subdirectory as the
     directory for the given data file (filename)
     
@@ -26,13 +26,15 @@ def _set_directory():
         filename (Path): the full filename of the data
     
     """
-    dataDirectory = os.path.abspath(
-        os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
-            inspect.currentframe() ) ) ), '../../examples', 'data_sets'))
     
-    return Path(dataDirectory)
+    # dataDirectory = Path.absolute(data_dir).joinpath(filename)
+    # print(dataDirectory)
+    calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
+    print(calling_file_name)
+    dataDirectory = Path(calling_file_name).joinpath(data_dir, filename)
+    return dataDirectory
 
-def read_file(filename, directory=DEFAULT_DIR):       
+def read_file(filename, directory=DEFAULT_DIR, **kwargs):       
     """ Reads data from a csv or txt file and converts it to a DataFrame
     
         Args:
@@ -44,13 +46,16 @@ def read_file(filename, directory=DEFAULT_DIR):
             DataFrame
 
     """
-    #dirname = _set_directory()
+    # instrument = kwargs.pop('intrusment', False)
+    # negatives_to_zero = kwargs.pop('negaitves_to_zero', False)    
+    
     filename = Path(filename)
     print(f'read dir : {filename}')
-    #filename = Path(filename)
     data_dict = {}
-    if filename.suffix == '.txt':
     
+    # if not instrument:
+    
+    if filename.suffix == '.txt':
         with open(filename, 'r') as f:
             for line in f:
                 if line not in ['','\n','\t','\t\n']:
@@ -61,16 +66,33 @@ def read_file(filename, directory=DEFAULT_DIR):
         
         df_data = dict_to_df(data_dict)
         df_data.sort_index(ascending=True, inplace=True)
-        return df_data
+      #  return df_data
 
     elif filename.suffix == '.csv':
-        
-        df_data = pd.read_csv(filename, index_col=0)
-        return df_data   
+        df_data = pd.read_csv(filename, index_col=0)   
+     #   return df_data
 
     else:
         raise ValueError(f'The file extension {filename.suffix} is currently not supported')
         return None
+
+    # else:
+    #     df_data = pd.read_csv(filename, index_col=0, parse_dates=True)
+    #     df_data = data.T
+    #     for n in data.index:
+    #         h,m,s = n.split(':')
+    #         sec = (float(h)*60+float(m))*60+float(s)
+    #         df_data.rename(index={n:sec}, inplace=True)
+    #     df_data.index = [float(n) for n in df_data.index]
+    # else:
+    #     df_data.columns = [float(n) for n in df_data.columns]
+
+    # #If we have negative values then this makes them equal to zero
+    # if negatives_to_zero:
+        # df_data[df_data < 0] = 0
+                    
+    return df_data
+    
 
 def write_file(filename, dataframe, filetype='csv', directory=DEFAULT_DIR):
     """ Write data to file.
@@ -132,7 +154,7 @@ def read_spectral_data_from_csv(filename, instrument = False, negatives_to_zero 
             DataFrame
 
     """
-    data = pd.read_csv(filename,index_col=0)
+    data = pd.read_csv(filename, index_col=0)
     if instrument:
         #this means we probably have a date/timestamp on the columns
         data = pd.read_csv(filename,index_col=0, parse_dates = True)
@@ -147,10 +169,7 @@ def read_spectral_data_from_csv(filename, instrument = False, negatives_to_zero 
 
     #If we have negative values then this makes them equal to zero
     if negatives_to_zero:
-        for t in (data.index):
-            for l in data.columns:
-                if data.loc[t,l] < 0:
-                    data.loc[t,l] = 0.0
+        data[data < 0] = 0
 
     return data
 
@@ -281,7 +300,7 @@ def read_absorption_data_from_csv(filename, directory=DEFAULT_DIR):
     return read_file(filename, directory)
 
 
-def read_spectral_data_from_txt(filename, directory=DEFAULT_DIR):
+def read_spectral_data_from_txt(filename, directory=DEFAULT_DIR, **kwargs):
     """ Reads txt with spectral data
     
         Args:
@@ -291,6 +310,17 @@ def read_spectral_data_from_txt(filename, directory=DEFAULT_DIR):
             DataFrame
     """
     return read_file(filename, directory)
+
+def read_spectral_data_from_csv(filename, directory=DEFAULT_DIR, **kwargs):
+    """ Reads txt with spectral data
+    
+        Args:
+            filename (str): name of input file
+          
+        Returns:
+            DataFrame
+    """
+    return read_file(filename, directory, **kwargs)
 
 
 def read_absorption_data_from_txt(filename, directory=DEFAULT_DIR):
@@ -351,4 +381,3 @@ def df_from_pyomo_data(varobject):
     dfs.columns = [v[1] for v in dfs.columns]
 
     return dfs
-

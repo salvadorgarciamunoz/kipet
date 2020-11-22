@@ -1,0 +1,32 @@
+# Settings file for kipet
+#
+# Use this file to declare your default settings, especially the data directory
+#
+# Comments begin with # and are ignored
+# Whitespace is also ignored
+
+# Data Directory Setting:
+
+    DATA_DIRECTORY=
+    CHART_DIRECTORY=
+    
+# General Settings:
+
+    SCALE_VARIANCES=False
+    INITIALIZE_PARAMETER_ESTIMATOR=True 
+    SCALE_PARAMETER_ESTIMATOR=True
+    SCALE_PARAMETERS=False
+    SIMULATION_TIMES=None
+    NO_USER_SCALING=False
+
+# Collocation Settings:
+
+    COLLOCATION_METHOD=dae.collocation
+    COLLOCATION_POINTS=3
+    FINITE_ELEMENTS=40
+    DISCRETIZATION_SCHEME=LAGRANGE-RADAU
+
+# Optimization Solver Settings:
+
+    NLP_SCALING_METHOD=gradient-based
+    LINEAR_SOLVER=ma57

@@ -14,7 +14,7 @@ from pyomo.environ import (
 from kipet.library.ResultsObject import ResultsObject
 
 def run_alternate_method(var_est_object, solver, run_opt_kwargs):
-    """Calls the alternative method, whatever that means"""
+    """Calls the alternative method - Short et al 2020"""
     
     solver_opts = run_opt_kwargs.pop('solver_opts', dict())
     init_sigmas = run_opt_kwargs.pop('initial_sigmas', float())
@@ -243,7 +243,7 @@ def _solve_delta_given_sigma(var_est_object, solver, **kwds):
 
     """   
     solver_opts = kwds.pop('solver_opts', dict())
-    tee = kwds.pop('tee', True)
+    tee = kwds.pop('tee', False)
     set_A = kwds.pop('subset_lambdas', list())
     profile_time = kwds.pop('profile_time', False)
     sigmas = kwds.pop('init_sigmas', dict() or float() )
@@ -280,6 +280,7 @@ def _solve_delta_given_sigma(var_est_object, solver, **kwds):
     # Orig had sublist in both parts - is this an error?
 
     # Concentration - correct
+    # Move this to objectives module
     for t in var_est_object._meas_times:
         for k in var_est_object._sublist_components:
             #obj += conc_objective(var_est_object.model, sigma=sigmas_sq)
@@ -347,7 +348,7 @@ def _solve_sigma_given_delta(var_est_object, solver, **kwds):
 
     """   
     solver_opts = kwds.pop('solver_opts', dict())
-    tee = kwds.pop('tee', True)
+    tee = kwds.pop('tee', False)
     set_A = kwds.pop('subset_lambdas', list())
     profile_time = kwds.pop('profile_time', False)
     delta = kwds.pop('delta', dict())

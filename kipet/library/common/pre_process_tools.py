@@ -225,10 +225,10 @@ def baseline_shift(dataFrame, shift=None):
     data_frame = pd.DataFrame(data=D, columns = dataFrame.columns, index = dataFrame.index)
     return data_frame
 
-def decrease_wavelengths(original_dataset, A_set = 2, specific_subset = None):
+def decrease_wavelengths(original_dataset, A_set=2, specific_subset=None):
     '''
     Takes in the original, full dataset and removes specific wavelengths, or only keeps every
-    multipl of A_set. Returns a new, smaller dataset that should be easier to solve
+    multiple of A_set. Returns a new, smaller dataset that should be easier to solve
     
     Args:
         original_dataset (DataFrame):   the data to be processed

@@ -1,8 +1,20 @@
 """
 Module for reading and converting hessian data
 """
+# Standard library imports
+import contextlib
+import os
 
+# Thirs 
 import numpy as np
+
+def supress_stdout(func):
+    def wrapper(*a, **ka):
+        with open(os.devnull, 'w') as devnull:
+            with contextlib.redirect_stdout(devnull):
+                func(*a, **ka)
+    return wrapper
+
 
 def split_sipopt_string(output_string):
     start_hess = output_string.find('DenseSymMatrix')
