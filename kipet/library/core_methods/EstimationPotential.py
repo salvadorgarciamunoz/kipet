@@ -1,21 +1,17 @@
 """
-A new estimation class for KIPET that gives me the flexibility to do what I
-need in order for it to work properly.
+This module implements the reduced Hessian parameter selection method outlined
+in Chen and Biegler (AIChE 2020).
 
-@author: Kevin McBride
 """
+# Standard library imports
 import copy
 from pathlib import Path
 from string import Template
 import warnings
 
-import matplotlib.pyplot as plt
+# Third party imports
 import numpy as np
 import pandas as pd
-from pyomo.contrib.pynumero.interfaces.pyomo_nlp import PyomoNLP
-from scipy.sparse import coo_matrix
-from scipy.sparse.linalg import spsolve
-
 from pyomo.environ import (
     Objective,
     SolverFactory,
@@ -24,18 +20,32 @@ from pyomo.environ import (
     Param,
     Set,
     )
+from scipy.sparse import coo_matrix
+from scipy.sparse.linalg import spsolve
 
-from kipet.library.common.read_write_tools import df_from_pyomo_data
-from kipet.library.post_model_build.scaling import remove_scaling
-from kipet.library.core_methods.ParameterEstimator import ParameterEstimator
-from kipet.library.core_methods.PyomoSimulator import PyomoSimulator
-from kipet.library.core_methods.TemplateBuilder import TemplateBuilder
-from kipet.library.core_methods.ResultsObject import ResultsObject
-from kipet.library.common.VisitorClasses import ReplacementVisitor
-from kipet.library.post_model_build.scaling import scale_parameters
+# KIPET library imports
 from kipet.library.common.objectives import (
     conc_objective,
     comp_objective,
+    )
+from kipet.library.common.parameter_handling import (
+    check_initial_parameter_values,
+    set_scaled_parameter_bounds,
+    )
+from kipet.library.common.parameter_ranking import (
+    parameter_ratios,
+    rank_parameters,
+    )
+from kipet.library.common.reduced_hessian import (
+    add_global_constraints,
+    calculate_reduced_hessian
+    )
+from kipet.library.core_methods.ParameterEstimator import ParameterEstimator
+from kipet.library.core_methods.ResultsObject import ResultsObject
+from kipet.library.post_model_build.scaling import (
+    remove_scaling,
+    scale_parameters,
+    update_expression,
     )
 
 __author__ = 'Kevin McBride'  #: April 2020
@@ -82,14 +92,16 @@ class EstimationPotential():
         
     """
 
-    def __init__(self, model, simulation_data=None, options=None):
+    def __init__(self, model, simulation_data=None, options=None,
+                 method='k_aug', solver_opts={}, scaled=True,
+                 use_bounds=False, use_duals=False, rh_method='fixed'):
         
         # Options handling
         self.options = {} if options is None else options.copy()
         self._options = options.copy()
         
         self.debug = self._options.pop('debug', False)
-        self.verbose = self._options.pop('verbose', True)
+        self.verbose = self._options.pop('verbose', False)
         self.nfe = self._options.pop('nfe', 50)
         self.ncp = self._options.pop('ncp', 3)
         self.bound_approach = self._options.pop('bound_approach', 1e-2)
@@ -98,10 +110,22 @@ class EstimationPotential():
         self.eta = self._options.pop('eta', 0.1)
         self.max_iter_limit = self._options.pop('max_iter_limit', 20)
         self.simulate_start = self._options.pop('sim_start', False)
+        self.method = method
+        self.solver_opts = solver_opts
+        self.scaled = scaled
+        self.use_bounds = use_bounds
+        self.use_duals = use_duals
+        self.rh_method = rh_method
         
         # Copy the model
         self.model = copy.deepcopy(model)
         self.simulation_data = simulation_data
+        
+        self.orig_bounds = None
+        if not self.scaled and self.use_bounds:
+            self.orig_bounds = {k: (v.lb, v.ub) for k, v in self.model.P.items()}
+        
+        self.debug = False
         
     def __repr__(self):
         
@@ -120,7 +144,7 @@ class EstimationPotential():
             2. Look at the optimization code already in KIPET and see if you
             can use it for anything coded here.
             
-            3. Make sure nothing is cicular!
+            3. Make sure nothing is circular!
         
         Args:
             None
@@ -129,6 +153,9 @@ class EstimationPotential():
             None
             
         """
+        bound_check = True
+        self.verbose = True
+        
         flag = False
         step = Template('\n' + '*' * 20 + ' Step $number ' + '*' * 20)
         
@@ -139,15 +166,15 @@ class EstimationPotential():
             print(step.substitute(number=1))
             print('Initializing N_pre and N_curr\n')
         
-        N_pre = len(self.parameter_order)
-        N_curr = len(self.parameter_order)
+        N_pre = len(self.model.P)
+        N_curr = len(self.model.P)
         
         # Step 2
         if self.verbose:
             print(step.substitute(number=2))
             print('Initialize Se and Sf\n')
         
-        Se = list(self.parameter_order.values())
+        Se = [parameter for parameter in self.model.P.keys()]
         Sf = []
         
         if self.verbose:
@@ -159,9 +186,10 @@ class EstimationPotential():
             print(step.substitute(number=3))
             print('Calculating the Reduced Hessian for the initial parameter set\n')
         
-        reduced_hessian = self._calculate_reduced_hessian(Se, Sf, verbose=self.verbose)
-
+        reduced_hessian = self._calculate_reduced_hessian(Se, verbose=self.verbose, calc_method=self.rh_method, rho=self.rho, scaled=self.scaled)
+        
         if self.debug:
+            #print(reduced_hessian)
             input("Press Enter to continue...")
     
         # Step 4 - Rank the parameters using Gauss-Jordan Elimination
@@ -169,7 +197,7 @@ class EstimationPotential():
             print(step.substitute(number=4))
             print('Ranking parameters for estimability and moving to Step 5')
         
-        Se, Sf = self._rank_parameters(reduced_hessian, Se)
+        Se, Sf = rank_parameters(self.model, reduced_hessian, Se, epsilon=self.epsilon, eta=self.eta)
         
         if len(Se) >= N_curr:
             number_of_parameters_to_move = len(Se) - N_curr + 1
@@ -187,6 +215,8 @@ class EstimationPotential():
 
         # Step 5 - Optimize the estimable parameters
         outer_iteration_counter = 0
+        params_counter = 0
+        saved_parameters_K = {}
         
         while True:
         
@@ -206,14 +236,21 @@ class EstimationPotential():
                     print(step.substitute(number=5))
                     print('Optimizing the estimable parameters\n')
                     
+                print(Se)
+                print(self.model.P.display())
+                
                 for free_param in Se:
                     self.model.P[free_param].unfix()
                     
                 for fixed_param in Sf:
-                    self.model.P[fixed_param].fix(1)
-                
+                    if self.scaled:
+                        self.model.P[fixed_param].fix(1) # changed from (1) to ()
+                    else:
+                        self.model.P[fixed_param].fix() # changed from (1) to ()
+                        
                 ipopt = SolverFactory('ipopt')
-                ipopt.solve(self.model, tee=self.verbose)
+                ipopt.solve(self.model, tee=False)#self.verbose)
+                
                 if self.verbose:
                     self.model.P.display()
                     
@@ -223,28 +260,53 @@ class EstimationPotential():
                 if self.verbose:
                     print(step.substitute(number=6))
                     print('Checking for active bounds\n')
+                else:
+                    None
                 
-                for key, param in self.model.P.items():
-                    if (param.value-param.lb)/param.lb <= self.bound_approach or (param.ub - param.value)/param.value <= self.bound_approach:
-                        number_of_active_bounds += 1
-                        if self.verbose:
-                            print('There is at least one active bound - updating parameters and optimizing again\n')
-                        break
+                if bound_check:
+                    for key, param in self.model.P.items():
+                        if (param.value-param.lb)/param.lb <= self.bound_approach or (param.ub - param.value)/param.value <= self.bound_approach:
+                            number_of_active_bounds += 1
+                            if self.verbose:
+                                print('There is at least one active bound - updating parameters and optimizing again\n')
+                            break
+                
+                else:
+                    None
+                
+                if self.scaled and hasattr(self.model, 'K'):
+                    for k, v in self.model.K.items():
+                        self.model.K[k] = self.model.K[k] * self.model.P[k].value
+                        self.model.P[k].set_value(1)
                         
-                for k, v in self.model.K.items():
-                    self.model.K[k] = self.model.K[k] * self.model.P[k].value
-                    self.model.P[k].set_value(1)
                     print(self.model.K.display())
                     print(self.model.P.display())
+                        
+                else:
+                    set_scaled_parameter_bounds(self.model,
+                                                parameter_set=Se,
+                                                rho=self.rho,
+                                                scaled=self.scaled,
+                                                original_bounds=self.orig_bounds)
                     
+                if hasattr(self.model, 'K'):
+                    param_val_save = 'K'
+                else:
+                    param_val_save = 'P'
+                    
+                saved_parameters_K[params_counter] = {k: v.value for k, v in getattr(self.model, param_val_save).items()}
+                params_counter += 1
                 
-                if number_of_active_bounds == 0:
-                    if self.verbose:
-                        print('There are no active bounds, moving to Step 7')
-                    break
-                    if self.debug:    
-                        input("Press Enter to continue...")
-                    
+                if bound_check:
+                    if number_of_active_bounds == 0:
+                        if self.verbose:
+                            print('There are no active bounds, moving to Step 7')
+                        break
+                        if self.debug:    
+                            input("Press Enter to continue...")
+                else:
+                    None
+                        
                 inner_iteration_counter += 1
                 if self.debug:
                     input("Press Enter to continue...")
@@ -252,15 +314,20 @@ class EstimationPotential():
             if self.debug:
                 self.model.P.display()
                 self.model.K.display()
-  
-            reduced_hessian = self._calculate_reduced_hessian(Se, Sf, verbose=False)
-            
+                
+            reduced_hessian = self._calculate_reduced_hessian(Se, verbose=self.verbose, calc_method=self.rh_method, rho=self.rho, scaled=self.scaled)
+           
             # Step 7 - Check the ratios of the parameter std to value
             if self.verbose:
                 print(step.substitute(number=7))
                 print('Checking the ratios of each parameter in Se')
             
-            ratios, eigvals = self._parameter_ratios(reduced_hessian, Se)
+            ratios, eigvals = parameter_ratios(self.model, reduced_hessian, Se, epsilon=self.epsilon)
+            
+            if self.verbose:
+                 print('Ratios:')
+                 print(ratios)
+            
             ratios_satisfied = max(ratios) < self.eta
         
             if ratios_satisfied:
@@ -272,7 +339,6 @@ class EstimationPotential():
                     # Step 10 - Check the current number of free parameters
                     print(step.substitute(number=10))
                     print(f'N_curr = {N_curr}, N_pre = {N_pre}, N_param = {len(self.model.P)}')
-        
                 
                 if (N_curr == (N_pre - 1)) or (N_curr == len(self.model.P)):
                     if self.verbose:
@@ -298,6 +364,15 @@ class EstimationPotential():
                     print(f'N_curr = {N_curr}, N_pre = {N_pre}, N_param = {len(self.model.P)}')
                 if N_curr == (N_pre + 1):
                     Sf.insert(0, Se.pop())
+                    
+                    if self.scaled and hasattr(self.model, 'K'):
+                        for k, v in self.model.K.items():
+                            self.model.K[k] = saved_parameters_K[params_counter-2][k]
+                            self.model.P[k].set_value(1)
+                    else:
+                        for k, v in self.model.P.items():
+                            self.model.P[k].set_value(saved_parameters_K[params_counter-1][k])
+                        
                     if self.verbose:
                         print('Step 8 passed, moving to Step 11, reloading last Se the procedure is finished')
                         print(f'Se: {Se}')
@@ -309,7 +384,7 @@ class EstimationPotential():
                         print('Step 8 failed, moving to Step 9\n')
                         print(step.substitute(number=9))
                         print('Calculating the inequality from Eq. 27 in Chen and Biegler 2020')
-                    if sum(1.0/eigvals)<sum((np.array([self.model.P[v].value for v in Se]))**2)*(self.eta**2) and flag == True:
+                    if sum(1.0/eigvals) < sum((np.array([self.model.P[v].value for v in Se]))**2)*(self.eta**2) and flag == True:
                         Sf.insert(0, Se.pop())
                         if self.verbose:
                             print('Step 9 passed, moving last parameter from Se into Sf and moving to Step 5')
@@ -327,7 +402,7 @@ class EstimationPotential():
                             print(step.substitute(number=2))
                             print('Reseting the parameter vectors')
                         flag = True
-                        Se = list(self.parameter_order.values())
+                        Se = [parameter for parameter in self.model.P.keys()]
                         Sf = []
             
                         if self.debug:
@@ -341,8 +416,8 @@ class EstimationPotential():
                                 print(f'Input model:\n')
                                 self.model.P.display()
                   
-                        reduced_hessian = self._calculate_reduced_hessian(Se, Sf, verbose=False)
-                        
+                        reduced_hessian = self._calculate_reduced_hessian(Se, verbose=self.verbose, calc_method=self.rh_method, rho=self.rho, scaled=self.scaled)  
+                       
                         if self.debug:
                             input("Press Enter to continue...")
                         if self.verbose:
@@ -350,7 +425,7 @@ class EstimationPotential():
                             print(step.substitute(number=4))
                             print('Ranking the parameters (limited by N_curr)')
                         
-                        Se, Sf = self._rank_parameters(reduced_hessian, Se)
+                        Se, Sf = rank_parameters(self.model, reduced_hessian, Se, epsilon=self.epsilon, eta=self.eta)
                         
                         if len(Se) >= N_curr:
                             number_of_parameters_to_move = len(Se) - N_curr + 1
@@ -368,8 +443,14 @@ class EstimationPotential():
             outer_iteration_counter += 1                
         
         print(step.substitute(number='Finished'))
+        #est_params_str = ', '.join(Se)
+        
+        self.model.K_vals = saved_parameters_K
+        #print(saved_parameters_K)
+        
+        print(f'The estimable parameters are: {", ".join(Se)}')
         print('\nThe final parameter values are:\n')
-        if self.model.K is not None:
+        if hasattr(self.model, 'K') and self.model.K is not None:
             self.model.K.pprint()
         else:
             self.model.P.pprint()
@@ -381,9 +462,7 @@ class EstimationPotential():
     def _get_results(self, Se):
         
         scaled_parameter_var = 'K'
-    
         results = ResultsObject()
-        
         results.estimable_parameters = Se
         
         #results.objective = self.objective_value
@@ -437,53 +516,27 @@ class EstimationPotential():
         reduced hessian model with "fake data", and discretizes all models
 
         """
-        sim_model = copy.deepcopy(self.model)
-        
         if not hasattr(self.model, 'objective'):
             self.model.objective = self._rule_objective(self.model)
-        
-        self.parameter_order = {i : name for i, name in enumerate(self.model.P)}
-        
-        # simulation_data = self.simulation_data
-        # if simulation_data is None and self.simulate_start:
-        
-        #     simulator = PyomoSimulator(sim_model)
-        #     simulator.apply_discretization('dae.collocation',
-        #                                 ncp = self.ncp,
-        #                                 nfe = self.nfe,
-        #                                 scheme = 'LAGRANGE-RADAU')
-        
-        #     for k, v in simulator.model.P.items():
-        #         simulator.model.P[k].fix(1)
-        
-        #     simulator.model.objective = self._rule_objective(self.model, self.model_builder)
-        #     options = {'solver_opts' : dict(linear_solver='ma57')}
-            
-        #     simulation_data = simulator.run_sim('ipopt',
-        #                                       tee=True,
-        #                                       solver_options=options,
-        #                                       )
-        # print(type(self.model))
-        
-        
         
         # The model needs to be discretized
         model_pe = ParameterEstimator(self.model)
         model_pe.apply_discretization('dae.collocation',
-                                      ncp = self.ncp,
-                                      nfe = self.nfe,
-                                      scheme = 'LAGRANGE-RADAU')
+                                      ncp=self.ncp,
+                                      nfe=self.nfe,
+                                      scheme='LAGRANGE-RADAU')
         
-        scale_parameters(self.model)
-            
-        for k, v in self.model.P.items():
-            ub = self.rho
-            lb = 1/self.rho
-            self.model.P[k].setlb(lb)
-            self.model.P[k].setub(ub)
-            self.model.P[k].set_value(1)
-            self.model.P[k].unfix()
-     
+        # Here is where the parameters are scaled
+        if self.scaled:
+            scale_parameters(self.model)
+            set_scaled_parameter_bounds(self.model, rho=self.rho)
+        
+        else:
+            check_initial_parameter_values(self.model)
+        
+        if self.use_duals:
+            self.model.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
+        
         return None
     
     def _rule_objective(self, model):
@@ -511,90 +564,18 @@ class EstimationPotential():
         
         """
         obj = 0
-        #if model.mixture_components & model.measured_data:
-        obj += conc_objective(model) 
-        #if model.complementary_states & model.measured_data:
-        obj += comp_objective(model)
-        # obj += conc_objective(model)
-        #obj += comp_objective(model)  
+        obj += 0.5*conc_objective(model) 
+        obj += 0.5*comp_objective(model)
     
         return Objective(expr=obj)
-   
-    def _get_kkt_info(self, model):
-        """Takes the model and uses PyNumero to get the jacobian and Hessian
-        information as dataframes
-        
-        Args:
-            model (pyomo ConcreteModel): A pyomo model instance of the current
-            problem (used in calculating the reduced Hessian)
-    
-        Returns:
-            
-            KKT (pd.DataFrame): the KKT matrix as a dataframe
-            
-            H_df (pd.DataFrame): the Hessian as a dataframe
-            
-            J_df (pd.DataFrame): the jacobian as a dataframe
-            
-            var_index_names (list): the index of variables
-            
-            con_index_names (list): the index of constraints
-            
-        """
-        nlp = PyomoNLP(model)
-        varList = nlp.get_pyomo_variables()
-        conList = nlp.get_pyomo_constraints()
-        
-        J = nlp.extract_submatrix_jacobian(pyomo_variables=varList, pyomo_constraints=conList)
-        H = nlp.extract_submatrix_hessian_lag(pyomo_variables_rows=varList, pyomo_variables_cols=varList)
-        
-        var_index_names = [v.name for v in varList]
-        con_index_names = [v.name for v in conList]
-    
-        J_df = pd.DataFrame(J.todense(), columns=var_index_names, index=con_index_names)
-        H_df = pd.DataFrame(H.todense(), columns=var_index_names, index=var_index_names)
-        
-        var_index_names = pd.DataFrame(var_index_names)
-        
-        KKT_up = pd.merge(H_df, J_df.transpose(), left_index=True, right_index=True)
-        KKT = pd.concat((KKT_up, J_df))
-        KKT = KKT.fillna(0)
-        
-        return KKT, H_df, J_df, var_index_names, con_index_names
-    
-    def _add_global_constraints(self, model, Se):
-        """This adds the dummy constraints to the model forcing the local
-        parameters to equal the current global parameter values
-        
-        """
-        global_param_name = 'd'
-        global_constraint_name = 'fix_params_to_global'
-        param_set_name = 'parameter_names'
-        
-        setattr(model, 'current_p_set', Set(initialize=Se))
 
-
-        setattr(model, global_param_name, Param(getattr(model, param_set_name),
-                              initialize=1,
-                              mutable=True,
-                              ))
-        
-        def rule_fix_global_parameters(m, k):
-            
-            return getattr(m, 'P')[k] - getattr(m, global_param_name)[k] == 0
-            
-        setattr(model, global_constraint_name, 
-        Constraint(getattr(model, 'current_p_set'), rule=rule_fix_global_parameters))
-    
-    def _calculate_reduced_hessian(self, Se, Sf, verbose=False):
+    def _calculate_reduced_hessian(self, Se, verbose=False, **kwargs):
         """This function solves an optimization with very restrictive bounds
         on the paramters in order to get the reduced hessian at fixed 
         conditions
         
         Args:
             Se (list): The current list of estimable parameters.
-            
-            Sf (list): The current list of fixed parameters.
             
             verbose (bool): Defaults to False, option to show the output from
                 the solver (solver option 'tee').
@@ -603,300 +584,14 @@ class EstimationPotential():
             reduced_hessian (np.ndarray): The resulting reduced hessian matrix.
             
         """
-        delta = 1e-12
-        n_free = len(Se)
         ipopt = SolverFactory('ipopt')
         tmpfile_i = "ipopt_output"
-        
         rh_model = copy.deepcopy(self.model)
         
-        if hasattr(rh_model, 'fix_params_to_global'):
-            rh_model.del_component('fix_params_to_global')
+        reduced_hessian = calculate_reduced_hessian(rh_model, parameter_set=Se, **kwargs)
         
-        self._add_global_constraints(rh_model, Se)
-        
-        for k, v in rh_model.P.items():
-            ub = self.rho
-            lb = 1/self.rho
-            rh_model.P[k].setlb(lb)
-            rh_model.P[k].setub(ub)
-            rh_model.P[k].unfix()
-        
-        for fixed_param in Sf:
-            rh_model.P[fixed_param].fix(1)
-        
-        ipopt.solve(rh_model, symbolic_solver_labels=True, keepfiles=True, tee=True, logfile=tmpfile_i)
-
-        with open(tmpfile_i, 'r') as f:
-            output_string = f.read()
-        
-        stub = output_string.split('\n')[0].split(',')[1][2:-4]
-        col_file = Path(stub + '.col')
-        
-        kkt_df, hess, jac, var_ind, con_ind_new = self._get_kkt_info(rh_model)
-       
-        dummy_constraints = [f'fix_params_to_global[{k}]' for k in Se]
-        jac = jac.drop(index=dummy_constraints)
-        col_ind  = [var_ind.loc[var_ind[0] == f'P[{v}]'].index[0] for v in Se]
-        Jac_coo = coo_matrix(jac.values)
-        Hess_coo = coo_matrix(hess.values)
-        Jac = Jac_coo.todense()
-        Jac_f = Jac[:, col_ind]
-        Jac_l = np.delete(Jac, col_ind, axis=1)
-        
-        m, n = jac.shape
-        
-        X = spsolve(coo_matrix(np.mat(Jac_l)).tocsc(), coo_matrix(np.mat(-Jac_f)).tocsc())
-        col_ind_left = list(set(range(n)).difference(set(col_ind)))
-        col_ind_left.sort()
-        
-        Z = np.zeros([n, n_free])
-        Z[col_ind, :] = np.eye(n_free)
-        
-        if not isinstance(X, np.ndarray):
-            X = X.todense()
-        if len(X.shape) == 1:
-            X = X.reshape(-1, 1)
-            
-        Z[col_ind_left, :] = X
-    
-        Z_mat = coo_matrix(np.mat(Z)).tocsr()
-        Z_mat_T = coo_matrix(np.mat(Z).T).tocsr()
-        Hess = Hess_coo.tocsr()
-        red_hessian = Z_mat_T * Hess * Z_mat
-    
-        print(red_hessian.todense())
-        
-        return red_hessian.todense()
-    
-    def _parameter_ratios(self, reduced_hessian, Se):
-        """This is Eq. 26 from Chen and Biegler 2020 where the ratio of the 
-        standard deviation for each parameter is calculated.
-        
-        Args:
-            reduced_hessian (np.ndarray): The current reduced hessian
-            
-            Se (list): The list of free parameters
-            
-        Returns:
-            rp {np.ndarray}: The ratio of the predicted standard deviation to the parameter
-            value
-            
-            eigenvalues (np.ndarray): The eigenvalues of the parameters
-            
-        """
-        eigenvalues, eigenvectors = np.linalg.eigh(reduced_hessian)
-        red_hess_inv = np.dot(np.dot(eigenvectors, np.diag(1.0/abs(eigenvalues))), eigenvectors.T)
-        d = red_hess_inv.diagonal()
-        d_sqrt = np.asarray(np.sqrt(d)).ravel()
-        rp = [d_sqrt[i]/max(self.epsilon, self.model.P[k].value) for i, k in enumerate(Se)]
-        
-        return rp, eigenvalues
-     
-    def _rank_parameters(self, reduced_hessian, param_list):
-        """Performs the parameter ranking based using the Gauss-Jordan
-        elimination procedure.
-        
-        Args:
-            reduced_hessian (numpy.ndarray): Array of the reduced hessian.
-            
-            param_list (list): The list of parameters currently in Se.
-        
-        Returns:
-            Se_update (list): The updated list of parameters in Se.
-            
-            Sf_update (list): The updated list of parameters if Sf.
-        
-        """
-        eigenvector_tolerance = 1e-15
-        parameter_tolerance = 1e-12
-        squared_term_1 = 0
-        squared_term_2 = 0
-        Sf_update = []
-        Se_update = []
-        M = {}
-        
-        param_set = set(param_list)
-        param_elim = set()
-        eigenvalues, U = np.linalg.eigh(reduced_hessian)
-        
-        df_eigs = pd.DataFrame(np.diag(eigenvalues),
-                    index=param_list,
-                    columns=[i for i, x in enumerate(param_list)])
-        df_U_gj = pd.DataFrame(U,
-                    index=param_list,
-                    columns=[i for i, x in enumerate(param_list)])
-        
-        # Gauss-Jordan elimination
-        for i, p in enumerate(param_list):
-            
-            # Since they are already ranked, just use the index
-            piv_col = i         #df_eigs[df_eigs.abs() > 1e-20].min().idxmin()
-            piv_row = df_U_gj.loc[:, piv_col].abs().idxmax()
-            piv = (piv_row, piv_col)
-            rows = list(param_set.difference(param_elim))
-            M[i] =  piv_row
-            df_U_gj = self._gauss_jordan_step(df_U_gj, piv, rows)
-            param_elim.add(piv_row)
-            df_eigs.drop(index=[param_list[piv_col]], inplace=True)
-            df_eigs.drop(columns=[piv_col], inplace=True)
-
-        # Parameter ranking
-        eigenvalues, eigenvectors = np.linalg.eigh(reduced_hessian)
-        ranked_parameters = {k: M[abs(len(M)-1-k)] for k in M.keys()}
-        
-        for k, v in ranked_parameters.items():
-        
-            name = v.split('[')[-1].split(']')[0]
-            squared_term_1 += abs(1/max(eigenvalues[-(k+1)], parameter_tolerance))
-            squared_term_2 += (self.eta**2*max(abs(self.model.P[name].value), self.epsilon)**2)
-                        
-            if squared_term_1 >= squared_term_2:
-                Sf_update.append(name)
-            else:
-                Se_update.append(name)
-        
-        return Se_update, Sf_update
-
-    @staticmethod
-    def _gauss_jordan_step(df_U_update, pivot, rows):
-        """Perfoms the Gauss-Jordan Elminiation step in W. Chen's method
-        
-        Args:
-            df_U_update: A pandas DataFrame instance of the U matrix from the
-                eigenvalue decomposition of the reduced hessian (can be obtained
-                through the HessianObject).
-            
-            pivot: The element where to perform the elimination.
-            
-            rows: A set containing the rows that have already been eliminated.
-            
-        Returns:
-            The df_U_update DataFrame is returned after one row is eliminated.
-       
-        """
-        if isinstance(pivot, tuple):
-            pivot=dict(r=pivot[0],
-                     c=pivot[1]
-                     )
-
-        uij = df_U_update.loc[pivot['r'], pivot['c']]
-    
-        for col in df_U_update.columns:
-            if col == pivot['c']:
-                continue
-            
-            factor = df_U_update.loc[pivot['r'], col]/uij
-            
-            for row in rows:
-                if row not in rows:
-                    continue
-                else:    
-                    df_U_update.loc[row, col] -= factor*df_U_update.loc[row, pivot['c']]
-                
-        df_U_update[abs(df_U_update) < 1e-15] = 0
-        df_U_update.loc[pivot['r'], pivot['c']] = 1
-        
-        return df_U_update
-
-# def reduce_models(models_dict_provided,
-#                   parameter_dict=None,
-#                   method='reduced_hessian',
-#                   simulation_data=None,
-#                   ):
-#     """Uses the EstimationPotential module to find out which parameters
-#     can be estimated using each experiment and reduces the model
-#     accordingly
-    
-#     This can take a single model or a dict of models. It then proceeds to 
-#     find the global set of estimable parameters as well. These are returned
-#     in the parameter dict that contains the names of the global set, the
-#     model specific parameter sets, and a dict of parameter initial values and
-#     bounds that can be used in further methods.
-    
-#     Args:
-#         models_dict_provided (dict): model or dict of models
-        
-#         parameter_dict (dict): parameters and their initial values
-        
-#         method (str): model reduction method
-        
-#         simulation_data (pd.DataFrame): simulation data used for a warmstart
-        
-#     Returns:
-#         models_dict_reduced (dict): dict of reduced models
-        
-#         parameter_data (dict): parameter data that may be useful
-        
-#         Example:
-            
-#         {'names': ['Cfa', 'rho', 'ER', 'k', 'Tfc'],
-#          'esp_params_model': {'model_1': ['Cfa', 'Tfc', 'ER', 'rho', 'k']},
-#          'initial_values': {'Cfa': (2490.7798699208106, (0, 5000)),
-#           'rho': (1335.058139853457, (800, 2000)),
-#           'ER': (253.78019656674874, (0.0, 500)),
-#           'k': (2.4789686423018376, (0.0, 10)),
-#           'Tfc': (262.9381531048641, (250, 400))}}
-    
-#     """
-#     if not isinstance(models_dict_provided, dict):
-#         try:
-#             models_dict_provided = [models_dict_provided]
-#             models_dict_provided = {f'model_{i + 1}': model for i, model in enumerate(models_dict_provided)}
-#         except:
-#             raise ValueError('You passed something other than a model or a dict of models')
-    
-#     list_of_methods = ['reduced_hessian']
-    
-#     if method not in list_of_methods:
-#         raise ValueError(f'The model reduction method must be one of the following: {", ".join(list_of_methods)}')
-    
-#     if method == 'reduced_hessian':
-#         if parameter_dict is None:
-#             raise ValueError('The reduced Hessian parameter selection method requires initial parameter values')
-        
-#     models_dict = copy.deepcopy(models_dict_provided)
-#     parameters = parameter_dict
-    
-#     all_param = set()
-#     all_param.update(p for p in parameters.keys())
-    
-#     options = {
-#             'verbose' : True,
-#                     }
-    
-#     # Loop through to perform EP on each model
-#     params_est = {}
-#     results = {}
-#     reduced_model = {}
-#     set_of_est_params = set()
-#     for name, model in models_dict.items():
-        
-#         if method == 'reduced_hessian':
-#             print(f'Starting EP analysis of {name}')
-#             est_param = EstimationPotential(model, simulation_data=simulation_data, options=options)
-#             params_est[name], results[name], reduced_model[name] = est_param.estimate()
-#             #print(est_param.model.objective.expr.to_string())
-#     # Add model's estimable parameters to global set
-#     for param_set in params_est.values():
-#         set_of_est_params.update(param_set)
-    
-    
-#     mod = replace_non_estimable_parameters(reduced_model['model_1'], set_of_est_params)
-#     #mod = reduced_model['model_1']
-    
-#     return params_est, results, mod, set_of_est_params
-    
-    # models_dict_reduced = {}
-    
-    # # How does this look with MP?
-
-    # # Remove the non-estimable parameters from the odes
-    
-    # for key, model in reduced_model.items():
-    #     print(model)
-    #     update_set = set_of_est_params
-    
+        return reduced_hessian
+          
 def reduce_model(model, options=None, **kwargs):
     """Reduces a single model using the reduced hessian parameter selection
     method. It takes a pyomo ConcreteModel using P as the parameters to be fit
@@ -919,23 +614,34 @@ def reduce_model(model, options=None, **kwargs):
     simulation_data = kwargs.get('simulation_data', None)
     replace = kwargs.get('replace', True)
     no_scaling = kwargs.get('no_scaling', True)
+    method = kwargs.get('method', 'k_aug')
+    solver_opts = kwargs.get('solver_opts', {})
+    scaled = kwargs.get('scaled', True)
+    use_bounds = kwargs.get('use_bounds', False)
+    use_duals = kwargs.get('use_duals', False)
+    rh_method = kwargs.get('rh_method', 'fixed')
     
-    if options is None:
-        options = {}
-        
+    options = options if options is not None else dict()
     orig_bounds = {k: v.bounds for k, v in model.P.items()}
-        
-    est_param = EstimationPotential(model, simulation_data=None, options=options)
+    est_param = EstimationPotential(model,
+                                    simulation_data=None,
+                                    options=options,
+                                    method=method,
+                                    solver_opts=solver_opts,
+                                    scaled=scaled,
+                                    use_bounds=use_bounds,
+                                    use_duals=use_duals,
+                                    rh_method=rh_method)
     results, reduced_model = est_param.estimate()
     
     if replace:
-        reduced_model = replace_non_estimable_parameters(reduced_model, results.estimable_parameters)
-    
-    if no_scaling:
-        remove_scaling(reduced_model, bounds=orig_bounds)
+        reduced_model = replace_non_estimable_parameters(reduced_model, 
+                                                         results.estimable_parameters)
+    # if no_scaling:
+    #     remove_scaling(reduced_model, bounds=orig_bounds)
         
     return results, reduced_model
-
+        
 def replace_non_estimable_parameters(model, set_of_est_params):
     """Takes a model and a set of estimable parameters and removes the 
     unestimable parameters from the model by fixing them to their current 
@@ -961,9 +667,9 @@ def replace_non_estimable_parameters(model, set_of_est_params):
                 change_value = model.P[param].value
         
             for k, v in model.odes.items():
-                ep_updated_expr = _update_expression(v.body, model.P[param], change_value)
+                ep_updated_expr = update_expression(v.body, model.P[param], change_value)
                 if hasattr(model, 'K'):
-                    ep_updated_expr = _update_expression(ep_updated_expr, model.K[param], 1)
+                    ep_updated_expr = update_expression(ep_updated_expr, model.K[param], 1)
                 model.odes[k] = ep_updated_expr == 0
     
             model.parameter_names.remove(param)
@@ -972,69 +678,3 @@ def replace_non_estimable_parameters(model, set_of_est_params):
                 del model.K[param]
 
     return model
-
-
-#%%
-    # # Calculate initial values based on averages of EP output
-    # initial_values = pd.DataFrame(np.zeros((len(models_dict), len(set_of_est_params))), index=models_dict.keys(), columns=list(set_of_est_params))
-
-    # for exp, param_data in params_est.items(): 
-    #     for param in param_data:
-    #         initial_values.loc[exp, param] = param_data[param]
-    
-    # dividers = dict(zip(initial_values.columns, np.count_nonzero(initial_values, axis=0)))
-    
-    # init_val_sum = initial_values.sum()
-    
-    # for param in dividers.keys():
-    #     init_val_sum.loc[param] = init_val_sum.loc[param]/dividers[param]
-    
-    # init_vals = init_val_sum.to_dict()
-    # init_bounds = {p: parameters[p][1] for p in parameters.keys() if p in set_of_est_params}
-    
-    # # Redeclare the d_init_guess values using the new values provided by EP
-    # d_init_guess = {p: (init_vals[p], init_bounds[p]) for p in init_bounds.keys()}
-    
-    # new_parameter_data = d_init_guess
-    # new_initial_values = {k: v[0] for k, v in new_parameter_data.items()}
-    
-    # # The parameter names need to be updated as well
-    # parameter_names = list(new_initial_values.keys())
-    # pe_dict = {k: list(v.keys()) for k, v in params_est.items()}
-    
-    # # The actual model is not being output -- change this
-    # for model in models_dict_reduced.values():
-    #     for param, value in model.K.items():
-    #         model.K[param].set_value(new_parameter_data[param][0])
-    
-    # results_data = {
-    #     'reduced_model': models_dict_reduced,
-    #     'initial_values': new_parameter_data, 
-    #     'results': results,
-    #     }
-
-    # return results_data
-
-
-def _update_expression(expr, replacement_param, change_value):
-    """Takes the noparam_infon-estiambale parameter and replaces it with its intitial
-    value
-    
-    Args:
-        expr (pyomo constraint expr): the target ode constraint
-        
-        replacement_param (str): the non-estimable parameter to replace
-        
-        change_value (float): initial value for the above parameter
-        
-    Returns:
-        new_expr (pyomo constraint expr): updated constraints with the
-            desired parameter replaced with a float
-    
-    """
-    visitor = ReplacementVisitor()
-    visitor.change_replacement(change_value)
-    visitor.change_suspect(id(replacement_param))
-    new_expr = visitor.dfs_postorder_stack(expr)
-    
-    return new_expr

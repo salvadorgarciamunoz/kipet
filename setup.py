@@ -52,15 +52,14 @@ def replace_in_file(file_path, search_text, new_text):
 install_dir = pathlib.Path(__file__).parent
 setting_file_path = install_dir.joinpath('kipet', 'settings.txt')
 
-# Replace the data directory with the installation directory
+# Replace the data directory based on the installation directory
 data_dir_label = 'DATA_DIRECTORY='
 data_dir_new = data_dir_label.rstrip('\n') + install_dir.joinpath('kipet', 'new_examples', 'data_sets').as_posix()
 replace_in_file(setting_file_path, data_dir_label, data_dir_new)
 
-# Replace the data directory with the installation directory
+# Replace the chart directory based on the installation directory
 chart_dir_label = 'CHART_DIRECTORY='
 chart_dir_path = install_dir.joinpath('kipet', 'charts')
 chart_dir_new = pathlib.Path(chart_dir_label.rstrip('\n') + chart_dir_path.as_posix())
 replace_in_file(setting_file_path, chart_dir_label, chart_dir_new.as_posix())
-
 chart_dir_path.mkdir(exist_ok=True)
