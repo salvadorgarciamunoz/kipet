@@ -1,3 +1,5 @@
+
+
 """
 Example 16: Parameter Selection Using the Reduced Hessian
 
@@ -15,11 +17,10 @@ concentration data.
 import sys
 
 # Third party imports
-import pandas as pd
 from pyomo.environ import exp
 
 # Kipet library imports
-from kipet import KipetModel
+import kipet
 
 if __name__ == "__main__":
 
@@ -28,31 +29,31 @@ if __name__ == "__main__":
         if int(sys.argv[1]):
             with_plots = False
     
-    kipet_model = KipetModel()
+    kipet_model = kipet.KipetModel()
     
     r1 = kipet_model.new_reaction('cstr')
-    filename = r1.set_directory('cstr_t_and_c.csv')
   
     # Perturb the initial parameter values by some factor
     factor = 1.2
     
     # Add the model parameters
-    r1.add_parameter('Tf', init=293.15*factor, bounds=(250, 400))
-    r1.add_parameter('Cfa', init=2500*factor, bounds=(0, 5000))
-    r1.add_parameter('rho', init=1025*factor, bounds=(800, 2000))
-    r1.add_parameter('delH', init=160*factor, bounds=(0, 400))
-    r1.add_parameter('ER', init=255*factor, bounds=(0, 500))
-    r1.add_parameter('k', init=2.5*factor, bounds=(0, 10))
-    r1.add_parameter('Tfc', init=283.15*factor, bounds=(250, 400))
-    r1.add_parameter('rhoc', init=1000*factor, bounds=(0, 2000))
-    r1.add_parameter('h', init=3600*factor, bounds=(0, 5000))
+    r1.add_parameter('Tf', init=293.15*factor, bounds=(250, 350))
+    r1.add_parameter('Cfa', init=2500*factor, bounds=(100, 5000))
+    r1.add_parameter('rho', init=1025*factor, bounds=(800, 1100))
+    r1.add_parameter('delH', init=160*factor, bounds=(10, 400))
+    r1.add_parameter('ER', init=255*factor, bounds=(10, 500))
+    r1.add_parameter('k', init=2.5*factor, bounds=(0.1, 10))
+    r1.add_parameter('Tfc', init=283.15*factor, bounds=(250, 300))
+    r1.add_parameter('rhoc', init=1000*factor, bounds=(800, 2000))
+    r1.add_parameter('h', init=3600*factor, bounds=(10, 5000))
     
     # Declare the components and give the initial values
     r1.add_component('A', state='concentration', init=1000, variance=0.001)
     r1.add_component('T', state='state', init=293.15, variance=0.0625)
-    r1.add_component('Tc', state='state', init=293.15, variance=1)
+    r1.add_component('Tc', state='state', init=293.15, variance=0.001)
    
-    r1.add_dataset(file=filename)
+    # Change this to a clearner method
+    full_data = kipet_model.read_data_file('example_data/sim_chen.csv') #'cstr_t_and_c.csv')
     
     constants = {
             'F' : 0.1, # m^3/h
@@ -79,9 +80,22 @@ if __name__ == "__main__":
         return exprs
 
     r1.add_equations(rule_odes)
-
-    # Run the model reduction method - eventuallly the method can be placed here (other estimability methods)
-    results = r1.reduce_model()
+    
+    r1.settings.solver.print_level = 5
+    r1.settings.collocation.ncp = 3
+    r1.settings.collocation.nfe = 50
+    
+    r1.add_dataset(data=full_data[['T']].iloc[0::3])
+    r1.add_dataset(data=full_data[['A']].loc[[3.9, 2.6, 1.115505]])
+    
+    method = 'k_aug'   # k_aug or pynumero
+    rh_method = 'fixed' # fixed or global (same results)
+    scaled = True
+    use_bounds = False 
+    use_duals = False
+    
+    results = r1.reduce_model(method=method, rh_method=rh_method, scaled=scaled, use_bounds=use_bounds, use_duals=use_duals)
     
     # results is a standard ResultsObject
-    results.plot(show_plot=with_plots)
+    results.plot('Z')
+    results.plot('X')
