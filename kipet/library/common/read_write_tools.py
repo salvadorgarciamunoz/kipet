@@ -13,7 +13,7 @@ import pandas as pd
 
 DEFAULT_DIR = 'data_sets'
 
-def set_directory(filename, data_dir=DEFAULT_DIR):
+def set_directory(filename, data_dir=DEFAULT_DIR, abs_dir=False):
     """Sets the current working directory plus the given subdirectory as the
     directory for the given data file (filename)
     
@@ -26,13 +26,16 @@ def set_directory(filename, data_dir=DEFAULT_DIR):
         filename (Path): the full filename of the data
     
     """
-    
-    # dataDirectory = Path.absolute(data_dir).joinpath(filename)
-    # print(dataDirectory)
-    calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
-    print(calling_file_name)
-    dataDirectory = Path(calling_file_name).joinpath(data_dir, filename)
-    return dataDirectory
+    if not abs_dir:
+        # This should be a relative path to the calling file
+        calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
+        print(calling_file_name)
+        dataDirectory = Path(calling_file_name).joinpath(data_dir, filename)
+        return dataDirectory
+
+    else:
+        # It uses the absolute path provided
+        return Path(filename)
 
 def read_file(filename, directory=DEFAULT_DIR, **kwargs):       
     """ Reads data from a csv or txt file and converts it to a DataFrame
@@ -108,16 +111,22 @@ def write_file(filename, dataframe, filetype='csv', directory=DEFAULT_DIR):
             None
 
     """
+    # How can you write a general settings file/class/object?
+    from kipet.library.top_level.settings import USER_DEFINED_SETTINGS
+    directory = Path(USER_DEFINED_SETTINGS['DATA_DIRECTORY'])
+    
+    print(f'Here is the filename: {filename}')
+    
     if filetype not in ['csv', 'txt']:
         print('Savings as CSV - invalid file extension given')
         filetype = 'csv'
     
     suffix = '.' + filetype
     
-    #filename = Path(directory).joinpath(filename)
+    filename = Path(directory).joinpath(filename)
     
     #dirname = _set_directory()
-    filename = Path(filename)
+    #filename = Path(filename)
                    
     if filename.suffix == '':
         filename = filename.with_suffix(suffix)
