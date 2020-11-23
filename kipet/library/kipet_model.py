@@ -43,7 +43,7 @@ from kipet.library.mixins.TopLevelMixins import WavelengthSelectionMixins
 from kipet.library.top_level.datahandler import DataBlock, DataSet
 from kipet.library.top_level.helper import DosingPoint
 from kipet.library.top_level.model_components import ParameterBlock, ComponentBlock
-from kipet.library.top_level.settings import Settings
+from kipet.library.top_level.settings import Settings, USER_DEFINED_SETTINGS
 
 DEFAULT_DIR = 'data_sets'
 
@@ -299,6 +299,56 @@ class KipetModel():
         for key, results_obj in self.results.items():
             results_obj.file_dir = self.settings.general.charts_directory
         return results
+    
+    def write_data_file(self, filename, data, directory=None, filetype='csv'):
+        """Method to write data to a file using KipetModel
+        
+        Args:
+            filename (str): the name of the file (plus relative directory)
+            
+            data (pandas DataFrame): The data to be written to the file
+            
+            directory (str): absolute directory to use instead
+            
+            filetype (str): the filetype to be used (in case not in file name)
+        
+        Returns:
+            None
+        
+        """
+        _filename = filename
+        if directory is None:
+            _filename = _set_directory(self, filename)
+        else:
+            _filename = pathlib.Path(directory).joinpath(filename)
+        if not _filename.parent.is_dir():
+            _filename.parent.mkdir(exist_ok=True)
+        data_tools.write_file(_filename, data)
+        
+        return None
+        
+    def read_data_file(self, filename, directory=None):
+        """Method to read data file using KipetModel
+        
+        Args:
+            filename (str): the name of the file (plus relative directory)
+            
+            data (pandas DataFrame): The data to be written to the file
+            
+            directory (str): absolute directory to use instead
+            
+        Returns:
+            read_data (pandas DataFrame): The data read from the file
+        
+        """
+        _filename = filename
+        if directory is None:
+            _filename = _set_directory(self, filename)
+        else:
+            _filename = pathlib.Path(directory).joinpath(filename)
+        
+        read_data = data_tools.read_file(_filename)
+        return read_data
     
     @property
     def all_params(self):
@@ -595,7 +645,7 @@ class ReactionModel(WavelengthSelectionMixins):
         
         # Check if file name is given and add directory (general)
         if filename is not None:
-            filename = self.set_directory(filename)
+            filename = _set_directory(self, filename)
             kwargs['file'] = filename
             #kwargs['data'] = None
             
@@ -697,17 +747,42 @@ class ReactionModel(WavelengthSelectionMixins):
         self.settings.general.simulation_times = (start_time, end_time)
         return None
     
-    def set_directory(self, filename, abs_dir=False):
-        """Wrapper for the set_directory method. This replaces the awkward way
-        of ensuring the correct directory for the data is used."""
+    # def set_directory(self, filename, abs_dir=False):
+    #     """Wrapper for the set_directory method. This replaces the awkward way
+    #     of ensuring the correct directory for the data is used."""
 
-        directory = self.settings.general.data_directory
-        print(f'the dir is: {directory}')
-        file_path = pathlib.Path(directory).joinpath(filename)
-        print(file_path)
+    #     directory = self.settings.general.data_directory
+    #     print(f'The current data directory is : {directory}')
+    #     file_path = pathlib.Path(directory).joinpath(filename)
+    #     print(f'The data file is the following: {file_path}')
         
-        return file_path
-
+    #     return file_path
+    
+    # def write_file(self, filename, data, directory=None, filetype='csv'):
+    #     """Method to write data to a file using KipetModel
+    #     """
+    #     _filename = filename
+        
+    #     if directory is None:
+    #         _filename = self.set_directory(filename)
+    #     else:
+    #         _filename = pathlib.Path(directory).joinpath(filename)
+        
+    #     data_tools.write_file(_filename, data, filetype)
+        
+    #     return None
+        
+    # def read_data_file(self, filename, directory=None):
+    #     """Method to read data file using KipetModel
+    #     """
+    #     _filename = filename
+        
+    #     if directory is None:
+    #         _filename = self.set_directory(filename)
+    #     else:
+    #         _filename = pathlib.Path(directory).joinpath(filename)
+        
+    #     return data_tools.read_file(_filename)
     
     def add_equations(self, ode_fun):
         """Wrapper for the set_odes method used in the builder"""
@@ -1353,4 +1428,19 @@ class ReactionModel(WavelengthSelectionMixins):
     #     model.objective = Objective(expr=obj)
     
     #     return None
+    
+def _set_directory(model_object, filename, abs_dir=False):
+    """Wrapper for the set_directory method. This replaces the awkward way
+    of ensuring the correct directory for the data is used.
+    
+    Args:
+        filename (str): the file name to be formatted
+        
+    Returns:
+        file_path (pathlib Path): The absolute path of the given file
+    """
+    directory = model_object.settings.general.data_directory
+    file_path = pathlib.Path(directory).joinpath(filename)
+    
+    return file_path
         
