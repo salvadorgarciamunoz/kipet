@@ -140,19 +140,19 @@ if __name__ == "__main__":
     # Data set-up: Use trajectory as the category for initialization data
     # as this is not added to the pyomo model
     
-    filename = r1.set_directory('extra_states.txt')
+    filename = 'example_data/extra_states.txt'
     r1.add_dataset('traj', category='trajectory', file=filename)
     
-    filename = r1.set_directory('concentrations.txt')
+    filename = 'example_data/concentrations.txt'
     r1.add_dataset('conc', category='trajectory', file=filename)
     
-    filename = r1.set_directory('init_Z.csv')
+    filename = 'example_data/init_Z.csv'
     r1.add_dataset('init_Z', category='trajectory', file=filename)
     
-    filename = r1.set_directory('init_X.csv')
+    filename = 'example_data/init_X.csv'
     r1.add_dataset('init_X', category='trajectory', file=filename)
     
-    filename = r1.set_directory('init_Y.csv')
+    filename = 'example_data/init_Y.csv'
     r1.add_dataset('init_Y', category='trajectory', file=filename)
 
     #Create the model

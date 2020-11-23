@@ -32,7 +32,7 @@ if __name__ == "__main__":
     r1.add_component('B', state='concentration', init=0.0)
     r1.add_component('C', state='concentration', init=0.0)
     
-    r1.add_dataset(category='spectral', file='varest2.csv', remove_negatives=True)
+    r1.add_dataset(category='spectral', file='example_data/varest2.csv', remove_negatives=True)
 
     # define explicit system of ODEs
     def rule_odes(m,t):

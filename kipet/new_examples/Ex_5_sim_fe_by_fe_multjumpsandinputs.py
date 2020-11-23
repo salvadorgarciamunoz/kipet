@@ -25,7 +25,7 @@ if __name__ == "__main__":
     
     # When the category is trajectory, it is used for initializations, scaling,
     # or fixing variables. It is not added to the pyomo model
-    filename = 'Tempvalues.csv'
+    filename = 'example_data/Tempvalues.csv'
     
     # components
     components = dict()

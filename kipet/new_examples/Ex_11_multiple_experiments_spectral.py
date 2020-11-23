@@ -40,13 +40,13 @@ if __name__ == "__main__":
     r1.add_equations(rule_odes)
     
     # Add the dataset for the first model
-    r1.add_dataset(file='Dij_exp1.txt', category='spectral')
+    r1.add_dataset(file='example_data/Dij_exp1.txt', category='spectral')
 
     # Repeat for the second model - the only difference is the dataset    
     r2 = kipet_model.new_reaction(name='reaction_2', model_to_clone=r1, items_not_copied='datasets')
 
     # Add the dataset for the second model
-    r2.add_dataset(file='Dij_exp3_reduced.txt', category='spectral')
+    r2.add_dataset(file='example_data/Dij_exp3_reduced.txt', category='spectral')
 
     kipet_model.settings.general.use_wavelength_subset = True
     kipet_model.settings.general.freq_wavelength_subset = 3

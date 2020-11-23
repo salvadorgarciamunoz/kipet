@@ -33,7 +33,7 @@ if __name__ == "__main__":
         r1.add_component(comp, state='concentration', init=init_value)
     
     # Use this function to replace the old filename set-up
-    filename = r1.set_directory('varest3.csv')
+    filename = 'example_data/varest3.csv'
     r1.add_dataset('D_frame', category='spectral', file=filename, remove_negatives=True)
 
     r1.add_parameter('k1', init=1.5, bounds=(0.5, 2.0)) 

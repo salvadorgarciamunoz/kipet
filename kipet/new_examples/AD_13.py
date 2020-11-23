@@ -30,7 +30,7 @@ if __name__ == "__main__":
     r1.add_component('C', state='concentration', init=0.0)
    
     # Use this function to replace the old filename set-up
-    filename = 'Ex_1_C_data_withoutA.csv'
+    filename = 'example_data/Ex_1_C_data_withoutA.csv'
     
     r1.add_dataset(file=filename)
     
@@ -44,7 +44,6 @@ if __name__ == "__main__":
     
     r1.add_equations(rule_odes)
 
-
     # Repeat for the second model - the only difference is the dataset    
     r2 = kipet_model.new_reaction(name='reaction-2', model_to_clone=r1, items_not_copied='datasets')
     # Simulated second dataset with noise
@@ -53,7 +52,7 @@ if __name__ == "__main__":
     # Add the dataset for the second model
     r2.add_dataset(data=noised_data)
     
-    kipet_model.settings.collocation.nfe = 60
+   # kipet_model.settings.collocation.nfe = 60
     kipet_model.settings.parameter_estimator.solver = 'ipopt_sens'
 
     r1.variances = {'device':1e-10,'A':1e-10,'B':1e-10,'C':1e-10}

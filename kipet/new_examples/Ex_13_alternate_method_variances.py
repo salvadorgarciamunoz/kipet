@@ -42,7 +42,7 @@ if __name__ == "__main__":
     r1.bound_profile(var='S', bounds=(0, 100))
     
     # Add data (after components)
-    r1.add_dataset(category='spectral', file='varest.csv', remove_negatives=True)
+    r1.add_dataset(category='spectral', file='example_data/varest.csv', remove_negatives=True)
 
     # Settings
     r1.settings.general.no_user_scaling = True
@@ -61,6 +61,5 @@ if __name__ == "__main__":
     # Display the results
     r1.results.show_parameters
     
-       # New plotting methods
-    if with_plots:
-        r1.results.plot()
+    # New plotting methods
+    r1.results.plot(show_plot=with_plots)

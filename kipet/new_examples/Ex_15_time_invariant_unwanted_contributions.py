@@ -33,7 +33,7 @@ if __name__ == "__main__":
     r1.add_component('C', state='concentration', init=0.0)
     
     # Add the data
-    r1.add_dataset(category='spectral', file='Dij_tv_G.txt')
+    r1.add_dataset(category='spectral', file='example_data/Dij_tv_G.txt')
     
     # define explicit system of ODEs
     def rule_odes(m,t):

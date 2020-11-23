@@ -29,28 +29,35 @@ if __name__ == "__main__":
     r1.add_component('C', state='concentration', init=0.0)
    
     # Use this function to replace the old filename set-up
-    filename = r1.set_directory('Ex_1_C_data.txt')
-    
+    filename = 'example_data/Ex_1_C_data.txt'
     r1.add_dataset('C_data', category='concentration', file=filename)
     
+    # load_data = kipet_model.read_data_file('example_data/test_write.txt')
+    
+    filename_write = 'example_data_new/test_write.txt'
+    kipet_model.write_data_file(filename_write, r1.datasets.datasets['C_data'].data)
+    
     # Define the reaction model
-    def rule_odes(m,t):
-        exprs = dict()
-        exprs['A'] = -m.P['k1']*m.Z[t,'A']
-        exprs['B'] = m.P['k1']*m.Z[t,'A']-m.P['k2']*m.Z[t,'B']
-        exprs['C'] = m.P['k2']*m.Z[t,'B']
-        return exprs 
+    # def rule_odes(m,t):
+    #     exprs = dict()
+    #     exprs['A'] = -m.P['k1']*m.Z[t,'A']
+    #     exprs['B'] = m.P['k1']*m.Z[t,'A']-m.P['k2']*m.Z[t,'B']
+    #     exprs['C'] = m.P['k2']*m.Z[t,'B']
+    #     return exprs 
     
-    r1.add_equations(rule_odes)
+    # r1.add_equations(rule_odes)
     
-    # Settings
-    r1.settings.collocation.nfe = 60
+    # # Settings
+    # r1.settings.collocation.nfe = 60
     
-    # Run KIPET
-    r1.run_opt()  
+    # # Run KIPET
+    # r1.run_opt()  
     
-    # Display the results
-    r1.results.show_parameters
+    # # Display the results
+    # r1.results.show_parameters
 
-    if with_plots:
-        r1.results.plot()
+    # r1.results.plot('Z', 
+    #                 show_plot=with_plots,
+    #                 description={'title': 'Example 7',
+    #                              'xaxis': 'Time [s]',
+    #                              'yaxis': 'Concentration [mol/L]'})

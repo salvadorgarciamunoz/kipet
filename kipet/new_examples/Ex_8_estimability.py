@@ -9,7 +9,7 @@ KipetModel framework
 
 # Kipet library imports
 from kipet import KipetModel
-from kipet.library.EstimabilityAnalyzer import *
+from kipet.library.core_methods.EstimabilityAnalyzer import *
 
 if __name__ == "__main__":
  
@@ -30,7 +30,7 @@ if __name__ == "__main__":
     r1.add_component('D', state='concentration', init=0.01)
     r1.add_component('E', state='concentration', init=0.0)
     
-    filename = r1.set_directory('new_estim_problem_conc.csv')
+    filename = 'example_data/new_estim_problem_conc.csv'
     r1.add_dataset('C_frame', category='concentration', file=filename) 
     
     # define explicit system of ODEs
