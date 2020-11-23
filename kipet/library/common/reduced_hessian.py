@@ -17,6 +17,7 @@ from pyomo.environ import (
     Suffix,
     )
 from scipy.sparse import coo_matrix
+from scipy.sparse.csc import csc_matrix
 from scipy.sparse.linalg import spsolve
 
 from kipet.library.common.parameter_handling import (
@@ -341,8 +342,11 @@ def _calculate_reduced_hessian_fixed(model_object, parameter_set=None, method='k
         
         Z = np.zeros([n, n_free])
         Z[col_ind, :] = np.eye(n_free)
-        Z[col_ind_left, :] = X.todense()
-    
+        
+        if isinstance(X, csc_matrix):
+            Z[col_ind_left, :] = X.todense()
+        else:
+            Z[col_ind_left, :] = X.reshape(-1, 1)
         Z_mat = coo_matrix(np.mat(Z)).tocsr()
         Z_mat_T = coo_matrix(np.mat(Z).T).tocsr()
         Hess = Hess_coo.tocsr()
