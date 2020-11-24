@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 
 from pyomo import *
-from pyomo.core.base.set import SetProduct
 from pyomo.core.expr.numvalue import NumericConstant
 from pyomo.dae import *
 from pyomo.environ import *
@@ -17,6 +16,17 @@ from pyomo.opt import (
     )
 
 from kipet.library.common.VisitorClasses import ReplacementVisitor
+
+try:
+    from pyomo.core.base.set import SetProduct
+except:
+    print('SetProduct not found')
+    
+try:
+    from pyomo.core.base.sets import _SetProduct
+except:
+    print('_SetProduct not found')    
+
 
 __author__ = 'David M Thierry'  #: April 2018
 
@@ -72,13 +82,16 @@ class fe_initialize(object):
                     inputs_sub (dict): The multi-index dictionary. Use this dictionary for multi-index inputs.
                 """
         def identify_member_sets(index): #update for pyomo 5.6.8 KH.L
+        
             queue = [index]
             ans = []
             n = 0
             while queue:
                 n+=1
                 s = queue.pop(0)
-                if not isinstance(s, SetProduct):
+                print(type(s))
+                print(SetProduct)
+                if not isinstance(s, SetProduct) and not isinstance(s, _SetProduct):
                     ans.append(s)
                 else:
                     queue.extend(s.set_tuple) 
@@ -181,6 +194,7 @@ class fe_initialize(object):
             #set_i = dv._implicit_subsets  #: More than just time set
             #set_i = dv._index._implicit_subsets #Update for pyomo 5.6.8 KH.L
             set_i = identify_member_sets(dv.index_set())
+            print(f'set_i = {set_i}')
             remaining_set = set_i[1]
             for s in set_i[2:]:
                 remaining_set *= s
