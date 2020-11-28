@@ -8,8 +8,7 @@ import sys # Only needed for running the example from the command line
 
 # Kipet library imports
 from kipet import KipetModel
-from kipet.library.common.read_write_tools import write_file
-from kipet.library.EstimabilityAnalyzer import EstimabilityAnalyzer
+from kipet.library.core_methods.EstimabilityAnalyzer import EstimabilityAnalyzer
 
 if __name__ == "__main__":
     with_plots = True
@@ -61,8 +60,8 @@ if __name__ == "__main__":
 
     # Add some noise and save the data
     data = kipet_model.add_noise_to_data(sim_model.results.Z, 0.02)
-    filename = sim_model.set_directory('sim_data.csv')
-    write_file(filename, data)
+    filename = 'example_data/sim_data.csv'
+    kipet_model.write_data_file(filename, data)
     
     """Make the model for estimability analysis"""
     

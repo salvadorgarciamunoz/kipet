@@ -12,7 +12,7 @@ function.
 import kipet
 
 kipet_model = kipet.KipetModel()
-full_data = kipet.read_file(kipet.set_directory('ratios.csv'))
+full_data = kipet_model.read_data_file('example_data/ratios.csv')
 r1 = kipet_model.new_reaction('reaction-1')
 
 # Add the model parameters
@@ -23,8 +23,6 @@ r1.add_parameter('k2', init=5.0, bounds=(0.0, 10.0))
 r1.add_component('A', state='concentration', init=1.0)
 r1.add_component('B', state='concentration', init=0.0)
 r1.add_component('C', state='concentration', init=0.0)
-
-filename = 'ratios.csv'
 
 r1.add_dataset(data=full_data[['A']], remove_negatives=True)
 r1.add_dataset('y_data', category='custom', data=full_data[['y']])
@@ -55,4 +53,5 @@ r1.add_objective_from_algebraic('y')
  
 r1.run_opt()
 r1.results.show_parameters
-r1.results.plot()
+r1.results.plot('Z')
+r1.results.plot('Y')

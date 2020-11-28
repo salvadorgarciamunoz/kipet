@@ -30,7 +30,7 @@ if __name__ == "__main__":
     r1.add_component('C', state='concentration', init=0.0)
     
     # Use this function to replace the old filename set-up
-    filename = r1.set_directory('Dij.txt')
+    filename = 'example_data/Dij.txt'
     r1.add_dataset('D_frame', category='spectral', file=filename)
 
     # define explicit system of ODEs

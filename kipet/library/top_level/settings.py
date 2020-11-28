@@ -80,78 +80,86 @@ class Settings():
     
     def reset_model(self, specific_settings=None):
         """Initializes the settings dicts to their default values"""
+        # Check which settings are absolutely necessary (really basic settings
+        # and sepearate from the problem specific attributes)
         
-        general = {'scale_variances': USER_DEFINED_SETTINGS['SCALE_VARIANCES'],
-                   'initialize_pe': USER_DEFINED_SETTINGS['INITIALIZE_PARAMETER_ESTIMATOR'],
-                   'scale_pe': USER_DEFINED_SETTINGS['SCALE_PARAMETER_ESTIMATOR'],
-                   'scale_parameters': USER_DEFINED_SETTINGS['SCALE_PARAMETERS'],
-                   'simulation_times': USER_DEFINED_SETTINGS['SIMULATION_TIMES'],
-                   'no_user_scaling': USER_DEFINED_SETTINGS['NO_USER_SCALING'],
-                   'data_directory': USER_DEFINED_SETTINGS['DATA_DIRECTORY'],
-                   'charts_directory': USER_DEFINED_SETTINGS['CHART_DIRECTORY'],
+        general = {
+            'scale_variances': USER_DEFINED_SETTINGS.get('SCALE_VARIANCES', False),
+            'initialize_pe': USER_DEFINED_SETTINGS.get('INITIALIZE_PARAMETER_ESTIMATOR', True),
+            'scale_pe': USER_DEFINED_SETTINGS.get('SCALE_PARAMETER_ESTIMATOR', True),
+            'scale_parameters': USER_DEFINED_SETTINGS.get('SCALE_PARAMETERS', False),
+            'simulation_times': USER_DEFINED_SETTINGS.get('SIMULATION_TIMES', None),
+            'no_user_scaling': USER_DEFINED_SETTINGS.get('NO_USER_SCALING', False),
+            'data_directory': USER_DEFINED_SETTINGS['DATA_DIRECTORY'],
+            'charts_directory': USER_DEFINED_SETTINGS['CHART_DIRECTORY'],
+            }
+
+        collocation = {
+            'method': USER_DEFINED_SETTINGS.get('COLLOCATION_METHOD', 'dae.collocation'),
+            'ncp': USER_DEFINED_SETTINGS.get('COLLOCATION_POINTS', 3),
+            'nfe': USER_DEFINED_SETTINGS.get('FINITE_ELEMENTS', 50),
+            'scheme': USER_DEFINED_SETTINGS.get('DISCRETIZATION_SCHEME', 'LAGRANGE-RADAU'),
             }
         
-        collocation = {'method': USER_DEFINED_SETTINGS['COLLOCATION_METHOD'],
-                       'ncp': USER_DEFINED_SETTINGS['COLLOCATION_POINTS'],
-                       'nfe': USER_DEFINED_SETTINGS['FINITE_ELEMENTS'],
-                       'scheme': USER_DEFINED_SETTINGS['DISCRETIZATION_SCHEME'],
+        sim_opt = {
+            'solver': USER_DEFINED_SETTINGS.get('SIMULATION_SOLVER', 'ipopt'),
+            'method': USER_DEFINED_SETTINGS.get('COLLOCATION_METHOD', 'dae.collocation'),
+            'tee':  USER_DEFINED_SETTINGS.get('DISPLAY_SOLVER_OUTPUT_SIMULATION', False),
+            'solver_opts': AttrDict(),
             }
         
-        sim_opt = {'solver': 'ipopt',
-                   'method': 'dae.collocation',
-                   'tee': False,
-                   'solver_opts': AttrDict(),
+        ve_opt = { 
+            'solver': USER_DEFINED_SETTINGS.get('VARIANCE_ESTIMATOR_SOLVER', 'ipopt'),
+            'tee': USER_DEFINED_SETTINGS.get('DISPLAY_SOLVER_OUTPUT_VARIANCE', True),
+            'tolerance': USER_DEFINED_SETTINGS.get('VARIANCE_SOLVER_TOLERANCE', 1e-5),
+            'max_iter': USER_DEFINED_SETTINGS.get('VARIANCE_MAX_ITER', 15),
+            'method': USER_DEFINED_SETTINGS.get('VARIANCE_ESTIMATOR_METHOD', 'originalchenetal'),
+            'freq_subset_lambdas': USER_DEFINED_SETTINGS.get('WAVELENGTH_SUBSET_FREQ', None),
+            'secant_point': USER_DEFINED_SETTINGS.get('SECANT_POINT', 1e-11),
+            'initial_sigmas': USER_DEFINED_SETTINGS.get('INITIAL_SIGMAS', 1e-10),
+            'max_device_variance': USER_DEFINED_SETTINGS.get('MAX_DEVICE_VARIANCE', False),
+            'use_delta': USER_DEFINED_SETTINGS.get('USE_DELTA', False),
+            'delta': USER_DEFINED_SETTINGS.get('DELTA', 1e-7),
+            'individual_species' : USER_DEFINED_SETTINGS.get('INDIVIDUAL_SPECIES', False),
+            'fixed_device_variance': USER_DEFINED_SETTINGS.get('FIXED_DEVICE_VARIANCE', None),
+            'device_range': USER_DEFINED_SETTINGS.get('DEVICE_RANGE', None),
+            'best_accuracy': USER_DEFINED_SETTINGS.get('BEST_ACCURACY', None),
+            'num_points': USER_DEFINED_SETTINGS.get('NUM_POINTS', None),
+            'with_plots': USER_DEFINED_SETTINGS.get('SHOW_PLOTS', False),
+            'solver_opts': AttrDict(),
             }
-        
-        ve_opt = { 'solver': 'ipopt',
-                   'tee': True,
-                   'solver_opts': AttrDict(),
-                   'tolerance': 1e-5,
-                   'max_iter': 15,
-                   'method': 'originalchenetal',
-                   'use_subset_lambdas': False,
-                   'freq_subset_lambdas': 4,
-                   'secant_point': 1e-11,
-                   'initial_sigmas': 1e-10,
-                   'max_device_variance': False,
-                   'use_delta': False,
-                   'delta': 1e-07,
-                   'individual_species' : False,
-                   'fixed_device_variance': None,
-                   'device_range': None,
-                   'best_accuracy': None,
-                   'num_points': None,
-                   'with_plots': False,
+   
+        pe_opt = { 
+            'solver': USER_DEFINED_SETTINGS.get('PARAMETER_ESTIMATOR_SOLVER', 'ipopt'),
+            'tee': USER_DEFINED_SETTINGS.get('DISPLAY_SOLVER_OUTPUT_PARAMETER', True),
+            'covariance': USER_DEFINED_SETTINGS.get('PARAMETER_COVARIANCE', False),
+            'with_d_vars': USER_DEFINED_SETTINGS.get('PARAMETER_D_VARS', False),
+            'symbolic_solver_labels': USER_DEFINED_SETTINGS.get('PARAMETER_SYMBOLIC_LABELS', False),
+            'estimability': USER_DEFINED_SETTINGS.get('PARAMETER_ESTIMABILITY', False),
+            'report_time': USER_DEFINED_SETTINGS.get('PARAMETER_REPORT_TIME', False),
+            'model_variance': USER_DEFINED_SETTINGS.get('PARAMETER_MODEL_VARIANCE', True),
+            'confidence': USER_DEFINED_SETTINGS.get('PARAMETER_CONFIDENCE', None),
+            'solver_opts': AttrDict(),
+            
+            'inputs': None,
+            'inputs_sub': None,
+            'trajectories': None,
+            'fixedtraj': False,
+            'fixedy': False,
+            'yfix': None,
+            'yfixtraj': None,
+            'jump': False,
+            'jump_states': None,
+            'jump_times': None,
+            'feed_times': None,       
+            'G_contribution': None,
+            'St': dict(),
+            'Z_in': dict(),
             }
     
-        pe_opt = { 'solver': 'ipopt',
-                   'tee': True,
-                   'solver_opts': AttrDict(),
-                   'covariance': False,
-                   'with_d_vars': False,
-                   'symbolic_solver_labels': False,
-                   'estimability': False,
-                   'report_time': False,
-                   'model_variance': True,
-                   'inputs': None,
-                   'inputs_sub': None,
-                   'trajectories': None,
-                   'fixedtraj': False,
-                   'fixedy': False,
-                   'yfix': None,
-                   'yfixtraj': None,
-                   'jump': False,
-                   'jump_states': None,
-                   'jump_times': None,
-                   'feed_times': None,       
-                   'G_contribution': None,
-                   'St': dict(),
-                   'Z_in': dict(),
-                   'confidence': None,
-            }
-    
-        solver = {'nlp_scaling_method': USER_DEFINED_SETTINGS['NLP_SCALING_METHOD'],
-                  'linear_solver': USER_DEFINED_SETTINGS['LINEAR_SOLVER'],
+        solver = {
+            'nlp_scaling_method': USER_DEFINED_SETTINGS.get('NLP_SCALING_METHOD', 'gradient-based'),
+            'linear_solver': USER_DEFINED_SETTINGS.get('LINEAR_SOLVER', 'ma57'),
             }
     
         self.collocation = AttrDict(collocation)
@@ -166,27 +174,47 @@ class Settings():
     def reset_block(self, specific_settings=None):
         """Initializes the settings dicts to their default values"""
         
-        general = {'scale_variances': False,
-                   # If true, PE is intialized with VE results
-                   'initialize_pe' : True,
-                    # If true, PE is scaled with VE results
-                   'scale_pe' : True,
-                   'scale_parameters' : False,
-                   'simulation_times': None,
-                   'no_user_scaling': False,
-                   'use_wavelength_subset': True,
-                   'freq_wavelength_subset': 2,
-                   'data_directory': USER_DEFINED_SETTINGS['DATA_DIRECTORY'],
-                   'charts_directory': USER_DEFINED_SETTINGS['CHART_DIRECTORY'],
+        general = {
+            'scale_variances': USER_DEFINED_SETTINGS.get('SCALE_VARIANCES', False),
+            'initialize_pe': USER_DEFINED_SETTINGS.get('INITIALIZE_PARAMETER_ESTIMATOR', True),
+            'scale_pe': USER_DEFINED_SETTINGS.get('SCALE_PARAMETER_ESTIMATOR', True),
+            'scale_parameters': USER_DEFINED_SETTINGS.get('SCALE_PARAMETERS', False),
+            'simulation_times': USER_DEFINED_SETTINGS.get('SIMULATION_TIMES', None),
+            'no_user_scaling': USER_DEFINED_SETTINGS.get('NO_USER_SCALING', False),
+            'data_directory': USER_DEFINED_SETTINGS['DATA_DIRECTORY'],
+            'charts_directory': USER_DEFINED_SETTINGS['CHART_DIRECTORY'],
+            'freq_wavelength_subset': USER_DEFINED_SETTINGS.get('MEE_WAVELENGTH_SUBSET_FREQ', None),
             }
         
-        collocation = {'method': USER_DEFINED_SETTINGS['COLLOCATION_METHOD'],
-                       'ncp': USER_DEFINED_SETTINGS['COLLOCATION_POINTS'],
-                       'nfe': USER_DEFINED_SETTINGS['FINITE_ELEMENTS'],
-                       'scheme': USER_DEFINED_SETTINGS['DISCRETIZATION_SCHEME'],
+        collocation = {
+            'method': USER_DEFINED_SETTINGS.get('COLLOCATION_METHOD', 'dae.collocation'),
+            'ncp': USER_DEFINED_SETTINGS.get('COLLOCATION_POINTS', 3),
+            'nfe': USER_DEFINED_SETTINGS.get('FINITE_ELEMENTS', 50),
+            'scheme': USER_DEFINED_SETTINGS.get('DISCRETIZATION_SCHEME', 'LAGRANGE-RADAU'),
             }
         
         # This should only be in model and not in block:
+    
+        # ve_opt = { 
+        #     'solver': USER_DEFINED_SETTINGS.get('VARIANCE_ESTIMATOR_SOLVER', 'ipopt'),
+        #     'tee': USER_DEFINED_SETTINGS.get('DISPLAY_SOLVER_OUTPUT_VARIANCE', False),
+        #     'tolerance': USER_DEFINED_SETTINGS.get('VARIANCE_SOLVER_TOLERANCE', 1e-5),
+        #     'max_iter': USER_DEFINED_SETTINGS.get('VARIANCE_MAX_ITER', 15),
+        #     'method': USER_DEFINED_SETTINGS.get('VARIANCE_ESTIMATOR_METHOD', 'originalchenetal'),
+        #     'freq_subset_lambdas': USER_DEFINED_SETTINGS.get('WAVELENGTH_SUBSET_FREQ', None),
+        #     'secant_point': USER_DEFINED_SETTINGS.get('SECANT_POINT', 1e-11),
+        #     'initial_sigmas': USER_DEFINED_SETTINGS.get('INITIAL_SIGMAS', 1e-10),
+        #     'max_device_variance': USER_DEFINED_SETTINGS.get('MAX_DEVICE_VARIANCE', False),
+        #     'use_delta': USER_DEFINED_SETTINGS.get('USE_DELTA', False),
+        #     'delta': USER_DEFINED_SETTINGS.get('DELTA', 1e-7),
+        #     'individual_species' : USER_DEFINED_SETTINGS.get('INDIVIDUAL_SPECIES', False),
+        #     'fixed_device_variance': USER_DEFINED_SETTINGS.get('FIXED_DEVICE_VARIANCE', None),
+        #     'device_range': USER_DEFINED_SETTINGS.get('DEVICE_RANGE', None),
+        #     'best_accuracy': USER_DEFINED_SETTINGS.get('BEST_ACCURACY', None),
+        #     'num_points': USER_DEFINED_SETTINGS.get('NUM_POINTS', None),
+        #     'with_plots': USER_DEFINED_SETTINGS.get('SHOW_PLOTS', False),
+        #     'solver_opts': AttrDict(),
+        #     }        
     
         v_estimator = {'solver': 'ipopt',
                         'solver_opts': AttrDict(),
@@ -214,8 +242,9 @@ class Settings():
                         'confidence': None,
                         }
     
-        solver = {'nlp_scaling_method': USER_DEFINED_SETTINGS['NLP_SCALING_METHOD'],
-                  'linear_solver': USER_DEFINED_SETTINGS['LINEAR_SOLVER'],
+        solver = {
+            'nlp_scaling_method': USER_DEFINED_SETTINGS.get('NLP_SCALING_METHOD', 'gradient-based'),
+            'linear_solver': USER_DEFINED_SETTINGS.get('LINEAR_SOLVER', 'ma57'),
             }
     
         self.collocation = AttrDict(collocation)
@@ -227,7 +256,7 @@ class Settings():
         return None
     
 def is_number(s):
-    """ Returns the input as a float if it is a number else it returns an Error
+    """ Returns True if the input is a float (number), else False
 
     """
     try:

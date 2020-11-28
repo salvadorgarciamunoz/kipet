@@ -43,7 +43,7 @@ if __name__ == "__main__":
     r1.add_equations(rule_odes)
    
     # Add the dataset for the first model
-    r1.add_dataset(file='Ex_1_C_data.txt')
+    r1.add_dataset(file='example_data/Ex_1_C_data.txt')
     
     # Add the known variances
     r1.variances = {'A':1e-10,'B':1e-10,'C':1e-10}

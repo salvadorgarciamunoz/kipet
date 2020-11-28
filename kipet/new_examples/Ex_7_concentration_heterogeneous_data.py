@@ -29,7 +29,7 @@ if __name__ == "__main__":
     r1.add_component('C', state='concentration', init=0.0)
    
     # Use this function to replace the old filename set-up
-    filename = r1.set_directory('missing_data_no_start.txt')
+    filename = 'example_data/missing_data_no_start.txt'
     
     r1.add_dataset('C_data', category='concentration', file=filename)
     

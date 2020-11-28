@@ -29,8 +29,7 @@ if __name__ == "__main__":
     r1.add_component('C', state='concentration', init=0.0)
     
     # Use this function to replace the old filename set-up
-    filename = r1.set_directory('Dij.txt')
-    r1.add_dataset('D_frame', category='spectral', file=filename)
+    r1.add_dataset('D_frame', category='spectral', file='example_data/Dij.txt')
 
     # define explicit system of ODEs
     def rule_odes(m,t):
@@ -49,6 +48,9 @@ if __name__ == "__main__":
     r1.settings.collocation.nfe = 60
     r1.settings.variance_estimator.use_subset_lambdas = True
     r1.settings.parameter_estimator.tee = False
+    r1.settings.general.no_user_scaling = True
+    r1.settings.parameter_estimator.solver = 'ipopt_sens'
+    r1.settings.solver.mu_init = 1e-4
     
     # This is all you need to run KIPET!
     r1.run_opt()

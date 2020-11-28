@@ -125,7 +125,7 @@ def remove_scaling(model, bounds=None):
         model.P[param].set_value(model.K[param].value)
         
         for k, v in model.odes.items():
-            ep_updated_expr = _update_expression(v.body, model.K[param], 1)
+            ep_updated_expr = update_expression(v.body, model.K[param], 1)
             model.odes[k] = ep_updated_expr == 0
         
         del model.K[param]
@@ -143,7 +143,7 @@ def _scale_expression(expr, scale):
     visitor = ScalingVisitor(scale)
     return visitor.dfs_postorder_stack(expr)
 
-def _update_expression(expr, replacement_param, change_value):
+def update_expression(expr, replacement_param, change_value):
     """Takes the noparam_infon-estiambale parameter and replaces it with its intitial
     value
     

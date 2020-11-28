@@ -4,7 +4,7 @@ from __future__ import print_function
 from __future__ import division
 from pyomo.environ import *
 from pyomo.dae import *
-from kipet.library.ParameterEstimator import *
+from kipet.library.core_methods.ParameterEstimator import *
 from pyomo import *
 from scipy.optimize import least_squares
 import matplotlib.pyplot as plt

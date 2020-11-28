@@ -11,7 +11,7 @@ from pyomo.environ import (
     Param,
     )
 
-from kipet.library.ResultsObject import ResultsObject
+from kipet.library.core_methods.ResultsObject import ResultsObject
 
 def run_alternate_method(var_est_object, solver, run_opt_kwargs):
     """Calls the alternative method - Short et al 2020"""

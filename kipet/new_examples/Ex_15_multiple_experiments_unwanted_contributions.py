@@ -41,9 +41,9 @@ if __name__ == "__main__":
     
     r1.add_equations(rule_odes)
     
-    filename1 = 'Dij_multexp_tiv_G.txt'
-    filename2 = 'Dij_multexp_tv_G.txt'
-    filename3 = 'Dij_multexp_no_G.txt'
+    filename1 = 'example_data/Dij_multexp_tiv_G.txt'
+    filename2 = 'example_data/Dij_multexp_tv_G.txt'
+    filename3 = 'example_data/Dij_multexp_no_G.txt'
     
     
     # Create the other two models

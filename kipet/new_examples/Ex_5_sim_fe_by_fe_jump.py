@@ -98,7 +98,7 @@ if __name__ == "__main__":
     r1.set_dosing_var(5)
     # Add dosing points 
     r1.add_dosing_point('AH', 100, 0.3)
-   # r1.add_dosing_point('A-', 300, 0.9)
+    r1.add_dosing_point('A-', 300, 0.9)
 
     r1.set_times(0, 600)
       

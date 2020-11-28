@@ -42,6 +42,11 @@ setup(name=DISTNAME,
 """
 This sets up the default data directory based on where KIPET is installed
 """
+print('Updating data and chart paths')
+
+DEFAULT_DATA_DIRECTORY = pathlib.Path('data')
+DEFAULT_CHART_DIRECTORY = pathlib.Path('charts')
+
 def replace_in_file(file_path, search_text, new_text):
     with fileinput.input(file_path, inplace=True) as f:
         for line in f:
@@ -49,18 +54,19 @@ def replace_in_file(file_path, search_text, new_text):
             print(new_line, end='')
 
 # Get the installation directory and the expected location of the settings file
-install_dir = pathlib.Path(__file__).parent
+install_dir = pathlib.Path(__file__).parent.absolute()
+print(f'Parent directory: {install_dir}')
 setting_file_path = install_dir.joinpath('kipet', 'settings.txt')
 
-# Replace the data directory with the installation directory
+# Replace the data directory based on the installation directory
 data_dir_label = 'DATA_DIRECTORY='
-data_dir_new = data_dir_label.rstrip('\n') + install_dir.joinpath('kipet', 'new_examples', 'data_sets').as_posix()
+data_dir_new = data_dir_label.rstrip('\n') + install_dir.joinpath('kipet', DEFAULT_DATA_DIRECTORY).as_posix()
 replace_in_file(setting_file_path, data_dir_label, data_dir_new)
-
-# Replace the data directory with the installation directory
+print(f'New data directory: {data_dir_new}')
+# Replace the chart directory based on the installation directory
 chart_dir_label = 'CHART_DIRECTORY='
-chart_dir_path = install_dir.joinpath('kipet', 'charts')
+chart_dir_path = install_dir.joinpath('kipet', DEFAULT_CHART_DIRECTORY)
 chart_dir_new = pathlib.Path(chart_dir_label.rstrip('\n') + chart_dir_path.as_posix())
 replace_in_file(setting_file_path, chart_dir_label, chart_dir_new.as_posix())
-
 chart_dir_path.mkdir(exist_ok=True)
+print(f'New chart directory: {chart_dir_path}')
