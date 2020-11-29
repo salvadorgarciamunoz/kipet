@@ -8,8 +8,8 @@
 # This is required!
 # Data Directory Setting:
 
-    DATA_DIRECTORY=/home/kevin/Dev/kipet/kipet/new_examples/data_sets
-    CHART_DIRECTORY=/home/kevin/Dev/kipet/kipet/charts
+    DATA_DIRECTORY=
+    CHART_DIRECTORY=
     
 # General Settings:
 
