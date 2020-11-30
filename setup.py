@@ -24,20 +24,10 @@ setuptools_kwargs = {
                          'plotly',
                          'matplotlib'],
     'scripts': [],
-    'include_package_data': True
+    'include_package_data': True,
+    'data_files': [('kipet', ['kipet/settings.txt'])],
 }
 
-setup(name=DISTNAME,
-      version=VERSION,
-      packages=PACKAGES,
-      ext_modules=EXTENSIONS,
-      description=DESCRIPTION,
-      long_description=LONG_DESCRIPTION,
-      author=AUTHOR,
-      maintainer_email=MAINTAINER_EMAIL,
-      license=LICENSE,
-      url=URL,
-      **setuptools_kwargs)
 
 """
 This sets up the default data directory based on where KIPET is installed
@@ -70,3 +60,16 @@ chart_dir_new = pathlib.Path(chart_dir_label.rstrip('\n') + chart_dir_path.as_po
 replace_in_file(setting_file_path, chart_dir_label, chart_dir_new.as_posix())
 chart_dir_path.mkdir(exist_ok=True)
 print(f'New chart directory: {chart_dir_path}')
+
+setup(name=DISTNAME,
+      version=VERSION,
+      packages=PACKAGES,
+      ext_modules=EXTENSIONS,
+      description=DESCRIPTION,
+      long_description=LONG_DESCRIPTION,
+      author=AUTHOR,
+      maintainer_email=MAINTAINER_EMAIL,
+      license=LICENSE,
+      url=URL,
+      **setuptools_kwargs)
+
