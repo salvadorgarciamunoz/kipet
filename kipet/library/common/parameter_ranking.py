@@ -79,7 +79,7 @@ def rank_parameters(model_object, reduced_hessian, param_list, epsilon=1e-16, et
     eigenvalues, eigenvectors = np.linalg.eigh(reduced_hessian)
     ranked_parameters = {k: M[abs(len(M)-1-k)] for k in M.keys()}
     
-    print(f'ranked: {ranked_parameters}')
+    #print(f'ranked: {ranked_parameters}')
     
     for k, v in ranked_parameters.items():
     
@@ -91,6 +91,10 @@ def rank_parameters(model_object, reduced_hessian, param_list, epsilon=1e-16, et
             Sf_update.append(name)
         else:
             Se_update.append(name)
+            
+    if len(Se_update) == 0:
+        Se_update.append(ranked_parameters[0])
+        Sf_update.remove(ranked_parameters[0])
     
     return Se_update, Sf_update
 

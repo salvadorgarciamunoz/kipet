@@ -3,6 +3,17 @@ Parameter handling
 """
 
 def check_initial_parameter_values(model_object):
+    """Checks the initial parameter values and alters them if they violate the
+    bounds.
+    
+    Args:
+        model_object (pyomo ConcreteModel): A pyomo model instance of the current
+            problem 
+            
+    Returns:
+        None
+        
+    """
     
     for k, v in model_object.P.items():
         
@@ -18,6 +29,23 @@ def check_initial_parameter_values(model_object):
         
 def set_scaled_parameter_bounds(model_object, parameter_set=None, rho=10, scaled=True, original_bounds=None):
     """Set the parameter values (scaled) for a given set of parameters
+    
+    Args:
+        model_object (pyomo ConcreteModel): A pyomo model instance of the current
+            problem 
+            
+        parameter_set (list): list of parameters to be considered, if None all
+            parameters in the model are considered
+            
+        rho (float): ratio for setting the upper and lower bounds
+        
+        scaled (bool): True if the parameters are scaled
+        
+        original_bounds (bool): True if the original parameter bounds are to be
+            used (instead of rho)
+            
+    Returns:
+        None
     
     """
     if parameter_set is None:

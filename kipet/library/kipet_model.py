@@ -44,6 +44,7 @@ from kipet.library.top_level.datahandler import DataBlock, DataSet
 from kipet.library.top_level.helper import DosingPoint
 from kipet.library.top_level.model_components import ParameterBlock, ComponentBlock
 from kipet.library.top_level.settings import Settings, USER_DEFINED_SETTINGS
+from kipet.library.top_level.clean import remove_file
 
 DEFAULT_DIR = 'data_sets'
 
@@ -349,6 +350,11 @@ class KipetModel():
         
         read_data = data_tools.read_file(_filename)
         return read_data
+    
+    
+    # def delete_file(self, filename, directory=None):
+    #     """Method to remove files from the directory"""
+    #     remove_file(self.settings.general.data_directory, 'ipopt_opt')
     
     @property
     def all_params(self):
@@ -946,6 +952,11 @@ class ReactionModel(WavelengthSelectionMixins):
         
         self.s_model = self.model.clone()
         
+        components_to_delete = ['Cm', 'U'] 
+        for comp in components_to_delete:
+            if hasattr(self.s_model, comp):
+                self.s_model.del_component(comp)
+        
         for param in self.s_model.P.values():
             param.fix()
         
@@ -1269,7 +1280,10 @@ class ReactionModel(WavelengthSelectionMixins):
                                                                  )         
         return scaled_parameter_dict, scaled_models_dict
     
-    def reduce_model(self, **kwargs):
+    def reduce_model(self,
+                     method='k_aug',
+                     calc_method='global',
+                     scaled=True):
         """This calls the reduce_models method in the EstimationPotential
         module to reduce the model based on the reduced hessian parameter
         selection method.
@@ -1290,8 +1304,13 @@ class ReactionModel(WavelengthSelectionMixins):
         if self.model is None:
             self.create_pyomo_model()
             
-        # settings_rhps['solver_opts'] = self.settings.solver
+        kwargs = {}
         kwargs['solver_opts'] = self.settings.solver
+        kwargs['method'] = method
+        kwargs['calc_method'] = calc_method
+        kwargs['scaled'] = scaled
+        kwargs['use_bounds'] = False
+        kwargs['use_duals'] = False
         
         parameter_dict = self.parameters.as_dict(bounds=True)
         results, reduced_model = reduce_model(self.model, **kwargs)
@@ -1356,78 +1375,78 @@ class ReactionModel(WavelengthSelectionMixins):
             self.datasets[var].data = dataframe
         return data_tools.add_noise_to_signal(dataframe, noise)    
     
-    # def apply_pe_discretization(self, model_object, *args, **kwargs):
-    #     """Checks is the model is discretized and discretizes it in the case
-    #     that it is not
+#     def apply_pe_discretization(self, model_object, *args, **kwargs):
+#         """Checks is the model is discretized and discretizes it in the case
+#         that it is not
         
-    #     Args:
-    #         model (ConcreteModel): A pyomo ConcreteModel
+#         Args:
+#             model (ConcreteModel): A pyomo ConcreteModel
             
-    #         ncp (int): number of collocation points used
+#             ncp (int): number of collocation points used
             
-    #         nfe (int): number of finite elements used
+#             nfe (int): number of finite elements used
             
-    #     Returns:
-    #         None
+#         Returns:
+#             None
             
-    #     """
-    #     method = kwargs.pop('method', 'dae.collocation')
-    #     ncp = kwargs.pop('ncp', 3)
-    #     nfe = kwargs.pop('nfe', 50)
-    #     scheme = kwargs.pop('scheme', 'LAGRANGE-RADAU')
+#         """
+#         method = kwargs.pop('method', 'dae.collocation')
+#         ncp = kwargs.pop('ncp', 3)
+#         nfe = kwargs.pop('nfe', 50)
+#         scheme = kwargs.pop('scheme', 'LAGRANGE-RADAU')
         
-    #     if not model_object.alltime.get_discretization_info():
+#         if not model_object.alltime.get_discretization_info():
         
-    #         # You need to change this out of an Estimator
-    #         model_pe = ParameterEstimator(model_object)
-    #         model_pe.apply_discretization(method,
-    #                                       ncp=ncp,
-    #                                       nfe=nfe,
-    #                                       scheme=scheme)
+#             # You need to change this out of an Estimator
+#             model_pe = ParameterEstimator(model_object)
+#             model_pe.apply_discretization(method,
+#                                           ncp=ncp,
+#                                           nfe=nfe,
+#                                           scheme=scheme)
         
-    #     return None
+#         return None
         
-    # def rule_objective(self, model):
-    #     """This function defines the objective function for the estimability
+#     def rule_objective(self, model):
+#         """This function defines the objective function for the estimability
         
-    #     This is equation 5 from Chen and Biegler 2020. It has the following
-    #     form:
+#         This is equation 5 from Chen and Biegler 2020. It has the following
+#         form:
             
-    #     .. math::
-    #         \min J = \frac{1}{2}(\mathbf{w}_m - \mathbf{w})^T V_{\mathbf{w}}^{-1}(\mathbf{w}_m - \mathbf{w})
+#         .. math::
+#             \min J = \frac{1}{2}(\mathbf{w}_m - \mathbf{w})^T V_{\mathbf{w}}^{-1}(\mathbf{w}_m - \mathbf{w})
             
-    #     Originally KIPET was designed to only consider concentration data in
-    #     the estimability, but this version now includes complementary states
-    #     such as reactor and cooling temperatures. If complementary state data
-    #     is included in the model, it is detected and included in the objective
-    #     function.
+#         Originally KIPET was designed to only consider concentration data in
+#         the estimability, but this version now includes complementary states
+#         such as reactor and cooling temperatures. If complementary state data
+#         is included in the model, it is detected and included in the objective
+#         function.
         
-    #     Args:
-    #         model (pyomo.core.base.PyomoModel.ConcreteModel): This is the pyomo
-    #         model instance for the estimability problem.
+#         Args:
+#             model (pyomo.core.base.PyomoModel.ConcreteModel): This is the pyomo
+#             model instance for the estimability problem.
                 
-    #     Returns:
-    #         obj (pyomo.environ.Objective): This returns the objective function
-    #         for the estimability optimization.
+#         Returns:
+#             obj (pyomo.environ.Objective): This returns the objective function
+#             for the estimability optimization.
         
-    #     """
-    #     obj = 0
+#         """
+#         obj = 0
         
-    #     from pyomo.environ import Objective
+#         from pyomo.environ import Objective
         
-    #     print(model.sigma)
+#         print(model.sigma)
     
-    #     for k in set(model.mixture_components.value_list) & set(model.measured_data.value_list):
-    #         for t, v in model.Cm.items():
-    #             obj += 0.5*(model.Cm[t] - model.Z[t]) ** 2 /  1#model.sigma[k]**2
+#         for k in set(model.mixture_components.value_list) & set(model.measured_data.value_list):
+#             for t, v in model.Cm.items():
+#                 obj += 0.5*(model.Cm[t] - model.Z[t]) ** 2 /  1#model.sigma[k]**2
         
-    #     for k in set(model.complementary_states.value_list) & set(model.measured_data.value_list):
-    #         for t, v in model.U.items():
-    #             obj += 0.5*(model.X[t] - model.U[t]) ** 2 / 1#model.sigma[k]**2      
+#         for k in set(model.complementary_states.value_list) & set(model.measured_data.value_list):
+#             for t, v in model.U.items():
+#                 obj += 0.5*(model.X[t] - model.U[t]) ** 2 / 1#model.sigma[k]**2      
     
-    #     model.objective = Objective(expr=obj)
+#         model.objective = Objective(expr=obj)
     
-    #     return None
+#         return None
     
 def _set_directory(model_object, filename, abs_dir=False):
     """Wrapper for the set_directory method. This replaces the awkward way

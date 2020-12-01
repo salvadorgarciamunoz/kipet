@@ -1,5 +1,3 @@
-
-
 """
 Example 16: Parameter Selection Using the Reduced Hessian
 
@@ -87,15 +85,13 @@ if __name__ == "__main__":
     
     r1.add_dataset(data=full_data[['T']].iloc[0::3])
     r1.add_dataset(data=full_data[['A']].loc[[3.9, 2.6, 1.115505]])
-    
-    method = 'k_aug'   # k_aug or pynumero
-    rh_method = 'fixed' # fixed or global (same results)
-    scaled = True
-    use_bounds = False 
-    use_duals = False
-    
-    results = r1.reduce_model(method=method, rh_method=rh_method, scaled=scaled, use_bounds=use_bounds, use_duals=use_duals)
-    
+
+    # global is somewhat faster than fixed
+    #rh_method = 'fixed'
+    rh_method = 'global'
+ 
+    results = r1.reduce_model(calc_method=rh_method)
+
     # results is a standard ResultsObject
-    results.plot('Z')
-    results.plot('X')
+    results.plot('Z', show_plot=with_plots)
+    results.plot('X', show_plot=with_plots)
