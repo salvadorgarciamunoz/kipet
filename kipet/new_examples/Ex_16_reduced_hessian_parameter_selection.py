@@ -86,10 +86,7 @@ if __name__ == "__main__":
     r1.add_dataset(data=full_data[['T']].iloc[0::3])
     r1.add_dataset(data=full_data[['A']].loc[[3.9, 2.6, 1.115505]])
 
-    # global is somewhat faster than fixed
-    #rh_method = 'fixed'
     rh_method = 'global'
- 
     results = r1.reduce_model(calc_method=rh_method)
 
     # results is a standard ResultsObject

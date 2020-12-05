@@ -34,7 +34,8 @@ from kipet.library.common.parameter_ranking import (
     )
 from kipet.library.common.reduced_hessian import (
     add_global_constraints,
-    calculate_reduced_hessian
+    calculate_reduced_hessian,
+    optimize_model,
     )
 from kipet.library.core_methods.ParameterEstimator import ParameterEstimator
 from kipet.library.core_methods.ResultsObject import ResultsObject
@@ -582,6 +583,7 @@ class EstimationPotential():
         
         kwargs['set_param_bounds'] = True
         
+        optimize_model(rh_model, d=None, parameter_set=Se, **kwargs)
         reduced_hessian = calculate_reduced_hessian(rh_model, parameter_set=Se, **kwargs)
         
         return reduced_hessian
