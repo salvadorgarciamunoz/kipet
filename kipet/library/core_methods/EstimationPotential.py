@@ -5,9 +5,7 @@ in Chen and Biegler (AIChE 2020).
 """
 # Standard library imports
 import copy
-from pathlib import Path
 from string import Template
-import warnings
 
 # Third party imports
 import numpy as np
@@ -20,8 +18,6 @@ from pyomo.environ import (
     Param,
     Set,
     )
-from scipy.sparse import coo_matrix
-from scipy.sparse.linalg import spsolve
 
 # KIPET library imports
 from kipet.library.common.objectives import (
@@ -94,7 +90,7 @@ class EstimationPotential():
 
     def __init__(self, model, simulation_data=None, options=None,
                  method='k_aug', solver_opts={}, scaled=True,
-                 use_bounds=False, use_duals=False, rh_method='fixed'):
+                 use_bounds=False, use_duals=False, calc_method='fixed'):
         
         # Options handling
         self.options = {} if options is None else options.copy()
@@ -115,7 +111,7 @@ class EstimationPotential():
         self.scaled = scaled
         self.use_bounds = use_bounds
         self.use_duals = use_duals
-        self.rh_method = rh_method
+        self.rh_method = calc_method
         
         # Copy the model
         self.model = copy.deepcopy(model)
@@ -153,9 +149,8 @@ class EstimationPotential():
             None
             
         """
-        bound_check = True
-        self.verbose = True
-        
+        bound_check = True     
+
         flag = False
         step = Template('\n' + '*' * 20 + ' Step $number ' + '*' * 20)
         
@@ -186,7 +181,7 @@ class EstimationPotential():
             print(step.substitute(number=3))
             print('Calculating the Reduced Hessian for the initial parameter set\n')
         
-        reduced_hessian = self._calculate_reduced_hessian(Se, verbose=self.verbose, calc_method=self.rh_method, rho=self.rho, scaled=self.scaled)
+        reduced_hessian = self._calculate_reduced_hessian(Se, verbose=self.verbose, calc_method=self.rh_method, rho=self.rho, scaled=self.scaled, method=self.method)
         
         if self.debug:
             #print(reduced_hessian)
@@ -236,9 +231,6 @@ class EstimationPotential():
                     print(step.substitute(number=5))
                     print('Optimizing the estimable parameters\n')
                     
-                print(Se)
-                print(self.model.P.display())
-                
                 for free_param in Se:
                     self.model.P[free_param].unfix()
                     
@@ -279,8 +271,8 @@ class EstimationPotential():
                         self.model.K[k] = self.model.K[k] * self.model.P[k].value
                         self.model.P[k].set_value(1)
                         
-                    print(self.model.K.display())
-                    print(self.model.P.display())
+                    # print(self.model.K.display())
+                    # print(self.model.P.display())
                         
                 else:
                     set_scaled_parameter_bounds(self.model,
@@ -315,7 +307,7 @@ class EstimationPotential():
                 self.model.P.display()
                 self.model.K.display()
                 
-            reduced_hessian = self._calculate_reduced_hessian(Se, verbose=self.verbose, calc_method=self.rh_method, rho=self.rho, scaled=self.scaled)
+            reduced_hessian = self._calculate_reduced_hessian(Se, verbose=self.verbose, calc_method=self.rh_method, rho=self.rho, scaled=self.scaled, method=self.method)
            
             # Step 7 - Check the ratios of the parameter std to value
             if self.verbose:
@@ -416,7 +408,7 @@ class EstimationPotential():
                                 print(f'Input model:\n')
                                 self.model.P.display()
                   
-                        reduced_hessian = self._calculate_reduced_hessian(Se, verbose=self.verbose, calc_method=self.rh_method, rho=self.rho, scaled=self.scaled)  
+                        reduced_hessian = self._calculate_reduced_hessian(Se, verbose=self.verbose, calc_method=self.rh_method, rho=self.rho, scaled=self.scaled, method=self.method)  
                        
                         if self.debug:
                             input("Press Enter to continue...")
@@ -588,6 +580,8 @@ class EstimationPotential():
         tmpfile_i = "ipopt_output"
         rh_model = copy.deepcopy(self.model)
         
+        kwargs['set_param_bounds'] = True
+        
         reduced_hessian = calculate_reduced_hessian(rh_model, parameter_set=Se, **kwargs)
         
         return reduced_hessian
@@ -619,8 +613,8 @@ def reduce_model(model, options=None, **kwargs):
     scaled = kwargs.get('scaled', True)
     use_bounds = kwargs.get('use_bounds', False)
     use_duals = kwargs.get('use_duals', False)
-    rh_method = kwargs.get('rh_method', 'fixed')
-    
+    calc_method = kwargs.get('calc_method', 'fixed')
+  
     options = options if options is not None else dict()
     orig_bounds = {k: v.bounds for k, v in model.P.items()}
     est_param = EstimationPotential(model,
@@ -631,7 +625,7 @@ def reduce_model(model, options=None, **kwargs):
                                     scaled=scaled,
                                     use_bounds=use_bounds,
                                     use_duals=use_duals,
-                                    rh_method=rh_method)
+                                    calc_method=calc_method)
     results, reduced_model = est_param.estimate()
     
     if replace:
