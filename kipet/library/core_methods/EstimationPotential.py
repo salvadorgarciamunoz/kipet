@@ -32,11 +32,7 @@ from kipet.library.common.parameter_ranking import (
     parameter_ratios,
     rank_parameters,
     )
-from kipet.library.common.reduced_hessian import (
-    add_global_constraints,
-    calculate_reduced_hessian,
-    optimize_model,
-    )
+
 from kipet.library.core_methods.ParameterEstimator import ParameterEstimator
 from kipet.library.core_methods.ResultsObject import ResultsObject
 from kipet.library.post_model_build.scaling import (
@@ -44,6 +40,7 @@ from kipet.library.post_model_build.scaling import (
     scale_parameters,
     update_expression,
     )
+from kipet.library.common.ReducedHessian import ReducedHessian
 
 __author__ = 'Kevin McBride'  #: April 2020
     
@@ -182,7 +179,7 @@ class EstimationPotential():
             print(step.substitute(number=3))
             print('Calculating the Reduced Hessian for the initial parameter set\n')
         
-        reduced_hessian = self._calculate_reduced_hessian(Se, verbose=self.verbose, calc_method=self.rh_method, rho=self.rho, scaled=self.scaled, method=self.method)
+        reduced_hessian = self._calculate_reduced_hessian(Se)
         
         if self.debug:
             #print(reduced_hessian)
@@ -308,8 +305,8 @@ class EstimationPotential():
                 self.model.P.display()
                 self.model.K.display()
                 
-            reduced_hessian = self._calculate_reduced_hessian(Se, verbose=self.verbose, calc_method=self.rh_method, rho=self.rho, scaled=self.scaled, method=self.method)
-           
+            reduced_hessian = self._calculate_reduced_hessian(Se)
+            
             # Step 7 - Check the ratios of the parameter std to value
             if self.verbose:
                 print(step.substitute(number=7))
@@ -409,8 +406,8 @@ class EstimationPotential():
                                 print(f'Input model:\n')
                                 self.model.P.display()
                   
-                        reduced_hessian = self._calculate_reduced_hessian(Se, verbose=self.verbose, calc_method=self.rh_method, rho=self.rho, scaled=self.scaled, method=self.method)  
-                       
+                        reduced_hessian = self._calculate_reduced_hessian(Se)
+                        
                         if self.debug:
                             input("Press Enter to continue...")
                         if self.verbose:
@@ -577,14 +574,18 @@ class EstimationPotential():
             reduced_hessian (np.ndarray): The resulting reduced hessian matrix.
             
         """
-        ipopt = SolverFactory('ipopt')
-        tmpfile_i = "ipopt_output"
         rh_model = copy.deepcopy(self.model)
         
-        kwargs['set_param_bounds'] = True
+        rh = ReducedHessian(rh_model,
+                            parameter_set=Se,
+                            rho=self.rho,
+                            scaled=self.scaled,
+                            param_con_method=self.rh_method,
+                            kkt_method=self.method,
+                            set_param_bounds = True,
+                            )
         
-        optimize_model(rh_model, d=None, parameter_set=Se, **kwargs)
-        reduced_hessian = calculate_reduced_hessian(rh_model, parameter_set=Se, **kwargs)
+        reduced_hessian = rh.calculate_reduced_hessian(optimize=True)
         
         return reduced_hessian
           
