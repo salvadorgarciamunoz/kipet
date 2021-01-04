@@ -1053,6 +1053,7 @@ class ReactionModel(WavelengthSelectionMixins):
                                               ncp = ncp,
                                               nfe = nfe,
                                               scheme = scheme)
+        self._from_trajectories(estimator)
         return None
     
     # def solve_variance_given_delta(self):
