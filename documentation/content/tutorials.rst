@@ -120,7 +120,7 @@ The results are then presented in a new browser tab using Plotly similar to the 
 
 .. _fig-coordsys-rect:
 
-.. figure:: ex_1_plot_sim_results.png
+.. figure:: ex_1_sim.png
    :width: 600px
    :align: center
 
@@ -279,13 +279,13 @@ The results will then be shown as:
 
 Providing us with the following plots:
 
-.. figure:: ex_2_plot_conc_results.png
+.. figure:: ex_2_C.png
    :width: 600px
    :align: center
 
    Concentration profile results from tutorial example 2
 
-.. figure:: ex_2_plot_S_results.png
+.. figure:: ex_2_S.png
    :width: 600px
    :align: center
 
