@@ -153,7 +153,7 @@ The full code for this example:
     r1.add_component('C', state='concentration', init=0.0)
     
     # Add data to model
-    r1.add_dataset('D_frame', category='spectral', file='Dij.txt')
+    r1.add_dataset('D_frame', category='spectral', file='example_data/Dij.txt')
 
     # define explicit system of ODEs
     def rule_odes(m,t):
@@ -187,7 +187,7 @@ Reading data
 Firstly we will need to input our D-matrix, which contains the spectral data. More notes on the structure of these data files and which file types are permitted are included in the section on data files. In order to do this we need to point the model to the data file. We can do this by using the "add_dataset" method. If you are using spectral data, as in this case, the "category" argument needs to be 'spectral'. The location of the file should be given with the "file" argument.
 ::
 
-    r1.add_dataset(category='spectral', file='Dij.txt')
+    r1.add_dataset(category='spectral', file='example_data/Dij.txt')
 
 The KipetModel instance has a default data directory where it expects the data file to be found. This can be changed to another directory if desired through the settings object:
 
@@ -540,19 +540,19 @@ The rest can then be defined in the same way as other simulation problems. Note 
     # Data set-up: Use trajectory as the category for initialization data
     # as this is not added to the pyomo model
     
-    filename = r1.set_directory('extra_states.txt')
+    filename = 'example_data/extra_states.txt'
     r1.add_dataset('traj', category='trajectory', file=filename)
     
-    filename = r1.set_directory('concentrations.txt')
+    filename = 'example_data/concentrations.txt'
     r1.add_dataset('conc', category='trajectory', file=filename)
     
-    filename = r1.set_directory('init_Z.csv')
+    filename = 'example_data/init_Z.csv'
     r1.add_dataset('init_Z', category='trajectory', file=filename)
     
-    filename = r1.set_directory('init_X.csv')
+    filename = 'example_data/init_X.csv'
     r1.add_dataset('init_X', category='trajectory', file=filename)
     
-    filename = r1.set_directory('init_Y.csv')
+    filename = 'example_data/init_Y.csv'
     r1.add_dataset('init_Y', category='trajectory', file=filename)
 
 where the external files are the csv’s and the state is considered to be "trajectory". Following this, external files are also used for the flow of water fed into the reactor, as well as the saturation concentrations of SA and ASA (functions of temperature, calculated externally).
@@ -756,7 +756,7 @@ In the plot of the absorbance profile the non-absorbing species then remains zer
     r1.add_component('C', state='concentration', init=0.0, absorbing=False)
     
     # Add the data
-    r1.add_dataset('D_frame', category='spectral', file='Dij.txt')
+    r1.add_dataset('D_frame', category='spectral', file='example_data/Dij.txt')
 
     # define explicit system of ODEs
     def rule_odes(m,t):
@@ -832,7 +832,7 @@ If the component data has been entered into the model before the data, the add_d
 ::
    
     # Add data
-    r1.add_dataset(file='Ex_1_C_data.txt')
+    r1.add_dataset(file='example_data/Ex_1_C_data.txt')
     
     # Define the reaction model
     def rule_odes(m,t):
@@ -912,7 +912,7 @@ The EstimabilityAnalyzer module is used for all algorithms and tools pertaining 
     r1.add_component('D', state='concentration', init=0.01)
     r1.add_component('E', state='concentration', init=0.0)
     
-    filename = r1.set_directory('new_estim_problem_conc.csv')
+    filename = 'example_data/new_estim_problem_conc.csv'
     r1.add_dataset('C_frame', category='concentration', file=filename) 
     
     # define explicit system of ODEs
@@ -988,7 +988,7 @@ In this example we are assuming that we have certain wavelengths that do not con
     r1.add_component('C', state='concentration', init=0.0)
     
     # Add data
-    r1.add_dataset('D_frame', category='spectral', file='Dij.txt')
+    r1.add_dataset('D_frame', category='spectral', file='example_data/Dij.txt')
 
     # define explicit system of ODEs
     def rule_odes(m,t):
@@ -1162,13 +1162,13 @@ The first example we will look at in this tutorial is entitled “Ex_12_mult_exp
     r1.add_equations(rule_odes)
     
     # Add the dataset for the first model
-    r1.add_dataset(file='Dij_exp1.txt', category='spectral')
+    r1.add_dataset(file='example_data/Dij_exp1.txt', category='spectral')
 
     # Repeat for the second model - the only difference is the dataset    
     r2 = kipet_model.new_reaction(name='reaction_2', model_to_clone=r1, items_not_copied='datasets')
 
     # Add the dataset for the second model
-    r2.add_dataset(file='Dij_exp3_reduced.txt', category='spectral')
+    r2.add_dataset(file='example_data/Dij_exp3_reduced.txt', category='spectral')
 
     kipet_model.settings.general.use_wavelength_subset = True
     kipet_model.settings.general.freq_wavelength_subset = 3
@@ -1252,7 +1252,7 @@ Since the above method that was used in the other problems, described in the ini
     r1.bound_profile(var='S', bounds=(0, 100))
     
     # Add data (after components)
-    r1.add_dataset(category='spectral', file='varest.csv', remove_negatives=True)
+    r1.add_dataset(category='spectral', file='example_data/varest.csv', remove_negatives=True)
 
     # Settings
     r1.settings.general.no_user_scaling = True
@@ -1454,7 +1454,7 @@ The code for the entire problem is below:
     r1.add_component('T', state='state', init=293.15, variance=0.0625)
     r1.add_component('Tc', state='state', init=293.15, variance=1)
    
-    r1.add_dataset(file='cstr_t_and_c.csv')
+    r1.add_dataset(file='example_data/cstr_t_and_c.csv')
     
     constants = {
             'F' : 0.1, # m^3/h
@@ -1528,7 +1528,7 @@ In this example, concentration data for component A is available as normal. Howe
     import kipet
     
     kipet_model = kipet.KipetModel()
-    full_data = kipet.read_file(kipet.set_directory('ratios.csv'))
+    full_data = kipet.read_file(kipet.set_directory('example_data/ratios.csv'))
     r1 = kipet_model.new_reaction('reaction-1')
     
     # Add the model parameters
