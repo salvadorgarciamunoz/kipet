@@ -44,7 +44,7 @@ from kipet.library.top_level.datahandler import DataBlock, DataSet
 from kipet.library.top_level.helper import DosingPoint
 from kipet.library.top_level.model_components import ParameterBlock, ComponentBlock
 from kipet.library.top_level.settings import Settings, USER_DEFINED_SETTINGS
-from kipet.library.top_level.clean import remove_file
+#from kipet.library.top_level.clean import remove_file
 
 DEFAULT_DIR = 'data_sets'
 
