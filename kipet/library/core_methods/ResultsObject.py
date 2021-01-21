@@ -14,6 +14,7 @@ from pyomo.core.base.PyomoModel import ConcreteModel
 from pyomo.environ import *
 
 # Kipet library imports
+from kipet.library.common.pyomo_model_tools import get_vars, get_vars_block, get_result_vars     
 from kipet.library.common.read_write_tools import df_from_pyomo_data
 
 """
@@ -60,6 +61,8 @@ class ResultsObject(object):
     def __str__(self):
         string = "\nRESULTS\n"
         
+        #results_vars = get_results_vars()
+        
         for var in result_vars:
             if hasattr(self, var) and getattr(self, var) is not None:
                 var_str = var
@@ -77,45 +80,50 @@ class ResultsObject(object):
         var_array = np.array(var)
         return np.linalg.norm(var_array,norm_type)
     
+    @staticmethod
+    def prepare_data_for_init(data):
+        """Convert results dict into df for initialization
+        This is used for data with dimensions larger than 2
+        """
+        
+        inner_set = list(set([t[0] for t in data.keys()]))
+        inner_set.sort()        
+        columns = {t[1:]: None for t in data.keys()}
+        columns = list(columns.keys())
+        df = pd.DataFrame(data=None, index=inner_set, columns=columns)
+        
+        for i in inner_set:
+            for j in columns:
+                df.loc[i, j] = data[(i, *j)]
+                
+        return df
+    
     def load_from_pyomo_model(self, instance, to_load=None):
 
-        if to_load is None:
-            to_load = result_vars
-
-        model_variables = set()
-        for block in instance.block_data_objects():
-            block_map = block.component_map(Var)
-            for name in block_map.keys():
-                model_variables.add(name)
-                
-        user_variables = set(to_load)
-
-        if user_variables:
-            variables_to_load = user_variables.intersection(model_variables)
-        else:
-            variables_to_load = model_variables
-        
-        for block in instance.block_data_objects():
-            block_map = block.component_map(Var)
-            for name in variables_to_load: 
-                v = block_map[name]
-                if v.dim()==0:
-                    setattr(self, name, v.value)
-                elif v.dim()==1:
-                    setattr(self, name, pd.Series(v.get_values()))
-                elif v.dim()==2:
-                    d = v.get_values()
-                    keys = d.keys()
-                    if keys:
-                        data_frame = df_from_pyomo_data(v)
-                    else:
-                        data_frame = pd.DataFrame(data=[],
-                                                  columns = [],
-                                                  index=[])
-                    setattr(self, name, data_frame)        
-                else:
-                    raise RuntimeError('load_from_pyomo_model function not supported for models with variables with dimension > 2')
+        variables_to_load = get_vars(instance)
     
+        for name in variables_to_load:
+            var = getattr(instance, name)
+            if var.dim()==0:
+                setattr(self, name, var.value)
+            elif var.dim()==1:
+                setattr(self, name, pd.Series(var.get_values()))
+            elif var.dim()==2:
+                d = var.get_values()
+                keys = d.keys()
+                if keys:
+                    data_frame = df_from_pyomo_data(var)
+                else:
+                    data_frame = pd.DataFrame(data=[],
+                                              columns = [],
+                                              index=[])
+                setattr(self, name, data_frame)        
+            else:
+                #print(f'{name} has a dimension greater than 2, saved as a dict')
+                data_dict = {k: v.value for k, v in var.items()}
+                data_df = self.prepare_data_for_init(data_dict)
+                setattr(self, name, data_df)
+                
     def _make_plots(self, pred, var, show_exp, extra_data, filename=None, show_plot=True, description=None):
         """Makes the actual plots and filters out the data that is missing from
         the model.

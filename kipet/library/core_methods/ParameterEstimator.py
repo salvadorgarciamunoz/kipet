@@ -276,7 +276,7 @@ class ParameterEstimator(PEMixins, Optimizer):
                 results.load_from_pyomo_model(self.model,
                                               to_load=['Dhat_bar'])
      
-        elif self._concentration_given:
+        elif self._concentration_given or self._custom_data_given:
             results.load_from_pyomo_model(self.model)
         else:
             raise RuntimeError(
@@ -594,7 +594,7 @@ class ParameterEstimator(PEMixins, Optimizer):
         list_components = self._get_list_components(species_list)
         model = self.model
 
-        if not self._concentration_given:
+        if not self._concentration_given and not self._custom_data_given:
             raise NotImplementedError(
                 "Parameter Estimation from concentration data requires concentration data model.C[ti,cj]")
 
@@ -627,11 +627,12 @@ class ParameterEstimator(PEMixins, Optimizer):
             return obj
 
         model.objective = Objective(rule=rule_objective)
-        
+        #print(model.objective.expr.to_string())
+
         if hasattr(model, 'custom_obj'):
             model.objective.expr += model.custom_obj
         
-        #print(model.objective.expr.to_string())
+        # print(model.objective.expr.to_string())
 
 
         if warmstart==True:

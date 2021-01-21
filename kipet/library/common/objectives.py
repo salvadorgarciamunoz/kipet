@@ -174,6 +174,9 @@ def _concentration_term(model, index, var='C', **kwargs):
         variance = model.sigma[index[1]]
     else:
         variance = custom_sigma[index[1]]
+        
+    if variance is None:
+        variance = 1
     
     objective_concentration_term = (getattr(model, var)[index] - model.Z[index]) ** 2  / variance
     

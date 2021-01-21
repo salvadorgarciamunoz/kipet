@@ -22,9 +22,9 @@ class ParameterBlock():
         
         #name_len_max = max(len(self.parame.name))
         
-        format_string = "{:<10}{:<10}{:<10}\n"
+        format_string = "{:<10}{:<10}{:<15}{:<15}\n"
         param_str = 'ParameterBlock:\n'
-        param_str += format_string.format(*['Name', 'Init', 'Bounds'])
+        param_str += format_string.format(*['Name', 'Init', 'Bounds', 'Fixed'])
         
         for param in self.parameters.values():
             
@@ -33,7 +33,7 @@ class ParameterBlock():
             else:
                 init_value = 'None'
             
-            param_str += format_string.format(param.name, f'{init_value}', f'{param.bounds}')
+            param_str += format_string.format(param.name, f'{init_value}', f'{param.bounds}', f'{param.fixed}')
         
         return param_str
 
@@ -81,6 +81,7 @@ class ParameterBlock():
         """        
         bounds = kwargs.pop('bounds', None)
         init = kwargs.pop('init', None)
+        fixed = kwargs.pop('fixed', False)
         
         if len(args) == 1:
             if isinstance(args[0], ModelParameter):
@@ -95,7 +96,7 @@ class ParameterBlock():
                 self._add_parameter_with_terms(*args)
                 
             elif isinstance(args[0], str):
-                self._add_parameter_with_terms(args[0], init, bounds)
+                self._add_parameter_with_terms(args[0], init, bounds, fixed)
                 
             else:
                 raise ValueError('For a parameter a name and initial value are required')
@@ -123,15 +124,16 @@ class ParameterBlock():
     
         return None
         
-    def _add_parameter_with_terms(self, name, init=None, bounds=None):
+    def _add_parameter_with_terms(self, name, init=None, bounds=None, fixed=False):
         """Adds the parameter using explicit inputs for the name, init, and 
         bounds
         
         """
         param = ModelParameter(name=name,
                                init=init,
-                               bounds=bounds
-                              )
+                               bounds=bounds,
+                               fixed=fixed,
+                                )
             
         self.parameters[param.name] = param
             
@@ -190,7 +192,7 @@ class ModelParameter():
     TODO: change init to value
     """
 
-    def __init__(self, name=None, init=None, bounds=None): #, variance=None):
+    def __init__(self, name=None, init=None, bounds=None, fixed=False): #, variance=None):
 
         # Check if name is provided
         if name is None:
@@ -213,14 +215,15 @@ class ModelParameter():
                 raise ValueError('The bounds need to be a list or tuple with a lower and upper bound')
         
         self.bounds = bounds
+        self.fixed = fixed
         
         return None
         
     def __str__(self):
-        return f'ModelParameter({self.name}, init={self.init}, bounds={self.bounds})'
+        return f'ModelParameter({self.name}, init={self.init}, bounds={self.bounds}, fixed={self.fixed})'
 
     def __repr__(self):
-        return f'ModelParameter({self.name}, init={self.init}, bounds={self.bounds})'
+        return f'ModelParameter({self.name}, init={self.init}, bounds={self.bounds}, fixed={self.fixed})'
 
     @property
     def lb(self):

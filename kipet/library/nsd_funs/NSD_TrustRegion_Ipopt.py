@@ -53,6 +53,7 @@ from kipet.library.common.objectives import (
 from kipet.library.core_methods.ParameterEstimator import ParameterEstimator
 from kipet.library.common.ReducedHessian import ReducedHessian
         
+DEBUG = False
 
 class NSD():
     
@@ -61,6 +62,7 @@ class NSD():
         kwargs = kwargs if kwargs is not None else {}
         parameter_name = kwargs.get('parameter_name', 'P')
         self.objective_multiplier = kwargs.get('objective_multiplier', 1)
+        self.scaled = kwargs.get('scaled', False)
         self.isKipetModel = kwargs.get('kipet', True)
         
         self.reduced_hessian_kwargs = {}
@@ -72,12 +74,24 @@ class NSD():
         else:
             self.model_list = model_list
         
+        #self.model_list = model_list
+        
         model_one = self.model_list[0]
         
-        self.d_init = {p: [0.5*(v.lb + v.ub), v.lb, v.ub]  for p, v in getattr(model_one, parameter_name).items()}
+        print(model_one)
+        # if not self.scaled:    
+        #     self.d_init = {p: [0.5*(v.lb + v.ub), v.lb, v.ub] for p, v in getattr(model_one, parameter_name).items()}
+        # else:
+        #     
+        self.d_init = {p: [1.0*v.value, v.lb, v.ub] for p, v in getattr(model_one, parameter_name).items()}
+            
+        #self.d_init['k'] = [1.1, 0.1, 10]
+        
         if init is not None:
             for k, v in init.items():
                 self.d_init[k][0] = v
+        
+        print(self.d_init)
         
         self.method = 'trust-constr'
         
@@ -147,19 +161,19 @@ class NSD():
                                           scheme='LAGRANGE-RADAU')
             
             # Here is where the parameters are scaled
-            if scaled:
-                scale_parameters(model)
-                set_scaled_parameter_bounds(model, rho=10) #self.rho)
+            #if scaled:
+            #    scale_parameters(model)
+            #    set_scaled_parameter_bounds(model, rho=10) #self.rho)
             
-            else:
-                check_initial_parameter_values(model)
+            #else:
+            #check_initial_parameter_values(model)
             
             if use_duals:
                 model.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
-                # model.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
-                # model.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
-                # model.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
-                # model.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
+                model.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
+                model.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+                model.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
+                model.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
                 # model.red_hessian = Suffix(direction=Suffix.EXPORT)
                 # model.dof_v = Suffix(direction=Suffix.EXPORT)
                 # model.rh_name = Suffix(direction=Suffix.IMPORT)
@@ -172,6 +186,36 @@ class NSD():
                 # model.npdp = Suffix(direction=Suffix.EXPORT)
             
         return None
+    
+    # def _model_preparation(self):
+    #     """Helper function that should prepare the models when called from the
+    #     main function. Includes the experimental data, sets the objectives,
+    #     simulates to warm start the models if no data is provided, sets up the
+    #     reduced hessian model with "fake data", and discretizes all models
+
+    #     """
+    #     if not hasattr(self.model, 'objective'):
+    #         self.model.objective = self._rule_objective(self.model)
+        
+    #     # The model needs to be discretized
+    #     model_pe = ParameterEstimator(self.model)
+    #     model_pe.apply_discretization('dae.collocation',
+    #                                   ncp=self.ncp,
+    #                                   nfe=self.nfe,
+    #                                   scheme='LAGRANGE-RADAU')
+        
+    #     # Here is where the parameters are scaled
+    #     if self.scaled:
+    #         scale_parameters(self.model)
+    #         set_scaled_parameter_bounds(self.model, rho=self.rho)
+        
+    #     else:
+    #         check_initial_parameter_values(self.model)
+        
+    #     if self.use_duals:
+    #         self.model.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
+        
+    #     return None
     
     def _generate_bounds_object(self):
         """Creates the Bounds object needed by SciPy for minimization
@@ -208,17 +252,26 @@ class NSD():
             
             objective_value (float): sum of sub-problem objectives
         """
+        if DEBUG:
+            stuck = '*'*50
+            print(stuck)
+            print('\nCalculating objective')
+            
+        
         for i, p in enumerate(parameter_names):
-            print(f'{p} = {x[i]:0.6f}')
+            print(f'{p} = {x[i]:0.12f}')
         
         objective_value = 0
-        for model in scenarios:
-            rh = ReducedHessian(model)
+        for i, model in enumerate(scenarios):
+            
+            rh = ReducedHessian(model, file_number=i)
             rh.parameter_set = parameter_names
             rh.optimize_model(d=x)
             objective_value += model.objective.expr()
-            
-        # print(f'Obj: {objective_value}')
+        
+        if DEBUG:
+            print(f'Obj: {objective_value}')
+            print(stuck)
         return objective_value
     
     @staticmethod
@@ -237,6 +290,11 @@ class NSD():
             m (np.array): vector of duals
             
         """
+        if DEBUG:
+            stuck = '*'*50
+            print(stuck)
+            print('\nCalculating m')
+        
         m = pd.DataFrame(np.zeros((len(parameter_names), 1)), index=parameter_names, columns=['dual'])
         
         kwargs = {
@@ -246,9 +304,9 @@ class NSD():
             'param_set_name': 'parameter_names',
             }
         
-        for model_opt in scenarios:
+        for i, model_opt in enumerate(scenarios):
             
-            rh = ReducedHessian(model_opt, **kwargs)
+            rh = ReducedHessian(model_opt, file_number=i, **kwargs)
             rh.parameter_set = parameter_names
             
             if not hasattr(model_opt, 'd'):
@@ -259,7 +317,14 @@ class NSD():
                 if param in duals.keys():
                     m.loc[param] = m.loc[param] + duals[param]
 
+            rh.delete_sol_files()
+
         m = m.values.flatten()
+        
+        if DEBUG:
+            print(f'm: {m}')
+            print(stuck)
+        
         return m
     
     @staticmethod
@@ -277,12 +342,17 @@ class NSD():
             
             M (np.array): sum of reduced Hessians
         """
+        if DEBUG:
+            stuck = '*'*50
+            print(stuck)
+            print('\nCalculating M')
+            
         M_size = len(parameter_names)
         M = pd.DataFrame(np.zeros((M_size, M_size)), index=parameter_names, columns=parameter_names)
             
-        for model in scenarios:
+        for i, model in enumerate(scenarios):
             
-            rh = ReducedHessian(model)
+            rh = ReducedHessian(model, file_number=i)
             rh.parameter_set = parameter_names
             reduced_hessian = rh.calculate_reduced_hessian()
             
@@ -290,8 +360,15 @@ class NSD():
             M = M[parameter_names]
             M = M.reindex(parameter_names)
         
-        M = M.values
-      
+        M = M.values# + np.eye(M_size)*0.1
+        
+        if DEBUG:
+            print(f'M: {M}')
+            print(f'Det:  {np.linalg.det(M):0.4f}')
+            print(f'Rank: {np.linalg.matrix_rank(M)}')
+            print(f'EigVals: {np.linalg.eigh(M)[0]}')
+            print(stuck)
+        
         return M
     
     @staticmethod
@@ -309,7 +386,7 @@ class NSD():
             
             M (np.array): sum of reduced Hessians
         """
-        return np.array([])
+        return np.zeros((len(x), 1))
        
     def ipopt_method(self, scaled=False, callback=None, options=None, **kwargs):
         """ Minimization of scalar function of one or more variables with
@@ -335,7 +412,7 @@ class NSD():
         """
         # Prepare the models for NSD
         if self.isKipetModel:
-            self._model_preparation(scaled=scaled, use_duals=True)
+            self._model_preparation(scaled=self.scaled, use_duals=True)
         
         for model in self.model_list:
             for param, model_param in model.P.items():
@@ -344,8 +421,9 @@ class NSD():
         # Set up the initial parameter values
         d_init = self.d_init
         d_vals =  [d[0] for k, d in self.d_init.items()]
+        print(f'd_vals: {d_vals}')
         if scaled:
-            d_init_unscaled = d_vals
+            # d_init_unscaled = {}
             d_vals = [1 for p in d_vals]
     
         kwargs = {
@@ -354,29 +432,34 @@ class NSD():
                 'parameter_number': len(d_vals)
                  }
     
-        problem_object = Optproblem(self.objective_function,
-                                    self.calculate_M,
-                                    self.calculate_grad,
-                                    self.calculate_m,
-                                    kwargs,
-                                    callback)
+        problem_object = Optproblem(objective=self.objective_function,
+                                    hessian=self.calculate_M,
+                                    gradient=self.calculate_m,
+                                    jacobian=self.calculate_grad,
+                                    kwargs=kwargs,
+                                    callback=callback)
         
         bounds = self._generate_bounds_object()
+        print(bounds)
         
         nlp = ipopt.problem(n = len(d_vals),
                             m = 0,
                             problem_obj = problem_object,
                             lb = bounds.lb,
                             ub = bounds.ub,
-                            cl = None,
-                            cu = None
+                            cl = [],
+                            cu = [],
                             )
     
         options = {'tol': 1e-8, 
-                   'bound_relax_factor': 1.0e-8, 
-                   'max_iter': 10,
+                 #  'bound_relax_factor': 1.0e-8, 
+                   'max_iter': 100,
                    'print_user_options': 'yes', 
-                   #'linear_solver': 'ma57'
+                   'nlp_scaling_method': 'none',
+                   #'corrector_type': 'primal-dual',
+                   #'alpha_for_y': 'full',
+               #    'accept_every_trial_step': 'yes',
+                  # 'linear_solver': 'ma57'
                    }
 
         if options: 
@@ -387,10 +470,11 @@ class NSD():
         x, results = nlp.solve(d_vals)
         
         # Prepare parameter results
-        if scaled:
-            s_factor = {k: d_init_unscaled[k] for k in self.d_init.keys()}
-        else:
-            s_factor = {k: 1 for k in self.d_init.keys()}
+        # print(d_init_unscaled)
+        # if scaled:
+        #     s_factor = {k: d_init_unscaled[k] for k in self.d_init.keys()}
+        # else:
+        s_factor = {k: 1 for k in self.d_init.keys()}
         
         self.parameters_opt = {k: results['x'][i]*s_factor[k] for i, k in enumerate(self.d_init.keys())}
     
@@ -429,7 +513,7 @@ class NSD():
         if self.method in ['trust-exact', 'trust-constr']:
 
             tr_options={
-                'xtol': 1e-6,
+                #'xtol': 1e-6,
                 }
             
             results = minimize(self.objective_function, 
@@ -452,6 +536,78 @@ class NSD():
             self.parameters_opt = {k: results.x[i]*s_factor[k] for i, k in enumerate(self.d_init.keys())}
        
         return results
+    
+    def run_simple_newton_step(self, debug=False, scaled=False, alpha=1, iterations=15, opt_tol=1e-8):
+        
+        # Prepare the models for NSD
+        if self.isKipetModel:
+            self._model_preparation(scaled=scaled, use_duals=True)
+        
+        for model in self.model_list:
+            for param, model_param in model.P.items():
+                model_param.value = self.d_init[param][0]
+        
+        # options = dict(calc_method='global',
+        #                 method='k_aug', 
+        #                 scaled=scaled,
+        #                 use_duals=use_duals,
+        #                 set_up_constraints=ADD_CONSTRAINTS,
+        #                 )
+    
+        d_init = self.d_init
+        d_vals =  [d[0] for k, d in self.d_init.items()]
+        if scaled:
+            d_init_unscaled = d_vals
+            d_vals = [1 for p in d_vals]
+    
+        for i in range(iterations):
+            
+            obj_val = self.objective_function(
+                                    d_vals,
+                                    self.model_list, 
+                                    self.parameter_names,
+                                    )
+           
+            # Get the M matrices to determine search direction
+            M = self.calculate_M(d_vals, self.model_list, self.parameter_names)
+            m = self.calculate_m(d_vals, self.model_list, self.parameter_names)
+            
+            # Calculate the search direction
+            d = np.linalg.inv(M) @ -(m)
+            
+            print(f'd: {d}')
+            
+            # Update model parameters
+            for model in self.model_list:
+                for j, param in enumerate(self.parameter_names):
+                    model.P[param].set_value(d[j]*alpha + model.P[param].value)
+                    d_vals = d*alpha + d_vals
+                
+            model.P .display()
+            if max(abs(d)) <= opt_tol:
+                print('Tolerance reached')
+                break
+        
+        # Update ReactionModel objects with the final parameter values
+        if self.isKipetModel:
+            for m, reaction in enumerate(self.kipet_models):
+                for k, v in reaction.model.P.items():
+                    if scaled:
+                        reaction.model.P[k].set_value(self.model_list[m].K[k].value*self.model_list[m].P[k].value)
+                    else:
+                        reaction.model.P[k].set_value(self.model_list[m].P[k].value)
+            
+        # Prepare parameter results
+        if scaled:
+            s_factor = {k: d_init_unscaled[k] for k in self.d_init.keys()}
+        else:
+            s_factor = {k: 1 for k in self.d_init.keys()}
+            
+        self.parameters_opt = {k: d_vals[i]*s_factor[k] for i, k in enumerate(self.d_init.keys())}
+        # Plot the results of the fitting
+        self.plot_results()
+        
+        return None
     
     def plot_paths(self, filename=''):
         """Plot the parameter paths through parameter space during the NSD
@@ -489,7 +645,7 @@ class NSD():
         
             for model in self.kipet_models:
                 model.simulate()
-                model.results.plot(extra_data={'data': model.datasets['C_data'].data, 'label': 'Meas.'})        
+                model.results.plot(extra_data={'data': model.datasets['C_data'].data, 'label': 'Meas.', 'mode': 'marker'})        
                 #model.results.plot(extra_data={'data': model.datasets['U_data'].data, 'label': 'Meas.'})        
         
         
@@ -501,8 +657,13 @@ class Optproblem(object):
     This class defines the optimization problem which is callable from cyipopt.
 
     """
-    def __init__(self, objective, hessian, jacobian, gradient, 
-                 kwargs, callback=None):
+    def __init__(self, 
+                 objective=None, 
+                 hessian=None, 
+                 jacobian=None, 
+                 gradient=None, 
+                 kwargs={}, 
+                 callback=None):
         
         self.fun = objective
         self.grad = gradient
@@ -557,18 +718,21 @@ class Optproblem(object):
     
 if __name__ == '__main__':
    
-    from kipet.new_examples.Ex_18_NSD import generate_models
+    from kipet.new_examples.Ex_18_NSD import generate_models, generate_models_cstr
     
     # Generate the ReactionModels (at some point KipetModel)
-    models = generate_models()   
+    models = generate_models()
 
     # Create the NSD object using the ReactionModels list
     kwargs = {'kipet': True,
-              'objective_multiplier': 1e6}
+              'objective_multiplier': 1
+              }
     # The objective_multiplier is helpful when the objective is already small
     
     # Choose the method used to optimize the outer problem
     strategy = 'ipopt'
+    #strategy = 'newton-step'
+    #strategy = 'trust-region'
     
     nsd = NSD(models, kwargs=kwargs)
     
@@ -577,15 +741,29 @@ if __name__ == '__main__':
                            'k2' : 1.2}
                           )
     
+    # nsd.set_initial_value({'Cfa' : 1.500000,
+    #                         'rho' : 1.600000,
+    #                         'ER' : 1.100000,
+    #                         'k' : 1.100000,
+    #                         'Tfc' : 1.100000,
+    #                         }
+    #                       )
+    
+    print(nsd.d_init)
+    
     if strategy == 'ipopt':
         # Runs the IPOPT Method
-        results = nsd.ipopt_method(scaled=False)
+        results = nsd.ipopt_method(scaled=True)
     
     elif strategy == 'trust-region':
         # Runs the Trust-Region Method
         results = nsd.trust_region(scaled=False)
         # Plot the parameter value paths (Trust-Region only)
         nsd.plot_paths()
+        
+    elif strategy == 'newton-step':
+        # Runs the NSD using simple newton steps
+        nsd.run_simple_newton_step(alpha=0.1, iterations=15)  
     
     # Plot the results using ReactionModel format
     nsd.plot_results()

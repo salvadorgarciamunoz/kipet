@@ -69,6 +69,8 @@ class TemplateBuilder(object):
         self._parameters = dict()
         self._parameters_init = dict()  # added for parameter initial guess CS
         self._parameters_bounds = dict()
+        self._parameters_fixed = dict()
+        
         self._smoothparameters = dict()  # added for mutable parameters CS
         self._smoothparameters_mutable = dict() #added for mutable parameters CS
 
@@ -80,6 +82,7 @@ class TemplateBuilder(object):
         # TODO: Put all data into it's own structure (attrs?)
 
         self._y_bounds = dict()  # added for additional optional bounds CS
+        self._y_init = dict()
         self._prof_bounds = list()  # added for additional optional bounds MS
         self._init_conditions = dict()
         self._spectral_data = None
@@ -227,7 +230,7 @@ class TemplateBuilder(object):
     def add_parameters(self, ParameterBlockObject):
         
         for param in ParameterBlockObject:
-            self.add_parameter(param.name, init=param.init, bounds=param.bounds)
+            self.add_parameter(param.name, init=param.init, bounds=param.bounds, fixed=param.fixed)
 
     def add_parameter(self, *args, **kwds):
         """Add a kinetic parameter(s) to the model.
@@ -251,6 +254,7 @@ class TemplateBuilder(object):
         """
         bounds = kwds.pop('bounds', None)
         init = kwds.pop('init', None)
+        fixed = kwds.pop('fixed', False)
         
         if len(args) == 1:
             name = args[0]
@@ -260,6 +264,9 @@ class TemplateBuilder(object):
                     self._parameters_bounds[name] = bounds
                 if init is not None:
                     self._parameters_init[name] = init
+                if fixed is not None:
+                    self._parameters_fixed[name] = fixed
+                    
             elif isinstance(name, list) or isinstance(name, set):
                 if bounds is not None:
                     if len(bounds) != len(name):
@@ -270,6 +277,9 @@ class TemplateBuilder(object):
                         self._parameters_bounds[n] = bounds[i]
                     if init is not None:
                         self._parameters_init[n] = init[i]
+                    if fixed is not None:
+                        self._parameters_fixed[k] = fixed[i]
+
             elif isinstance(name, dict):
                 if bounds is not None:
                     if len(bounds) != len(name):
@@ -280,6 +290,8 @@ class TemplateBuilder(object):
                         self._parameters_bounds[k] = bounds[k]
                     if init is not None:
                         self._parameters_init[k] = init[k]
+                    if fixed is not None:
+                        self._parameters_fixed[k] = fixed[k]
             else:
                 raise RuntimeError('Kinetic parameter data not supported. Try str')
         elif len(args) == 2:
@@ -291,6 +303,9 @@ class TemplateBuilder(object):
                     self._parameters_bounds[first] = bounds
                 if init is not None:
                     self._parameters_init[first] = init
+                if fixed is not None:
+                    self._parameters_fixed[first] = fixed
+
             else:
                 raise RuntimeError('Parameter argument not supported. Try str,val')
         else:
@@ -782,6 +797,7 @@ class TemplateBuilder(object):
             None
 
         """
+        init = kwds.pop('init', None)
         bounds = kwds.pop('bounds', None)
 
         if len(args) == 1:
@@ -790,6 +806,8 @@ class TemplateBuilder(object):
                 self._algebraics[name] = None
                 if bounds is not None:
                     self._y_bounds[name] = bounds
+                if init is not None:
+                    self._y_init[name] = init
             elif isinstance(name, list) or isinstance(name, set):
                 if bounds is not None:
                     if len(bounds) != len(name):
@@ -798,6 +816,8 @@ class TemplateBuilder(object):
                     self._algebraics[n] = None
                     if bounds is not None:
                         self._y_bounds[n] = bounds[i]
+                    if init is not None:
+                        self._y_init[n] = init[i]
             else:
                 raise RuntimeError('To add an algebraic please pass name')
                 
@@ -963,9 +983,13 @@ class TemplateBuilder(object):
         """
         if len(self._algebraics) > 0:
             
+            # if 'init' in self._y_bounds:
+            #     bounds = self._y_bounds[]
+            
             model.Y = Var(model.alltime,
                           model.algebraics,
                           initialize=1.0)
+                          #bounds=())
             
             for t in model.alltime:
                 for k, v in self._y_bounds.items():
@@ -973,6 +997,9 @@ class TemplateBuilder(object):
                     ub = v[1]
                     model.Y[t, k].setlb(lb)
                     model.Y[t, k].setub(ub)
+                    
+                # for k, v in self._y_init.items():
+                #     model.Y[0, k].set_value(v)
         
         return None
     
@@ -1035,6 +1062,10 @@ class TemplateBuilder(object):
                     }
         
         for var, model_set in model_pred_var_name.items():
+            
+            if len(model_set) == 0:# is None:
+                continue
+            
             # Check if any data for the variable type exists (Pyomo 5.7 update)
             if hasattr(model_set, 'ordered_data') and len(model_set.ordered_data()) == 0:
                 continue
@@ -1064,6 +1095,10 @@ class TemplateBuilder(object):
                     }
         
         for var, data in fixed_var_name.items():
+            
+            if data is None:
+                continue
+            
             c_dict = dict()
             if hasattr(self, f'_is_{var}_deriv'):
                 if getattr(self, f'_is_{var}_deriv') == True:
@@ -1159,8 +1194,11 @@ class TemplateBuilder(object):
         # Fixes parameters that were given numeric values
         for p, v in self._parameters.items():
             if v is not None:
-                pyomo_model.P[p].value = v
-                pyomo_model.P[p].fixed = True
+                model.P[p].value = v
+                model.P[p].fixed = True
+                
+        for p, v in self._parameters_fixed.items():
+            model.P[p].fixed = v
 
         return None
 

@@ -140,6 +140,7 @@ class Settings():
             'model_variance': USER_DEFINED_SETTINGS.get('PARAMETER_MODEL_VARIANCE', True),
             'confidence': USER_DEFINED_SETTINGS.get('PARAMETER_CONFIDENCE', None),
             'solver_opts': AttrDict(),
+            'sim_init': False,
             
             'inputs': None,
             'inputs_sub': None,

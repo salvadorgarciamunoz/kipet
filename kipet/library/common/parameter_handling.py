@@ -1,6 +1,7 @@
 """
 Parameter handling
 """
+parameter_set_name = 'P'
 
 def check_initial_parameter_values(model_object):
     """Checks the initial parameter values and alters them if they violate the
@@ -15,15 +16,15 @@ def check_initial_parameter_values(model_object):
         
     """
     
-    for k, v in model_object.P.items():
+    for k, v in getattr(model_object, parameter_set_name).items():
         
         bound_push = 1.05
         
-        if model_object.P[k].value >= model_object.P[k].ub:
-            model_object.P[k].set_value(model_object.P[k].ub/bound_push)
+        if v.value >= v.ub:
+            v.set_value(param.ub/bound_push)
         
-        if model_object.P[k].value <= model_object.P[k].lb:
-            model_object.P[k].set_value(model_object.P[k].lb*bound_push)
+        if v.value <= v.lb:
+            v.set_value(v.lb*bound_push)
             
     return None
         
@@ -48,16 +49,18 @@ def set_scaled_parameter_bounds(model_object, parameter_set=None, rho=10, scaled
         None
     
     """
-    if parameter_set is None:
-        parameter_set = [p for p in model_object.P]
+    param_set = param = getattr(model_object, parameter_set_name)
     
-    for k, v in model_object.P.items():
+    if parameter_set is None:
+        parameter_set = [p for p in param_set]
+    
+    for k, v in param_set.items():
         
         if k in parameter_set:
             
             if not scaled:
-                ub = rho*model_object.P[k].value
-                lb = 1/rho*model_object.P[k].value
+                ub = rho*v.value
+                lb = 1/rho*v.value
             else:
                 ub = rho
                 lb = 1/rho
@@ -68,14 +71,14 @@ def set_scaled_parameter_bounds(model_object, parameter_set=None, rho=10, scaled
                 if lb < original_bounds[k][0]:
                     lb = original_bounds[k][0]
                 
-            model_object.P[k].setlb(lb)
-            model_object.P[k].setub(ub)
-            model_object.P[k].unfix()
+            v.setlb(lb)
+            v.setub(ub)
+            v.unfix()
             
             if scaled:
-                model_object.P[k].set_value(1)
+                v.set_value(1)
     
         else:
-            model_object.P[k].fix()
+            v.fix()
 
     return None

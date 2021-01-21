@@ -25,6 +25,8 @@ from kipet.library.common.parameter_handling import (
     set_scaled_parameter_bounds,
     )
  
+DEBUG = False
+
 class ReducedHessian(object):
     """Class for handling the reduced hessian calculations in KIPET/NSD"""
     
@@ -43,6 +45,7 @@ class ReducedHessian(object):
                  set_up_constraints = True,
                  use_duals = True,
                  global_constraint_name = 'fix_params_to_global',
+                 file_number = None
                  ):
         
         self.model_object =  model_object
@@ -60,6 +63,52 @@ class ReducedHessian(object):
         self.current_set = current_set
         self.set_up_constraints = set_up_constraints
         self.use_duals = use_duals
+        self.file_number = file_number
+        
+        self.verbose = DEBUG
+
+
+    def get_tmp_file(self):
+        
+        file_tag = ''
+        if self.file_number is not None:
+            file_tag += f'_{self.file_number}'
+            
+        return 'ipopt_output' + file_tag
+
+    def get_file_info(self):
+        
+        tmpfile_i = self.get_tmp_file()
+            
+        with open(tmpfile_i, 'r') as f:
+            output_string = f.read()
+        
+        stub = output_string.split('\n')[0].split(',')[1][2:-4]
+        
+        nl_file = Path(stub + '.nl')
+        col_file = Path(stub + '.col')
+        row_file = Path(stub + '.row')
+        sol_file = Path(stub + '.sol')
+        
+        self.sol_files = dict(
+            nl = nl_file,
+            col = col_file,
+            row = row_file,
+            sol = sol_file,
+            )
+        
+        return None
+    
+    def delete_sol_files(self):
+        
+        if hasattr(self, 'sol_files'):
+        
+            for key, file in self.sol_files.items():
+                file.unlink()
+                
+            del self.sol_files
+            
+        return None
 
     def get_kkt_info(self):
         
@@ -86,6 +135,8 @@ class ReducedHessian(object):
                     }
             
         """
+        self.get_file_info()
+        
         if self.kkt_method == 'pynumero':
         
             nlp = PyomoNLP(self.model_object)
@@ -103,15 +154,6 @@ class ReducedHessian(object):
         elif self.kkt_method == 'k_aug':
         
             kaug = SolverFactory('k_aug')
-            tmpfile_i = "ipopt_output"
-            
-            with open(tmpfile_i, 'r') as f:
-                output_string = f.read()
-            
-            stub = output_string.split('\n')[0].split(',')[1][2:-4]
-            
-            col_file = Path(stub + '.col')
-            row_file = Path(stub + '.row')
             
             kaug.options["deb_kkt"] = ""  
             kaug.solve(self.model_object, tee=False)
@@ -120,7 +162,7 @@ class ReducedHessian(object):
             hess.columns = ['irow', 'jcol', 'vals']
             hess.irow -= 1
             hess.jcol -= 1
-            #os.unlink('hess_debug.in')
+            os.unlink('hess_debug.in')
             
             jac = pd.read_csv('jacobi_debug.in', delim_whitespace=True, header=None, skipinitialspace=True)
             m = jac.iloc[0,0]
@@ -129,23 +171,25 @@ class ReducedHessian(object):
             jac.columns = ['irow', 'jcol', 'vals']
             jac.irow -= 1
             jac.jcol -= 1
-            #os.unlink('jacobi_debug.in')
+            os.unlink('jacobi_debug.in')
             
-            try:
-                duals = read_duals(stub + '.sol')
-            except:
-                duals = None
+            #try:
+            #    duals = read_duals(stub + '.sol')
+            #except:
+            duals = None
             
             J = coo_matrix((jac.vals, (jac.irow, jac.jcol)), shape=(m, n)) 
             Hess_coo = coo_matrix((hess.vals, (hess.irow, hess.jcol)), shape=(n, n)) 
             H = Hess_coo + triu(Hess_coo, 1).T
             
-            var_index_names = pd.read_csv(col_file, sep = ';', header=None) # dummy sep
-            con_index_names = pd.read_csv(row_file, sep = ';', header=None) # dummy sep
+            var_index_names = pd.read_csv(self.sol_files['col'], sep = ';', header=None) # dummy sep
+            con_index_names = pd.read_csv(self.sol_files['row'], sep = ';', header=None) # dummy sep
             
             var_index_names = [var_name for var_name in var_index_names[0]]
             con_index_names = [con_name for con_name in con_index_names[0].iloc[:-1]]
             con_index_number = {v: k for k, v in enumerate(con_index_names)}
+        
+        self.delete_sol_files()
         
         self.kkt_data = {
                     'J': J,
@@ -156,6 +200,35 @@ class ReducedHessian(object):
                     }
         
         return None
+    
+    def get_kkt_df(self):
+        
+        self.get_kkt_info()
+        
+        H = self.kkt_data['H']
+        var_index_names = self.kkt_data['var_ind']
+        con_index_names = self.kkt_data['con_ind']
+        
+        H_df = pd.DataFrame(H.todense(), columns=var_index_names, index=var_index_names)
+    
+        # See if this works
+    
+        # h_con_indx = [k for k in self.model.C.keys()]
+        # h_con = [f'Z[{h[0]},{h[1]}]' for h in h_con_indx if h[1] in self.model.measured_data]
+        # h_con_indx = [k for k in self.model.U.keys()]
+        # h_con += [f'X[{h[0]},{h[1]}]' for h in h_con_indx  if h[1] in self.model.measured_data]
+        
+        
+        # col_ind  = [var_ind.loc[var_ind[0] == v].index[0] for v in h_con]
+        # Zr = Z[col_ind, :]
+        
+        # df_Zr = pd.DataFrame(Zr, index=h_con, columns=[k for k, v in self.model.P.items()])
+        # df_Hv = H_df.loc[h_con, h_con]    
+    
+    
+        return H_df
+    
+    
     
     def prep_model_for_k_aug(self):
         """This function prepares the optimization models with required
@@ -169,13 +242,13 @@ class ReducedHessian(object):
             
         """
         self.model_object.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
-        self.model_object.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
-        self.model_object.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
-        self.model_object.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
-        self.model_object.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
-        self.model_object.red_hessian = Suffix(direction=Suffix.EXPORT)
-        self.model_object.dof_v = Suffix(direction=Suffix.EXPORT)
-        self.model_object.rh_name = Suffix(direction=Suffix.IMPORT)
+        # self.model_object.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
+        # self.model_object.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+        # self.model_object.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
+        # self.model_object.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
+        # self.model_object.red_hessian = Suffix(direction=Suffix.EXPORT)
+        # self.model_object.dof_v = Suffix(direction=Suffix.EXPORT)
+        # self.model_object.rh_name = Suffix(direction=Suffix.IMPORT)
         
         count_vars = 1
         for k, v in self.model_object.P.items():
@@ -188,9 +261,41 @@ class ReducedHessian(object):
     
     def calculate_duals(self):
         """Get duals"""
-        
-        self.duals = {key: self.model_object.dual[getattr(self.model_object, self.global_constraint_name)[key]] for key, val in getattr(self.model_object, self.global_param_name).items()}
     
+        # For testing - very slow and should not be used!
+        if self.kkt_method == 'pynumero':
+        
+            nlp = PyomoNLP(self.model_object)
+            varList = nlp.get_pyomo_variables()
+            conList = nlp.get_pyomo_constraints()
+            duals = nlp.get_duals()
+            
+            J = nlp.extract_submatrix_jacobian(pyomo_variables=varList, pyomo_constraints=conList)
+            H = nlp.extract_submatrix_hessian_lag(pyomo_variables_rows=varList, pyomo_variables_cols=varList)
+            J = csc_matrix(J)
+            
+            var_index_names = [v.name for v in varList]
+            con_index_names = [v.name for v in conList]                       
+            
+            dummy_constraints = [f'{self.global_constraint_name}[{k}]' for k in self.parameter_set]
+            jac_row_ind = [con_index_names.index(d) for d in dummy_constraints] 
+            duals_imp = [duals[i] for i in jac_row_ind]
+        
+            self.duals = dict(zip(self.parameter_set, duals_imp))
+            if self.verbose:
+                print(f'The pynumero results are:')
+                print(self.duals)
+            
+        else:
+                         
+            self.duals = {key: self.model_object.dual[getattr(self.model_object, self.global_constraint_name)[key]] for key, val in getattr(self.model_object, self.global_param_name).items()}
+        
+            if self.verbose:
+                print('The duals are:')
+                print(self.duals)
+        
+        self.delete_sol_files()
+        
         return self.duals              
     
     def optimize_model(self, d=None):
@@ -205,8 +310,11 @@ class ReducedHessian(object):
             reduced_hessian (numpy array): reduced hessian of the model
         
         """
+        if self.verbose:    
+            print(f'd: {d}')
+        
         ipopt = SolverFactory('ipopt')
-        tmpfile_i = "ipopt_output"
+        tmpfile_i = self.get_tmp_file()
     
         if self.param_con_method == 'global':
             
@@ -246,9 +354,12 @@ class ReducedHessian(object):
                     logfile=tmpfile_i,
                     )
         
+        # Create the file object so that it can be deleted
+        self.get_file_info()
+        
         return None
 
-    def calculate_reduced_hessian(self, d=None, optimize=False):
+    def calculate_reduced_hessian(self, d=None, optimize=False, return_Z=False):
         """Calculate the reduced Hessian
         
         Args:
@@ -277,7 +388,7 @@ class ReducedHessian(object):
             
             dummy_constraints = [f'{self.global_constraint_name}[{k}]' for k in self.parameter_set]
             jac_row_ind = [con_ind_new.index(d) for d in dummy_constraints] 
-            duals_imp = [duals[i] for i in jac_row_ind]
+            #duals_imp = [duals[i] for i in jac_row_ind]
             
             #print(J.shape, len(duals_imp))
     
@@ -301,12 +412,12 @@ class ReducedHessian(object):
         else:
             None
         
-        r_hess = self._reduced_hessian_matrix(J_f, J_l, H, col_ind)
+        r_hess, Z_mat = self._reduced_hessian_matrix(J_f, J_l, H, col_ind)
        
-        if self.use_duals:
+        if not return_Z:
             return r_hess.todense()
         else:
-            return r_hess.todense()
+            return r_hess.todense(), Z_mat
 
     @staticmethod
     def _reduced_hessian_matrix(F, L, H, col_ind):
@@ -347,7 +458,7 @@ class ReducedHessian(object):
         Hess = H.tocsr()
         reduced_hessian = Z_mat_T * Hess * Z_mat
         
-        return reduced_hessian
+        return reduced_hessian, Z_mat
 
     def add_global_constraints(self):
         """This adds the dummy constraints to the model forcing the local

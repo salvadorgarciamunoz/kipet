@@ -589,7 +589,7 @@ class EstimationPotential():
         
         return reduced_hessian
           
-def reduce_model(model, options=None, **kwargs):
+def rhps_method(model, options=None, **kwargs):
     """Reduces a single model using the reduced hessian parameter selection
     method. It takes a pyomo ConcreteModel using P as the parameters to be fit
     and K as the scaled parameter values.
