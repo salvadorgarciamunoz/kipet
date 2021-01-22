@@ -12,16 +12,17 @@ import collections
 import pathlib
 
 # Third party imports
+import pandas as pd
 
 # Kipet library imports
 from kipet.library.top_level.reaction_model import ReactionModel, _set_directory
 
 import kipet.library.core_methods.data_tools as data_tools
-from kipet.library.core_methods.MEE_new import MultipleExperimentsEstimator
+from kipet.library.core_methods.MEE_3 import MultipleExperimentsEstimator
 from kipet.library.common.pre_process_tools import decrease_wavelengths
 from kipet.library.top_level.settings import Settings, USER_DEFINED_SETTINGS
 
-from kipet.library.nsd_funs.NSD_TrustRegion_Ipopt import NSD
+from kipet.library.nsd_funs.NSD_KIPET import NSD
 
 DEFAULT_DIR = 'data_sets'
 
@@ -37,13 +38,9 @@ class KipetModel():
         
         self.models = {}
         self.settings = Settings(category='block')
-        #self.variances = {}
-        self.no_variances_provided = False
         self.results = {}
-        
-    def __getitem__(self, value):
-        
-        return self.models[value]
+        self.global_parameters = None
+        self.method = 'mee'
          
     def __str__(self):
         
@@ -61,6 +58,9 @@ class KipetModel():
         for model, contents in self.models.items():
             yield data
             
+    def __getitem__(self, value):
+        return self.models[value]
+            
     def __len__(self):
         return len(self.models)
 
@@ -75,19 +75,24 @@ class KipetModel():
     def add_model(self, model):
         
         if isinstance(model, ReactionModel):
+            print(type(model))
             self.models[model.name] = model
         else:
+            print(type(model))
             raise ValueError('KipetModel can only add ReactionModel instances.')
             
         return None
     
-    @staticmethod
-    def add_noise_to_data(data, noise):
-        """Wrapper for adding noise to data after data has been added to
-        the specific ReactionModel
+    def remove_model(self, model):
         
-        """
-        return data_tools.add_noise_to_signal(data, noise)       
+        if isinstance(model, str):
+            if model in self.models:
+                self.models.pop(model)
+        elif isinstance(model, ReactionModel):
+            self.models.pop(model.name)
+        else:
+            print('KipetModel does not have specified model')
+        return None    
     
     def new_reaction(self, name, model_to_clone=None, items_not_copied=None):
         
@@ -138,146 +143,67 @@ class KipetModel():
             raise ValueError('KipetModel can only add ReactionModel instances.')
 
         return None
-    
-    def create_multiple_experiments_estimator(self, *args, **kwargs):
-        """A quick wrapper for MEE without big changes
-        
-        """
-        #variances = kwargs.pop('variances', None)
-        
-        # self.variances_provided = True
-        # if variances is None or len(variances) == 0:
-        #     self.variances_provided = False
-        
-        if 'spectral' in self.data_types:
-            self.settings.parameter_estimator.spectra_problem = True
-        else:
-            self.settings.parameter_estimator.spectra_problem = False    
             
-        # self.variances = {}
-
-        for name, model in self.models.items():
-            model.settings.collocation = self.settings.collocation
-            model.populate_template()
-            
-            for dataset in model.datasets:
-                if self.settings.general.freq_wavelength_subset is not None:
-                    if model.datasets[dataset.name].category == 'spectral':
-                        freq = self.settings.general.freq_wavelength_subset
-                        model.datasets[dataset.name].data = decrease_wavelengths(dataset.data, freq)
-               
-                # if variances is not None:
-                #     self.variances[name] = variances
-                
-        self.mee = MultipleExperimentsEstimator(self.models)
-        self.mee.spectra_problem = self.settings.parameter_estimator.spectra_problem
-        
     def run_opt(self, *args, **kwargs):
+        """Solve a single model or solve multiple models using the MEE
+        """
+        method = kwargs.get('method', 'mee')
         
         if len(self.models) > 1:
-            self.create_multiple_experiments_estimator(*args, **kwargs)
-            self.run_multiple_experiments_estimator()
-        
+            if method == 'mee':
+                self._calculate_parameters()
+                self._create_multiple_experiments_estimator(*args, **kwargs)
+                self.run_full_model()
+            elif method == 'nsd':
+                self._calculate_parameters()
+                self.mee_nsd(strategy='ipopt')
+            else:
+                raise ValueError('Not a valid method for optimization')
+            
         else:
             reaction_model = self.models[list(self.models.keys())[0]]
             results = reaction_model.run_opt()
             self.results[reaction_model.name] = results
             
         return None
-        
-    def run_multiple_experiments_estimator(self, **kwargs):
-        
-        """Main function controlling the parameter estimation for multiple
-        experiments. It defaults to solving the MEE, but can be selected to
-        simply solve each model individually. This is the basis for the KIPET
-        individual models too.
-        
-        """
-        run_full_model = kwargs.get('multiple_experiments', True)
-        
-        #if not self.variances_provided:
-        self.calculate_variances()
-        #else:
-        #    self.mee.variances = self.variances
-        self.calculate_parameters()
-        
-        if run_full_model:
-            self.run_full_model()
-        
-        return None
-        
-    def calculate_variances(self):
-        """Uses the ReactionModel framework to calculate variances instead of 
-        repeating this in the MEE
-        
-        """
-        variance_dict = {}
-        self.mee.variances = {}
-        
-        for model in self.models.values():
-            
-            if len(model.variances) == 0:
-                model.create_variance_estimator(**self.settings.collocation)
-                model.run_ve_opt()
-                variance_dict[model.name] = model.results_dict['v_estimator'].sigma_sq
-                self.mee.variances[model.name] = variance_dict[model.name]
-            else:
-                variance_dict[model.name] = model.variances
-                self.mee.variances[model.name] = variance_dict[model.name]
-        
-        self.results_variances = variance_dict
-        self.mee._variance_solved = True
-        self.mee.variance_results = variance_dict
-        self.mee.opt_model = {k: v.model for k, v in self.models.items()}
-        return variance_dict
     
-    def calculate_parameters(self):
+    def _create_multiple_experiments_estimator(self, *args, **kwargs):
+        """A quick wrapper for MEE without big changes
+        
+        """
+        self.mee = MultipleExperimentsEstimator(self.models)
+        self.mee.confidence_interval = self.settings.parameter_estimator.confidence
+        
+        if 'spectral' in self.data_types:
+            self.settings.parameter_estimator.spectra_problem = True
+        else:
+            self.settings.parameter_estimator.spectra_problem = False    
+        
+        self.mee.spectra_problem = self.settings.parameter_estimator.spectra_problem
+        
+    def _calculate_parameters(self):
         """Uses the ReactionModel framework to calculate parameters instead of 
         repeating this in the MEE
         
         """
-        parameter_estimator_model_dict = {}
-        parameter_dict = {}
-        
-        for model in self.models.values():
-            
-            if not model.optimized:
-                 
-                settings_run_pe_opt = model.settings.parameter_estimator
-                settings_run_pe_opt['solver_opts'] = model.settings.solver
-                settings_run_pe_opt['variances'] = self.results_variances[model.name]
-                settings_run_pe_opt['confindence_interval'] = self.settings.parameter_estimator.confidence
-                model.create_parameter_estimator(**self.settings.collocation)
-                model.run_pe_opt(**settings_run_pe_opt)
-            
-            else:
-                print('Model has already been optimized')
-            
-            parameter_dict[model.name] = model.results_dict['p_estimator']
-            parameter_estimator_model_dict[model.name] = model.p_estimator
-        
-        self.mee.initialization_model = parameter_estimator_model_dict
-        self.mee.confidence_interval = self.settings.parameter_estimator.confidence
-        
-        list_components = {}
         for name, model in self.models.items():
-            list_components[name] = [comp.name for comp in model.components if comp.state == 'concentration']
-        self.mee._sublist_components = list_components
-
-        return parameter_dict
+            if not model.optimized:
+                for dataset in model.datasets:
+                    if self.settings.general.freq_wavelength_subset is not None:
+                        if model.datasets[dataset.name].category == 'spectral':
+                            freq = self.settings.general.freq_wavelength_subset
+                            model.datasets[dataset.name].data = decrease_wavelengths(dataset.data, freq)
+                
+                model.run_opt()
+            else:
+                print(f'Model {name} has already been optimized')
+                
+        return None
     
     def run_full_model(self):
         
-        global_params = list(self.global_params)
-        list_params_across_blocks = global_params
-        list_species_across_blocks = list(self.all_species)
-        list_waves_across_blocks = list(self.all_wavelengths)
-
-        results = self.mee.solve_consolidated_model(global_params,
-                                 list_params_across_blocks,
-                                 list_species_across_blocks,
-                                 list_waves_across_blocks,
-                                 **self.settings.parameter_estimator)
+        results = self.mee.solve_consolidated_model(self.global_parameters,
+                                                    **self.settings.parameter_estimator)
     
         self.results = results
         for key, results_obj in self.results.items():
@@ -334,6 +260,13 @@ class KipetModel():
         read_data = data_tools.read_file(_filename)
         return read_data
     
+    @staticmethod
+    def add_noise_to_data(data, noise):
+        """Wrapper for adding noise to data after data has been added to
+        the specific ReactionModel
+        
+        """
+        return data_tools.add_noise_to_signal(data, noise)   
     
     # def delete_file(self, filename, directory=None):
     #     """Method to remove files from the directory"""
@@ -389,17 +322,23 @@ class KipetModel():
     
     @property
     def show_parameters(self):
-        for reaction, model in self.models.items():
-            print(f'{reaction}')
-            model.results.show_parameters
-            
-    def plot(self, *args, **kwargs):
-        for reaction, model in self.models.items():
-            file_dir = self.settings.general.charts_directory
-            kwargs['file_dir'] = file_dir
-            print(kwargs)
-            model.results.plot(*args, **kwargs)
         
+        df_param = pd.DataFrame(data=None, index=self.all_params, columns=self.models.keys())
+            
+        for reaction, model in self.models.items():
+            for param in model.parameters.names:
+                df_param.loc[param, reaction] = model.results.P[param]
+            
+        return df_param
+                        
+    def plot(self, *args, **kwargs):
+        for reaction, result in self.results.items():
+            description={'title': f'Experiment: {reaction}',
+                                  'xaxis': 'Time [s]',
+                                  'yaxis': 'Concentration [mol/L]'}
+        
+            result.plot('Z', description=description)
+           
     def test_version(self):
         print('yes, this is new')
         return None
@@ -410,37 +349,38 @@ class KipetModel():
         return [model.p_model for model in self.models.values()]
     
     def mee_nsd(self, strategy='ipopt'):
-
+        """Performs the NSD on the multiple datasets
+        
+        Args:
+            strategy (str): Method used to control the outer problem
+                ipopt, trust-region, newton-step
+                
+        Returns:
+            results
+        
+        """        
         kwargs = {'kipet': True,
                   'objective_multiplier': 1
                   }
         
-        # Choose the method used to optimize the outer problem
-        #strategy = 'ipopt'
-        #strategy = 'newton-step'
-        #strategy = 'trust-region'
-        models = self.get_p_models
-        print(models)
+        if self.global_parameters is not None:
+            global_parameters = self.global_parameters
+        else:
+            global_parameters = self.all_params
         
-        nsd = NSD(self.models.values(), kwargs=kwargs)
+        self.nsd = NSD(self.models,
+                       strategy=strategy,
+                       global_parameters=global_parameters, 
+                       kwargs=kwargs)
         
-        print(nsd.d_init)
+        print(self.nsd.d_init)
         
-        if strategy == 'ipopt':
-            # Runs the IPOPT Method
-            results = nsd.ipopt_method(scaled=False)
-        
-        elif strategy == 'trust-region':
-            # Runs the Trust-Region Method
-            results = nsd.trust_region(scaled=False)
-            # Plot the parameter value paths (Trust-Region only)
-            nsd.plot_paths()
-            
-        elif strategy == 'newton-step':
-            # Runs the NSD using simple newton steps
-            nsd.run_simple_newton_step(alpha=0.1, iterations=15)  
-        
+        results = self.nsd.run_opt()
         # Plot the results using ReactionModel format
-        nsd.plot_results()
+        #self.nsd.plot_results()
         
+        self.results = results
+        for key, results_obj in self.results.items():
+            results_obj.file_dir = self.settings.general.charts_directory
         return results
+        
