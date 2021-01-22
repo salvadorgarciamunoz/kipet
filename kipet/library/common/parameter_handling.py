@@ -1,7 +1,38 @@
 """
 Parameter handling
 """
-parameter_set_name = 'P'
+from kipet.library.top_level.variable_names import VariableNames
+
+__var = VariableNames()
+parameter_set_name = __var.model_parameter
+
+def calculate_parameter_averages(model_dict):
+    
+    p_dict = {}
+    c_dict = {}
+    
+    for key, model in model_dict.items():
+        for param, obj in getattr(model, __var.model_parameter).items():
+            if param not in p_dict:
+                p_dict[param] = obj.value
+                c_dict[param] = 1
+            else:
+                p_dict[param] += obj.value
+                c_dict[param] += 1
+                
+    avg_param = {param: p_dict[param]/c_dict[param] for param in p_dict.keys()}
+    
+    return avg_param
+    
+def initialize_parameters(model_dict):
+    
+    avg_param = calculate_parameter_averages(model_dict)
+    
+    for key, model in model_dict.items():
+        for param, obj in getattr(model, __var.model_parameter).items():
+            obj.value = avg_param[param] 
+            
+    return None
 
 def check_initial_parameter_values(model_object):
     """Checks the initial parameter values and alters them if they violate the
