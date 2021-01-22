@@ -21,8 +21,12 @@ import kipet.library.core_methods.data_tools as data_tools
 from kipet.library.core_methods.MEE_3 import MultipleExperimentsEstimator
 from kipet.library.common.pre_process_tools import decrease_wavelengths
 from kipet.library.top_level.settings import Settings, USER_DEFINED_SETTINGS
+<<<<<<< HEAD
 
 from kipet.library.nsd_funs.NSD_KIPET import NSD
+=======
+#from kipet.library.top_level.clean import remove_file
+>>>>>>> 3e224ccb5560a5256b9eecc6baf2d94018392872
 
 DEFAULT_DIR = 'data_sets'
 
@@ -376,11 +380,10 @@ class KipetModel():
         print(self.nsd.d_init)
         
         results = self.nsd.run_opt()
-        # Plot the results using ReactionModel format
-        #self.nsd.plot_results()
         
         self.results = results
         for key, results_obj in self.results.items():
             results_obj.file_dir = self.settings.general.charts_directory
         return results
-        
+
+
