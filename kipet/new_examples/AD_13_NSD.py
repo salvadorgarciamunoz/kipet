@@ -25,7 +25,7 @@ if __name__ == "__main__":
     r1.add_parameter('k2', init=0.224, bounds=(0.0, 10.0), fixed=False)
     
     # Declare the components and give the initial values
-    r1.add_component('A', state='concentration', init=0.001, known=False, bounds=(0.0, 0.1))
+    r1.add_component('A', state='concentration', init=0.001, known=True, bounds=(0.0, 0.1))
     r1.add_component('B', state='concentration', init=0.0)
     r1.add_component('C', state='concentration', init=0.0)
    
@@ -61,7 +61,7 @@ if __name__ == "__main__":
     kipet_model.settings.parameter_estimator.sim_init = True
     
     #kipet_model.global_parameters = ['k1', 'k2']
-    kipet_model.run_opt()
+    kipet_model.run_opt(method='nsd')
     
     # Plot the results
     for model, results in kipet_model.results.items():
