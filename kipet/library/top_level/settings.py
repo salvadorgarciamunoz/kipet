@@ -241,6 +241,7 @@ class Settings():
                         'spectra_problem': True,
                         'scaled_variance': False,
                         'confidence': None,
+                        'sim_init': False,
                         }
     
         solver = {
