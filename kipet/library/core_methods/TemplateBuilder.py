@@ -19,9 +19,10 @@ from pyomo.dae import *
 # KIPET library imports
 from kipet.library.post_model_build.scaling import scale_parameters
 from kipet.library.core_methods.PyomoSimulator import PyomoSimulator
+from kipet.library.top_level.variable_names import VariableNames
 
 logger = logging.getLogger('ModelBuilderLogger')
-    
+
 class TemplateBuilder(object):
     """Helper class for creation of models.
 
@@ -64,6 +65,8 @@ class TemplateBuilder(object):
             extra_states (dictionary): map of state name to initial condition
 
         """
+        self.__var = VariableNames()
+        
         self._component_names = set()
         self._component_units = dict()
         self._parameters = dict()
@@ -174,18 +177,6 @@ class TemplateBuilder(object):
         else:
             raise RuntimeError('concentrations must be an dictionary component_name:init_condition')
         
-        #  #For initial condition parameter estimates:
-        # initextraparams = kwargs.pop('initextraparams', dict())
-        # if isinstance(initextraparams, dict):
-        #     for k, v in initextraparams.items():
-        #         self._initextraparams[k] = v
-        # elif isinstance(initextraparams, list):
-        #     for k in initextraparams:
-        #         self._initextraparams[k] = None
-        # else:
-        #     raise RuntimeError('initextraparams must be a dictionary species_name:value or a list with species_names')
-
-
     def add_state_variance(self, sigma_dict):
         """Provide a variance for the measured states
         
@@ -530,16 +521,29 @@ class TemplateBuilder(object):
 
         """
         built_in_data_types = {
-            'concentration' : 'Cm',
-            'complementary_states' : 'U',
-            'spectral' : 'D',
-            'huplc' : 'Dhat',
-            'smoothparam' : 'Ps',
-            'custom' : 'UD',
+            'concentration' : self.__var.concentration_measured,
+            'complementary_states' : self.__var.state,
+            'spectral' : self.__var.spectra_data,
+            'huplc' : self.__var.huplc_data,
+            'smoothparam' : self.__var.smooth_parameter,
+            'custom' : self.__var.user_defined,
             }
         
-        state_data = ['C', 'U', 'Cm', 'UD']
-        deriv_data = ['C', 'U', 'D', 'Dhat', 'Cm', 'UD']
+        state_data = [
+            self.__var.concentration_spectra,
+            self.__var.state,
+            self.__var.concentration_measured,
+            self.__var.user_defined,
+            ]
+            
+        deriv_data = [
+            self.__var.concentration_spectra,
+            self.__var.state,
+            self.__var.spectra_data,
+            self.__var.huplc_data,
+            self.__var.concentration_measured,
+            self.__var.user_defined,
+            ]
         
         if label is None:
             try:
@@ -986,17 +990,17 @@ class TemplateBuilder(object):
             # if 'init' in self._y_bounds:
             #     bounds = self._y_bounds[]
             
-            model.Y = Var(model.alltime,
-                          model.algebraics,
-                          initialize=1.0)
-                          #bounds=())
+            setattr(model, self.__var.algebraic, Var(model.alltime,
+                                                     model.algebraics,
+                                                     initialize=1.0))
+                                                    #bounds=())
             
             for t in model.alltime:
                 for k, v in self._y_bounds.items():
                     lb = v[0]
                     ub = v[1]
-                    model.Y[t, k].setlb(lb)
-                    model.Y[t, k].setub(ub)
+                    getattr(model, self.__var.algebraic)[t, k].setlb(lb)
+                    getattr(model, self.__var.algebraic)[t, k].setub(ub)
                     
                 # for k, v in self._y_init.items():
                 #     model.Y[0, k].set_value(v)
@@ -1033,9 +1037,9 @@ class TemplateBuilder(object):
 
         def rule_init_conditions(m, k):
             if k in m.mixture_components:
-                return m.Z[m.start_time, k] - m.init_conditions[k] == 0
+                return getattr(m, self.__var.concentration_model)[m.start_time, k] - m.init_conditions[k] == 0
             else:
-                return m.X[m.start_time, k] - m.init_conditions[k] == 0
+                return getattr(m, self.__var.state_model)[m.start_time, k] - m.init_conditions[k] == 0
 
         model.init_conditions_c = \
             Constraint(model.states, rule=rule_init_conditions)
@@ -1057,13 +1061,13 @@ class TemplateBuilder(object):
         """Adds the model variables to the pyomo model"""
         
         model_pred_var_name = {
-                'Z' : model.mixture_components,
-                'X' : model.complementary_states,
+                self.__var.concentration_model : model.mixture_components,
+                self.__var.state_model : model.complementary_states,
                     }
         
         for var, model_set in model_pred_var_name.items():
             
-            if len(model_set) == 0:# is None:
+            if model_set is None or len(model_set) == 0:
                 continue
             
             # Check if any data for the variable type exists (Pyomo 5.7 update)
@@ -1089,14 +1093,14 @@ class TemplateBuilder(object):
         # Variables of provided data - set as fixed variables complementary to above
         fixed_var_name = {
                # 'C' : self._spectral_data,
-                'Cm' : self._concentration_data,
-                'U' : self._complementary_states_data,
-                'UD' : self._custom_data,
+                self.__var.concentration_measured : self._concentration_data,
+                self.__var.state : self._complementary_states_data,
+                self.__var.user_defined : self._custom_data,
                     }
         
         for var, data in fixed_var_name.items():
             
-            if data is None:
+            if data is None or len(data) == 0:
                 continue
             
             c_dict = dict()
@@ -1154,14 +1158,14 @@ class TemplateBuilder(object):
                     p_dict[param] = (ub + lb) / 2
 
         if self._scale_parameters:
-            model.P = Var(model.parameter_names,
-                            bounds = (0.1, 10),
-                            initialize=1)
+            setattr(model, self.__var.model_parameter, Var(model.parameter_names,
+                                                           bounds = (0.1, 10),
+                                                           initialize=1))
 
         else:
-            model.P = Var(model.parameter_names,
+            setattr(model, self.__var.model_parameter, Var(model.parameter_names,
                             # bounds = (0.0,None),
-                            initialize=p_dict)
+                            initialize=p_dict))
 
         # set bounds P
         for k, v in self._parameters_bounds.items():
@@ -1198,7 +1202,7 @@ class TemplateBuilder(object):
                 model.P[p].fixed = True
                 
         for p, v in self._parameters_fixed.items():
-            model.P[p].fixed = v
+            getattr(model, self.__var.model_parameter)[p].fixed = v
 
         return None
 
@@ -1227,7 +1231,9 @@ class TemplateBuilder(object):
         elif self._g_init is None:
             g_init = 0.1
             
-        model.g = Var(model.meas_lambdas, bounds=g_bounds, initialize=g_init)
+        setattr(model, self.__var.unwanted_contribution, Var(model.meas_lambdas, 
+                                                             bounds=g_bounds, 
+                                                             initialize=g_init))
         
         return None
 
@@ -1243,18 +1249,20 @@ class TemplateBuilder(object):
                 else:
                     if k in m.mixture_components:
                         if k in exprs.keys():
-                            return m.dZdt[t, k] == exprs[k]
+                            deriv_var = f'd{self.__var.concentration_model}dt'
+                            return getattr(m, deriv_var)[t, k] == exprs[k]
                         else:
                             return Constraint.Skip
                     else:
                         if k in exprs.keys():
-                            return m.dXdt[t, k] == exprs[k]
+                            deriv_var = f'd{self.__var.state_model}dt'
+                            return getattr(m, deriv_var)[t, k] == exprs[k]
                         else:
                             return Constraint.Skip
 
-            model.odes = Constraint(model.alltime,
-                                    model.states,
-                                    rule=rule_odes)
+            setattr(model, self.__var.ode_constraints, Constraint(model.alltime,
+                                                                  model.states,
+                                                                  rule=rule_odes))
         return None
     
     def _add_algebraic_constraints(self, model):
@@ -1278,7 +1286,7 @@ class TemplateBuilder(object):
         
         """
         def custom_obj(m, t, y):
-            exprs = m.UD[t, y] - m.Y[t, y]
+            exprs = getattr(m, self.__var.user_defined)[t, y] - getattr(m, self.__var.algebraic)[t, y]
             return exprs**2
         
         obj = 0
@@ -1306,14 +1314,14 @@ class TemplateBuilder(object):
                     else:
                         s_data_dict[t, l] = float('nan')
 
-            model.D = Param(model.meas_times,
-                            model.meas_lambdas,
-                            initialize=s_data_dict)
+            setattr(model, self.__var.spectra_data, Param(model.meas_times,
+                                                          model.meas_lambdas,
+                                                          initialize=s_data_dict))
             
-            model.C = Var(model.meas_times,
-                          model.mixture_components,
-                          bounds=(0, None),
-                          initialize=1)
+            setattr(model, self.__var.concentration_spectra, Var(model.meas_times,
+                                                                 model.mixture_components,
+                                                                 bounds=(0, None),
+                                                                 initialize=1))
             
         return None
 
@@ -1337,20 +1345,20 @@ class TemplateBuilder(object):
         
             if self._is_non_abs_set:
                 self.set_non_absorbing_species(model, self._non_absorbing, check=False)
-                model.S = Var(model.meas_lambdas,
-                              model.abs_components,
-                              bounds=s_bounds,
-                              initialize=s_dict)
+                setattr(model, self.__var.spectra_species, Var(model.meas_lambdas,
+                                                               model.abs_components,
+                                                               bounds=s_bounds,
+                                                               initialize=s_dict))
             else:
-                model.S = Var(model.meas_lambdas,
-                              model.mixture_components,
-                              bounds=s_bounds,
-                              initialize=s_dict)
+                setattr(model, self.__var.spectra_species, Var(model.meas_lambdas,
+                                                               model.mixture_components,
+                                                               bounds=s_bounds,
+                                                               initialize=s_dict))
 
             if self._absorption_data is not None:
                 for l in model.meas_lambdas:
                     for k in model.mixture_components:
-                        model.S[l, k].fixed = True
+                        getattr(model, self.__var.spectra_species)[l, k].fixed = True
                         
         return None
     
@@ -1497,7 +1505,6 @@ class TemplateBuilder(object):
             model.allsmooth_times = Set(initialize=m_allsmoothtimes, ordered=True)
 
         if m_alltimes:
-            print(start_time, end_time)
             self._check_time_inputs(m_alltimes, start_time, end_time)
 
         self._m_lambdas = m_lambdas
@@ -1806,8 +1813,8 @@ class TemplateBuilder(object):
         self._non_absorbing = non_abs_list
         model.add_component('non_absorbing', Set(initialize=self._non_absorbing))
 
-        C = getattr(model, 'C')
-        Z = getattr(model, 'Z')
+        C = getattr(model, self.__var.concentration_spectra)
+        Z = getattr(model, self.__var.concentration_model)
 
         times = getattr(model, 'meas_times')
         alltimes = getattr(model, 'allmeas_times')
@@ -1857,9 +1864,9 @@ class TemplateBuilder(object):
         self._known_absorbance = known_abs_list
         self._known_absorbance_data = absorbance_data
         model.add_component('known_absorbance', Set(initialize=self._known_absorbance))
-        S = getattr(model, 'S')
-        C = getattr(model, 'C')
-        Z = getattr(model, 'Z')
+        S = getattr(model, self.__var.spectra_species)
+        C = getattr(model, self.__var.concentration_spectra)
+        Z = getattr(model, self.__var.concentration_model)
         lambdas = getattr(model, 'meas_lambdas')
         model.known_absorbance_data = self._known_absorbance_data
         for component in self._known_absorbance:
@@ -1914,8 +1921,8 @@ class TemplateBuilder(object):
             model.add_component('solid_spec_arg2', Set(initialize=solid_spec_arg2keys))
             model.add_component('solid_spec', Var(model.solid_spec_arg1, model.solid_spec_arg2, initialize=self._solid_spec))
 
-        C = getattr(model, 'C')
-        Z = getattr(model, 'Z')
+        C = getattr(model, self.__var.concentration_spectra)
+        Z = getattr(model, self.__var.concentration_model)
 
         Dhat_dict=dict()
         for k in self._huplc_data.columns:

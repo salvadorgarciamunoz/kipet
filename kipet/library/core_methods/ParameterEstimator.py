@@ -32,6 +32,7 @@ from kipet.library.common.objectives import (
     )
 
 from kipet.library.mixins.PEMixins import PEMixins 
+from kipet.library.top_level.variable_names import VariableNames
 
 class ParameterEstimator(PEMixins, Optimizer):
     """Optimizer for parameter estimation.
@@ -44,6 +45,8 @@ class ParameterEstimator(PEMixins, Optimizer):
     """
     def __init__(self, model):
         super(ParameterEstimator, self).__init__(model)
+
+        self.__var = VariableNames()
 
         self.hessian = None
         self._estimability = False
@@ -85,12 +88,12 @@ class ParameterEstimator(PEMixins, Optimizer):
             
         if hasattr(self, '_abs_components'):
             self.component_set = self._abs_components
-            self.component_var = 'Cs'
+            self.component_var = self.__var.concentration_spectra_abs
             self.n_val = self._nabs_components
             
         else:
             self.component_set = self._sublist_components
-            self.component_var = 'C'
+            self.component_var = self.__var.concentration_spectra
             self.n_val = self._n_actual
             
     def run_opt(self, solver, **kwds):
@@ -259,36 +262,40 @@ class ParameterEstimator(PEMixins, Optimizer):
     def _get_results(self):
         """Removed results unit from function"""
     
-        scaled_parameter_var = 'K'
+        #scaled_parameter_var = 'K'
     
         results = ResultsObject()
         
         results.objective = self.objective_value
         results.parameter_covariance = self.cov_mat
 
-        if self._spectra_given:
-            results.load_from_pyomo_model(self.model,
-                                          to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
-            if hasattr(self, '_abs_components'):
-                results.load_from_pyomo_model(self.model,
-                                              to_load=['Cs'])
-            if hasattr(self, 'huplc_absorbing'):
-                results.load_from_pyomo_model(self.model,
-                                              to_load=['Dhat_bar'])
+        results.load_from_pyomo_model(self.model)
+
+
+        # This is pretty automatic now, so their is no need for this to be specific
+        # if self._spectra_given:
+        #     results.load_from_pyomo_model(self.model)
+        #                                  # to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
+            # if hasattr(self, '_abs_components'):
+            #     results.load_from_pyomo_model(self.model,
+            #                                   to_load=['Cs'])
+            # if hasattr(self, 'huplc_absorbing'):
+            #     results.load_from_pyomo_model(self.model,
+            #                                   to_load=['Dhat_bar'])
      
-        elif self._concentration_given or self._custom_data_given:
-            results.load_from_pyomo_model(self.model)
-        else:
-            raise RuntimeError(
-                'Must either provide concentration data or spectra in order to solve the parameter estimation problem')
+        # elif self._concentration_given or self._custom_data_given:
+        #     results.load_from_pyomo_model(self.model)
+        # else:
+        #     raise RuntimeError(
+        #         'Must either provide concentration data or spectra in order to solve the parameter estimation problem')
 
         if self._spectra_given:
             self.compute_D_given_SC(results)
 
-        if hasattr(self.model, scaled_parameter_var): 
-            results.P = {name: self.model.P[name].value*getattr(self.model, scaled_parameter_var)[name].value for name in self.model.parameter_names}
+        if hasattr(self.model, self.__var.model_parameter_scaled): 
+            setattr(results, self.__var.model_parameter, {name: getattr(self.model, self.__var.model_parameter)[name].value*getattr(self.model, self.__var.model_parameter_scaled)[name].value for name in self.model.parameter_names})
         else:
-            results.P = {name: self.model.P[name].value for name in self.model.parameter_names}
+            setattr(results, self.__var.model_parameter, {name: getattr(self.model, self.__var.model_parameter)[name].value for name in self.model.parameter_names})
 
         if self.termination_condition!=None and self.termination_condition!=TerminationCondition.optimal:
             raise Exception("The current iteration was unsuccessful.")

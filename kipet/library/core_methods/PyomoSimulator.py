@@ -683,7 +683,11 @@ from kipet.library.core_methods.Simulator import *
 from kipet.library.common.VisitorClasses import ScalingVisitor
 from kipet.library.dev_tools.display import Print
 
-DEBUG=False
+from kipet.library.top_level.variable_names import VariableNames
+
+__var = VariableNames()
+
+DEBUG=__var.DEBUG
 
 _print = Print(verbose=DEBUG)
 
@@ -755,6 +759,8 @@ class PyomoSimulator(Simulator):
         Args:
             model (Pyomo model)
         """
+        self.__var = VariableNames()
+
         super(PyomoSimulator, self).__init__(model)
         self._alltimes = sorted(self.model.alltime)#added for special structure CS
         #self._times = sorted(self.model.time)
@@ -763,13 +769,12 @@ class PyomoSimulator(Simulator):
         self._meas_times=sorted(self.model.meas_times)
         self._allmeas_times=sorted(self.model.allmeas_times)
         self._ipopt_scaled = False
-        self._spectra_given = hasattr(self.model, 'D')
-        self._concentration_given = hasattr(self.model, 'Cm') or hasattr(self.model, 'UD')
-        self._conplementary_states_given = hasattr(self.model, 'U')
-        self._absorption_given = hasattr(self.model,
-                                         'S')  # added for special case of absorption data available but not concentration data CS
+        self._spectra_given = hasattr(self.model, self.__var.spectra_data)
+        self._concentration_given = hasattr(self.model, self.__var.concentration_measured) or hasattr(self.model, self.__var.user_defined)
+        self._conplementary_states_given = hasattr(self.model, self.__var.state)
+        self._absorption_given = hasattr(self.model, self.__var.spectra_species)  # added for special case of absorption data available but not concentration data CS
         self._huplc_given = hasattr(self.model, 'Chat')
-        self._smoothparam_given = hasattr(self.model, 'Ps')
+        self._smoothparam_given = hasattr(self.model, self.__var.smooth_parameter)
 
         # creates scaling factor suffix
         if not hasattr(self.model, 'scaling_factor'):
@@ -913,18 +918,22 @@ class PyomoSimulator(Simulator):
             None
         """
         tol = 1e-4
-        z_init = []
-        for t in self._alltimes:
-            for k in self._mixture_components:
-                if abs(self.model.init_conditions[k].value) > tol:
-                    z_init.append(self.model.init_conditions[k].value)
-                else:
-                    z_init.append(1.0)
-
-        z_array = np.array(z_init).reshape((self._n_alltimes, self._n_components))
-        z_init_panel = pd.DataFrame(data=z_array,
-                                    columns=self._mixture_components,
-                                    index=self._alltimes)
+        
+        if hasattr(self.model, 'Z'):
+            z_init = []
+            for t in self._alltimes:
+                for k in self._mixture_components:
+                    if abs(self.model.init_conditions[k].value) > tol:
+                        z_init.append(self.model.init_conditions[k].value)
+                    else:
+                        z_init.append(1.0)
+    
+            z_array = np.array(z_init).reshape((self._n_alltimes, self._n_components))
+            z_init_panel = pd.DataFrame(data=z_array,
+                                        columns=self._mixture_components,
+                                        index=self._alltimes)
+            
+            self.initialize_from_trajectory('Z', z_init_panel)
 
         c_init = []
         if self._concentration_given:
@@ -952,21 +961,21 @@ class PyomoSimulator(Simulator):
                     self.initialize_from_trajectory('Cm', c_init_panel)
                     print("self._n_meas_times is true in _default_init in PyomoSim")
 
-        x_init = []
-        for t in self._alltimes:
-            for k in self._complementary_states:
-                if abs(self.model.init_conditions[k].value) > tol:
-                    x_init.append(self.model.init_conditions[k].value)
-                else:
-                    x_init.append(1.0)
+        if hasattr(self.model, 'X'):
+            x_init = []
+            for t in self._alltimes:
+                for k in self._complementary_states:
+                    if abs(self.model.init_conditions[k].value) > tol:
+                        x_init.append(self.model.init_conditions[k].value)
+                    else:
+                        x_init.append(1.0)
+    
+            x_array = np.array(x_init).reshape((self._n_alltimes, self._n_complementary_states))
+            x_init_panel = pd.DataFrame(data=x_array,
+                                        columns=self._complementary_states,
+                                        index=self._alltimes)
 
-        x_array = np.array(x_init).reshape((self._n_alltimes, self._n_complementary_states))
-        x_init_panel = pd.DataFrame(data=x_array,
-                                    columns=self._complementary_states,
-                                    index=self._alltimes)
-
-        self.initialize_from_trajectory('Z', z_init_panel)
-        self.initialize_from_trajectory('X', x_init_panel)
+            self.initialize_from_trajectory('X', x_init_panel)
 
     def initialize_parameters(self, params):
         for k, v in params.items():
@@ -1021,9 +1030,9 @@ class PyomoSimulator(Simulator):
                 _print('Unsupported data type for initialization...')
                 return None
         # This is not needed
-        # else:
-        #     print(f'Update of {variable_name} failed completely')
-        #     return None
+        else:
+            print(f'Update of {variable_name} failed completely')
+            return None
             
         # columns = list(trajectories.columns)
         # print(columns)
@@ -1150,14 +1159,14 @@ class PyomoSimulator(Simulator):
         for p_var_data in P_var.values():
             if not p_var_data.fixed:
                 raise RuntimeError(
-                    'For simulation fix all parameters. Parameter {} is unfixed'.format(p_var_data.cname()))
+                    'For simulation fix all parameters. Parameter {} is unfixed'.format(p_var_data.getname()))
 
         # deactivates objective functions for simulation
         if self.model.nobjectives():
             objectives_map = self.model.component_map(ctype=Objective, active=True)
             active_objectives_names = []
             for obj in objectives_map.values():
-                name = obj.cname()
+                name = obj.getname()
                 active_objectives_names.append(name)
                 str_warning = 'Deactivating objective {} for simulation'.format(name)
                 warnings.warn(str_warning)
@@ -1224,16 +1233,16 @@ class PyomoSimulator(Simulator):
                                      index=self._allmeas_times)
 
         # addition for inputs estimation with concentration data CS:
-        if self._concentration_given == True and self._absorption_given == False:
-            c_noise_results = []
-            for i, t in enumerate(self._allmeas_times):
-                # if i in self._meas_times:
-                for j, k in enumerate(self._mixture_components):
-                    c_noise_results.append(C_var[t, k].value)
-            c_noise_array = np.array(c_noise_results).reshape((self._n_allmeas_times, self._n_components))
-            results.C = pd.DataFrame(data=c_noise_array,
-                                     columns=self._mixture_components,
-                                     index=self._allmeas_times)
+        # if self._concentration_given == True and self._absorption_given == False:
+        #     c_noise_results = []
+        #     for i, t in enumerate(self._allmeas_times):
+        #         # if i in self._meas_times:
+        #         for j, k in enumerate(self._mixture_components):
+        #             c_noise_results.append(C_var[t, k].value)
+        #     c_noise_array = np.array(c_noise_results).reshape((self._n_allmeas_times, self._n_components))
+        #     results.C = pd.DataFrame(data=c_noise_array,
+        #                              columns=self._mixture_components,
+        #                              index=self._allmeas_times)
 
         if self._huplc_given == True:
             results.load_from_pyomo_model(self.model,
