@@ -1,9 +1,5 @@
 """
-This is a wrapper for kipet so that users can more easily access the code
-without requiring a plethora of imports
-
-Should block be the standard? This could check the number of models in the set
-and perform the calculations as singles or MEE
+Primary means of using KIPET is through the KipetModel class
 
 @author: kevin 2020
 """
@@ -15,29 +11,23 @@ import pathlib
 import pandas as pd
 
 # Kipet library imports
-from kipet.library.top_level.reaction_model import ReactionModel, _set_directory
-
+from kipet.library.common.pre_process_tools import decrease_wavelengths
 import kipet.library.core_methods.data_tools as data_tools
 from kipet.library.core_methods.MEE_3 import MultipleExperimentsEstimator
-from kipet.library.common.pre_process_tools import decrease_wavelengths
-from kipet.library.top_level.settings import Settings, USER_DEFINED_SETTINGS
-<<<<<<< HEAD
-
 from kipet.library.nsd_funs.NSD_KIPET import NSD
-=======
-#from kipet.library.top_level.clean import remove_file
->>>>>>> 3e224ccb5560a5256b9eecc6baf2d94018392872
-
-DEFAULT_DIR = 'data_sets'
+from kipet.library.top_level.reaction_model import (
+    ReactionModel,
+    _set_directory,
+    )
+from kipet.library.top_level.settings import (
+    Settings, 
+    USER_DEFINED_SETTINGS,
+    )
 
 class KipetModel():
     
-    """This will hold a dict of ReactionModel instances
+    """Primary KIPET object that holds ReactionModel instances"""
     
-    It is not necessary unless many different methods are needed for the 
-    underlying KipetModel instances
-    
-    """
     def __init__(self):
         
         self.models = {}
@@ -77,15 +67,14 @@ class KipetModel():
         return None
     
     def add_model(self, model):
-        
-        if isinstance(model, ReactionModel):
-            print(type(model))
-            self.models[model.name] = model
-        else:
-            print(type(model))
-            raise ValueError('KipetModel can only add ReactionModel instances.')
+        """Redundant"""
+        self.add_reaction(model)  
+    #     if isinstance(model, ReactionModel):
+    #         self.models[model.name] = model
+    #     else:
+    #         raise ValueError('KipetModel can only add ReactionModel instances.')
             
-        return None
+    #     return None
     
     def remove_model(self, model):
         
@@ -214,6 +203,41 @@ class KipetModel():
             results_obj.file_dir = self.settings.general.charts_directory
         return results
     
+    def mee_nsd(self, strategy='ipopt'):
+        """Performs the NSD on the multiple datasets
+        
+        Args:
+            strategy (str): Method used to control the outer problem
+                ipopt, trust-region, newton-step
+                
+        Returns:
+            results
+        
+        """        
+        kwargs = {'kipet': True,
+                  'objective_multiplier': 1
+                  }
+        
+        if self.global_parameters is not None:
+            global_parameters = self.global_parameters
+        else:
+            global_parameters = self.all_params
+        
+        self.nsd = NSD(self.models,
+                       strategy=strategy,
+                       global_parameters=global_parameters, 
+                       kwargs=kwargs)
+        
+        print(self.nsd.d_init)
+        
+        results = self.nsd.run_opt()
+        
+        self.results = results
+        for key, results_obj in self.results.items():
+            results_obj.file_dir = self.settings.general.charts_directory
+            
+        return results
+    
     def write_data_file(self, filename, data, directory=None, filetype='csv'):
         """Method to write data to a file using KipetModel
         
@@ -262,7 +286,20 @@ class KipetModel():
             _filename = pathlib.Path(directory).joinpath(filename)
         
         read_data = data_tools.read_file(_filename)
+        
         return read_data
+    
+    def plot(self, *args, **kwargs):
+        """Plots the modeled concentration profiles"""
+        
+        for reaction, result in self.results.items():
+            description={'title': f'Experiment: {reaction}',
+                                  'xaxis': 'Time [s]',
+                                  'yaxis': 'Concentration [mol/L]'}
+        
+            result.plot('Z', description=description)
+            
+        return None
     
     @staticmethod
     def add_noise_to_data(data, noise):
@@ -281,36 +318,39 @@ class KipetModel():
         set_of_all_model_params = set()
         for name, model in self.models.items():
             set_of_all_model_params = set_of_all_model_params.union(model.parameters.names)
+            
         return set_of_all_model_params
     
-    @property
-    def global_params(self):
+    # @property
+    # def global_params(self):
         
-        parameter_counter = collections.Counter()
-        global_params = set()
-        for name, model in self.models.items():
-            for param in model.parameters.names:
-                parameter_counter[param] += 1
+    #     parameter_counter = collections.Counter()
+    #     global_params = set()
+    #     for name, model in self.models.items():
+    #         for param in model.parameters.names:
+    #             parameter_counter[param] += 1
         
-        for param, num in parameter_counter.items():
-            if num > 1:
-                global_params.add(param)
+    #     for param, num in parameter_counter.items():
+    #         if num > 1:
+    #             global_params.add(param)
             
-        return global_params
+    #     return global_params
     
-    @property
-    def all_wavelengths(self):
-        set_of_all_wavelengths = set()
-        for name, model in self.models.items():
-            set_of_all_wavelengths = set_of_all_wavelengths.union(list(model.model.meas_lambdas))
-        return set_of_all_wavelengths
+    # @property
+    # def all_wavelengths(self):
+    #     set_of_all_wavelengths = set()
+    #     for name, model in self.models.items():
+    #         set_of_all_wavelengths = set_of_all_wavelengths.union(list(model.model.meas_lambdas))
+            
+    #     return set_of_all_wavelengths
     
-    @property
-    def all_species(self):
-        set_of_all_species = set()
-        for name, model in self.models.items():
-            set_of_all_species = set_of_all_species.union(model.components.names)
-        return set_of_all_species
+    # @property
+    # def all_species(self):
+    #     set_of_all_species = set()
+    #     for name, model in self.models.items():
+    #         set_of_all_species = set_of_all_species.union(model.components.names)
+            
+    #     return set_of_all_species
     
     @property
     def model_list(self):
@@ -322,6 +362,7 @@ class KipetModel():
         for name, kipet_model in self.models.items():
             for dataset_name, dataset in kipet_model.datasets.datasets.items():
                 data_types.add(dataset.category)
+                
         return data_types
     
     @property
@@ -334,56 +375,8 @@ class KipetModel():
                 df_param.loc[param, reaction] = model.results.P[param]
             
         return df_param
-                        
-    def plot(self, *args, **kwargs):
-        for reaction, result in self.results.items():
-            description={'title': f'Experiment: {reaction}',
-                                  'xaxis': 'Time [s]',
-                                  'yaxis': 'Concentration [mol/L]'}
-        
-            result.plot('Z', description=description)
            
-    def test_version(self):
-        print('yes, this is new')
-        return None
-    
     @property
     def get_p_models(self):
         
         return [model.p_model for model in self.models.values()]
-    
-    def mee_nsd(self, strategy='ipopt'):
-        """Performs the NSD on the multiple datasets
-        
-        Args:
-            strategy (str): Method used to control the outer problem
-                ipopt, trust-region, newton-step
-                
-        Returns:
-            results
-        
-        """        
-        kwargs = {'kipet': True,
-                  'objective_multiplier': 1
-                  }
-        
-        if self.global_parameters is not None:
-            global_parameters = self.global_parameters
-        else:
-            global_parameters = self.all_params
-        
-        self.nsd = NSD(self.models,
-                       strategy=strategy,
-                       global_parameters=global_parameters, 
-                       kwargs=kwargs)
-        
-        print(self.nsd.d_init)
-        
-        results = self.nsd.run_opt()
-        
-        self.results = results
-        for key, results_obj in self.results.items():
-            results_obj.file_dir = self.settings.general.charts_directory
-        return results
-
-
