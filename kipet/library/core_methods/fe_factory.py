@@ -1,7 +1,9 @@
+# Standard library imports
 import math
 from os import getcwd, remove
 import sys
 
+# Third party imports
 import numpy as np
 import pandas as pd
 
@@ -15,107 +17,124 @@ from pyomo.opt import (
     TerminationCondition,
     )
 
+# KIPET library imports
 from kipet.library.common.VisitorClasses import ReplacementVisitor
+from kipet.library.top_level.variable_names import VariableNames
 
+# Pyomo version check
 try:
     from pyomo.core.base.set import SetProduct
 except:
-    print('SetProduct not found')
+    pass
+    #print('SetProduct not found')
     
 try:
     from pyomo.core.base.sets import _SetProduct
 except:
-    print('_SetProduct not found')    
+    pass
+    #print('_SetProduct not found')    
 
-
-__author__ = 'David M Thierry'  #: April 2018
+__author__ = 'David M Thierry, Kevin McBride'  #: April 2018 - January 2021
 
 class fe_initialize(object):
-    def __init__(self, tgt_mod, src_mod, init_con=None, param_name=None, param_values=None, inputs=None, inputs_sub=None,jump_times=None,jump_states=None):
-        # type: (ConcreteModel, ConcreteModel, str, list, dict, dict, dict) -> None
-        """fe_factory: fe_initialize class.
+    
+    """This class implements the finite per finite element initialization for 
+    a pyomo model initialization. A march-forward simulation will be run and 
+    the resulting data will be patched to the tgt_model.
+    
+    The current strategy is as follows:
+    1. Create a copy of the undiscretized model.
+    2. Change the corresponding time set bounds to (0,1).
+    3. Discretize and create the new model with the parameter h_i.
+    4. Deactivate initial conditions.
+    5. Check for params and inputs.
 
-                This class implements the finite per finite element initialization for a pyomo model initialization.
-                A march-forward simulation will be run and the resulting data will be patched to the tgt_model.
-                The current strategy is as follows:
-                Create a copy of the undiscretized model.
-                Change the corresponding time set bounds to (0,1).
-                Discretize and create the new model with the parameter h_i.
-                Deactivate initial conditions.
-                Check for params and inputs.
+    
+    Note: an input needs to be a variable(fixed) indexed over time. Otherwise 
+    it would be a parameter.
 
-                Note that an input needs to be a variable(fixed) indexed over time. Otherwise it would be a parameter.
-
-                The `the paran name` might be a list of strings or a single string
-                 corresponding to the parameters of the model.
-                The `param_values` dictionary needs to be declared with the following sintax:
-                `param_dict["P", "k0"] = 49.7796`
-                Where the first key corresponds to one of the parameter names, and the second to the corresponding
-                index (if any).
-                A similar structure is expected for the initial conditions and inputs.
-
-                The `inputs` and `input_sub` parameters are in place depending of whether there is a single index input
-                or a multiple index input.
-
-                Note that if the user does not provide correct information to fe_factory; an exception will be thrown
-                because of the n_var and m_eqn check for simulation.
-
-                Once the constructor is called, one can initialize the model with the following sintax:
-                `self.load_initial_conditions(init_cond=ics_dict)`
-
-                Finally, to run the initialization and automatic data patching to tgt model use:
-                `self.run()`
-
-                If a given finite element problem fails, we do will try once again with relaxed options. It is
-                recommended to go back and check the model for better understanding of the issue.
-
-                Finally, an explicit function of time on the right hand side is prohibited. Please put this information
-                into an input (fixed variable) instead.
-
-                Args:
-                    tgt_mod (ConcreteModel): The originall fully discretized model that we want to patch the information to.
-                    src_mod (ConcreteModel): The undiscretized reference model.
-                    init_con (str): The initial constraint name (corresponds to a Constraint object).
-                    param_name (list): The param name list. (Each element must correspond to a pyomo Var)
-                    param_values (dict): The corresponding values: `param_dict["param_name", "param_index"] = 49.7796`
-                    inputs (dict): The input dictionary. Use this dictonary for single index (time) inputs
-                    inputs_sub (dict): The multi-index dictionary. Use this dictionary for multi-index inputs.
-                """
-        def identify_member_sets(index): #update for pyomo 5.6.8 KH.L
+    """
+    def __init__(self,
+                 tgt_mod,
+                 src_mod,
+                 init_con=None,
+                 param_name=None,
+                 param_values=None,
+                 inputs=None,
+                 inputs_sub=None,
+                 jump_times=None,
+                 jump_states=None
+                 ):
+        """
+        The `the paran name` might be a list of strings or a single string
+         corresponding to the parameters of the model.
+        The `param_values` dictionary needs to be declared with the following 
+        syntax: `param_dict["P", "k0"] = 49.7796`
         
-            queue = [index]
-            ans = []
-            n = 0
-            while queue:
-                n+=1
-                s = queue.pop(0)
-                print(type(s))
-                print(SetProduct)
-                if not isinstance(s, SetProduct) and not isinstance(s, _SetProduct):
-                    ans.append(s)
-                else:
-                    queue.extend(s.set_tuple) 
-            if n == 1:
-                ans = None
-            return ans
+        Where the first key corresponds to one of the parameter names, and the
+        second to the corresponding index (if any).
+        
+        A similar structure is expected for the initial conditions and inputs.
 
+        The `inputs` and `input_sub` parameters are in place depending of 
+        whether there is a single index input or a multiple index input.
 
+        Note that if the user does not provide correct information to 
+        fe_factory; an exception will be thrown because of the n_var and m_eqn
+        check for simulation.
 
+        Once the constructor is called, one can initialize the model with the 
+        following sintax: `self.load_initial_conditions(init_cond=ics_dict)`
+
+        Finally, to run the initialization and automatic data patching to tgt
+        model use: `self.run()`
+
+        If a given finite element problem fails, we do will try once again with
+        relaxed options. It is recommended to go back and check the model for 
+        better understanding of the issue.
+
+        Finally, an explicit function of time on the right hand side is 
+        prohibited. Please put this information into an input (fixed variable)
+        instead.
+
+        Args:
+            tgt_mod (ConcreteModel): The originall fully discretized model 
+                that we want to patch the information to.
+            
+            src_mod (ConcreteModel): The undiscretized reference model.
+            
+            init_con (str): The initial constraint name (corresponds to a 
+                Constraint object).
+            
+            param_name (list): The param name list. (Each element must 
+                correspond to a pyomo Var)
+            
+            param_values (dict): The corresponding values: 
+                `param_dict["param_name", "param_index"] = 49.7796`
+                
+            inputs (dict): The input dictionary. Use this dictonary for single
+                index (time) inputs
+            inputs_sub (dict): The multi-index dictionary. Use this dictionary
+                for multi-index inputs.
+        
+        """
+        # This is a huge __init__ ==> offload to methods
+        
         self.ip = SolverFactory('ipopt')
         self.ip.options['halt_on_ampl_error'] = 'yes'
         self.ip.options['print_user_options'] = 'yes'
         self.tgt = tgt_mod
 
-        self.mod = src_mod.clone()  #: Deepcopy of the reference model
+        self.mod = src_mod.clone()
 
-        zeit = None
+        time_index = None
         for i in self.mod.component_objects(ContinuousSet):
-            zeit = i
+            time_index = i
             break
-        if zeit is None:
+        if time_index is None:
             raise Exception('no continuous_set')
 
-        self.time_set = zeit.name
+        self.time_set = time_index.name
 
         tgt_cts = getattr(self.tgt, self.time_set)
         self.ncp = tgt_cts.get_discretization_info()['ncp']
@@ -124,21 +143,22 @@ class fe_initialize(object):
         self.fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
         self.nfe = len(self.fe_list)  #: Create a list with the step-size
 
-        #: Re-construct the model with [0,1] time domain
-        zeit = getattr(self.mod, self.time_set)
+        print(f'NFE: {self.nfe}, NCP: {self.ncp}')
 
-        zeit._bounds = (0, 1)
-        zeit.clear()
-        zeit.construct()
-        for i in self.mod.component_objects(Var):
-            i.clear()
-            i.reconstruct()
-        for i in self.mod.component_objects(Var):
-            i.clear()
-            i.reconstruct()
-        for i in self.mod.component_objects(Constraint):
-            i.clear()
-            i.construct()
+        #: Re-construct the model with [0,1] time domain
+        times = getattr(self.mod, self.time_set)
+
+        times._bounds = (0, 1)
+        times.clear()
+        times.construct()
+        
+        for var in self.mod.component_objects(Var):
+            var.clear()
+            var.reconstruct()
+       
+        for con in self.mod.component_objects(Constraint):
+            con.clear()
+            con.construct()
 
         # self.mod.display(filename="selfmoddisc0.txt")
         #: Discretize
@@ -148,15 +168,16 @@ class fe_initialize(object):
         #: Find out the differential variables
         self.dvs_names = []
         self.dvar_names = []
-        for i in self.mod.component_objects(Constraint):
-            name = i.name
+       
+        for con in self.mod.component_objects(Constraint):
+            name = con.name
             namel = name.split('_', 1)
             if len(namel) > 1:
                 if namel[1] == "disc_eq":
                     realname = getattr(self.mod, namel[0])
                     self.dvar_names.append(namel[0])
                     self.dvs_names.append(realname.get_state_var().name)
-        self.mod.h_i = Param(zeit, mutable=True, default=1.0)  #: Length of finite element
+        self.mod.h_i = Param(times, mutable=True, default=1.0)  #: Length of finite element
 
         #: Modify the collocation equations to introduce h_i (the length of finite element)
         for i in self.dvar_names:
@@ -187,7 +208,7 @@ class fe_initialize(object):
         self.remaining_set = {}
         for i in self.dvs_names:
             dv = getattr(self.mod, i)
-            if dv.index_set().name == zeit.name:  #: Just time set
+            if dv.index_set().name == times.name:  #: Just time set
                 #print(i, 'here')
                 self.remaining_set[i] = None
                 continue
@@ -211,18 +232,18 @@ class fe_initialize(object):
         for av in self.mod.component_objects(Var):
             if av.name in self.dvs_names:
                 continue
-            if av.index_set().name == zeit.name:  #: Just time set
+            if av.index_set().name == times.name:  #: Just time set
                 self.remaining_set_alg[av.name] = None
                 continue
             #set_i = av._implicit_subsets 
             #set_i = av._index._implicit_subsets #Update for pyomo 5.6.8 KH.L
             set_i = identify_member_sets(av.index_set())
-            if set_i is None or not zeit in set_i:
+            if set_i is None or not times in set_i:
                 self.weird_vars.append(av.name)  #: Not indexed by time!
                 continue  #: if this happens we might be in trouble
             remaining_set = set_i[1]  #: Index by time and others
             for s in set_i[2:]:
-                if s.name == zeit.name:
+                if s.name == times.name:
                     self.remaining_set_alg[av.name] = None
                     continue
                 else:
@@ -297,17 +318,17 @@ class fe_initialize(object):
             for i in self.inputs:
                 p = getattr(self.mod, i)
                 p.fix()
-                if p.index_set().name == zeit.name:  #: Only time-set
+                if p.index_set().name == times.name:  #: Only time-set
                     self.input_remaining_set[i] = None
                     continue
                 #set_i = p._implicit_subsets
                 #set_i = p._index._implicit_subsets #Update for pyomo 5.6.8 KH.L
                 set_i = identify_member_sets(p.index_set())
-                if not zeit in set_i:
+                if not times in set_i:
                     raise RuntimeError("{} is not by index by time, this can't be an input".format(i))
                 remaining_set = set_i[1]
                 for s in set_i[2:]:
-                    if s.name == zeit.name:  #: would this ever happen?
+                    if s.name == times.name:  #: would this ever happen?
                         continue
                     else:
                         remaining_set *= s
@@ -319,7 +340,10 @@ class fe_initialize(object):
         self.inputs_sub = None
         # inputs_sub['some_var'] = ['index0', 'index1', ('index2a', 'index2b')]
         self.inputs_sub = inputs_sub
-        if not self.inputs_sub is None:
+        
+        print(f'FES self.inputs_sub: {self.inputs_sub}')
+        
+        if self.inputs_sub is not None:
             if not isinstance(self.inputs_sub, dict):
                 raise TypeError("inputs_sub must be a dictionary")
             for key in self.inputs_sub.keys():
@@ -330,19 +354,19 @@ class fe_initialize(object):
                 if identify_member_sets(p.index_set()) is None: #Update for pyomo 5.6.8 KH.L
                     raise RuntimeError("This variable is does not have multiple indices"
                                        "Pass {} as part of the inputs keyarg instead.".format(key))
-                elif p.index_set().name == zeit.name:
+                elif p.index_set().name == times.name:
                     raise RuntimeError("This variable is indexed over time"
                                        "Pass {} as part of the inputs keyarg instead.".format(key))
                 else:
-                    #if not zeit in p._implicit_subsets:
-                    if not zeit in identify_member_sets(p.index_set()): #Update for pyomo 5.6.8 KH.L
+                    #if not times in p._implicit_subsets:
+                    if not times in identify_member_sets(p.index_set()): #Update for pyomo 5.6.8 KH.L
                         raise RuntimeError("{} is not indexed over time; it can not be an input".format(key))
                 for k in self.inputs_sub[key]:
                     if isinstance(k, str) or isinstance(k, int) or isinstance(k, tuple):
                         k = (k,) if not isinstance(k, tuple) else k
                     else:
                         raise RuntimeError("{} is not a valid index".format(k))
-                    for t in zeit:
+                    for t in times:
                         p[(t,) + k].fix()
 
         #: Check nvars and mequations
@@ -351,6 +375,8 @@ class fe_initialize(object):
         if n != m:
             raise Exception("Inconsistent problem; n={}, m={}".format(n, m))
         self.jump = False
+
+        print('INIT of FES finished')
 
     def load_initial_conditions(self, init_cond=None):
         if not isinstance(init_cond, dict):
@@ -390,58 +416,39 @@ class fe_initialize(object):
         Args:
             fe (int): The correspoding finite element.
         """
-        print("fe {}".format(fe))
+        print(f'{fe + 1} / {self.nfe}')
         self.adjust_h(fe)
         if self.inputs or self.inputs_sub:
             self.load_input(fe)
-        # self.mod.X.display()
-
-        # for i in self.mod.X.itervalues():
-        #     idx = i.index()
-        #     if idx[1] in ['Msa']:
-        #         i.setlb(-0.01)
-        #     else:
-        #         i.setlb(0)
-        #for i in self.mod.Z.itervalues():
-            #i.setlb(0)
+        
         self.ip.options["print_level"] = 1  #: change this on demand
         # self.ip.options["start_with_resto"] = 'no'
         self.ip.options['bound_push'] = 1e-02
         sol = self.ip.solve(self.mod, tee=True, symbolic_solver_labels=True)
 
+        # Try to redo it if it fails
         if sol.solver.termination_condition != TerminationCondition.optimal:
             self.ip.options["OF_start_with_resto"] = 'yes'
-            # self.ip.options["linear_solver"] = "ma57"
-            # for i in self.mod.component_objects(Var):
-            #     i.pprint()
+           
             sol = self.ip.solve(self.mod, tee=True, symbolic_solver_labels=True)
             if sol.solver.termination_condition != TerminationCondition.optimal:
+                
                 self.ip.options["OF_start_with_resto"] = 'no'
                 self.ip.options["bound_push"] = 1E-02
                 self.ip.options["OF_bound_relax_factor"] = 1E-05
-                # self.ip.options[""]
-                # for i in self.mod.component_data_objects(Var):
-                #     i.setlb(None)
-                # for i in self.mod.Z.itervalues():
-                #     i.setlb(None)
-                # for i in self.mod.X.itervalues():
-                #     idx = i.index()
-                #     if idx[1] in ['Msa']:
-                #         i.setlb(-0.05)
-                #     else:
-                #         i.setlb(None)
                 sol = self.ip.solve(self.mod, tee=True, symbolic_solver_labels=True)
                 self.ip.options["OF_bound_relax_factor"] = 1E-08
+                
+                # It if fails twice, raise an error
                 if sol.solver.termination_condition != TerminationCondition.optimal:
                     raise Exception("The current iteration was unsuccessful. Iteration :{}".format(fe))
 
         else:
-            print("fe {} - status: optimal".format(fe))
+            print(f'{fe + 1} status: optimal')
         self.patch(fe)
         self.cycle_ics(fe)
 
-    #Inclusion of discrete jumps: (CS)
-    #def load_discrete_jump(self, var_dic, jump_times, feed_times):
+    
     def load_discrete_jump(self, dosing_points):
         """Method is used to define and load the places where discrete jumps are located, e.g.
         dosing points or external inputs.
@@ -463,12 +470,6 @@ class fe_initialize(object):
         https://github.com/dthierry/cappresse/blob/pyomodae-david/nmpc_mhe/aux/utils.py
         fe_cp function!
         """
-
-        #For checking whether jump happens in right element:
-        #print('*'* 20)
-        #print("Current Finite element [cycle_ics]{}".format(curr_fe)) #comment out these lines?
-        #print('*' * 20)
-
         ts = getattr(self.mod, self.time_set)
         t_last = t_ij(ts, 0, self.ncp)
 
@@ -771,3 +772,21 @@ def fe_cp(time_set, feedtime):
             break
         j += 1
     return fe, cp
+
+def identify_member_sets(index):
+        
+    queue = [index]
+    ans = []
+    n = 0
+    while queue:
+        n+=1
+        s = queue.pop(0)
+        #print(type(s))
+        #print(SetProduct)
+        if not isinstance(s, SetProduct) and not isinstance(s, _SetProduct):
+            ans.append(s)
+        else:
+            queue.extend(s.set_tuple) 
+    if n == 1:
+        ans = None
+    return ans
