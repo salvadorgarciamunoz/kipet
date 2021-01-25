@@ -177,10 +177,20 @@ class ReactionModel(WavelengthSelectionMixins):
     def call_fe_factory(self):
         """Somewhat of a wrapper for this simulator method, but better"""
 
-        if self.dosing_var is not None:
-            self.simulator.call_fe_factory({'Y': [self.dosing_var]}, self.dosing_points)    
-        else:
-            self.simulator.call_fe_factory(None, None) #self.dosing_points)
+        # setattr(self.model, 'test_var', Var(self.model.alltime,
+        #                                       [0],
+        #                                       initialize=1.0))
+        self.simulator.call_fe_factory({'Y': [self.dosing_var]}, self.dosing_points)
+
+        # if self.dosing_var is not None:
+        #     input_subs = {'Y': [self.dosing_var]}
+        #     print(input_subs)
+            
+        #     self.simulator.call_fe_factory(input_subs, self.dosing_points)
+        #     # self.simulator.call_fe_factory(None, self.dosing_points)
+        # else:
+        #     input_subs = {'Y': None}
+        #     self.simulator.call_fe_factory(input_subs, None) #self.dosing_points)
         
         return None
     
@@ -719,10 +729,10 @@ class ReactionModel(WavelengthSelectionMixins):
         
         return None
     
-    def create_estimator(self, estimator=None, **kwargs):
+    def create_estimator(self, estimator=None):
         """This function handles creating the Estimator object"""
         
-        init_from_sim = kwargs.pop('init_from_sim', False)
+        #init_from_sim = kwargs.pop('init_from_sim', False)
         
         if estimator == 'v_estimator':
             Estimator = VarianceEstimator
@@ -747,7 +757,7 @@ class ReactionModel(WavelengthSelectionMixins):
         self._from_trajectories(estimator)
         
         _print('Starting sim init')
-        if init_from_sim and estimator == 'p_estimator':
+        if self.settings.parameter_estimator.sim_init and estimator == 'p_estimator':
             self.iniitalize_from_simulation(estimator=estimator)
         
         return None
@@ -757,27 +767,28 @@ class ReactionModel(WavelengthSelectionMixins):
     #     variances = self.v_estimator.solve_sigma_given_delta(**self.settings.variance_estimator)
     #     return variances
         
-    def run_ve_opt(self, *args, **kwargs):
+    def run_ve_opt(self):
         """Wrapper for run_opt method in VarianceEstimator"""
         
-        kwargs.update(self.settings.variance_estimator)
-        
-        if kwargs['method'] == 'direct_sigmas':
-            worst_case_device_var = self.v_estimator.solve_max_device_variance(**kwargs)
-            kwargs['device_range'] = (self.settings.variance_estimator.best_accuracy, worst_case_device_var)
+        if self.settings.variance_estimator.method == 'direct_sigmas':
+            worst_case_device_var = self.v_estimator.solve_max_device_variance(**self.settings.variance_estimator)
+            self.settings.variance_estimator.device_range = (self.settings.variance_estimator.best_accuracy, worst_case_device_var)
             
-        self._run_opt('v_estimator', *args, **kwargs)
+        self._run_opt('v_estimator', **self.settings.variance_estimator)
         
         return None
     
-    def run_pe_opt(self, *args, **kwargs):
+    def run_pe_opt(self):
         """Wrapper for run_opt method in ParameterEstimator"""
         
-        self._run_opt('p_estimator', *args, **kwargs)
+        self._run_opt('p_estimator', **self.settings.parameter_estimator)
+        
         return None
     
     def _update_related_settings(self):
+        """Checks if conflicting options are present and fixes them accordingly
         
+        """
         # Start with what is known
         if self.settings.parameter_estimator['covariance']:
             if self.settings.parameter_estimator['solver'] not in ['k_aug', 'ipopt_sens']:
@@ -798,8 +809,18 @@ class ReactionModel(WavelengthSelectionMixins):
         if self.settings.variance_estimator.max_device_variance:
             self.settings.parameter_estimator.model_variance = False
     
+        return None
+    
     def fix_parameter(self, param_to_fix):
+        """Fixes parameter passed in as a list
         
+        Args:
+            param_to_fix (list): List of parameter names to fix
+        
+        Returns:
+            None
+        
+        """
         if not hasattr(self, 'fixed_params'):
             self.fixed_params = []
         
@@ -807,20 +828,22 @@ class ReactionModel(WavelengthSelectionMixins):
             param_to_fix = [param_to_fix]
             
         self.fixed_params += [p for p in param_to_fix]
+        
+        return None
     
-    def run_opt(self, init_from_sim=False):
+    def run_opt(self):
         """Run ParameterEstimator but checking for variances - this should
         remove the VarianceEstimator being required to be implemented by the user
         
         """
-        init_from_sim = self.settings.parameter_estimator.sim_init
-        
         _print('Starting the RunOpt method')
         
+        # Make the model if not present
         if self.model is None:    
             self.create_pyomo_model()  
             _print('Generating model')
         
+        # Check if all needed data for optimization available
         if not self.allow_optimization:
             raise ValueError('The model is incomplete for parameter optimization')
             
@@ -832,26 +855,30 @@ class ReactionModel(WavelengthSelectionMixins):
         has_all_variances = self.components.has_all_variances
         variances_with_delta = None
         
-        settings_dict = {**self.settings.collocation, **{'init_from_sim': init_from_sim}}
-            
+        # Check for bad options
         if self.settings.variance_estimator.method == 'direct_sigmas':
             raise ValueError('This variance method is not intended for use in the manner: see Ex_13_direct_sigma_variances.py')
         
+        # If not all component variances are provided and spectral data is
+        # present, the VE needs to be run
         if not has_all_variances and has_spectral_data:
             """If the data is spectral and not all variances are provided, VE needs to be run"""
             
-            self.create_estimator(estimator='v_estimator', **settings_dict)
-            settings_run_ve_opt = self.settings.variance_estimator
+            # Create the VE
+            self.create_estimator(estimator='v_estimator')
             
+            # Optional max device variance
             if self.settings.variance_estimator.max_device_variance:
-                max_device_variance = self.v_estimator.solve_max_device_variance(**settings_run_ve_opt)
+                max_device_variance = self.v_estimator.solve_max_device_variance(**self.settings.variance_estimator)
             
             # elif self.settings.variance_estimator.use_delta:
             #     variances_with_delta = self.solve_variance_given_delta()
 
             else:
-                self.run_ve_opt(**settings_run_ve_opt)
+                self.run_ve_opt()
                 
+        # If not a spectral problem and not all variances are provided, they
+        # set to 1
         elif not has_all_variances and not has_spectral_data:
             for comp in self.components:
                 try:
@@ -862,44 +889,51 @@ class ReactionModel(WavelengthSelectionMixins):
                 
         # Create ParameterEstimator
         _print('Making PEstimator')
-        self.create_estimator(estimator='p_estimator', **settings_dict)
+        self.create_estimator(estimator='p_estimator')
         
-        # if hasattr(self.p_model, 'Y'):    
-        #     for k, v in self.p_model.Y.items():
-        #         print(k)
-        #         v.setlb(0)
-        #         v.setub(1)
-        
-        #if self.settings.parameter_estimator.G_contribution is not None:
-            #self._unwanted_G_initialization(self.p_model)
         variances = self.components.variances
         self.variances = variances
         
-        # If variance calculated using VarianceEstimator, initialize PE isntance
+        # The VE results can be used to initialize the PE
         if 'v_estimator' in self.results_dict:
-            if self.settings.general['initialize_pe']:
+            if self.settings.general.initialize_pe:
+                # Update PE using VE results
                 self.initialize_from_variance_trajectory()
-            if self.settings.general['scale_pe']:
+                # No initialization from simulation is needed
+                self.settings.parameter_estimator.sim_init = False
+ 
+            if self.settings.general.scale_pe:
+                # Scale variables from VE results
                 self.scale_variables_from_variance_trajectory()
+            
+            # Extract vairances
             self.variances = self.results_dict['v_estimator'].sigma_sq
         
+        # If using max device variance, the variances are calculated differently
         elif self.settings.variance_estimator.max_device_variance:
             self.variances = max_device_variance
         
+        # Under construction
+        """ TODO
         # elif variances_with_delta is not None: 
         #     variances = variances_with_delta
-            
-        if self.settings.general['scale_variances']:
-            self.variances = self._scale_variances(variances)
+        """
+        # Optional variance scaling
+        if self.settings.general.scale_variances:
+            self.variances = self._scale_variances(self.variances)
         
-        settings_run_pe_opt = self.settings.parameter_estimator
-        settings_run_pe_opt['solver_opts'] = self.settings.solver
-        settings_run_pe_opt['variances'] = self.variances
+        # Update PE solver settings and variances
+        self.settings.parameter_estimator.solver_opts = self.settings.solver
+        self.settings.parameter_estimator.variances = self.variances
         
-        self.run_pe_opt(**settings_run_pe_opt)
+        # Run the PE
+        self.run_pe_opt()
+        
+        # Save results in the results_dict
         self.results = self.results_dict['p_estimator']
         self.results.file_dir = self.settings.general.charts_directory
         
+        # Tells MEE that the individual model is already solved
         self.optimized = True
         
         return self.results
@@ -962,8 +996,13 @@ class ReactionModel(WavelengthSelectionMixins):
         method = getattr(estimator, f'{category}_from_trajectory')
         
         if variable is None:
-            for var in self.__var.time_dependent_variables:
-                method(var, self._get_source_data(source, var))   
+            vars_to_init = get_vars(estimator.model)
+        
+            _print(f'The vars_to_init: {vars_to_init}')
+            for var in vars_to_init:
+                if hasattr(source, var):    
+                    _print(f'Updating variable: {var}')
+                    method(var, self._get_source_data(source, var))   
         else:
             method(variable, self._get_source_data(source, variable))
         return None
