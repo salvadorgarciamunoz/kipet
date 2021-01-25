@@ -1,6 +1,7 @@
 # Standard library imports
-import time
+import itertools
 from pathlib import Path
+import time
 
 # Thirdparty library imports
 import datetime
@@ -14,9 +15,14 @@ from pyomo.core.base.PyomoModel import ConcreteModel
 from pyomo.environ import *
 
 # Kipet library imports
-from kipet.library.common.pyomo_model_tools import get_vars, get_vars_block, get_result_vars     
+from kipet.library.common.pyomo_model_tools import (
+    get_vars, 
+    get_vars_block, 
+    get_result_vars,
+    get_index_sets,
+    index_set_info,
+    )         
 from kipet.library.common.read_write_tools import df_from_pyomo_data
-
 """
 Constants used for plotting
 """
@@ -80,24 +86,52 @@ class ResultsObject(object):
         var_array = np.array(var)
         return np.linalg.norm(var_array,norm_type)
     
+    # @staticmethod
+    # def prepare_data_for_init(data):
+    #     """Convert results dict into df for initialization
+    #     This is used for data with dimensions larger than 2
+    #     """
+        
+    #     inner_set = list(set([t[0] for t in data.keys()]))
+    #     inner_set.sort()        
+    #     columns = {t[1:]: None for t in data.keys()}
+    #     columns = list(columns.keys())
+    #     df = pd.DataFrame(data=None, index=inner_set, columns=columns)
+        
+    #     for i in inner_set:
+    #         for j in columns:
+    #             df.loc[i, j] = data[(i, *j)]
+                
+    #     return df
+    
     @staticmethod
-    def prepare_data_for_init(data):
+    def prepare_data_for_init(model, var):
         """Convert results dict into df for initialization
         This is used for data with dimensions larger than 2
         """
+        #var = test_var
+        #model = r1.model
         
-        inner_set = list(set([t[0] for t in data.keys()]))
-        inner_set.sort()        
-        columns = {t[1:]: None for t in data.keys()}
-        columns = list(columns.keys())
-        df = pd.DataFrame(data=None, index=inner_set, columns=columns)
+        index_sets = get_index_sets(var)
+        index_dict = index_set_info(index_sets)
         
-        for i in inner_set:
+        time_set = index_sets[index_dict['cont_set'][0]].name
+        component_indecies = index_dict['other_set']
+        component_sets = [index_sets[i].name for i in component_indecies]
+
+        index = getattr(model, time_set).value_list
+        columns = list(itertools.product(*[getattr(model, comp_list).value_list for comp_list in component_sets]))
+        
+        df = pd.DataFrame(data=None, index=index, columns=columns)
+
+        for i in index:
             for j in columns:
-                df.loc[i, j] = data[(i, *j)]
+                jl = list(j)
+                jl.insert(index_dict['cont_set'][0], i)
+                df.loc[i,j] = var[tuple(jl)].value
                 
         return df
-    
+
     def load_from_pyomo_model(self, instance, to_load=None):
 
         variables_to_load = get_vars(instance)
@@ -119,10 +153,15 @@ class ResultsObject(object):
                                               index=[])
                 setattr(self, name, data_frame)        
             else:
-                #print(f'{name} has a dimension greater than 2, saved as a dict')
-                data_dict = {k: v.value for k, v in var.items()}
-                data_df = self.prepare_data_for_init(data_dict)
+
+                data_df = self.prepare_data_for_init(instance, var)
                 setattr(self, name, data_df)
+                
+                
+                # data_dict = {k: v.value for k, v in var.items()}
+                # data_df = self.prepare_data_for_init(data_dict)
+                # setattr(self, name, data_df)
+                
                 
     def _make_plots(self, pred, var, show_exp, extra_data, filename=None, show_plot=True, description=None):
         """Makes the actual plots and filters out the data that is missing from
