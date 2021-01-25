@@ -262,32 +262,11 @@ class ParameterEstimator(PEMixins, Optimizer):
     def _get_results(self):
         """Removed results unit from function"""
     
-        #scaled_parameter_var = 'K'
-    
         results = ResultsObject()
         
         results.objective = self.objective_value
         results.parameter_covariance = self.cov_mat
-
         results.load_from_pyomo_model(self.model)
-
-
-        # This is pretty automatic now, so their is no need for this to be specific
-        # if self._spectra_given:
-        #     results.load_from_pyomo_model(self.model)
-        #                                  # to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
-            # if hasattr(self, '_abs_components'):
-            #     results.load_from_pyomo_model(self.model,
-            #                                   to_load=['Cs'])
-            # if hasattr(self, 'huplc_absorbing'):
-            #     results.load_from_pyomo_model(self.model,
-            #                                   to_load=['Dhat_bar'])
-     
-        # elif self._concentration_given or self._custom_data_given:
-        #     results.load_from_pyomo_model(self.model)
-        # else:
-        #     raise RuntimeError(
-        #         'Must either provide concentration data or spectra in order to solve the parameter estimation problem')
 
         if self._spectra_given:
             self.compute_D_given_SC(results)
