@@ -8,6 +8,10 @@ from pyomo.environ import *
 
 from kipet.library.core_methods.ResultsObject import *
 from kipet.library.core_methods.Simulator import *
+from kipet.library.common.pyomo_model_tools import (
+    index_set_info,
+    get_index_sets,
+    )
 from kipet.library.common.VisitorClasses import ScalingVisitor
 from kipet.library.dev_tools.display import Print
 
@@ -19,47 +23,47 @@ DEBUG=__var.DEBUG
 
 _print = Print(verbose=DEBUG)
 
-time_sets = ['model.alltime',
-             '_allmeas_times',
-             '_meas_lambdas',
-             'model.huplctime']
+# time_sets = ['model.alltime',
+#               '_allmeas_times',
+#               '_meas_lambdas',
+#               'model.huplctime']
 
-comp_sets = ['_mixture_components',
-             '_complementary_states',
-             '_algebraics',
-             'model.smoothparameter_names',
-             '_hpulcabs_components']
+# comp_sets = ['_mixture_components',
+#               '_complementary_states',
+#               '_algebraics',
+#               'model.smoothparameter_names',
+#               '_hpulcabs_components']
 
-set_time = {
-            'Z' : time_sets[0],
-            'dZdt' : time_sets[0],
-            'C' : time_sets[1],
-            'Cm' : time_sets[1],
-            'Cs' : time_sets[1],
-            'S' : time_sets[2],
-            'X' : time_sets[0],
-            'U' : time_sets[1],
-            'dXdt' : time_sets[0],
-            'Y' : time_sets[0],
-            'dual' : time_sets[0],
-            'Ps' : time_sets[0],
-            'Chat' : time_sets[3],
-            }
+# set_time = {
+#             'Z' : time_sets[0],
+#             'dZdt' : time_sets[0],
+#             'C' : time_sets[1],
+#             'Cm' : time_sets[1],
+#             'Cs' : time_sets[1],
+#             'S' : time_sets[2],
+#             'X' : time_sets[0],
+#             'U' : time_sets[1],
+#             'dXdt' : time_sets[0],
+#             'Y' : time_sets[0],
+#             'dual' : time_sets[0],
+#             'Ps' : time_sets[0],
+#             'Chat' : time_sets[3],
+#             }
 
-set_comp = {
-            'Z' : comp_sets[0],
-            'dZdt' : comp_sets[0],
-            'C' : comp_sets[0],
-            'Cm' : comp_sets[0],
-            'Cs' : comp_sets[0],
-            'S' : comp_sets[0],
-            'X' : comp_sets[1],
-            'U' : comp_sets[1],
-            'dXdt' : comp_sets[1],
-            'Y' : comp_sets[2],
-            'Ps' : comp_sets[3],
-            'Chat' : comp_sets[4],
-            }
+# set_comp = {
+#             'Z' : comp_sets[0],
+#             'dZdt' : comp_sets[0],
+#             'C' : comp_sets[0],
+#             'Cm' : comp_sets[0],
+#             'Cs' : comp_sets[0],
+#             'S' : comp_sets[0],
+#             'X' : comp_sets[1],
+#             'U' : comp_sets[1],
+#             'dXdt' : comp_sets[1],
+#             'Y' : comp_sets[2],
+#             'Ps' : comp_sets[3],
+#             'Chat' : comp_sets[4],
+#             }
 
     
 class PyomoSimulator(Simulator):
@@ -130,39 +134,40 @@ class PyomoSimulator(Simulator):
                 discretizer.apply_to(self.model, wrt=self.model.alltime, **kwargs)
             else:
                 discretizer.apply_to(self.model, wrt=fixed_times, **kwargs)
+                
             self._alltimes = sorted(self.model.alltime)
             self._n_alltimes = len(self._alltimes)
 
             #added for optional smoothing parameter with reading values from file CS:
-            if self._smoothparam_given:
-                dfps = pd.DataFrame(index=self.model.alltime, columns=self.model.smoothparameter_names)
-                for t in self.model.alltime:
-                    if t not in self.model.allsmooth_times:  # for points that are the same in original meas times and feed times
-                        dfps.loc[t] = float(22.) #something that is not between 0 and 1
-                    else:
-                        ps_dict_help = dict()
-                        for p in self.model.smoothparameter_names:
-                            ps_dict_help[t, p] = value(self.model.smooth_param_data[t, p])
-                        dfps.loc[t] = [ps_dict_help[t, p] for p in self.model.smoothparameter_names]
-                dfallps = dfps
-                dfallps.sort_index(inplace=True)
-                dfallps.index = dfallps.index.to_series().apply(
-                    lambda x: np.round(x, 6))  # time from data rounded to 6 digits
+            # if self._smoothparam_given:
+            #     dfps = pd.DataFrame(index=self.model.alltime, columns=self.model.smoothparameter_names)
+            #     for t in self.model.alltime:
+            #         if t not in self.model.allsmooth_times:  # for points that are the same in original meas times and feed times
+            #             dfps.loc[t] = float(22.) #something that is not between 0 and 1
+            #         else:
+            #             ps_dict_help = dict()
+            #             for p in self.model.smoothparameter_names:
+            #                 ps_dict_help[t, p] = value(self.model.smooth_param_data[t, p])
+            #             dfps.loc[t] = [ps_dict_help[t, p] for p in self.model.smoothparameter_names]
+            #     dfallps = dfps
+            #     dfallps.sort_index(inplace=True)
+            #     dfallps.index = dfallps.index.to_series().apply(
+            #         lambda x: np.round(x, 6))  # time from data rounded to 6 digits
 
-                dfallpsall = pd.DataFrame(index=self.model.alltime, columns=self.model.smoothparameter_names)
-                dfsmoothdata = pd.DataFrame(index=sorted(self.model.smooth_param_datatimes), columns=self.model.smoothparameter_names)
+            #     dfallpsall = pd.DataFrame(index=self.model.alltime, columns=self.model.smoothparameter_names)
+            #     dfsmoothdata = pd.DataFrame(index=sorted(self.model.smooth_param_datatimes), columns=self.model.smoothparameter_names)
 
-                for t in self.model.smooth_param_datatimes:
-                    dfsmoothdata.loc[t] = [value(self.model.smooth_param_data[t, p]) for p in self.model.smoothparameter_names]
+            #     for t in self.model.smooth_param_datatimes:
+            #         dfsmoothdata.loc[t] = [value(self.model.smooth_param_data[t, p]) for p in self.model.smoothparameter_names]
 
-                for p in self.model.smoothparameter_names:
-                    values = interpolate_trajectory(self.model.alltime, dfsmoothdata[p])
-                    for i, ti in enumerate(self.model.alltime):
-                        if float(dfallps[p][ti]) > 1:
-                            valueinterp=values[i]
-                            dfallpsall[p][ti] = float(valueinterp)
-                        else:
-                            dfallpsall.loc[ti] = float(dfallps[p][ti])
+            #     for p in self.model.smoothparameter_names:
+            #         values = interpolate_trajectory(self.model.alltime, dfsmoothdata[p])
+            #         for i, ti in enumerate(self.model.alltime):
+            #             if float(dfallps[p][ti]) > 1:
+            #                 valueinterp=values[i]
+            #                 dfallpsall[p][ti] = float(valueinterp)
+            #             else:
+            #                 dfallpsall.loc[ti] = float(dfallps[p][ti])
 
             self._default_initialization()
             
@@ -174,7 +179,7 @@ class PyomoSimulator(Simulator):
             print('***WARNING: Model already discretized. Ignoring second discretization')
             
     def scale_model(self):
-        if hasattr(self.model, 'K'):
+        if hasattr(self.model, self.__var.model_parameter_scaled):
             print('Scaling the parameters')
             self.scale_parameters()
             
@@ -191,22 +196,29 @@ class PyomoSimulator(Simulator):
         for i in self.model.P:
             self.scale[id(self.model.P[i])] = self.model.K[i]
 
-        for i in self.model.Z:
-            self.scale[id(self.model.Z[i])] = 1
+        for var in self.__var.modeled_states:
+
+            for i in getattr(self.model, var):
+                self.scale[id(getattr(self.model, var)[i])] == 1
+
+        # for i in self.model.Z:
+        #     self.scale[id(self.model.Z[i])] = 1
             
-        for i in self.model.dZdt:
-            self.scale[id(self.model.dZdt[i])] = 1
+        # for i in self.model.dZdt:
+        #     self.scale[id(self.model.dZdt[i])] = 1
             
-        for i in self.model.X:
-            self.scale[id(self.model.X[i])] = 1
+        # for i in self.model.X:
+        #     self.scale[id(self.model.X[i])] = 1
     
-        for i in self.model.dXdt:
-            self.scale[id(self.model.dXdt[i])] = 1
+        # for i in self.model.dXdt:
+        #     self.scale[id(self.model.dXdt[i])] = 1
     
-        for k, v in self.model.odes.items(): 
+        for k, v in getattr(self.model, self.__var.ode_constraints).items():
+        # for k, v in self.model.odes.items(): 
             scaled_expr = self.scale_expression(v.body, self.scale)
-            self.model.odes[k] = scaled_expr == 0
-            
+            # self.model.odes[k] = scaled_expr == 0
+            getattr(self.model, self.__var.ode_constraints)[k] = scaled_expr == 0
+    
     def scale_expression(self, expr, scale):
         
         visitor = ScalingVisitor(scale)
@@ -214,7 +226,8 @@ class PyomoSimulator(Simulator):
 
     def fix_from_trajectory(self, variable_name, variable_index, trajectories, verbose=False):
 
-        if variable_name in ['X', 'dXdt', 'Z', 'dZdt']:
+        if variable_name in  self.__var.modeled_states:
+            
             raise NotImplementedError("Fixing state variables is not allowd. Only algebraics can be fixed")
 
         single_traj = trajectories[variable_index]
@@ -247,7 +260,7 @@ class PyomoSimulator(Simulator):
         """
         tol = 1e-4
         
-        if hasattr(self.model, 'Z'):
+        if hasattr(self.model, self.__var.concentration_model):
             z_init = []
             for t in self._alltimes:
                 for k in self._mixture_components:
@@ -261,7 +274,7 @@ class PyomoSimulator(Simulator):
                                         columns=self._mixture_components,
                                         index=self._alltimes)
             
-            self.initialize_from_trajectory('Z', z_init_panel)
+            self.initialize_from_trajectory(self.__var.concentration_model, z_init_panel)
 
         c_init = []
         if self._concentration_given:
@@ -285,11 +298,11 @@ class PyomoSimulator(Simulator):
                                         columns=self._mixture_components,
                                         index=self._allmeas_times)
 
-                if hasattr(self.model, 'Cm'):
-                    self.initialize_from_trajectory('Cm', c_init_panel)
+                if hasattr(self.model, self.__var.concentration_measured):
+                    self.initialize_from_trajectory(self.__var.concentration_measured, c_init_panel)
                     print("self._n_meas_times is true in _default_init in PyomoSim")
 
-        if hasattr(self.model, 'X'):
+        if hasattr(self.model, self.__var.state_model):
             x_init = []
             for t in self._alltimes:
                 for k in self._complementary_states:
@@ -303,83 +316,144 @@ class PyomoSimulator(Simulator):
                                         columns=self._complementary_states,
                                         index=self._alltimes)
 
-            self.initialize_from_trajectory('X', x_init_panel)
+            self.initialize_from_trajectory(self.__var.state_model, x_init_panel)
 
     def initialize_parameters(self, params):
         for k, v in params.items():
-            self.model.P[k].value = v
+            getattr(self.model, self.__var.model_parameter).value = v
 
-    # @staticmethod
-    # def prepare_data_for_init(data):
-    #     """Convert results dict into df for initialization"""
-        
-    #     inner_set = set([t[0] for t in data.keys()])        
-    #     columns = set([t[1:] for t in data.keys()]) 
-    #     df = pd.DataFrame(data=None, index=inner_set, columns=columns)
-        
-    #     for i in inner_set:
-    #         for j in columns:
-    #             df.loc[i, j] = data[(i, *j)]
+    # def initialize_from_trajectory(self, variable_name, trajectories):
+    #     """Initializes discretized points with values from trajectories.
+
+    #     Args:
+    #         variable_name (str): Name of the variable in pyomo model
+
+    #         trajectories (DataFrame or Series): Indexed in in the same way the pyomo
+    #         variable is indexed. If the variable is by two sets then the first set is
+    #         the indices of the data frame, the second set is the columns
+
+    #     Returns:
+    #         None
+
+    #     """
+    #     _print(f'Initialization of Var: {variable_name}')
+    #     if not self.model.alltime.get_discretization_info():
+    #         raise RuntimeError('apply discretization first before initializing')
+
+    #     # Check if the model has the variable (it should)
+    #     if hasattr(self.model, variable_name):
+            
+    #         # Get the var_obj
+    #         var = getattr(self.model, variable_name)
+    #         index_sets = get_index_sets(var)
+            
+    #         if index_sets is None and var.dim() > 1:
                 
-    #     return df
+    #             inner_set = set([t[0] for t in var.index_set()])
+    #             component_set = set([t[1] for t in var.index_set()])
+    #             index_dict = {}
+                
+    #         elif index_sets is not None and var.dim() > 2:
+    #             index_dict = index_set_info(index_sets)
+            
+    #             if isinstance(trajectories, pd.DataFrame):
+    #                 if variable_name not in self.__var.__dict__.values(): # and isinstance(trajectories, dict):
+    #                     _print(f'Update of {variable_name} (non KIPET standard)')
+    #                     inner_set = list(trajectories.index)
+    #                     component_set = list(trajectories.columns)
+    #                 else:
+    #                     _print(f'Update of KIPET Var {variable_name}')
+                        
+    #                     index_sets = get_index_sets(var)
+    #                     index_dict = index_set_info(index_sets)
+                        
+    #                     inner_set = getattr(self.model, index_sets[index_dict['cont_set'][0]].name)
+    #                     component_set = getattr(self.model, index_sets[index_dict['other_set'][0]].name)
+                    
+    #         else:
+    #             _print('Unsupported data type for initialization...')
+    #             return None
 
+    #     else:
+    #         print(f'Update of {variable_name} failed completely')
+    #         return None
+            
+ 
+
+    
+    def build_sets_new(self, variable_name, trajectories):
+        
+        var = getattr(self.model, variable_name)
+        index_sets = get_index_sets(var)
+        
+        if isinstance(trajectories, pd.DataFrame):
+            if variable_name not in self.__var.__dict__.values():
+                _print(f'Update of {variable_name} (non KIPET standard)')
+                inner_set = list(trajectories.index)
+                component_set = list(trajectories.columns)
+            else:
+                _print(f'Update of KIPET Var {variable_name}')
+                
+                if var.dim() > 1 and var.index_set().dim() == 0:
+                    inner_set = list(set([t[0] for t in var.index_set()]))
+                    component_set = list(set([t[1] for t in var.index_set()]))
+                    inner_set.sort()
+                else:
+                    index_sets = get_index_sets(var)
+                    index_dict = index_set_info(index_sets)
+                    
+                    inner_set = getattr(self.model, index_sets[index_dict['cont_set'][0]].name)
+                    component_set = getattr(self.model, index_sets[index_dict['other_set'][0]].name)
+                
+            return inner_set, component_set
+                
+        else:
+            _print('Unsupported data type for initialization...')
+            return None, None
+        
+    
+    # def build_sets(self, variable_name, trajectories):
+        
+    #     if isinstance(trajectories, pd.DataFrame):
+    #         if variable_name not in set_comp: # and isinstance(trajectories, dict):
+    #             _print(f'Update of {variable_name} (non KIPET standard)')
+    #             inner_set = list(trajectories.index)
+    #             component_set = list(trajectories.columns)
+    #         else:
+    #             _print(f'Update of KIPET Var {variable_name}')
+    #             inner_set = rgetattr(self, set_time[variable_name])
+    #             component_set = rgetattr(self, set_comp[variable_name])
+            
+    #         if variable_name == 'Cm':
+    #             print(inner_set)
+            
+    #         return inner_set, component_set
+            
+    #     else:
+    #         _print('Unsupported data type for initialization...')
+    #         return None, None
+        
     def initialize_from_trajectory(self, variable_name, trajectories):
         """Initializes discretized points with values from trajectories.
-
         Args:
             variable_name (str): Name of the variable in pyomo model
-
             trajectories (DataFrame or Series): Indexed in in the same way the pyomo
             variable is indexed. If the variable is by two sets then the first set is
             the indices of the data frame, the second set is the columns
-
         Returns:
             None
-
         """
         _print(f'Initialization of Var: {variable_name}')
         if not self.model.alltime.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
-
-        if hasattr(self.model, variable_name):
-            var = getattr(self.model, variable_name)
             
-            if isinstance(trajectories, pd.DataFrame):
-                if variable_name not in set_comp: # and isinstance(trajectories, dict):
-                    _print(f'Update of {variable_name} (non KIPET standard)')
-                    inner_set = list(trajectories.index)
-                    component_set = list(trajectories.columns)
-                else:
-                    _print(f'Update of KIPET Var {variable_name}')
-                    inner_set = rgetattr(self, set_time[variable_name])
-                    component_set = rgetattr(self, set_comp[variable_name])
-                
-            else:
-                _print('Unsupported data type for initialization...')
-                return None
-        # This is not needed
-        else:
-            print(f'Update of {variable_name} failed completely')
-            return None
-            
-        # columns = list(trajectories.columns)
-        # print(columns)
-        # to_initialize = list()
-        # component_set = set([t[1] for t in var.index_set()])
-        # component_set = rgetattr(self, set_comp[variable_name])
-
-        # for component in columns:
-        #     comp_warning = f'WARNING: {component} not a model component and its initialization is ignored'
-        #     if variable_name != 'Cs' and component not in component_set:
-        #           print(comp_warning)
-        #     elif variable_name == 'Cs' and component not in set(self._abs_components).intersection(set(component_set)):
-        #         print(comp_warning)
-        #     else:
-        #         to_initialize.append(component)
+        var = getattr(self.model, variable_name)
+        inner_set, component_set = self.build_sets_new(variable_name, trajectories)
        
+        if inner_set is None and component_set is None:
+            return None
+
         for component in component_set: #to_initialize:
-            
-            #print(f'Updating: \t{component}')
             
             single_trajectory = trajectories[component]
             values = interpolate_trajectory(inner_set, single_trajectory)
@@ -403,24 +477,14 @@ class PyomoSimulator(Simulator):
         """
         tol = 1e-5
         
-        if variable_name not in ['Z', 'dZdt', 'S', 'C', 'X', 'dXdt', 'U', 'Y']:
-            print('Warning: nothing to initialize')
+        var = getattr(self.model, variable_name)
+        inner_set, component_set = self.build_sets_new(variable_name, trajectories)
+       
+        if inner_set is None and component_set is None:
             return None
         
-        # time-invariant nominal scaling
-        if not self.model.alltime.get_discretization_info():
-            raise RuntimeError('apply discretization first before runing simulation')
-
-        try:
-            var = getattr(self.model, variable_name)
-            inner_set = rgetattr(self, set_time[variable_name])
-        except:
-            raise RuntimeError('Scaling of variable {} is not supported'.format(variable_name))
-
-        columns = trajectories.columns
-        component_set = rgetattr(self, set_comp[variable_name])
+        for component in component_set: #to_initialize:
             
-        for component in columns:
             if component not in component_set:
                 raise RuntimeError(f'Component {component} is not used in the model')
                 
@@ -431,16 +495,46 @@ class PyomoSimulator(Simulator):
                     self.model.scaling_factor.set_value(var[t, component], scale)
 
         self._ipopt_scaled = True
+        #return None
         
-        return None
+        #var = getattr(self.model, variable_name)
+        #index_sets = get_index_sets(var)
+            
+        # if variable_name not in self.__var.time_dependent_variables:
+        #     print('Warning: nothing to initialize')
+        #     return None
+        
+        # time-invariant nominal scaling
+        # if not self.model.alltime.get_discretization_info():
+        #     raise RuntimeError('apply discretization first before runing simulation')
 
-    def validate(self):
-        """Validates model before passing to solver.
+        #try:
+        #    var = getattr(self.model, variable_name)
+            #inner_set = rgetattr(self, set_time[variable_name])
+            
+        #    inner_set = getattr(self.model, index_sets[0].name)
+            
+        #except:
+        #    raise RuntimeError('Scaling of variable {} is not supported'.format(variable_name))
 
-        Note:
-            TODO
-        """
-        pass
+        # columns = trajectories.columns
+        # # component_set = rgetattr(self, set_comp[variable_name])
+        # component_set = getattr(self.model, index_sets[1].name)
+        
+        # for component in columns:
+        #     if component not in component_set:
+        #         raise RuntimeError(f'Component {component} is not used in the model')
+                
+        #     nominal_vals = abs(trajectories[component].max())
+        #     if nominal_vals >= tol:
+        #         scale = 1.0 / nominal_vals
+        #         for t in inner_set:
+        #             self.model.scaling_factor.set_value(var[t, component], scale)
+
+        # self._ipopt_scaled = True
+        
+        # return None
+
 
     def run_sim(self, solver, **kwds):
         """ Runs simulation by solving nonlinear system with ipopt
