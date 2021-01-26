@@ -10,7 +10,6 @@ from pyomo.environ import exp
 
 # Kipet library imports
 from kipet import KipetModel
-from kipet.library.common.model_funs import step_fun
 
 
 if __name__ == "__main__":
@@ -66,8 +65,6 @@ if __name__ == "__main__":
     gammas['AC-'] = [0, 1, -1, -1, -1]
     gammas['P'] = [0, 0, 0, 1, 1]
 
-    #r1.set_dosing_var('dv')
-
     def rule_algebraics(m, t):
         r = list()
         r.append(m.Y[t, 0] - m.P['k0'] * m.Z[t, 'AH'] * m.Z[t, 'B'])
@@ -88,7 +85,7 @@ if __name__ == "__main__":
         
         # mass balances
         for c in m.mixture_components:
-            exprs[c] = sum(gammas[c][j] * m.Y[t, j] for j in m.algebraics if j < 5) - exprs['V'] / V * m.Z[t, c]
+            exprs[c] = sum(gammas[c][j] * m.Y[t, j] for j in m.algebraics) - exprs['V'] / V * m.Z[t, c]
             if c == 'C':
                 exprs[c] += 0.02247311828 / (m.X[t, 'V'] * 210) * step
         return exprs
