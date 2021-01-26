@@ -120,6 +120,7 @@ class fe_initialize(object):
         
         """
         # This is a huge __init__ ==> offload to methods
+        self.__var = VariableNames()
         
         self.ip = SolverFactory('ipopt')
         self.ip.options['halt_on_ampl_error'] = 'yes'
@@ -366,6 +367,11 @@ class fe_initialize(object):
                     
                     for t in times:
                         model_var_obj[(t,) + k].fix()
+
+
+        if hasattr(self.model_ref, self.__var.time_step_change):
+            for time_step in getattr(self.model_ref, self.__var.time_step_change):
+                getattr(self.model_ref, self.__var.time_step_change)[time_step].fix()
 
         #: Check nvars and mequations
         (n, m) = reconcile_nvars_mequations(self.model_ref)
