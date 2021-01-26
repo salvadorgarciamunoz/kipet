@@ -18,6 +18,7 @@ from pyomo.opt import (
     )
 
 # KIPET library imports
+from kipet.library.common.pyomo_model_tools import get_index_sets
 from kipet.library.common.VisitorClasses import ReplacementVisitor
 from kipet.library.top_level.variable_names import VariableNames
 
@@ -55,19 +56,19 @@ class fe_initialize(object):
 
     """
     def __init__(self,
-                 tgt_mod,
-                 src_mod,
-                 init_con=None,
-                 param_name=None,
-                 param_values=None,
-                 inputs=None,
-                 inputs_sub=None,
-                 jump_times=None,
-                 jump_states=None
-                 ):
+                  model_orig,
+                  src_mod,
+                  init_con=None,
+                  param_name=None,
+                  param_values=None,
+                  inputs=None,
+                  inputs_sub=None,
+                  jump_times=None,
+                  jump_states=None
+                  ):
         """
         The `the paran name` might be a list of strings or a single string
-         corresponding to the parameters of the model.
+          corresponding to the parameters of the model.
         The `param_values` dictionary needs to be declared with the following 
         syntax: `param_dict["P", "k0"] = 49.7796`
         
@@ -123,12 +124,15 @@ class fe_initialize(object):
         self.ip = SolverFactory('ipopt')
         self.ip.options['halt_on_ampl_error'] = 'yes'
         self.ip.options['print_user_options'] = 'yes'
-        self.tgt = tgt_mod
-
-        self.mod = src_mod.clone()
+        
+        self.model_orig = model_orig
+        self.model_ref = src_mod.clone()
+        
+        print("CHECKE")
+        print(hasattr(self.model_ref, 'dose_var'))
 
         time_index = None
-        for i in self.mod.component_objects(ContinuousSet):
+        for i in self.model_ref.component_objects(ContinuousSet):
             time_index = i
             break
         if time_index is None:
@@ -136,53 +140,51 @@ class fe_initialize(object):
 
         self.time_set = time_index.name
 
-        tgt_cts = getattr(self.tgt, self.time_set)
-        self.ncp = tgt_cts.get_discretization_info()['ncp']
-
-        fe_l = tgt_cts.get_finite_elements()
+        model_original_time_set = getattr(self.model_orig, self.time_set)
+        self.ncp = model_original_time_set.get_discretization_info()['ncp']
+        fe_l = model_original_time_set.get_finite_elements()
+        
         self.fe_list = [fe_l[i + 1] - fe_l[i] for i in range(0, len(fe_l) - 1)]
-        self.nfe = len(self.fe_list)  #: Create a list with the step-size
-
-        print(f'NFE: {self.nfe}, NCP: {self.ncp}')
-
+        self.nfe = len(self.fe_list) 
+        
         #: Re-construct the model with [0,1] time domain
-        times = getattr(self.mod, self.time_set)
+        times = getattr(self.model_ref, self.time_set)
 
         times._bounds = (0, 1)
         times.clear()
         times.construct()
         
-        for var in self.mod.component_objects(Var):
+        for var in self.model_ref.component_objects(Var):
             var.clear()
             var.reconstruct()
        
-        for con in self.mod.component_objects(Constraint):
+        for con in self.model_ref.component_objects(Constraint):
             con.clear()
             con.construct()
 
-        # self.mod.display(filename="selfmoddisc0.txt")
+        # self.model_ref.display(filename="selfmoddisc0.txt")
         #: Discretize
         d = TransformationFactory('dae.collocation')
-        d.apply_to(self.mod, nfe=1, ncp=self.ncp, scheme='LAGRANGE-RADAU')
+        d.apply_to(self.model_ref, nfe=1, ncp=self.ncp, scheme='LAGRANGE-RADAU')
 
         #: Find out the differential variables
         self.dvs_names = []
         self.dvar_names = []
        
-        for con in self.mod.component_objects(Constraint):
+        for con in self.model_ref.component_objects(Constraint):
             name = con.name
             namel = name.split('_', 1)
             if len(namel) > 1:
                 if namel[1] == "disc_eq":
-                    realname = getattr(self.mod, namel[0])
+                    realname = getattr(self.model_ref, namel[0])
                     self.dvar_names.append(namel[0])
                     self.dvs_names.append(realname.get_state_var().name)
-        self.mod.h_i = Param(times, mutable=True, default=1.0)  #: Length of finite element
+        self.model_ref.h_i = Param(times, mutable=True, default=1.0)  #: Length of finite element
 
         #: Modify the collocation equations to introduce h_i (the length of finite element)
         for i in self.dvar_names:
-            con = getattr(self.mod, i + '_disc_eq')
-            dv = getattr(self.mod, i)
+            con = getattr(self.model_ref, i + '_disc_eq')
+            dv = getattr(self.model_ref, i)
             e_dict = {}
             fun_tup = True
             for k in con.keys():
@@ -192,30 +194,31 @@ class fe_initialize(object):
                     k = (k,)
                     fun_tup = False
                 e = con[k].expr.args[0]
-                e_dict[k] = e * self.mod.h_i[k[0]] + dv[k] * (1 - self.mod.h_i[k[0]]) == 0.0  #: As long as you don't clone
+                e_dict[k] = e * self.model_ref.h_i[k[0]] + dv[k] * (1 - self.model_ref.h_i[k[0]]) == 0.0  #: As long as you don't clone
             if fun_tup:
-                self.mod.add_component(i + "_deq_aug",
-                                       Constraint(con.index_set(),
+                self.model_ref.add_component(i + "_deq_aug",
+                                        Constraint(con.index_set(),
                                                   rule=lambda m, *j: e_dict[j] if j[0] > 0.0 else Constraint.Skip))
             else:
-                self.mod.add_component(i + "_deq_aug",
-                                       Constraint(con.index_set(),
+                self.model_ref.add_component(i + "_deq_aug",
+                                        Constraint(con.index_set(),
                                                   rule=lambda m, j: e_dict[j] if j > 0.0 else Constraint.Skip))
-            self.mod.del_component(con)
+            self.model_ref.del_component(con)
 
         #: Sets for iteration
         #: Differential variables
         self.remaining_set = {}
         for i in self.dvs_names:
-            dv = getattr(self.mod, i)
+            dv = getattr(self.model_ref, i)
             if dv.index_set().name == times.name:  #: Just time set
                 #print(i, 'here')
                 self.remaining_set[i] = None
                 continue
             #set_i = dv._implicit_subsets  #: More than just time set
             #set_i = dv._index._implicit_subsets #Update for pyomo 5.6.8 KH.L
-            set_i = identify_member_sets(dv.index_set())
-            print(f'set_i = {set_i}')
+            set_i = identify_member_sets(dv)
+            # set_i = identify_member_sets(dv.index_set())
+            #print(f'set_i = {set_i}')
             remaining_set = set_i[1]
             for s in set_i[2:]:
                 remaining_set *= s
@@ -228,8 +231,10 @@ class fe_initialize(object):
         self.weird_vars = [] #:Not indexed by time
         self.remaining_set_alg = {}
         # with open('model_check.txt', 'w') as f5:
-        #     self.mod.pprint(ostream = f5)
-        for av in self.mod.component_objects(Var):
+        #     self.model_ref.pprint(ostream = f5)
+        for av in self.model_ref.component_objects(Var):
+            
+            print(av.name)
             if av.name in self.dvs_names:
                 continue
             if av.index_set().name == times.name:  #: Just time set
@@ -237,7 +242,7 @@ class fe_initialize(object):
                 continue
             #set_i = av._implicit_subsets 
             #set_i = av._index._implicit_subsets #Update for pyomo 5.6.8 KH.L
-            set_i = identify_member_sets(av.index_set())
+            set_i = identify_member_sets(av)
             if set_i is None or not times in set_i:
                 self.weird_vars.append(av.name)  #: Not indexed by time!
                 continue  #: if this happens we might be in trouble
@@ -254,15 +259,19 @@ class fe_initialize(object):
                 self.remaining_set_alg[av.name] = []
                 self.remaining_set_alg[av.name].append(remaining_set)
 
+        print('FINDINGFINGIGN')
+        print(self.weird_vars)
+        print(self.remaining_set_alg)
+
         if init_con is not None:  #: Delete the initial conditions (we use .fix() instead)
-            ic = getattr(self.mod, init_con)
-            self.mod.del_component(ic)
+            ic = getattr(self.model_ref, init_con)
+            self.model_ref.del_component(ic)
 
         if isinstance(param_name, list):  #: Time independent parameters
             if param_values:
                 if isinstance(param_values, dict):
                     for pname in param_name:
-                        p = getattr(self.mod, pname)
+                        p = getattr(self.model_ref, pname)
                         for key in p.keys():
                             try:
                                 val = param_values[pname, key]
@@ -280,7 +289,7 @@ class fe_initialize(object):
         elif isinstance(param_name, str):
             if param_values:
                 if isinstance(param_values, dict):
-                    p = getattr(self.mod, param_name)
+                    p = getattr(self.model_ref, param_name)
                     for key in p.keys():
                         try:
                             val = param_values[param_name, key]
@@ -298,7 +307,7 @@ class fe_initialize(object):
 
         #: Fix initial conditions
         for i in self.dvs_names:
-            dv = getattr(self.mod, i)
+            dv = getattr(self.model_ref, i)
             if self.remaining_set[i] is None:
                 dv[0].fix()
             for rs in self.remaining_set[i]:
@@ -310,68 +319,68 @@ class fe_initialize(object):
         self.input_remaining_set = {}
 
         #: Check if inputs are declared
-        if self.inputs is not None:
-            if not isinstance(inputs, dict) or isinstance(inputs, str):
-                raise Exception("Must be a dict or str")
-            if isinstance(inputs, str):
-                self.inputs = [self.inputs]
-            for i in self.inputs:
-                p = getattr(self.mod, i)
-                p.fix()
-                if p.index_set().name == times.name:  #: Only time-set
-                    self.input_remaining_set[i] = None
-                    continue
-                #set_i = p._implicit_subsets
-                #set_i = p._index._implicit_subsets #Update for pyomo 5.6.8 KH.L
-                set_i = identify_member_sets(p.index_set())
-                if not times in set_i:
-                    raise RuntimeError("{} is not by index by time, this can't be an input".format(i))
-                remaining_set = set_i[1]
-                for s in set_i[2:]:
-                    if s.name == times.name:  #: would this ever happen?
-                        continue
-                    else:
-                        remaining_set *= s
-                if isinstance(remaining_set, list):
-                    self.input_remaining_set[i] = remaining_set
-                else:
-                    self.input_remaining_set[i] = []
-                    self.input_remaining_set[i].append(remaining_set)
-        self.inputs_sub = None
+        # if self.inputs is not None:
+        #     if not isinstance(inputs, dict) or isinstance(inputs, str):
+        #         raise Exception("Must be a dict or str")
+        #     if isinstance(inputs, str):
+        #         self.inputs = [self.inputs]
+        #     for i in self.inputs:
+        #         p = getattr(self.model_ref, i)
+        #         p.fix()
+        #         if p.index_set().name == times.name:  #: Only time-set
+        #             self.input_remaining_set[i] = None
+        #             continue
+        #         #set_i = p._implicit_subsets
+        #         #set_i = p._index._implicit_subsets #Update for pyomo 5.6.8 KH.L
+        #         set_i = identify_member_sets(p)
+        #         if not times in set_i:
+        #             raise RuntimeError("{} is not by index by time, this can't be an input".format(i))
+        #         remaining_set = set_i[1]
+        #         for s in set_i[2:]:
+        #             if s.name == times.name:  #: would this ever happen?
+        #                 continue
+        #             else:
+        #                 remaining_set *= s
+        #         if isinstance(remaining_set, list):
+        #             self.input_remaining_set[i] = remaining_set
+        #         else:
+        #             self.input_remaining_set[i] = []
+        #             self.input_remaining_set[i].append(remaining_set)
+       
+        #self.inputs_sub = None
         # inputs_sub['some_var'] = ['index0', 'index1', ('index2a', 'index2b')]
+ 
         self.inputs_sub = inputs_sub
         
-        print(f'FES self.inputs_sub: {self.inputs_sub}')
-        
         if self.inputs_sub is not None:
-            if not isinstance(self.inputs_sub, dict):
-                raise TypeError("inputs_sub must be a dictionary")
             for key in self.inputs_sub.keys():
-                if not isinstance(self.inputs_sub[key], list):
-                    raise TypeError("input_sub[{}] must be a list".format(key))
-                p = getattr(self.mod, key)
-                #if p._implicit_subsets is None:
-                if identify_member_sets(p.index_set()) is None: #Update for pyomo 5.6.8 KH.L
+                model_var_obj = getattr(self.model_ref, key)
+                
+                print(model_var_obj.display())
+
+                # This finds the index of the set    
+                if identify_member_sets(model_var_obj) is None:
                     raise RuntimeError("This variable is does not have multiple indices"
-                                       "Pass {} as part of the inputs keyarg instead.".format(key))
-                elif p.index_set().name == times.name:
+                                        "Pass {} as part of the inputs keyarg instead.".format(key))
+                elif model_var_obj.index_set().name == times.name:
                     raise RuntimeError("This variable is indexed over time"
-                                       "Pass {} as part of the inputs keyarg instead.".format(key))
+                                        "Pass {} as part of the inputs keyarg instead.".format(key))
                 else:
-                    #if not times in p._implicit_subsets:
-                    if not times in identify_member_sets(p.index_set()): #Update for pyomo 5.6.8 KH.L
+                    if not times in identify_member_sets(model_var_obj):
                         raise RuntimeError("{} is not indexed over time; it can not be an input".format(key))
+                
                 for k in self.inputs_sub[key]:
                     if isinstance(k, str) or isinstance(k, int) or isinstance(k, tuple):
                         k = (k,) if not isinstance(k, tuple) else k
                     else:
                         raise RuntimeError("{} is not a valid index".format(k))
+                    
                     for t in times:
-                        p[(t,) + k].fix()
+                        print(t)
+                        model_var_obj[(t,) + k].fix()
 
         #: Check nvars and mequations
-        (n, m) = reconcile_nvars_mequations(self.mod)
-        # self.mod.display(filename="selfmod1.txt")
+        (n, m) = reconcile_nvars_mequations(self.model_ref)
         if n != m:
             raise Exception("Inconsistent problem; n={}, m={}".format(n, m))
         self.jump = False
@@ -383,8 +392,8 @@ class fe_initialize(object):
             raise Exception("init_cond must be a dictionary")
 
         for i in self.dvs_names:
-            dv = getattr(self.mod, i)
-            ts = getattr(self.mod, self.time_set)#self.mod.alltime
+            dv = getattr(self.model_ref, i)
+            ts = getattr(self.model_ref, self.time_set)#self.model_ref.alltime
             for t in ts:
                 for s in self.remaining_set[i]:
                     if s is None:
@@ -424,19 +433,19 @@ class fe_initialize(object):
         self.ip.options["print_level"] = 1  #: change this on demand
         # self.ip.options["start_with_resto"] = 'no'
         self.ip.options['bound_push'] = 1e-02
-        sol = self.ip.solve(self.mod, tee=True, symbolic_solver_labels=True)
+        sol = self.ip.solve(self.model_ref, tee=True, symbolic_solver_labels=True)
 
         # Try to redo it if it fails
         if sol.solver.termination_condition != TerminationCondition.optimal:
             self.ip.options["OF_start_with_resto"] = 'yes'
            
-            sol = self.ip.solve(self.mod, tee=True, symbolic_solver_labels=True)
+            sol = self.ip.solve(self.model_ref, tee=True, symbolic_solver_labels=True)
             if sol.solver.termination_condition != TerminationCondition.optimal:
                 
                 self.ip.options["OF_start_with_resto"] = 'no'
                 self.ip.options["bound_push"] = 1E-02
                 self.ip.options["OF_bound_relax_factor"] = 1E-05
-                sol = self.ip.solve(self.mod, tee=True, symbolic_solver_labels=True)
+                sol = self.ip.solve(self.model_ref, tee=True, symbolic_solver_labels=True)
                 self.ip.options["OF_bound_relax_factor"] = 1E-08
                 
                 # It if fails twice, raise an error
@@ -470,12 +479,12 @@ class fe_initialize(object):
         https://github.com/dthierry/cappresse/blob/pyomodae-david/nmpc_mhe/aux/utils.py
         fe_cp function!
         """
-        ts = getattr(self.mod, self.time_set)
+        ts = getattr(self.model_ref, self.time_set)
         t_last = t_ij(ts, 0, self.ncp)
 
         #Inclusion of discrete jumps: (CS)
         for i in self.dvs_names:
-            dv = getattr(self.mod, i)
+            dv = getattr(self.model_ref, i)
             for s in self.remaining_set[i]:
                 if s is None:
                     val = value(dv[t_last])
@@ -498,82 +507,127 @@ class fe_initialize(object):
         Args:
             fe (int): The current finite element to be patched (tgt_model).
         """
-        ts = getattr(self.mod, self.time_set)
-        ttgt = getattr(self.tgt, self.time_set)
+        time_set_ref = getattr(self.model_ref, self.time_set)
+        time_set_orig = getattr(self.model_orig, self.time_set)
        
-        for v in self.mod.component_objects(Var, active=True):
-            v_tgt = getattr(self.tgt, v.name)
-            if v.name in self.weird_vars:  #: This has got to work.
-                for k in v.keys():
-                    if v[k].stale or v[k].is_fixed():
+        for model_ref_var in self.model_ref.component_objects(Var, active=True):
+            model_orig_var = getattr(self.model_orig, model_ref_var.name)
+            if model_ref_var.name in self.weird_vars:
+                for k in model_ref_var.keys():
+                    if model_ref_var[k].stale or model_ref_var[k].is_fixed():
                         continue
                     try:
-                        val = value(v[k])
+                        val = model_ref_var[k].value
                     except ValueError:
                         pass
-                    v_tgt[k].set_value(val)
+                    model_ref_var[k].set_value(val)
                 continue
             #: From this point on all variables are indexed over time.
-            if v.name in self.dvs_names:
-                drs = self.remaining_set[v.name]
+            if model_ref_var.name in self.dvs_names:
+                drs = self.remaining_set[model_ref_var.name]
             else:
-                drs = self.remaining_set_alg[v.name]
-            for j in range(0, self.ncp + 1):
-                t_tgt = t_ij(ttgt, fe, j)
-                t_src = t_ij(ts, 0, j)
+                drs = self.remaining_set_alg[model_ref_var.name]
+            
+            for j in range(0, self.ncp + 1):    
+                
+                t_tgt = t_ij(time_set_orig, fe, j)
+                t_src = t_ij(time_set_ref, 0, j)
 
                 if drs is None:
-                    if v[t_src].stale or v[t_src].is_fixed():
+                    if model_ref_var[t_src].stale or model_ref_var[t_src].is_fixed():
                         continue
                     try:
-                        val = value(v[t_src])
+                        val = model_ref_var[t_src].value
                     except ValueError:
-                        print("Error at {}, {}".format(v.name, t_src))
-                    v_tgt[t_tgt].set_value(val)
+                        print("Error at {}, {}".format(model_ref_var.name, t_src))
+                    model_ref_var[t_tgt].set_value(val)
                     continue
+                
                 for k in drs:
                     for key in k:
                         key = key if isinstance(key, tuple) else (key,)
-                        if v[(t_src,) + key].stale or v[(t_src,) + key].is_fixed():
+                        if model_ref_var[(t_src,) + key].stale or model_ref_var[(t_src,) + key].is_fixed():
                             continue
                         try:
-                            val = value(v[(t_src,) + key])
+                            val = value(model_ref_var[(t_src,) + key])
                         except ValueError:
-                            print("Error at {}, {}".format(v.name, (t_src,) + key))
-                        v_tgt[(t_tgt,) + key].set_value(val)
+                            print("Error at {}, {}".format(model_ref_var.name, (t_src,) + key))
+                        model_orig_var[(t_tgt,) + key].set_value(val)
         
         if self.jump:
+            
+            """This creates a new constraint forcing the variable at the
+            specific time to be equal to step size provided in the dosing
+            points. It creates the constraint and replaces the variable in the
+            original ode equations.
+            """
             num = 0
             vs = ReplacementVisitor()
             for model_var, dosing_point_list in self.dosing_points.items():
                 for dosing_point in dosing_point_list:   
-                    self.jump_fe, self.jump_cp = fe_cp(ttgt, dosing_point.time)
+                    self.jump_fe, self.jump_cp = fe_cp(time_set_orig, dosing_point.time)
+                    
                     if fe == self.jump_fe+1:
                         con_name = f'd{model_var}dt_disc_eq'
                         varname = f'{model_var}_dummy_{num}'
-                        con = getattr(self.tgt, con_name)
-                        self.tgt.add_component(f'{model_var}_dummy_eq_{num}', ConstraintList())
-                        conlist = getattr(self.tgt, f'{model_var}_dummy_eq_{num}')
-                        self.tgt.add_component(varname, Var([0]))
-                        vdummy = getattr(self.tgt, varname)
+                        
+                        # This is the constraint you want to change (add dummy for the model_var)
+                        model_con_obj = getattr(self.model_orig, con_name)
+                        
+                        # Adding some kind of constraint to the list
+                        self.model_orig.add_component(f'{model_var}_dummy_eq_{num}', ConstraintList())
+                        model_con_objlist = getattr(self.model_orig, f'{model_var}_dummy_eq_{num}')
+                        
+                        # Adding a variable (no set) with dummy name to model
+                        self.model_orig.add_component(varname, Var([0]))
+                        
+                        # vdummy is the var_obj of the Var you just made
+                        vdummy = getattr(self.model_orig, varname)
+                        
+                        # this is the variable that will replace the other
                         vs.change_replacement(vdummy[0])
-                        self.tgt.add_component(f'{model_var}_jumpdelta{num}', Param(initialize=dosing_point.step))
-                        jump_param  = getattr(self.tgt, f'{model_var}_jumpdelta{num}')
-                        exprjump = vdummy[0] - getattr(self.tgt, model_var)[(dosing_point.time,) + (dosing_point.component,)] == jump_param
-                        self.tgt.add_component(f'jumpdelta_expr{num}', Constraint(expr=exprjump))
+                        
+                        # adding a parameter that is the jump at dosing_point.step (the size or change in the var)
+                        self.model_orig.add_component(f'{model_var}_jumpdelta{num}', Param(initialize=dosing_point.step))
+                        
+                        # This is the param you just made
+                        jump_param  = getattr(self.model_orig, f'{model_var}_jumpdelta{num}')
+                        
+                        # Constraint setting the variable equal to the step size
+                        exprjump = vdummy[0] - getattr(self.model_orig, model_var)[(dosing_point.time,) + (dosing_point.component,)] == jump_param
+                        #print(f'this is the new expr: {exprjump.to_string()}')
+                        
+                        # Add the new constraint to the original model
+                        self.model_orig.add_component(f'jumpdelta_expr{num}', Constraint(expr=exprjump))
                         
                         for kcp in range(1, self.ncp + 1):
-                            curr_time = t_ij(ttgt,self.jump_fe + 1, kcp)
+                            curr_time = t_ij(time_set_orig,self.jump_fe + 1, kcp)
                             idx = (curr_time,) + (dosing_point.component,)
-                            con[idx].deactivate()
-                            var_expr = con[idx].expr
+                            
+                            #print(model_con_obj[idx])
+                            
+                            model_con_obj[idx].deactivate()
+                            var_expr = model_con_obj[idx].expr
+                            
+                            #print(var_expr.to_string())
+                            
                             suspect_var = var_expr.args[0].args[1].args[0].args[0].args[1]
+                            
+                            #print(f'sus var: {suspect_var}')
+                            
                             vs.change_suspect(id(suspect_var))  #: who to replace
                             e_new = vs.dfs_postorder_stack(var_expr)  #: replace
-                            con[idx].set_value(e_new)
-                            conlist.add(con[idx].expr)
+                            
+                            #print(e_new.to_string())
+                            
+                            model_con_obj[idx].set_value(e_new)
+                            
+                            #print('This is the model_con_obj:')
+                            #print(model_con_obj[idx].expr.to_string())
+                            
+                            model_con_objlist.add(model_con_obj[idx].expr)
                     num += 1
-                                    
+                            
     def adjust_h(self, fe):
         # type: (int) -> None
         """Adjust the h_i parameter of the initializing model.
@@ -584,8 +638,8 @@ class fe_initialize(object):
             fe (int): The current value of h_i
         """
 
-        hi = getattr(self.mod, "h_i")
-        zeit = getattr(self.mod, self.time_set)
+        hi = getattr(self.model_ref, "h_i")
+        zeit = getattr(self.model_ref, self.time_set)
         for t in zeit:
             hi[t].value = self.fe_list[fe]
 
@@ -607,48 +661,53 @@ class fe_initialize(object):
         Args:
             fe (int):  The current finite element to be loaded.
         """
-        if not self.inputs is None:
-            ts = getattr(self.mod, self.time_set)
-            ttgt = getattr(self.tgt, self.time_set)
+        if self.inputs is not None:
+            time_set_ref = getattr(self.model_ref, self.time_set)
+            time_set_orig = getattr(self.model_orig, self.time_set)
             for i in self.inputs:
-                p_data = getattr(self.tgt, i)
-                p_sim = getattr(self.mod, i)
+                p_data = getattr(self.model_orig, i)
+                p_sim = getattr(self.model_ref, i)
                 if self.input_remaining_set[i] is None:
                     for j in range(0, self.ncp + 1):
-                        t = t_ij(ttgt, fe, j)
-                        tsim = t_ij(ts, 0, j)
+                        t = t_ij(time_set_orig, fe, j)
+                        tsim = t_ij(time_set_ref, 0, j)
                         val = value(p_data[t])
                         p_sim[tsim].set_value(val)
                     continue
                 for k in self.input_remaining_set[i]:
                     for key in k:
                         for j in range(0, self.ncp + 1):
-                            t = t_ij(ttgt, fe, j)
-                            tsim = t_ij(ts, 0, j)
+                            t = t_ij(time_set_orig, fe, j)
+                            tsim = t_ij(time_set_ref, 0, j)
                             val = value(p_data[(t,) + key])
                             p_sim[(tsim,) + key].set_value(val)
-        if not self.inputs_sub is None:
-            ts = getattr(self.mod, self.time_set)
-            ttgt = getattr(self.tgt, self.time_set)
-            for key in self.inputs_sub.keys():
-                p_data = getattr(self.tgt, key)
-                p_sim = getattr(self.mod, key)
-                for k in self.inputs_sub[key]:
-                    k = (k,) if not isinstance(k, tuple) else k
+                            
+        # Here is where the jumps come in... (can this be done with a different var?)
+        if self.inputs_sub is not None:
+            time_set_ref = getattr(self.model_ref, self.time_set)
+            time_set_orig = getattr(self.model_orig, self.time_set)
+            
+            for key in self.inputs_sub.keys(): # Y
+                model_orig_var = getattr(self.model_orig, key)
+                model_ref_var = getattr(self.model_ref, key)
+                
+                for sub_key in self.inputs_sub[key]:
+                    sub_key = (sub_key,) if not isinstance(sub_key, tuple) else k
+                    
                     for j in range(0, self.ncp + 1):
-                        t = t_ij(ttgt, fe, j)
-                        tsim = t_ij(ts, 0, j)
-                        val = value(p_data[(t,) + k])
-                        p_sim[(tsim,) + k].set_value(val)
+                        t_orig = t_ij(time_set_orig, fe, j)
+                        t_ref = t_ij(time_set_ref, 0, j)
+                        val = model_orig_var[(t_orig,) + sub_key].value
+                        model_ref_var[(t_ref,) + sub_key].set_value(val)
 
     def create_bounds(self, bound_dict):
-        ts = getattr(self.mod, self.time_set)
+        time_set_ref = getattr(self.model_ref, self.time_set)
         for v in bound_dict.keys():
-            var = getattr(self.mod, v)
+            var = getattr(self.model_ref, v)
             varbnd = bound_dict[v]
             if not isinstance(varbnd, dict):
                 raise RuntimeError("The entry for {} is not a dictionary".format(v))
-            for t in ts:
+            for t in time_set_ref:
                 for k in varbnd.keys():
                     bnd = varbnd[k]
                     if not isinstance(k, tuple):
@@ -657,7 +716,7 @@ class fe_initialize(object):
                     var[(t,) + k].setub(bnd[1])  #: Upper bound
 
     def clear_bounds(self):
-        for v in self.mod.component_data_objects(Var):
+        for v in self.model_ref.component_data_objects(Var):
             v.setlb(None)
             v.setub(None)
 
@@ -726,10 +785,7 @@ def reconcile_nvars_mequations(d_mod):
         nvar = int(newl[0])
         meqn = int(newl[1])
         nl.close()
-    #try:
-    #    remove(fullpth)
-    #except OSError:
-    #    pass
+        
     return (nvar, meqn)
 
 
@@ -747,14 +803,13 @@ def disp_vars(model, file):
 
 #Function needed for inclusion of discrete jump to get fe and cp:
 def fe_cp(time_set, feedtime):
-    # type: (ContinuousSet, float) -> tuple
-    # """Return the corresponding fe and cp for a given time
-    # Args:
-    #    time_set:
-    #    t:
-    # """
+   
+    """Return the corresponding fe and cp for a given time
+    Args:
+        time_set:
+        t:
+    """
     fe_l = time_set.get_lower_element_boundary(feedtime)
-   # print("fe_l", fe_l)
     fe = None
     j = 0
     for i in time_set.get_finite_elements():
@@ -773,20 +828,12 @@ def fe_cp(time_set, feedtime):
         j += 1
     return fe, cp
 
-def identify_member_sets(index):
+def identify_member_sets(model_var_obj):
         
-    queue = [index]
-    ans = []
-    n = 0
-    while queue:
-        n+=1
-        s = queue.pop(0)
-        #print(type(s))
-        #print(SetProduct)
-        if not isinstance(s, SetProduct) and not isinstance(s, _SetProduct):
-            ans.append(s)
-        else:
-            queue.extend(s.set_tuple) 
-    if n == 1:
-        ans = None
-    return ans
+    index_list = get_index_sets(model_var_obj)
+    print(index_list)
+    
+    if len(index_list) > 1:
+        return index_list
+    else:
+        return None

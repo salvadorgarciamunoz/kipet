@@ -137,6 +137,8 @@ class TemplateBuilder(object):
         self._g_bounds = None
         self._g_init = None
 
+        self._add_dosing_var = False
+
         components = kwargs.pop('concentrations', dict())
         if isinstance(components, dict):
             for k, v in components.items():
@@ -350,6 +352,7 @@ class TemplateBuilder(object):
                     self._init_conditions[key] = val
             else:
                 raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try dict[str]=float')
+        
         elif len(args) == 2:
             name = args[0]
             init_condition = args[1]
@@ -846,6 +849,10 @@ class TemplateBuilder(object):
     
         return None
     
+    def add_dosing_var(self):
+        
+        self._add_dosing_var = True
+    
     def set_odes_rule(self, rule):
         """Set the ode expressions.
 
@@ -1115,6 +1122,12 @@ class TemplateBuilder(object):
                          c_dict.update({(i, col): float(row[col]) for col in data.columns if not np.isnan(float(row[col]))})
                 
                     setattr(model, f'{var}_indx', Set(initialize=list(c_dict.keys()), ordered=True))
+                    
+                    # setattr(model, var, Var(model.allmeas_times,
+                    #                 model.mixture_components,
+                    #                 bounds=c_bounds,
+                    #                 initialize=c_dict))
+                    
                     setattr(model, var, Var(getattr(model, f'{var}_indx'),
                                                   bounds=c_bounds,
                                                   initialize=c_dict,
@@ -1571,8 +1584,17 @@ class TemplateBuilder(object):
        
         pyomo_model.measured_data = Set(initialize=self._all_state_data)
         
+        
+        
+        
         # Set up the model time sets and parameters
         self._set_up_times(pyomo_model, start_time, end_time)
+        
+        # Add dosing var
+        if self._add_dosing_var:
+            setattr(pyomo_model, self.__var.dosing_variable, Var(pyomo_model.alltime,
+                                                                 [self.__var.dosing_component],
+                                                                 initialize=0))
         
         # Set up the model by calling the following methods:
         self._add_model_variables(pyomo_model)

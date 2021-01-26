@@ -36,10 +36,16 @@ class FESimulator(PyomoSimulator):
 
         self.p_sim = PyomoSimulator(model)
         self.model = self.p_sim.model
-        self.c_sim = self.model.clone()
         self.param_dict = {}
         self.param_name = self.__var.model_parameter
+        
+        # setattr(self.model, 'test_var', Var(self.model.alltime,
+        #                                       [0],
+        #                                       initialize=1.0))
+        # print(self.model.test_var.display())
 
+        self.c_sim = self.model.clone()
+        
         # Check all parameters are fixed before simulating
         for param_obj in getattr(self.model, self.__var.model_parameter).values():
             if not param_obj.fixed:

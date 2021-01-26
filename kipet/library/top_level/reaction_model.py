@@ -28,6 +28,7 @@ from kipet.library.core_methods.ParameterEstimator import ParameterEstimator
 from kipet.library.core_methods.PyomoSimulator import PyomoSimulator
 from kipet.library.core_methods.TemplateBuilder import TemplateBuilder
 from kipet.library.core_methods.VarianceEstimator import VarianceEstimator
+from kipet.library.common.model_funs import step_fun
 from kipet.library.common.pre_process_tools import decrease_wavelengths
 from kipet.library.common.pyomo_model_tools import get_vars
 from kipet.library.dev_tools.display import Print
@@ -80,6 +81,8 @@ class ReactionModel(WavelengthSelectionMixins):
         self.dosing_var = None
         self.dosing_points = None
         self._has_dosing_points = False
+        
+        self._has_step_or_dosing = False
         
         self._has_non_absorbing_species = False
         
@@ -139,8 +142,8 @@ class ReactionModel(WavelengthSelectionMixins):
                            'concentration': self.__var.concentration_model,
                            }
         
-        if self.dosing_var is None:
-            raise AttributeError('ReactionModel needs a designated algebraic variable for dosing')
+        #if self.dosing_var is None:
+        #    raise AttributeError('ReactionModel needs a designated algebraic variable for dosing')
         
         if component not in self.components.names:
             raise ValueError('Invalid component name')
@@ -159,39 +162,20 @@ class ReactionModel(WavelengthSelectionMixins):
             
         self._has_dosing_points = True
         
-    def set_dosing_var(self, var):
-        
-        """Check when multiple dosing vars are needed"""
-        
-        # if not isinstance(var, list):
-        #     var = [var]
-        
-        # for _var in var:
-        if var not in self.algebraic_variables:
-            raise ValueError('Not a valid algebraic variable')
-            
-        self.dosing_var = var
-
+    def add_dosing(self):
+        """At the moment, this is needed to set up the dosing variable
+        """
+        self._has_step_or_dosing = True
+    
         return None
     
     def call_fe_factory(self):
         """Somewhat of a wrapper for this simulator method, but better"""
 
-        # setattr(self.model, 'test_var', Var(self.model.alltime,
-        #                                       [0],
-        #                                       initialize=1.0))
-        self.simulator.call_fe_factory({'Y': [self.dosing_var]}, self.dosing_points)
+        self.simulator.call_fe_factory({
+            self.__var.dosing_variable: [self.__var.dosing_component]},
+            self.dosing_points)
 
-        # if self.dosing_var is not None:
-        #     input_subs = {'Y': [self.dosing_var]}
-        #     print(input_subs)
-            
-        #     self.simulator.call_fe_factory(input_subs, self.dosing_points)
-        #     # self.simulator.call_fe_factory(None, self.dosing_points)
-        # else:
-        #     input_subs = {'Y': None}
-        #     self.simulator.call_fe_factory(input_subs, None) #self.dosing_points)
-        
         return None
     
     def clone(self, *args, **kwargs):
@@ -415,43 +399,6 @@ class ReactionModel(WavelengthSelectionMixins):
         self.settings.general.simulation_times = (start_time, end_time)
         return None
     
-    # def set_directory(self, filename, abs_dir=False):
-    #     """Wrapper for the set_directory method. This replaces the awkward way
-    #     of ensuring the correct directory for the data is used."""
-
-    #     directory = self.settings.general.data_directory
-    #     print(f'The current data directory is : {directory}')
-    #     file_path = pathlib.Path(directory).joinpath(filename)
-    #     print(f'The data file is the following: {file_path}')
-        
-    #     return file_path
-    
-    # def write_file(self, filename, data, directory=None, filetype='csv'):
-    #     """Method to write data to a file using KipetModel
-    #     """
-    #     _filename = filename
-        
-    #     if directory is None:
-    #         _filename = self.set_directory(filename)
-    #     else:
-    #         _filename = pathlib.Path(directory).joinpath(filename)
-        
-    #     data_tools.write_file(_filename, data, filetype)
-        
-    #     return None
-        
-    # def read_data_file(self, filename, directory=None):
-    #     """Method to read data file using KipetModel
-    #     """
-    #     _filename = filename
-        
-    #     if directory is None:
-    #         _filename = self.set_directory(filename)
-    #     else:
-    #         _filename = pathlib.Path(directory).joinpath(filename)
-        
-    #     return data_tools.read_file(_filename)
-    
     def add_equations(self, ode_fun):
         """Wrapper for the set_odes method used in the builder"""
         
@@ -503,6 +450,9 @@ class ReactionModel(WavelengthSelectionMixins):
         
         self.builder.set_parameter_scaling(self.settings.general.scale_parameters)
         self.builder.add_state_variance(self.components.variances)
+        
+        if self._has_step_or_dosing:
+            self.builder.add_dosing_var()
         
         if self._has_dosing_points:
             self._add_feed_times()
@@ -602,17 +552,8 @@ class ReactionModel(WavelengthSelectionMixins):
         _print(sim_set_up_options)
         dis_method = sim_set_up_options.pop('method', 'dae.collocation')
         
-        if self.dosing_var is not None:
+        if self._has_step_or_dosing:
             dis_method = 'fe'
-        
-        # kwargs = self.settings.collocation
-        
-        # method = self.settings.collocation.method
-        
-        # method = kwargs.get('method', 'dae.collocation')
-        # ncp = kwargs.get('ncp', 3)
-        # nfe = kwargs.get('nfe', 50)
-        # scheme = kwargs.get('scheme', 'LAGRANGE-RADAU')
         
         _print(dis_method)
         
@@ -622,14 +563,10 @@ class ReactionModel(WavelengthSelectionMixins):
             simulation_class = PyomoSimulator
         
         if self.model is None:
+            print('MAKING model')
             self.create_pyomo_model(*self.settings.general.simulation_times)
         
         self.s_model = self.model.clone()
-        
-        # components_to_delete = ['Cm', 'U'] 
-        # for comp in components_to_delete:
-        #     if hasattr(self.s_model, comp):
-        #         self.s_model.del_component(comp)
         
         for param in getattr(self.s_model, self.__var.model_parameter).values():
             param.fix()
@@ -645,10 +582,11 @@ class ReactionModel(WavelengthSelectionMixins):
         
         print(f'This is the sim: {type(simulator)}')
         _print('After disc')
-        if self.dosing_var is not None and hasattr(self.s_model, 'Y'):
-            for key in simulator.model.alltime.value:
-                simulator.model.Y[key, self.dosing_var].set_value(key)
-                simulator.model.Y[key, self.dosing_var].fix()
+        
+        if self._has_step_or_dosing:
+            for time in simulator.model.alltime.value:
+                getattr(simulator.model, self.__var.dosing_variable)[time, self.__var.dosing_component].set_value(time)
+                getattr(simulator.model, self.__var.dosing_variable)[time, self.__var.dosing_component].fix()
         
         self.simulator = simulator
         print('Finished creating simulator')
@@ -685,6 +623,7 @@ class ReactionModel(WavelengthSelectionMixins):
     
     def create_variance_estimator(self, **kwargs):
         """This is a wrapper for creating the VarianceEstimator"""
+        
         if len(kwargs) == 0:
             kwargs = self.settings.collocation
         
@@ -697,6 +636,7 @@ class ReactionModel(WavelengthSelectionMixins):
         
     def create_parameter_estimator(self, **kwargs):
         """This is a wrapper for creating the ParameterEstiamtor"""
+        
         if len(kwargs) == 0:
             kwargs = self.settings.collocation
             
@@ -715,8 +655,6 @@ class ReactionModel(WavelengthSelectionMixins):
             _print('Finished simulation, updating variables...')
 
         _print(f'The model has the following variables:\n{get_vars(self.s_model)}')
-        
-        # vars_to_init = ['Z', 'dZdt', 'X', 'dXdt'len(data) == 0 or ] #get_vars(self.model)
         vars_to_init = get_vars(self.s_model)
         
         _print(f'The vars_to_init: {vars_to_init}')
@@ -730,10 +668,15 @@ class ReactionModel(WavelengthSelectionMixins):
         return None
     
     def create_estimator(self, estimator=None):
-        """This function handles creating the Estimator object"""
+        """This function handles creating the Estimator object
         
-        #init_from_sim = kwargs.pop('init_from_sim', False)
-        
+        Args:
+            estimator (str): p_estimator or v_estimator for the PE or VE
+            
+        Returns:
+            None
+            
+        """        
         if estimator == 'v_estimator':
             Estimator = VarianceEstimator
             est_str = 'VarianceEstimator'
@@ -1093,64 +1036,7 @@ class ReactionModel(WavelengthSelectionMixins):
         for param, param_data in reduced_parameter_set.items():
             reduced_kipet_model.add_parameter(param, init=param_data[0], bounds=param_data[1])
         
-        #print(reduced_parameter_set)
-        
-        # clone(self, *args, **kwargs):
-        # """Makes a copy of the ReactionModel and removes the data. This is done
-        # to reuse the model, components, and parameters in an easier manner
-        
-        # """
-        # new_kipet_model = copy.deepcopy(self)
-        
-        # name = kwargs.get('name', self.name + '_copy')
-        # copy_model = kwargs.get('model', True)
-        # copy_builder = kwargs.get('builder', True)
-        # copy_components = kwargs.get('components', True)   
-        # copy_parameters = kwargs.get('parameters', True)
-        # copy_datasets = kwargs.get('datasets', True)
-        # copy_constants = kwargs.get('constants', True)
-        # copy_settings = kwargs.get('settings', True)
-        # copy_algebraic_variables = kwargs.get('alg_vars', True)
-        # copy_odes = kwargs.get('odes', True)
-        # copy_algs = kwargs.get('algs', True)
-        
-        
         return reduced_kipet_model
-    
-    # def reduce_model_old(self, **kwargs):
-    #     """This calls the reduce_models method in the EstimationPotential
-    #     module to reduce the model based on the reduced hessian parameter
-    #     selection method.
-        
-    #     Args:
-    #         kwargs:
-    #             replace (bool): defaults to True, option to replace the
-    #                 parameters deemed unestimable from the model with constants
-    #             no_scaling (bool): defaults to True, removes the scaling
-    #                 constants from the model and restores the parameter values
-    #                 and their bounds.
-                    
-    #     Returns:
-    #         results (ResultsObject): A standard results object with the reduced
-    #             model results
-        
-    #     """
-    #     if self.model is None:
-    #         self.create_pyomo_model()
-        
-    #     parameter_dict = self.parameters.as_dict(bounds=True)
-        
-    #     kwargs['times'] = (self.model.start_time.value, self.model.end_time.value)
-        
-    #     print(kwargs)
-        
-    #     reduce_model_old(self, **kwargs)
-        
-    #     # self.reduced_model = reduced_model
-    #     # self.using_reduced_model = True
-    #     # self.reduced_model_results = results
-        
-    #     return None #results
     
     def set_non_absorbing_species(self, non_abs_list):
         """Wrapper for set_non_absorbing_species in TemplateBuilder"""
@@ -1169,80 +1055,6 @@ class ReactionModel(WavelengthSelectionMixins):
             self.datasets[var].data = dataframe
         return data_tools.add_noise_to_signal(dataframe, noise)    
     
-#     def apply_pe_discretization(self, model_object, *args, **kwargs):
-#         """Checks is the model is discretized and discretizes it in the case
-#         that it is not
-        
-#         Args:
-#             model (ConcreteModel): A pyomo ConcreteModel
-            
-#             ncp (int): number of collocation points used
-            
-#             nfe (int): number of finite elements used
-            
-#         Returns:
-#             None
-            
-#         """
-#         method = kwargs.pop('method', 'dae.collocation')
-#         ncp = kwargs.pop('ncp', 3)
-#         nfe = kwargs.pop('nfe', 50)
-#         scheme = kwargs.pop('scheme', 'LAGRANGE-RADAU')
-        
-#         if not model_object.alltime.get_discretization_info():
-        
-#             # You need to change this out of an Estimator
-#             model_pe = ParameterEstimator(model_object)
-#             model_pe.apply_discretization(method,
-#                                           ncp=ncp,
-#                                           nfe=nfe,
-#                                           scheme=scheme)
-        
-#         return None
-        
-#     def rule_objective(self, model):
-#         """This function defines the objective function for the estimability
-        
-#         This is equation 5 from Chen and Biegler 2020. It has the following
-#         form:
-            
-#         .. math::
-#             \min J = \frac{1}{2}(\mathbf{w}_m - \mathbf{w})^T V_{\mathbf{w}}^{-1}(\mathbf{w}_m - \mathbf{w})
-            
-#         Originally KIPET was designed to only consider concentration data in
-#         the estimability, but this version now includes complementary states
-#         such as reactor and cooling temperatures. If complementary state data
-#         is included in the model, it is detected and included in the objective
-#         function.
-        
-#         Args:
-#             model (pyomo.core.base.PyomoModel.ConcreteModel): This is the pyomo
-#             model instance for the estimability problem.
-                
-#         Returns:
-#             obj (pyomo.environ.Objective): This returns the objective function
-#             for the estimability optimization.
-        
-#         """
-#         obj = 0
-        
-#         from pyomo.environ import Objective
-        
-#         print(model.sigma)
-    
-#         for k in set(model.mixture_components.value_list) & set(model.measured_data.value_list):
-#             for t, v in model.Cm.items():
-#                 obj += 0.5*(model.Cm[t] - model.Z[t]) ** 2 /  1#model.sigma[k]**2
-        
-#         for k in set(model.complementary_states.value_list) & set(model.measured_data.value_list):
-#             for t, v in model.U.items():
-#                 obj += 0.5*(model.X[t] - model.U[t]) ** 2 / 1#model.sigma[k]**2      
-    
-#         model.objective = Objective(expr=obj)
-    
-#         return None
-
-
     def analyze_parameters(self, 
                         method=None,
                         parameter_uncertainties=None,
@@ -1298,6 +1110,13 @@ class ReactionModel(WavelengthSelectionMixins):
     
         return None
     
+    """MODEL FUNCTION AREA"""
+    
+    def step(self, *args, **kwargs):
+        """Wrapper for the step_fun in model_funs module
+        
+        """
+        return step_fun(*args, **kwargs)
     
     @property
     def models(self):

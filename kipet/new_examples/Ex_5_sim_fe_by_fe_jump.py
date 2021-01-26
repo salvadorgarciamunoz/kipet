@@ -10,6 +10,7 @@ from pyomo.environ import exp
 
 # Kipet library imports
 from kipet import KipetModel
+from kipet.library.common.model_funs import step_fun
 
 
 if __name__ == "__main__":
@@ -38,8 +39,7 @@ if __name__ == "__main__":
         r1.add_component(comp, state='concentration', init=init_value)
 
     # add algebraics
-    algebraics = [0, 1, 2, 3, 4, 5]  # the indices of the rate rxns
-    # note the fifth component. Which basically works as an input
+    algebraics = [0, 1, 2, 3, 4]  # the indices of the rate rxns
 
     r1.add_algebraic_variables(algebraics)
 
@@ -66,6 +66,8 @@ if __name__ == "__main__":
     gammas['AC-'] = [0, 1, -1, -1, -1]
     gammas['P'] = [0, 0, 0, 1, 1]
 
+    #r1.set_dosing_var('dv')
+
     def rule_algebraics(m, t):
         r = list()
         r.append(m.Y[t, 0] - m.P['k0'] * m.Z[t, 'AH'] * m.Z[t, 'B'])
@@ -74,34 +76,34 @@ if __name__ == "__main__":
         r.append(m.Y[t, 3] - m.P['k3'] * m.Z[t, 'AC-'] * m.Z[t, 'AH'])
         r.append(m.Y[t, 4] - m.P['k4'] * m.Z[t, 'AC-'] * m.Z[t, 'BH+'])
         return r
-    #: there is no AE for Y[t,5] because step equn under rule_odes functions as the switch for the "C" equation
 
     r1.add_algebraics(rule_algebraics)
  
     def rule_odes(m, t):
         exprs = dict()
         eta = 1e-2
-        step = 0.5 * ((m.Y[t, 5] + 1) / ((m.Y[t, 5] + 1) ** 2 + eta ** 2) ** 0.5 + (210.0 - m.Y[t,5]) / ((210.0 - m.Y[t, 5]) ** 2 + eta ** 2) ** 0.5)
+        step = r1.step(m, t, time=210) 
         exprs['V'] = 7.27609e-05 * step
         V = m.X[t, 'V']
         
         # mass balances
         for c in m.mixture_components:
-            exprs[c] = sum(gammas[c][j] * m.Y[t, j] for j in m.algebraics if j != 5) - exprs['V'] / V * m.Z[t, c]
+            exprs[c] = sum(gammas[c][j] * m.Y[t, j] for j in m.algebraics if j < 5) - exprs['V'] / V * m.Z[t, c]
             if c == 'C':
                 exprs[c] += 0.02247311828 / (m.X[t, 'V'] * 210) * step
         return exprs
 
     r1.add_equations(rule_odes)
+    r1.add_dosing()
     
-    # Declare dosing algebraic
-    r1.set_dosing_var(5)
     # Add dosing points 
     r1.add_dosing_point('AH', 100, 0.3)
     r1.add_dosing_point('A-', 300, 0.9)
 
     r1.set_times(0, 600)
-      
+    r1.settings.collocation.nfe = 50
+    r1.settings.simulator.method = 'fe'
+    
     r1.simulate()
     
     if with_plots:
