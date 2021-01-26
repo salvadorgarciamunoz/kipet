@@ -127,9 +127,6 @@ class fe_initialize(object):
         
         self.model_orig = model_orig
         self.model_ref = src_mod.clone()
-        
-        print("CHECKE")
-        print(hasattr(self.model_ref, 'dose_var'))
 
         time_index = None
         for i in self.model_ref.component_objects(ContinuousSet):
@@ -234,7 +231,7 @@ class fe_initialize(object):
         #     self.model_ref.pprint(ostream = f5)
         for av in self.model_ref.component_objects(Var):
             
-            print(av.name)
+            # print(av.name)
             if av.name in self.dvs_names:
                 continue
             if av.index_set().name == times.name:  #: Just time set
@@ -259,10 +256,6 @@ class fe_initialize(object):
                 self.remaining_set_alg[av.name] = []
                 self.remaining_set_alg[av.name].append(remaining_set)
 
-        print('FINDINGFINGIGN')
-        print(self.weird_vars)
-        print(self.remaining_set_alg)
-
         if init_con is not None:  #: Delete the initial conditions (we use .fix() instead)
             ic = getattr(self.model_ref, init_con)
             self.model_ref.del_component(ic)
@@ -275,7 +268,6 @@ class fe_initialize(object):
                         for key in p.keys():
                             try:
                                 val = param_values[pname, key]
-                                print(val)
                                 p[key].set_value(val)
                             except KeyError:
                                 raise Exception("Missing a key of the param_values\n"
@@ -293,7 +285,6 @@ class fe_initialize(object):
                     for key in p.keys():
                         try:
                             val = param_values[param_name, key]
-                            print(val)
                             p[key].set_value(val)
                         except KeyError:
                             raise Exception("Missing a key of the param_values\n"
@@ -355,8 +346,6 @@ class fe_initialize(object):
         if self.inputs_sub is not None:
             for key in self.inputs_sub.keys():
                 model_var_obj = getattr(self.model_ref, key)
-                
-                print(model_var_obj.display())
 
                 # This finds the index of the set    
                 if identify_member_sets(model_var_obj) is None:
@@ -376,7 +365,6 @@ class fe_initialize(object):
                         raise RuntimeError("{} is not a valid index".format(k))
                     
                     for t in times:
-                        print(t)
                         model_var_obj[(t,) + k].fix()
 
         #: Check nvars and mequations
@@ -831,7 +819,6 @@ def fe_cp(time_set, feedtime):
 def identify_member_sets(model_var_obj):
         
     index_list = get_index_sets(model_var_obj)
-    print(index_list)
     
     if len(index_list) > 1:
         return index_list
