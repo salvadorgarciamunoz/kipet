@@ -1595,6 +1595,9 @@ class TemplateBuilder(object):
             setattr(pyomo_model, self.__var.dosing_variable, Var(pyomo_model.alltime,
                                                                  [self.__var.dosing_component],
                                                                  initialize=0))
+            
+            setattr(pyomo_model, self.__var.time_step_change, Var([0], initialize=(pyomo_model.end_time - pyomo_model.start_time)/2))
+            
         
         # Set up the model by calling the following methods:
         self._add_model_variables(pyomo_model)
