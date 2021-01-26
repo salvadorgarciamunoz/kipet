@@ -28,7 +28,10 @@ from kipet.library.core_methods.ParameterEstimator import ParameterEstimator
 from kipet.library.core_methods.PyomoSimulator import PyomoSimulator
 from kipet.library.core_methods.TemplateBuilder import TemplateBuilder
 from kipet.library.core_methods.VarianceEstimator import VarianceEstimator
-from kipet.library.common.model_funs import step_fun
+from kipet.library.common.model_funs import (
+    step_fun,
+    step_fun_var_time,
+    )
 from kipet.library.common.pre_process_tools import decrease_wavelengths
 from kipet.library.common.pyomo_model_tools import get_vars
 from kipet.library.dev_tools.display import Print
@@ -142,8 +145,7 @@ class ReactionModel(WavelengthSelectionMixins):
                            'concentration': self.__var.concentration_model,
                            }
         
-        #if self.dosing_var is None:
-        #    raise AttributeError('ReactionModel needs a designated algebraic variable for dosing')
+        
         
         if component not in self.components.names:
             raise ValueError('Invalid component name')
@@ -161,6 +163,7 @@ class ReactionModel(WavelengthSelectionMixins):
             self.dosing_points[model_var].append(dosing_point)
             
         self._has_dosing_points = True
+        self._has_step_or_dosing = True
         
     def add_dosing(self):
         """At the moment, this is needed to set up the dosing variable
@@ -563,7 +566,6 @@ class ReactionModel(WavelengthSelectionMixins):
             simulation_class = PyomoSimulator
         
         if self.model is None:
-            print('MAKING model')
             self.create_pyomo_model(*self.settings.general.simulation_times)
         
         self.s_model = self.model.clone()
@@ -580,13 +582,14 @@ class ReactionModel(WavelengthSelectionMixins):
                                        nfe=self.settings.collocation.nfe,
                                        scheme=self.settings.collocation.scheme)
         
-        print(f'This is the sim: {type(simulator)}')
         _print('After disc')
         
         if self._has_step_or_dosing:
             for time in simulator.model.alltime.value:
                 getattr(simulator.model, self.__var.dosing_variable)[time, self.__var.dosing_component].set_value(time)
                 getattr(simulator.model, self.__var.dosing_variable)[time, self.__var.dosing_component].fix()
+        
+            #getattr(simulator.model, 'time_step_change')[0].fix()
         
         self.simulator = simulator
         print('Finished creating simulator')
@@ -702,6 +705,12 @@ class ReactionModel(WavelengthSelectionMixins):
         _print('Starting sim init')
         if self.settings.parameter_estimator.sim_init and estimator == 'p_estimator':
             self.iniitalize_from_simulation(estimator=estimator)
+        
+        if self._has_step_or_dosing:
+            for time in getattr(self, estimator).model.alltime.value:
+                getattr(getattr(self, estimator).model, self.__var.dosing_variable)[time, self.__var.dosing_component].set_value(time)
+                getattr(getattr(self, estimator).model, self.__var.dosing_variable)[time, self.__var.dosing_component].fix()
+        
         
         return None
     
@@ -1117,6 +1126,12 @@ class ReactionModel(WavelengthSelectionMixins):
         
         """
         return step_fun(*args, **kwargs)
+    
+    def step_var(self, *args, **kwargs):
+        """Wrapper for the step_fun in model_funs module
+        
+        """
+        return step_fun_var_time(*args, **kwargs)
     
     @property
     def models(self):
