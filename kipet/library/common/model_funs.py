@@ -29,27 +29,28 @@ def step_fun(model, time_var, time=1e-3, M=1, eta=1e-2, constant=0.5):
     
     return step_point
 
-# def step_fun_var_time(model, time=1e-3, M=1, eta=1e-2, constant=0.5):
-#     """This formulates the step functions for KIPET using a sigmoidal function
+def step_fun_var_time(model, time_var, M=1, eta=1e-2, constant=0.5):
+    """This formulates the step functions for KIPET using a sigmoidal function
     
-#     Args:
-#         pyomo_var: (Var): The algebraic variable used for the step function
+    Args:
+        pyomo_var: (Var): The algebraic variable used for the step function
         
-#         delta (float): Time point for step
+        delta (float): Time point for step
         
-#         M (float): Sigmoidal tuning parameter
+        M (float): Sigmoidal tuning parameter
         
-#         eta (float): Tuning parameter
+        eta (float): Tuning parameter
         
-#         constant (float): Constant added to bring to certain value
+        constant (float): Constant added to bring to certain value
         
-#     Returns:
-#         step_point (Expression): Returns the pyomo expression for the point
+    Returns:
+        step_point (Expression): Returns the pyomo expression for the point
     
-#     """
-#     pyomo_var = getattr(model, __var.dosing_variable)[time_var, __var.dosing_component]
-#     # time_var = getattr(model, __var.step_time_var)[__var.step_time_index]
-     
-#     step_point = 0.5*((time_var - pyomo_var) / ((time_var - pyomo_var)**2 + eta**2/M) ** 0.5) + constant
+    """
+    #time_var = getattr(model, __var.step_time_var)[__var.step_time_index]
+    time_var_step = model.time_step_change[0] 
+    pyomo_var = getattr(model, __var.dosing_variable)[time_var, __var.dosing_component]
     
-#     return step_point
+    step_point = 0.5*((time_var_step - pyomo_var) / ((time_var_step - pyomo_var)**2 + eta**2/M) ** 0.5) + constant
+    
+    return step_point
