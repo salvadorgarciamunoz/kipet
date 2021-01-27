@@ -5,13 +5,21 @@ from kipet.library.top_level.variable_names import VariableNames
 
 __var = VariableNames()
 
-def step_fun(model, time_var, time=1e-3, M=1, eta=1e-2, constant=0.5, on=False):
+def step_fun(model, time_var, num='0', time=1e-3, fixed=True, switch=False, M=1, eta=1e-2, constant=0.5):
     """This formulates the step functions for KIPET using a sigmoidal function
     
     Args:
-        pyomo_var: (Var): The algebraic variable used for the step function
+        model: The ConcreteModel using the step function
         
-        delta (float): Time point for step
+        time_var (float): Time point for step
+        
+        num (str): The name of the step function
+        
+        time (float): The time for the step change (init if not fixed)
+        
+        fixed (bool): Choose if the time is known and fixed or variable
+        
+        on (bool): True if turning on, False if turning off, optional string args too
         
         M (float): Sigmoidal tuning parameter
         
@@ -23,37 +31,23 @@ def step_fun(model, time_var, time=1e-3, M=1, eta=1e-2, constant=0.5, on=False):
         step_point (Expression): Returns the pyomo expression for the point
     
     """
-    factor = 1 if not on else -1
-    time *= factor
+    if switch in ['on', 'turn_on']:
+        on = True
+    elif switch in ['off', 'turn_off']:
+        on = False
+    
+    factor = 1 if not switch else -1
+    
+    if fixed:
+        if time is None:
+            raise ValueError('Time cannot be None')
+        time_var_step = factor*time
+    else: 
+        if time is not None:
+            model.time_step_change[num].set_value(time)
+        time_var_step = factor*model.time_step_change[num]
+        
     pyomo_var = getattr(model, __var.dosing_variable)[time_var, __var.dosing_component]
-    
-    step_point = 0.5*((time - factor*pyomo_var) / ((time - factor*pyomo_var)**2 + eta**2/M) ** 0.5) + constant
-    
-    return step_point
-
-def step_fun_var_time(model, time_var, M=1, eta=1e-2, constant=0.5, on=False):
-    """This formulates the step functions for KIPET using a sigmoidal function
-    
-    Args:
-        pyomo_var: (Var): The algebraic variable used for the step function
-        
-        delta (float): Time point for step
-        
-        M (float): Sigmoidal tuning parameter
-        
-        eta (float): Tuning parameter
-        
-        constant (float): Constant added to bring to certain value
-        
-    Returns:
-        step_point (Expression): Returns the pyomo expression for the point
-    
-    """
-    factor = 1 if not on else -1
-    #time_var = getattr(model, __var.step_time_var)[__var.step_time_index]
-    time_var_step = factor*model.time_step_change[0] 
-    pyomo_var = getattr(model, __var.dosing_variable)[time_var, __var.dosing_component]
-    
     step_point = 0.5*((time_var_step - factor*pyomo_var) / ((time_var_step - factor*pyomo_var)**2 + eta**2/M) ** 0.5) + constant
     
     return step_point

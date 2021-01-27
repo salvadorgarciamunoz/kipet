@@ -30,7 +30,7 @@ from kipet.library.core_methods.TemplateBuilder import TemplateBuilder
 from kipet.library.core_methods.VarianceEstimator import VarianceEstimator
 from kipet.library.common.model_funs import (
     step_fun,
-    step_fun_var_time,
+    # step_fun_var_time,
     )
 from kipet.library.common.pre_process_tools import decrease_wavelengths
 from kipet.library.common.pyomo_model_tools import get_vars
@@ -165,10 +165,11 @@ class ReactionModel(WavelengthSelectionMixins):
         self._has_dosing_points = True
         self._has_step_or_dosing = True
         
-    def add_dosing(self):
+    def add_dosing(self, n_steps=1):
         """At the moment, this is needed to set up the dosing variable
         """
         self._has_step_or_dosing = True
+        self._number_of_steps = n_steps
     
         return None
     
@@ -454,11 +455,14 @@ class ReactionModel(WavelengthSelectionMixins):
         self.builder.set_parameter_scaling(self.settings.general.scale_parameters)
         self.builder.add_state_variance(self.components.variances)
         
-        if self._has_step_or_dosing:
-            self.builder.add_dosing_var()
+        # if self._has_step_or_dosing:
+        #     self.builder.add_dosing_var(self._number_of_steps)
         
         if self._has_dosing_points:
             self._add_feed_times()
+            
+        if hasattr(self, '_step_list') and len(self._step_list) > 0:
+            self.builder.add_step_vars(self._step_list)
             
         # It seems this is repetitive - refactor
         self.builder._G_contribution = self.settings.parameter_estimator.G_contribution
@@ -1119,6 +1123,13 @@ class ReactionModel(WavelengthSelectionMixins):
     
         return None
     
+    def add_step(self, name, *args, **kwargs):
+        
+        self._has_step_or_dosing = True
+        if not hasattr(self, '_step_list'):
+            self._step_list = {}
+        self._step_list[name] = kwargs
+        
     """MODEL FUNCTION AREA"""
     
     def step(self, *args, **kwargs):
@@ -1127,11 +1138,11 @@ class ReactionModel(WavelengthSelectionMixins):
         """
         return step_fun(*args, **kwargs)
     
-    def step_var(self, *args, **kwargs):
-        """Wrapper for the step_fun in model_funs module
+    # def step_var(self, *args, **kwargs):
+    #     """Wrapper for the step_fun in model_funs module
         
-        """
-        return step_fun_var_time(*args, **kwargs)
+    #     """
+    #     return step_fun_var_time(*args, **kwargs)
     
     @property
     def models(self):

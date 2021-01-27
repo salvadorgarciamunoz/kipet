@@ -52,6 +52,7 @@ class TemplateBuilder(object):
         _complementary_states (set,optional): container with additional states
 
     """
+    __var = VariableNames()
 
     def __init__(self, **kwargs):
         """Template builder constructor
@@ -65,8 +66,6 @@ class TemplateBuilder(object):
             extra_states (dictionary): map of state name to initial condition
 
         """
-        self.__var = VariableNames()
-        
         self._component_names = set()
         self._component_units = dict()
         self._parameters = dict()
@@ -849,9 +848,10 @@ class TemplateBuilder(object):
     
         return None
     
-    def add_dosing_var(self):
+    def add_dosing_var(self, n_steps):
         
         self._add_dosing_var = True
+        self._number_of_steps = n_steps
     
     def set_odes_rule(self, rule):
         """Set the ode expressions.
@@ -1556,7 +1556,49 @@ class TemplateBuilder(object):
             raise RuntimeError(f'Measurement time {time_set[-1]} not within ({start_time}, {end_time})')
     
         return None
-                               
+    
+    def add_step_vars(self, step_data):
+        
+        if not hasattr(self, '_step_data'):
+            self._step_data = None
+        self._step_data = step_data
+        return None
+    
+    def _add_time_steps(self, model):
+        
+        from kipet.library.common.model_funs import step_fun
+    
+        # Add dosing var
+        #if self._add_dosing_var:
+        setattr(model, self.__var.dosing_variable, Var(model.alltime,
+                                                      [self.__var.dosing_component],
+                                                      initialize=0))
+            
+        if hasattr(self, '_step_data') and len(self._step_data) > 0:
+            steps = list(self._step_data.keys())
+            
+            setattr(model, self.__var.time_step_change, Var(steps, 
+                    bounds=(model.start_time, model.end_time), 
+                    initialize=(model.end_time - model.start_time)/2))
+                   
+            
+            setattr(model, self.__var.step_variable, Var(model.alltime,
+                                                         steps,
+                                                         initialize=1.0))
+                                          
+            #Constraint to keep track of the step values (for diagnostics)
+            def rule_step_function(m, t, k):
+                step_const = getattr(m, self.__var.step_variable)[t, k] - step_fun(m, t, num=k, **self._step_data[k])
+                return step_const == 0.0
+
+            constraint_suffix = 'contraint'
+            
+            setattr(model, self.__var.step_variable + constraint_suffix,
+                    Constraint(model.alltime,
+                               steps,
+                               rule=rule_step_function))
+        return None
+            
     def create_pyomo_model(self, start_time=None, end_time=None):
         """Create a pyomo model.
 
@@ -1584,20 +1626,8 @@ class TemplateBuilder(object):
        
         pyomo_model.measured_data = Set(initialize=self._all_state_data)
         
-        
-        
-        
         # Set up the model time sets and parameters
         self._set_up_times(pyomo_model, start_time, end_time)
-        
-        # Add dosing var
-        if self._add_dosing_var:
-            setattr(pyomo_model, self.__var.dosing_variable, Var(pyomo_model.alltime,
-                                                                 [self.__var.dosing_component],
-                                                                 initialize=0))
-            
-            setattr(pyomo_model, self.__var.time_step_change, Var([0], initialize=(pyomo_model.end_time - pyomo_model.start_time)/2))
-            
         
         # Set up the model by calling the following methods:
         self._add_model_variables(pyomo_model)
@@ -1613,6 +1643,9 @@ class TemplateBuilder(object):
         # If unwanted contributions are being handled:
         if self._G_contribution is not None:
             self._add_unwanted_contribution_variables(pyomo_model)
+
+         # Add time step variables
+        self._add_time_steps(pyomo_model)
 
         # Validate the model before writing constraints
         self._validate_data(pyomo_model)
