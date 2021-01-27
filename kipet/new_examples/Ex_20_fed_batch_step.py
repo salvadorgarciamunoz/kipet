@@ -33,16 +33,14 @@ if __name__ == "__main__":
     r1.add_dataset('C_data', category='concentration', file = filename)
     
     cin_B = 2
+    # Add the step function for the B feed
+    # on = False means turn it off at time = 15, True would mean turning it on at 15
+    r1.add_step('Qin_B', time=15, switch='off')
     
     def rule_odes(m,t):
         exprs = dict()
-        
-        # Here is the feed as a step function with variable time
-        Qin_B = 0.1*r1.step_var(m, t)
-        
-        # Here is the feed with known cut-off time
-        #Qin_B = 0.1*r1.step(m, t, time=15)
-        
+        # Use the step variable here
+        Qin_B = 0.1*m.step[t, 'Qin_B']
         exprs['A'] = -m.Z[t,'A'] * Qin_B/m.X[t,'V']-m.P['k1']*m.Z[t,'A']*m.Z[t,'B']
         exprs['B'] = (cin_B*Qin_B - m.Z[t,'B'] * Qin_B)/m.X[t,'V']- m.P['k1']*m.Z[t,'A']*m.Z[t,'B']
         exprs['C'] = -m.Z[t,'C'] * Qin_B/m.X[t,'V'] + m.P['k1']*m.Z[t,'A']*m.Z[t,'B']
@@ -50,9 +48,6 @@ if __name__ == "__main__":
         return exprs
     
     r1.add_equations(rule_odes)
-    
-    # This is need to tell KIPET that the special dosing variable is needed
-    r1.add_dosing()
     
     r1.settings.solver.linear_solver = 'ma27'
     r1.settings.parameter_estimator.sim_init = True

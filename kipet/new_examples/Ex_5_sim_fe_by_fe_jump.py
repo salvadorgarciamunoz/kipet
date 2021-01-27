@@ -76,22 +76,22 @@ if __name__ == "__main__":
 
     r1.add_algebraics(rule_algebraics)
  
+    r1.add_step('V', time=210, fixed=True, on=False)   
+ 
     def rule_odes(m, t):
         exprs = dict()
-        eta = 1e-2
-        step = r1.step(m, t, time=210) 
+        step = m.step[t, 'V'] 
         exprs['V'] = 7.27609e-05 * step
         V = m.X[t, 'V']
         
         # mass balances
         for c in m.mixture_components:
-            exprs[c] = sum(gammas[c][j] * m.Y[t, j] for j in m.algebraics) - exprs['V'] / V * m.Z[t, c]
+            exprs[c] = sum(gammas[c][j] * m.Y[t, j] for j in m.algebraics if j < 5) - exprs['V'] / V * m.Z[t, c]
             if c == 'C':
                 exprs[c] += 0.02247311828 / (m.X[t, 'V'] * 210) * step
         return exprs
 
     r1.add_equations(rule_odes)
-    r1.add_dosing()
     
     # Add dosing points 
     r1.add_dosing_point('AH', 100, 0.3)
