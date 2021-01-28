@@ -22,9 +22,9 @@ class ParameterBlock():
         
         #name_len_max = max(len(self.parame.name))
         
-        format_string = "{:<10}{:<10}{:<15}{:<15}\n"
+        format_string = "{:<10}{:<10}{:<15}{:<15}{:<15}\n"
         param_str = 'ParameterBlock:\n'
-        param_str += format_string.format(*['Name', 'Init', 'Bounds', 'Fixed'])
+        param_str += format_string.format(*['Name', 'Init', 'Bounds', 'Fixed', 'Units'])
         
         for param in self.parameters.values():
             
@@ -33,7 +33,7 @@ class ParameterBlock():
             else:
                 init_value = 'None'
             
-            param_str += format_string.format(param.name, f'{init_value}', f'{param.bounds}', f'{param.fixed}')
+            param_str += format_string.format(param.name, f'{init_value}', f'{param.bounds}', f'{param.fixed}', param.units)
         
         return param_str
 
@@ -82,6 +82,7 @@ class ParameterBlock():
         bounds = kwargs.pop('bounds', None)
         init = kwargs.pop('init', None)
         fixed = kwargs.pop('fixed', False)
+        units = kwargs.pop('units', None)
         
         if len(args) == 1:
             if isinstance(args[0], ModelParameter):
@@ -96,14 +97,14 @@ class ParameterBlock():
                 self._add_parameter_with_terms(*args)
                 
             elif isinstance(args[0], str):
-                self._add_parameter_with_terms(args[0], init, bounds, fixed)
+                self._add_parameter_with_terms(args[0], init, bounds, fixed, units)
                 
             else:
                 raise ValueError('For a parameter a name and initial value are required')
             
         elif len(args) >= 2:
             
-            _args = [args[0], None, None]
+            _args = [args[0], None, None, None]
                     
             if init is not None:
                 _args[1] = init
@@ -124,7 +125,7 @@ class ParameterBlock():
     
         return None
         
-    def _add_parameter_with_terms(self, name, init=None, bounds=None, fixed=False):
+    def _add_parameter_with_terms(self, name, init=None, bounds=None, fixed=False, units=None):
         """Adds the parameter using explicit inputs for the name, init, and 
         bounds
         
@@ -133,6 +134,7 @@ class ParameterBlock():
                                init=init,
                                bounds=bounds,
                                fixed=fixed,
+                               units=units,
                                 )
             
         self.parameters[param.name] = param
@@ -192,7 +194,7 @@ class ModelParameter():
     TODO: change init to value
     """
 
-    def __init__(self, name=None, init=None, bounds=None, fixed=False): #, variance=None):
+    def __init__(self, name=None, init=None, bounds=None, fixed=False, units=None): #, variance=None):
 
         # Check if name is provided
         if name is None:
@@ -216,14 +218,15 @@ class ModelParameter():
         
         self.bounds = bounds
         self.fixed = fixed
+        self.units = units
         
         return None
         
     def __str__(self):
-        return f'ModelParameter({self.name}, init={self.init}, bounds={self.bounds}, fixed={self.fixed})'
+        return f'ModelParameter({self.name}, init={self.init}, bounds={self.bounds}, fixed={self.fixed}, units={self.units})'
 
     def __repr__(self):
-        return f'ModelParameter({self.name}, init={self.init}, bounds={self.bounds}, fixed={self.fixed})'
+        return f'ModelParameter({self.name}, init={self.init}, bounds={self.bounds}, fixed={self.fixed}, units={self.units})'
 
     @property
     def lb(self):
@@ -247,9 +250,9 @@ class ComponentBlock():
          
     def __str__(self):
         
-        format_string = "{:<10}{:<20}{:<10}{:<10}\n"
+        format_string = "{:<10}{:<20}{:<10}{:<10}{:<10}\n"
         comp_str = 'ComponentBlock:\n'
-        comp_str += format_string.format(*['Name', 'Category', 'Init', 'Variance'])
+        comp_str += format_string.format(*['Name', 'Category', 'Init', 'Variance', 'Units'])
         
         for comp in self.components.values():
             
@@ -261,7 +264,7 @@ class ComponentBlock():
             if comp.init is not None:
                 comp_init = f'{comp.init:0.2e}'
             
-            comp_str += format_string.format(comp.name, comp.state, comp_init, comp_variance)
+            comp_str += format_string.format(comp.name, comp.state, comp_init, comp_variance, comp.units)
         
         return comp_str
 
@@ -496,8 +499,180 @@ class ModelConstant():
         self.units = units
 
     def __str__(self):
-        return f'Constant: {self.name}, {self.state}, init={self.init}, variance={self.variance}, init_known={self.known}'
+        return f'Constant: {self.name}, {self.state}, init={self.init}, variance={self.variance}, init_known={self.known}, units={self.units}'
     
     def __repr__(self):
-        return f'Constant: {self.name}, {self.state}, init={self.init}, variance={self.variance}, init_known={self.known}'
+        return f'Constant: {self.name}, {self.state}, init={self.init}, variance={self.variance}, init_known={self.known}, units={self.units}'
 
+
+class ConstantBlock():
+    
+    """Data abstraction for multiple ModelConstant instances"""
+    
+    def __init__(self):
+        
+        self.constants = {}
+        
+    def __getitem__(self, value):
+        
+        return self.constants[value]
+         
+    def __str__(self):
+        
+        #f'{str(k).rjust(m)} : {v}\n'
+        
+        #name_len_max = max(len(self.parame.name))
+        
+        format_string = "{:<10}{:<10}{:<15}\n"
+        param_str = 'ConstantBlock:\n'
+        param_str += format_string.format(*['Name', 'Value', 'Units'])
+        
+        for constant in self.constants.values():
+    
+            param_str += format_string.format(constant.name, constant.value, constant.units)
+        
+        return param_str
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __iter__(self):
+        for param, data in self.constants.items():
+            yield data
+            
+    def __len__(self):
+        return len(self.constants)
+    
+
+    def add_constant_list(self, param_list):
+        """Handles lists of parameters or single parameters added to the model
+       
+        """
+        for param in param_list:
+            self.add_constant(*param)        
+        
+        return None
+    
+    def add_constant(self, *args, **kwargs):
+        
+        """Should handle a series of different input methods:
+          
+        KP = KineticParameter('k1', init=1.0, bounds=(0.01, 10))
+        builder.add_parameter_temp(KP)
+        
+        - or -
+        
+        builder.add_parameter('k1', init=1.0, bounds=(0.01, 10))
+        
+        - or -
+        
+        builder.add_parameter('k1', 1.0, (0.01, 10))
+            
+        """        
+        value = kwargs.pop('value', None)
+        units = kwargs.pop('units', None)
+        
+        if len(args) == 1:
+            if isinstance(args[0], ModelConstant):
+                self.constants[args[0].name] = args[0]
+            
+            elif isinstance(args[0], (list, tuple)):
+                args = [a for a in args[0]]
+                self._add_constant_with_terms(*args)
+                
+            elif isinstance(args[0], dict):
+                args = [[k] + [*v] for k, v in args[0].items()][0]
+                self._add_constant_with_terms(*args)
+                
+            elif isinstance(args[0], str):
+                self._add_constant_with_terms(args[0], value, units)
+                
+            else:
+                raise ValueError('For a parameter a name and initial value are required')
+            
+        elif len(args) >= 2:
+            
+            _args = [args[0], None, None]
+                    
+            if init is not None:
+                _args[1] = init
+            else:
+                if not isinstance(args[1], (list, tuple)):
+                    _args[1] = args[1]
+
+            if bounds is not None:
+                _args[2] = bounds
+            else:
+                if len(args) == 3:
+                    _args[2] = args[2]
+                else:
+                    if _args[1] is None:
+                        _args[2] = args[1]
+                        
+            self._add_constant_with_terms(*_args)
+    
+        return None
+        
+    def _add_constant_with_terms(self, name, value=None, units=None):
+        """Adds the parameter using explicit inputs for the name, init, and 
+        bounds
+        
+        """
+        param = ModelConstant(name=name,
+                              value=value,
+                              units=units,
+                              )
+            
+        self.constants[param.name] = param
+            
+        return None
+
+    def as_dict(self, factor=None, bounds=False):
+        """Returns the parameter data as a dict that can be used directly in
+        other kipet methods
+        
+        """
+        return {p.name: (p.value, p.units) for p in self.constants.values()}
+    
+       
+    def update(self, attr, values):
+        """Update attributes using a dictionary"""
+        if isinstance(values, dict):
+            for key, val in values.items():
+                if key in self.names: 
+                    setattr(self[key], attr, val)
+       
+    @property 
+    def names(self):
+        return [param for param in self.constants]
+    
+
+class ModelConstant():
+    """A simple class for holding kinetic parameter data
+    
+    TODO: change init to value
+    """
+
+    def __init__(self, name=None, value=None, units=None): #, variance=None):
+
+        # Check if name is provided
+        if name is None:
+            raise ValueError('ModelParameter requires a name (k1, k2, etc.)')
+        else:
+            self.name = name
+        
+        # Check if initial value is provided - if not, then bounds is required
+        if value is not None:
+            self.value = value
+        else:
+            raise ValueError('value cannot be None')
+        
+        self.units = units
+        
+        return None
+        
+    def __str__(self):
+        return f'ModelConstant({self.name}, value={self.value}, units={self.units})'
+
+    def __repr__(self):
+        return f'ModelConstant({self.name}, value={self.value}, units={self.units})'
