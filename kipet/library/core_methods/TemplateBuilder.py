@@ -15,13 +15,97 @@ import numpy as np
 import pandas as pd
 from pyomo.environ import *
 from pyomo.dae import *
+from pyomo.environ import units as u
 
 # KIPET library imports
 from kipet.library.post_model_build.scaling import scale_parameters
 from kipet.library.core_methods.PyomoSimulator import PyomoSimulator
 from kipet.library.top_level.variable_names import VariableNames
+from kipet.library.common.pyomo_model_tools import get_index_sets
+from kipet.library.common.VisitorClasses import ReplacementVisitor
 
 logger = logging.getLogger('ModelBuilderLogger')
+
+class ModalVar():
+        
+    def __init__(self, name, comp, index, model):
+        
+        self.name = name
+        self.comp = comp
+        self.index = index
+        self.model = model
+    
+class Comp():
+    
+    var = VariableNames()
+    
+    def __init__(self, model):
+        
+        #self._r_model = model
+        self._model = model
+        self._model_vars = self.var.model_vars
+        self._rate_vars = self.var.rate_vars
+        self.var_dict = {}
+        self.assign_vars()
+        self.assign_rate_vars()
+        
+    def assign_vars(self):
+        """Digs through and assigns the variables as top-level attributes
+        
+        """
+        for mv in self._model_vars:
+            if hasattr(self._model, mv):
+                mv_obj = getattr(self._model, mv)
+                index_sets = get_index_sets(mv_obj)
+                comp_set = list(index_sets[-1].keys())
+                dim = len(index_sets)
+                
+                for comp in comp_set:
+                    
+                    if isinstance(comp, str):
+                        comp_name = comp
+                        comp_name.replace(' ', '_')
+                    elif isinstance(comp, int):
+                        comp_name = f'y{comp}'
+                    
+                    self.var_dict[comp_name] = ModalVar(comp_name, comp_name, mv, self._model)
+                    if dim > 1:
+                        setattr(self, comp_name, mv_obj[0, comp])
+                    else:
+                        setattr(self, comp_name, mv_obj[comp])
+
+    def assign_rate_vars(self):
+
+        for mv in self._rate_vars:
+            if hasattr(self._model, mv):
+                
+                mv_obj = getattr(self._model, mv)
+                index_sets = get_index_sets(mv_obj)
+                comp_set = list(index_sets[-1].keys())
+                dim = len(index_sets)
+                
+                for comp in comp_set:
+                    
+                    if isinstance(comp, str):
+                        comp_name = comp
+                        comp_name.replace(' ', '_')
+                    elif isinstance(comp, int):
+                        comp_name = f'y{comp}'
+                    
+                    comp_name = f'd{comp_name}dt'
+                    
+                    self.var_dict[comp_name] = ModalVar(comp_name, str(comp), mv, self._model)
+                    if dim > 1:
+                        setattr(self, comp_name, mv_obj[0, comp])
+                    else:
+                        setattr(self, comp_name, mv_obj[comp])  
+
+    def _id(self, comp):
+        
+        id_ = id(getattr(self, comp))
+        print(id_)
+        return id_
+    
 
 class TemplateBuilder(object):
     """Helper class for creation of models.
@@ -72,6 +156,11 @@ class TemplateBuilder(object):
         self._parameters_init = dict()  # added for parameter initial guess CS
         self._parameters_bounds = dict()
         self._parameters_fixed = dict()
+        self._parameters_units = dict()
+        self._constants = dict()
+        self._constants_units = dict()
+        
+        self.u = u
         
         self._smoothparameters = dict()  # added for mutable parameters CS
         self._smoothparameters_mutable = dict() #added for mutable parameters CS
@@ -218,11 +307,42 @@ class TemplateBuilder(object):
         """
         self._times = times
         
+    def add_constants(self, ConstantBlockObject):
+        for const in ConstantBlockObject:
+            self.add_constant(const.name, const.value, units=const.units)
     
     def add_parameters(self, ParameterBlockObject):
         
         for param in ParameterBlockObject:
-            self.add_parameter(param.name, init=param.init, bounds=param.bounds, fixed=param.fixed)
+            self.add_parameter(param.name, init=param.init, bounds=param.bounds, units=param.units, fixed=param.fixed)
+
+    def add_constant(self, *args, **kwds):
+        """Add a kinetic parameter(s) to the model.
+
+        Note:
+            Plan to change this method add parameters as PYOMO variables
+
+            This method tries to mimic a template implementation. Depending
+            on the argument type it will behave differently
+
+        Args:
+            param1 (str): Parameter name. Creates a variable parameter
+
+            param1 (list): Parameter names. Creates a list of variable parameters
+
+            param1 (dict): Map parameter name(s) to value(s). Creates a fixed parameter(s)
+
+        Returns:
+            None
+        """
+        
+        name = args[0]
+        value = args[1]
+        units = kwds.get('units', None)
+        
+        self._constants[name] = value
+        if units is not None:
+            self._constants_units = self.u._pint_registry(units)
 
     def add_parameter(self, *args, **kwds):
         """Add a kinetic parameter(s) to the model.
@@ -247,6 +367,7 @@ class TemplateBuilder(object):
         bounds = kwds.pop('bounds', None)
         init = kwds.pop('init', None)
         fixed = kwds.pop('fixed', False)
+        units = kwds.pop('units', None)
         
         if len(args) == 1:
             name = args[0]
@@ -258,6 +379,9 @@ class TemplateBuilder(object):
                     self._parameters_init[name] = init
                 if fixed is not None:
                     self._parameters_fixed[name] = fixed
+                if units is not None:
+                    print(units)
+                    self._parameters_units[name] = self.u._pint_registry(units)
                     
             elif isinstance(name, list) or isinstance(name, set):
                 if bounds is not None:
@@ -270,7 +394,9 @@ class TemplateBuilder(object):
                     if init is not None:
                         self._parameters_init[n] = init[i]
                     if fixed is not None:
-                        self._parameters_fixed[k] = fixed[i]
+                        self._parameters_fixed[n] = fixed[i]
+                    if units is not None:
+                        self._parameters_units[n] = self.u._pint_registry(units[i])
 
             elif isinstance(name, dict):
                 if bounds is not None:
@@ -284,8 +410,11 @@ class TemplateBuilder(object):
                         self._parameters_init[k] = init[k]
                     if fixed is not None:
                         self._parameters_fixed[k] = fixed[k]
+                    if units is not None:
+                        self._parameters_units[k] = self.u._pint_registry(units[k])
             else:
                 raise RuntimeError('Kinetic parameter data not supported. Try str')
+        
         elif len(args) == 2:
             first = args[0]
             second = args[1]
@@ -297,9 +426,11 @@ class TemplateBuilder(object):
                     self._parameters_init[first] = init
                 if fixed is not None:
                     self._parameters_fixed[first] = fixed
+                if units is not None:
+                    self._parameters_units[first] = self.u._pint_registry(units)
 
-            else:
-                raise RuntimeError('Parameter argument not supported. Try str,val')
+            # else:
+            #     raise RuntimeError('Parameter argument not supported. Try str,val')
         else:
             raise RuntimeError('Parameter argument not supported. Try str,val')
 
@@ -379,9 +510,9 @@ class TemplateBuilder(object):
             else:
                 raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try str, float')
             
-            from pyomo.environ import units as u
-            self.u = u
-            self._component_units[name] = u._pint_registry(units)
+            # from pyomo.environ import units as u
+            # self.u = u
+            self._component_units[name] = self.u._pint_registry(units)
              
         else:
             raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try str, float')
@@ -407,7 +538,8 @@ class TemplateBuilder(object):
                 continue
             else:
                 state = component.state
-            self._add_state_variable(component.name, component.init, data_type=state)
+                     
+            self._add_state_variable(component.name, component.init, component.units, data_type=state)
             
             sigma_dict[component.name] = component.variance
             
@@ -1151,6 +1283,17 @@ class TemplateBuilder(object):
 
         return None
     
+    def _add_model_constants(self, model):
+        
+        if len(self._constants) > 0:
+        
+            constant_designator = self.__var.model_constant
+            setattr(model, constant_designator, Param(self._constants.keys(),
+                                                      initialize=self._constants))
+            
+        return None
+    
+    
     def _add_model_parameters(self, model):
         """Add the model parameters to the pyomo model"""
         
@@ -1250,10 +1393,91 @@ class TemplateBuilder(object):
         
         return None
 
+    # @staticmethod
+    def change_time(self, expr_orig, c_mod, new_time, current_model):
+        """Method to remove the fixed parameters from the ConcreteModel
+        """
+        #print(f'TO change:  {expr_orig.to_string()}')
+
+        expr_new_time = expr_orig
+
+        var_dict = c_mod.var_dict
+
+        for model_var, var_obj in var_dict.items():
+            
+            if getattr(current_model, var_obj.index).dim() == 1:
+                old_var = getattr(c_mod, model_var)
+                new_var = getattr(current_model, var_obj.index)[var_obj.comp]
+            
+            else:
+                old_var = getattr(c_mod, model_var)
+                new_var = getattr(current_model, var_obj.index)[new_time, var_obj.comp]
+            
+            # print(old_var)
+            # print(new_var)
+            
+            expr_new_time = self._update_expression(expr_new_time, old_var, new_var)
+    
+        #print(f'Changed TO: {expr_new_time.to_string()}')
+        
+        return expr_new_time
+
+    @staticmethod
+    def _update_expression(expr, replacement_param, change_value):
+        """Takes the non-estiambale parameter and replaces it with its intitial
+        value
+        
+        Args:
+            expr (pyomo constraint expr): the target ode constraint
+            
+            replacement_param (str): the non-estimable parameter to replace
+            
+            change_value (float): initial value for the above parameter
+            
+        Returns:
+            new_expr (pyomo constraint expr): updated constraints with the
+                desired parameter replaced with a float
+        
+        """
+        visitor = ReplacementVisitor()
+        visitor.change_replacement(change_value)
+        visitor.change_suspect(id(replacement_param))
+        new_expr = visitor.dfs_postorder_stack(expr)       
+        return new_expr
+
     def _add_model_odes(self, model):
         """Adds the ODE system to the model, if any"""
         
-        if self._odes:
+        if hasattr(self, 'reaction_dict'):
+
+            def rule_odes(m, t, k):
+                exprs = self.reaction_dict                
+               
+                if t == m.start_time.value:
+                    return Constraint.Skip
+                else:
+                    if k in m.mixture_components:
+                        if k in exprs.keys():
+                            deriv_var = f'd{self.__var.concentration_model}dt'
+                            final_expr = getattr(m, deriv_var)[t, k] == exprs[k]
+                            final_expr  = self.change_time(final_expr, self.c_mod, t, m)
+                            return final_expr
+                        else:
+                            return Constraint.Skip
+                    else:
+                        if k in exprs.keys():
+                            deriv_var = f'd{self.__var.state_model}dt'
+                            final_expr = getattr(m, deriv_var)[t, k] == exprs[k]
+                            final_expr  = self.change_time(final_expr, self.c_mod, t, m)
+                            return final_expr
+                        else:
+                            return Constraint.Skip
+
+            setattr(model, self.__var.ode_constraints, Constraint(model.alltime,
+                                                                  model.states,
+                                                                  rule=rule_odes))
+
+        elif self._odes:
             def rule_odes(m, t, k):
                 exprs = self._odes(m, t)
             
@@ -1284,13 +1508,23 @@ class TemplateBuilder(object):
         if self._algebraic_constraints:
             n_alg_eqns = len(self._algebraic_constraints(model, model.start_time))
 
-            def rule_algebraics(m, t, k):
-                alg_const = self._algebraic_constraints(m, t)[k]
-                return alg_const == 0.0
-
-            model.algebraic_consts = Constraint(model.alltime,
-                                                range(n_alg_eqns),
-                                                rule=rule_algebraics)
+            if hasattr(self, 'reaction_dict'):
+    
+                def rule_algebraics(m, t, k):
+                    alg_const = self._algebraic_constraints(m, t)[k]
+                    final_exp = alg_const == 0.0
+                    final_expr  = self.change_time(final_expr, self.c_mod, t, m)
+                    return final_expr
+            else:
+                def rule_algebraics(m, t, k):
+                      
+                    alg_const = self._algebraic_constraints(m, t)[k]
+                    final_expr = alg_const == 0.0
+                    return final_expr
+    
+                model.algebraic_consts = Constraint(model.alltime,
+                                                    range(n_alg_eqns),
+                                                    rule=rule_algebraics)
         return None
     
     def _add_objective_custom(self, model):
@@ -1550,6 +1784,9 @@ class TemplateBuilder(object):
         the model time bounds
         
         """
+        print(time_set)
+        print(start_time, end_time)
+        
         if time_set[0] < start_time:
             raise RuntimeError(f'Measurement time {time_set[0]} not within ({start_time}, {end_time})')
         if time_set[-1] > end_time:
@@ -1591,7 +1828,7 @@ class TemplateBuilder(object):
                 step_const = getattr(m, self.__var.step_variable)[t, k] - step_fun(m, t, num=k, **self._step_data[k])
                 return step_const == 0.0
 
-            constraint_suffix = 'contraint'
+            constraint_suffix = 'constraint'
             
             setattr(model, self.__var.step_variable + constraint_suffix,
                     Constraint(model.alltime,
@@ -1635,7 +1872,8 @@ class TemplateBuilder(object):
             
         pyomo_model.algebraics = Set(initialize=list(self._algebraics.keys()))
             
-        self._add_algebraic_var(pyomo_model)    
+        self._add_algebraic_var(pyomo_model)
+        self._add_model_constants(pyomo_model)
         self._add_initial_conditions(pyomo_model)
         self._add_spectral_variables(pyomo_model)
         self._add_model_smoothing_parameters(pyomo_model)
@@ -1646,6 +1884,12 @@ class TemplateBuilder(object):
 
          # Add time step variables
         self._add_time_steps(pyomo_model)
+
+        if not hasattr(self, 'c_mod'):
+            self.c_mod = Comp(pyomo_model)
+        
+        if hasattr(self, 'early_return') and self.early_return:
+            return pyomo_model
 
         # Validate the model before writing constraints
         self._validate_data(pyomo_model)
