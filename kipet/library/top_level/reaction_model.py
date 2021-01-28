@@ -43,6 +43,7 @@ from kipet.library.top_level.helper import DosingPoint
 from kipet.library.top_level.model_components import (
     ComponentBlock,
     ParameterBlock,
+    ConstantBlock,
     )
 from kipet.library.top_level.settings import (
     Settings, 
@@ -55,12 +56,79 @@ __var = VariableNames()
 DEBUG=__var.DEBUG
 _print = Print(verbose=DEBUG)
 
+# class ModalVar():
+        
+#     def __init__(self, name, comp, index, model):
+        
+#         self.name = name
+#         self.comp = comp
+#         self.index = index
+#         self.model = model
+    
+# class Comp():
+    
+#     var = VariableNames()
+    
+#     def __init__(self, model):
+        
+#         self._r_model = model
+#         self._model = model.model
+#         self._model_vars = var.model_vars
+#         self._rate_vars = var.rate_vars
+#         self.var_dict = {}
+#         self.assign_vars()
+#         self.assign_rate_vars()
+        
+#     def assign_vars(self):
+#         """Digs through and assigns the variables as top-level attributes
+        
+#         """
+#         for mv in self._model_vars:
+#             if hasattr(self._model, mv):
+#                 mv_obj = getattr(self._model, mv)
+#                 index_sets = get_index_sets(mv_obj)
+#                 comp_set = list(index_sets[-1].keys())
+#                 dim = len(index_sets)
+                
+#                 for comp in comp_set:
+#                     self.var_dict[str(comp)] = ModalVar(str(comp), str(comp), mv, self._model)
+#                     if dim > 1:
+#                         setattr(self, str(comp), mv_obj[0, comp])
+#                     else:
+#                         setattr(self, str(comp), mv_obj[comp])
+
+#     def assign_rate_vars(self):
+
+#         for mv in self._rate_vars:
+#             if hasattr(self._model, mv):
+                
+#                 print(mv)
+                
+#                 mv_obj = getattr(self._model, mv)
+#                 index_sets = get_index_sets(mv_obj)
+#                 comp_set = list(index_sets[-1].keys())
+#                 dim = len(index_sets)
+                
+#                 print(comp_set)
+                
+#                 for comp in comp_set:
+#                     comp_name = f'd{comp}dt'
+                    
+#                     self.var_dict[comp_name] = ModalVar(comp_name, str(comp), mv, self._model)
+#                     if dim > 1:
+#                         setattr(self, comp_name, mv_obj[0, comp])
+#                     else:
+#                         setattr(self, comp_name, mv_obj[comp])            
+
+
 class ReactionModel(WavelengthSelectionMixins):
     
     """This should consolidate all of the Kipet classes into a single class to
     enable a simpler framework for using the software. 
     
     """
+    __var = VariableNames()
+    
     def __init__(self, *args, **kwargs):
         
         self.name = kwargs.get('name', 'Model-1')
@@ -68,8 +136,8 @@ class ReactionModel(WavelengthSelectionMixins):
         self.builder = TemplateBuilder()
         self.components = ComponentBlock()   
         self.parameters = ParameterBlock()
+        self.constants = ConstantBlock()
         self.datasets = DataBlock()
-        self.constants = None
         self.results_dict = {}
         self.settings = Settings(category='model')
         self.algebraic_variables = []
@@ -172,6 +240,12 @@ class ReactionModel(WavelengthSelectionMixins):
         self._number_of_steps = n_steps
     
         return None
+    
+    def add_constant(self, *args, **kwargs):
+        
+        self.constants.add_constant(*args, **kwargs)
+        return None
+        
     
     def call_fe_factory(self):
         """Somewhat of a wrapper for this simulator method, but better"""
@@ -405,9 +479,12 @@ class ReactionModel(WavelengthSelectionMixins):
     
     def add_equations(self, ode_fun):
         """Wrapper for the set_odes method used in the builder"""
-        
-        self.odes = ode_fun
-        return None
+        if isinstance(ode_fun, dict):
+            self.reaction_dict = ode_fun
+            return None
+        else:
+            self.odes = ode_fun
+            return None
     
     def add_algebraics(self, algebraics):
         """Wrapper for the set_algebraics method used in the builder"""
@@ -423,6 +500,8 @@ class ReactionModel(WavelengthSelectionMixins):
     
     def populate_template(self, *args, **kwargs):
         
+        with_data = kwargs.get('with_data', True)
+        
         if len(self.components) > 0:
             self.builder.add_components(self.components)
         else:
@@ -433,18 +512,27 @@ class ReactionModel(WavelengthSelectionMixins):
         else:
             self.allow_optimization = False   
         
-        if len(self.datasets) > 0:
-            self.builder.input_data(self.datasets)
-            self.allow_optimization = True
-        elif len(self.datasets) == 0:
-            self.allow_optimization = False
-        else:
-            pass
+        if len(self.constants) > 0:
+            self.builder.add_constants(self.constants)
+        
+        if with_data:
+            if len(self.datasets) > 0:
+                self.builder.input_data(self.datasets)
+                self.allow_optimization = True
+            elif len(self.datasets) == 0:
+                self.allow_optimization = False
+            else:
+                pass
             
         if hasattr(self, 'odes') and self.odes is not None:
             self.builder.set_odes_rule(self.odes)
+        elif hasattr(self, 'reaction_dict'):
+            self.builder.reaction_dict = self.reaction_dict
         else:
-            raise ValueError('The model requires a set of ODEs')
+            if 'odes_bypass' in kwargs and kwargs['odes_bypass']:
+                pass
+            else:
+                raise ValueError('The model requires a set of ODEs')
             
         if hasattr(self, 'algs') and self.algs is not None:
             self.builder.set_algebraics_rule(self.algs)
@@ -476,7 +564,26 @@ class ReactionModel(WavelengthSelectionMixins):
             start_time, end_time = self.settings.general.simulation_times
        
         return start_time, end_time
+    
+    def get_model_vars(self):
         
+        self.create_pyomo_model_vars()
+        return self.c
+    
+    def create_pyomo_model_vars(self, *args, **kwargs):
+        
+        setattr(self.builder, 'early_return', True)
+        self.set_times(0, 1)
+        kwargs.update({'odes_bypass': True})
+        kwargs.update({'with_data': False})
+        self.create_pyomo_model(self, *args, **kwargs)
+        self.c = self.builder.c_mod
+        delattr(self.builder, 'early_return')
+        self.model = None
+        self.settings.general.simulation_times = None
+        
+        return None
+    
     def create_pyomo_model(self, *args, **kwargs):
         """Adds the component, parameter, data, and odes to the TemplateBuilder
         instance and creates the model. The model is stored under self.model
@@ -1167,6 +1274,9 @@ class ReactionModel(WavelengthSelectionMixins):
         """Check if p_model has an objective"""
         
         return hasattr(self.p_model, 'objective')
+
+
+    
             
 def _set_directory(model_object, filename, abs_dir=False):
     """Wrapper for the set_directory method. This replaces the awkward way
