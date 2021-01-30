@@ -243,45 +243,6 @@ class TemplateBuilder(object):
 
         self._add_dosing_var = False
 
-        components = kwargs.pop('concentrations', dict())
-        if isinstance(components, dict):
-            for k, v in components.items():
-                self._component_names.add(k)
-                self._init_conditions[k] = v
-        else:
-            raise RuntimeError('concentrations must be an dictionary component_name:init_condition')
-
-        parameters = kwargs.pop('parameters', dict())
-        if isinstance(parameters, dict):
-            for k, v in parameters.items():
-                self._parameters[k] = v
-        elif isinstance(parameters, list):
-            for k in parameters:
-                self._parameters[k] = None
-        else:
-            raise RuntimeError('parameters must be a dictionary parameter_name:value or a list with parameter_names')
-
-        extra_states = kwargs.pop('extra_states', dict())
-        if isinstance(extra_states, dict):
-            for k, v in extra_states.items():
-                self._complementary_states.add(k)
-                self._init_conditions[k] = v
-        else:
-            raise RuntimeError('Extra states must be an dictionary state_name:init_condition')
-
-        algebraics = kwargs.pop('algebraics', dict())
-        if isinstance(algebraics, dict):
-            for k, v in algebraics.items():
-                self._algebraics.add(k)
-        elif isinstance(algebraics, set()):
-            for k in algebraics:
-                self._algebraics.add(k)
-        elif isinstance(algebraics, list):
-            for k in algebraics:
-                self._algebraics[k] = None
-
-        else:
-            raise RuntimeError('concentrations must be an dictionary component_name:init_condition')
         
     def add_state_variance(self, sigma_dict):
         """Provide a variance for the measured states
@@ -323,135 +284,80 @@ class TemplateBuilder(object):
         """
         self._times = times
         
+    """
+    Adding in the model elements
+    """  
+    
     def add_constants(self, ConstantBlockObject):
-        for const in ConstantBlockObject:
-            self.add_constant(const.name, const.value, units=const.units)
+        
+        self.template_constant_data = ConstantBlockObject
+        
+        for constant in ConstantBlockObject:
+            self.add_constant(constant)
     
     def add_parameters(self, ParameterBlockObject):
         
-        for param in ParameterBlockObject:
-            self.add_parameter(param.name, init=param.init, bounds=param.bounds, units=param.units, fixed=param.fixed)
+        self.template_parameter_data = ParameterBlockObject
+        
+        # for param in ParameterBlockObject:
+        #     self.add_parameter(param)
 
-    def add_constant(self, *args, **kwds):
+    def add_components(self, ComponentBlockObject):
+        """Add model components to template using the ComponentBlock object
+        
+        Args:
+            ComponentBlockObject (ComponentBlock): Model components
+        """
+        sigma_dict = {}
+        known_dict = ComponentBlockObject.known_values
+        
+        self.template_component_data = ComponentBlockObject
+        
+        for component in ComponentBlockObject:       
+            if component.state == 'trajectory':
+                continue       
+            self._add_state_variable(component)
+            
+            sigma_dict[component.name] = component.variance
+            
+        self._state_sigmas = sigma_dict
+        self._init_known = known_dict
+  
+    
+    def add_constant(self, ModelConstantObject):
         """Add a kinetic parameter(s) to the model.
 
-        Note:
-            Plan to change this method add parameters as PYOMO variables
-
-            This method tries to mimic a template implementation. Depending
-            on the argument type it will behave differently
-
         Args:
-            param1 (str): Parameter name. Creates a variable parameter
-
-            param1 (list): Parameter names. Creates a list of variable parameters
-
-            param1 (dict): Map parameter name(s) to value(s). Creates a fixed parameter(s)
+            model_constant (ModelConstant): constant object
 
         Returns:
             None
         """
+        const = ModelConstantObject
+        self._constants[const.name] = const.value
+        # if const.units is not None:
+        self._constants_units[const.name] = self.u._pint_registry(const.units)
+
+    # def add_parameter(self, ModelParameterObject):
+    #     """Add a kinetic parameter(s) to the model.
+
+    #     Args:
+    #         model_constant (ModelConstant): constant object
+
+    #     Returns:
+    #         None
+    #     """
+    #     param = ModelParameterObject
         
-        name = args[0]
-        value = args[1]
-        units = kwds.get('units', None)
-        
-        self._constants[name] = value
-        if units is not None:
-            self._constants_units = self.u._pint_registry(units)
+    #     # All of this can be removed and the parameter object used instead
+    #     # Can this be done with all cases?
+    #     self._parameters[param.name] = None
+    #     self._parameters_bounds[param.name] = param.bounds
+    #     self._parameters_init[param.name] = param.value
+    #     self._parameters_fixed[param.name] = param.fixed
+    #     self._parameters_units[param.name] = self.u._pint_registry(param.units)
 
-    def add_parameter(self, *args, **kwds):
-        """Add a kinetic parameter(s) to the model.
-
-        Note:
-            Plan to change this method add parameters as PYOMO variables
-
-            This method tries to mimic a template implementation. Depending
-            on the argument type it will behave differently
-
-        Args:
-            param1 (str): Parameter name. Creates a variable parameter
-
-            param1 (list): Parameter names. Creates a list of variable parameters
-
-            param1 (dict): Map parameter name(s) to value(s). Creates a fixed parameter(s)
-
-        Returns:
-            None
-
-        """
-        bounds = kwds.pop('bounds', None)
-        init = kwds.pop('init', None)
-        fixed = kwds.pop('fixed', False)
-        units = kwds.pop('units', None)
-        
-        if len(args) == 1:
-            name = args[0]
-            if isinstance(name, six.string_types):
-                self._parameters[name] = None
-                if bounds is not None:
-                    self._parameters_bounds[name] = bounds
-                if init is not None:
-                    self._parameters_init[name] = init
-                if fixed is not None:
-                    self._parameters_fixed[name] = fixed
-                if units is not None:
-                    print(units)
-                    self._parameters_units[name] = self.u._pint_registry(units)
-                    
-            elif isinstance(name, list) or isinstance(name, set):
-                if bounds is not None:
-                    if len(bounds) != len(name):
-                        raise RuntimeError('the list of bounds must be equal to the list of parameters')
-                for i, n in enumerate(name):
-                    self._parameters[n] = None
-                    if bounds is not None:
-                        self._parameters_bounds[n] = bounds[i]
-                    if init is not None:
-                        self._parameters_init[n] = init[i]
-                    if fixed is not None:
-                        self._parameters_fixed[n] = fixed[i]
-                    if units is not None:
-                        self._parameters_units[n] = self.u._pint_registry(units[i])
-
-            elif isinstance(name, dict):
-                if bounds is not None:
-                    if len(bounds) != len(name):
-                        raise RuntimeError('the list of bounds must be equal to the list of parameters')
-                for k, v in name.items():
-                    self._parameters[k] = v
-                    if bounds is not None:
-                        self._parameters_bounds[k] = bounds[k]
-                    if init is not None:
-                        self._parameters_init[k] = init[k]
-                    if fixed is not None:
-                        self._parameters_fixed[k] = fixed[k]
-                    if units is not None:
-                        self._parameters_units[k] = self.u._pint_registry(units[k])
-            else:
-                raise RuntimeError('Kinetic parameter data not supported. Try str')
-        
-        elif len(args) == 2:
-            first = args[0]
-            second = args[1]
-            if isinstance(first, six.string_types):
-                self._parameters[first] = second
-                if bounds is not None:
-                    self._parameters_bounds[first] = bounds
-                if init is not None:
-                    self._parameters_init[first] = init
-                if fixed is not None:
-                    self._parameters_fixed[first] = fixed
-                if units is not None:
-                    self._parameters_units[first] = self.u._pint_registry(units)
-
-            # else:
-            #     raise RuntimeError('Parameter argument not supported. Try str,val')
-        else:
-            raise RuntimeError('Parameter argument not supported. Try str,val')
-
-
-    def add_smoothparameter(self, *args, **kwds): #added for smoothingparameter (CS)
+    def add_smoothparameter(self, *args, **kwds):
         """Add a kinetic parameter(s) to the model.
 
         Note:
@@ -481,86 +387,65 @@ class TemplateBuilder(object):
         else:
             raise RuntimeError('Parameter argument not supported. Try pandas.Dataframe and mutable=True')
 
-    def _add_state_variable(self, *args, data_type=None):
+    def _add_state_variable(self, component, data_type=None):
         
         built_in_data_types = {
             'concentration' : ('component_names', 'Mixture component'),
             'complementary_states' : ('complementary_states', 'Complementary state'),
            }
         
-        if len(args) == 1:
-            input = args[0]
-            if isinstance(input, dict):
-                for key, val in input.items():
-                    if not isinstance(val, numbers.Number):
-                        raise RuntimeError('The init condition must be a number. Try str, float')
-                    getattr(self, f'_{built_in_data_types[data_type][0]}').add(key)
-                    self._init_conditions[key] = val
-            else:
-                raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try dict[str]=float')
+        print(component)
+        self._init_conditions[component.name] = component.value
+        getattr(self, f'_{built_in_data_types[component.state][0]}').add(component.name)
+        self._component_units[component.name] = self.u._pint_registry(component.units)
         
-        elif len(args) == 2:
-            name = args[0]
-            init_condition = args[1]
+        # Put these checks into the component object class
+        # if len(args) == 1:
+        #     input = args[0]
+        #     if isinstance(input, dict):
+        #         for key, val in input.items():
+        #             if not isinstance(val, numbers.Number):
+        #                 raise RuntimeError('The init condition must be a number. Try str, float')
+        #             getattr(self, f'_{built_in_data_types[data_type][0]}').add(key)
+        #             self._init_conditions[key] = val
+        #     else:
+        #         raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try dict[str]=float')
+        
+        # elif len(args) == 2:
+        #     name = args[0]
+        #     init_condition = args[1]
 
-            if not isinstance(init_condition, numbers.Number):
-                raise RuntimeError('The second argument must be a number. Try str, float')
+        #     if not isinstance(init_condition, numbers.Number):
+        #         raise RuntimeError('The second argument must be a number. Try str, float')
 
-            if isinstance(name, six.string_types):
-                getattr(self, f'_{built_in_data_types[data_type][0]}').add(name)
-                self._init_conditions[name] = init_condition
-            else:
-                raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try str, float')
+        #     if isinstance(name, six.string_types):
+        #         getattr(self, f'_{built_in_data_types[data_type][0]}').add(name)
+        #         self._init_conditions[name] = init_condition
+        #     else:
+        #         raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try str, float')
                 
-        elif len(args) == 3:
-            name = args[0]
-            init_condition = args[1]
-            units = args[2]
+        # elif len(args) == 3:
+        #     name = args[0]
+        #     init_condition = args[1]
+        #     units = args[2]
 
-            if not isinstance(init_condition, numbers.Number):
-                raise RuntimeError('The second argument must be a number. Try str, float')
+        #     if not isinstance(init_condition, numbers.Number):
+        #         raise RuntimeError('The second argument must be a number. Try str, float')
 
-            if isinstance(name, six.string_types):
-                getattr(self, f'_{built_in_data_types[data_type][0]}').add(name)
-                self._init_conditions[name] = init_condition
-            else:
-                raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try str, float')
+        #     if isinstance(name, six.string_types):
+        #         getattr(self, f'_{built_in_data_types[data_type][0]}').add(name)
+        #         self._init_conditions[name] = init_condition
+        #     else:
+        #         raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try str, float')
             
-            # from pyomo.environ import units as u
-            # self.u = u
-            self._component_units[name] = self.u._pint_registry(units)
+        #     # from pyomo.environ import units as u
+        #     # self.u = u
+        #     self._component_units[name] = self.u._pint_registry(units)
              
-        else:
-            raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try str, float')
+        # else:
+        #     raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try str, float')
 
         return None
-
-
-    def add_components(self, ComponentBlockObject):
-        """Add model components to template using the ComponentBlock object
-        
-        Args:
-            ComponentBlockObject (ComponentBlock): Model components
-        """
-        sigma_dict = {}
-        known_dict = ComponentBlockObject.known_values
-        
-        self.template_component_data = ComponentBlockObject
-        
-        for component in ComponentBlockObject:
-            if component.state == 'state':
-                state = 'complementary_states'
-            elif component.state == 'trajectory':
-                continue
-            else:
-                state = component.state
-                     
-            self._add_state_variable(component.name, component.init, component.units, data_type=state)
-            
-            sigma_dict[component.name] = component.variance
-            
-        self._state_sigmas = sigma_dict
-        self._init_known = known_dict
 
     def add_mixture_component(self, *args):
         """Add a component (reactive or product) to the model.
@@ -1318,22 +1203,17 @@ class TemplateBuilder(object):
     def _add_model_parameters(self, model):
         """Add the model parameters to the pyomo model"""
         
-        p_dict = dict()
-        for param, init_value in self._parameters.items():
-            if init_value is not None and init_value is not pd.DataFrame:
-                p_dict[param] = init_value
-
-            # added for option of providing initial guesses CS:
-            elif param in self._parameters_init.keys():
-                p_dict[param] = self._parameters_init[param]
-                #for param, init_value in self._parameters_init.items():
-                    #p_dict[p] = init_value
-            else:
-                for param, bounds in self._parameters_bounds.items():
-                    lb = bounds[0]
-                    ub = bounds[1]
-                    p_dict[param] = (ub + lb) / 2
-
+        p_info = self.template_parameter_data
+        
+        print(model.parameter_names.display())
+        
+        # Initial parameter values
+        p_values = p_info.as_dict('value')
+        for param, value in p_values.items():
+            if value is None:
+                if p_info[param].bounds[0] is not None and p_info[param].bounds[1] is not None:
+                    p_values[param] = sum(p_info[param].bounds)/2
+                    
         if self._scale_parameters:
             setattr(model, self.__var.model_parameter, Var(model.parameter_names,
                                                            bounds = (0.1, 10),
@@ -1341,20 +1221,25 @@ class TemplateBuilder(object):
 
         else:
             setattr(model, self.__var.model_parameter, Var(model.parameter_names,
-                            # bounds = (0.0,None),
-                            initialize=p_dict))
+                            initialize=p_values))
 
-        # set bounds P
-        for k, v in self._parameters_bounds.items():
+        # Set the bounds
+        p_bounds = p_info.as_dict('bounds')
+        for k, v in p_bounds.items():
             factor = 1
             if self._scale_parameters:
-                factor = self._parameters_init[k]
-            
-            lb = v[0]/factor
-            ub = v[1]/factor
-            model.P[k].setlb(lb)
-            model.P[k].setub(ub)
+                factor = p_values[k]
+                
+            print(p_info)
 
+            if p_info[param].lb is not None:
+                lb = p_info[param].lb/factor
+                getattr(model, self.__var.model_parameter)[k].setlb(lb)
+
+            if p_info[param].ub is not None:
+                ub = p_info[param].ub/factor
+                getattr(model, self.__var.model_parameter)[k].setub(ub)
+                
         #for optional smoothing parameters (CS):
         if isinstance(self._smoothparameters, dict) and self._smoothparam_data is not None:
             ps_dict = dict()
@@ -1372,14 +1257,10 @@ class TemplateBuilder(object):
 
             model.Ps = Param(model.alltime, model.smoothparameter_names, initialize=ps_dict2, mutable=True, default=20.)#here just set to some value that is noc
 
-        # Fixes parameters that were given numeric values
-        for p, v in self._parameters.items():
-            if v is not None:
-                model.P[p].value = v
-                model.P[p].fixed = True
-                
-        for p, v in self._parameters_fixed.items():
-            getattr(model, self.__var.model_parameter)[p].fixed = v
+        # Fix parameters declared as fixed
+        p_fixed = p_info.as_dict('fixed')
+        for param, v in p_fixed.items():
+            getattr(model, self.__var.model_parameter)[param].fixed = v
 
         return None
 
@@ -1878,7 +1759,7 @@ class TemplateBuilder(object):
 
         # Declare Sets
         pyomo_model.mixture_components = Set(initialize=list(self._component_names))
-        pyomo_model.parameter_names = Set(initialize=[k for k in self._parameters.keys()])
+        pyomo_model.parameter_names = Set(initialize=self.template_parameter_data.names)
         pyomo_model.complementary_states = Set(initialize=list(self._complementary_states))
         pyomo_model.states = pyomo_model.mixture_components | pyomo_model.complementary_states
        
