@@ -40,11 +40,13 @@ from kipet.library.post_model_build.replacement import ParameterReplacer
 from kipet.library.mixins.TopLevelMixins import WavelengthSelectionMixins
 from kipet.library.top_level.datahandler import DataBlock, DataSet
 from kipet.library.top_level.helper import DosingPoint
-from kipet.library.top_level.model_components import (
-    ComponentBlock,
-    ParameterBlock,
-    ConstantBlock,
-    )
+# from kipet.library.top_level.model_components import (
+    # ComponentBlock,
+    # ParameterBlock,
+    # ConstantBlock,
+    # )
+from kipet.library.top_level.element_blocks import ConstantBlock, ComponentBlock, ParameterBlock
+
 from kipet.library.top_level.settings import (
     Settings, 
     USER_DEFINED_SETTINGS,
@@ -243,7 +245,7 @@ class ReactionModel(WavelengthSelectionMixins):
     
     def add_constant(self, *args, **kwargs):
         
-        self.constants.add_constant(*args, **kwargs)
+        self.constants.add_element(*args, **kwargs)
         return None
         
     
@@ -331,7 +333,7 @@ class ReactionModel(WavelengthSelectionMixins):
             None
             
         """
-        self.components.add_component(*args, **kwargs)
+        self.components.add_element(*args, **kwargs)
         return None
     
     def add_parameter(self, *args, **kwargs):
@@ -348,7 +350,7 @@ class ReactionModel(WavelengthSelectionMixins):
             
         """
         print(kwargs)
-        self.parameters.add_parameter(*args, **kwargs)
+        self.parameters.add_element(*args, **kwargs)
         return None
     
     def add_dataset(self, *args, **kwargs):
