@@ -41,13 +41,18 @@ if __name__ == "__main__":
         exprs['C'] = m.P['k2']*m.Z[t,'B']
         return exprs 
     
-    r1.add_equations(rule_odes)
+    r1.add_odes(rule_odes)
     
     # Settings
     r1.settings.collocation.nfe = 60
+    r1.settings.solver.linear_solver = 'mumps'
     
+    r1.set_times(0, 10)
+    #r1.simulate()
+    
+    r1.create_pyomo_model()
     # Run KIPET
-    r1.run_opt()  
+    #r1.run_opt()  
     
     # Display the results
     r1.results.show_parameters

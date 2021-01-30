@@ -39,7 +39,7 @@ if __name__ == "__main__":
         exprs['C'] = m.P['k2']*m.Z[t,'B']
         return exprs
     
-    r1.add_equations(rule_odes)
+    r1.add_odes(rule_odes)
     
     filename1 = 'example_data/Dij_multexp_tiv_G.txt'
     filename2 = 'example_data/Dij_multexp_tv_G.txt'

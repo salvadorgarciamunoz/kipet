@@ -32,8 +32,13 @@ class ParameterBlock():
                 init_value = f'{param.init:0.2f}'
             else:
                 init_value = 'None'
+                
+            if param.units is None:
+                param_value = 'None'
+            else:
+                param_value = param.units
             
-            param_str += format_string.format(param.name, f'{init_value}', f'{param.bounds}', f'{param.fixed}', param.units)
+            param_str += format_string.format(param.name, f'{init_value}', f'{param.bounds}', f'{param.fixed}', param_value)
         
         return param_str
 
@@ -79,12 +84,10 @@ class ParameterBlock():
         builder.add_parameter('k1', 1.0, (0.01, 10))
             
         """        
-        bounds = kwargs.pop('bounds', None)
-        init = kwargs.pop('init', None)
-        fixed = kwargs.pop('fixed', False)
-        units = kwargs.pop('units', None)
         
-        if len(args) == 1:
+        print(args, kwargs)
+        
+        if len(args) == 1 and len(kwargs) == 0:
             if isinstance(args[0], ModelParameter):
                 self.parameters[args[0].name] = args[0]
             
@@ -102,9 +105,15 @@ class ParameterBlock():
             else:
                 raise ValueError('For a parameter a name and initial value are required')
             
-        elif len(args) >= 2:
+        elif len(args) >= 2 or len(kwargs) > 0:
+            print('hereerere')
             
-            _args = [args[0], None, None, None]
+            bounds = kwargs.pop('bounds', None)
+            init = kwargs.pop('init', None)
+            fixed = kwargs.pop('fixed', False)
+            units = kwargs.pop('units', None)
+            
+            _args = [args[0], None, None, None, None]
                     
             if init is not None:
                 _args[1] = init
@@ -121,6 +130,7 @@ class ParameterBlock():
                     if _args[1] is None:
                         _args[2] = args[1]
                         
+            print(args)
             self._add_parameter_with_terms(*_args)
     
         return None

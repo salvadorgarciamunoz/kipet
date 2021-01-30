@@ -115,6 +115,8 @@ class ResultsObject(object):
         index_sets = get_index_sets(var)
         index_dict = index_set_info(index_sets)
         
+        print(index_dict)
+        
         time_set = index_sets[index_dict['cont_set'][0]].name
         component_indecies = index_dict['other_set']
         component_sets = [index_sets[i].name for i in component_indecies]
@@ -137,6 +139,10 @@ class ResultsObject(object):
         variables_to_load = get_vars(instance)
     
         for name in variables_to_load:
+    
+            if name == 'init_conditions':
+                continue
+            
             var = getattr(instance, name)
             if var.dim()==0:
                 setattr(self, name, var.value)
@@ -153,7 +159,7 @@ class ResultsObject(object):
                                               index=[])
                 setattr(self, name, data_frame)        
             else:
-
+                print(var)
                 data_df = self.prepare_data_for_init(instance, var)
                 setattr(self, name, data_df)
                 

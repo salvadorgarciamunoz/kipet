@@ -36,7 +36,7 @@ if __name__ == "__main__":
     r1.add_dataset('C_data', category='concentration', data=data_set)
     
     # Add step functions to the template (m.step[t, name])
-    r1.add_step('b1', time=2, fixed=True, switch='on')
+    r1.add_step('b1', time=2, fixed=False, switch='on')
     r1.add_step('b2', time=2.1, fixed=False, switch='on')
     
     # Define the reaction model
@@ -53,13 +53,13 @@ if __name__ == "__main__":
         exprs['C'] = R2
         return exprs 
     
-    r1.add_equations(rule_odes)
+    r1.add_odes(rule_odes)
     
     # Settings
     r1.settings.collocation.nfe = 60
     r1.settings.collocation.ncp = 3
     
-    r1.settings.parameter_estimator.solver = 'ipopt'
+    r1.settings.parameter_estimator.solver = 'mumps'
     r1.settings.parameter_estimator.sim_init = True
     
     # # Run KIPET

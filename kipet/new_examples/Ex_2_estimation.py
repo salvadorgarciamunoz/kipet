@@ -39,7 +39,7 @@ if __name__ == "__main__":
         exprs['C'] = m.P['k2']*m.Z[t,'B']
         return exprs
     
-    r1.add_equations(rule_odes)
+    r1.add_odes(rule_odes)
     
     r1.bound_profile(var='S', bounds=(0, 200))
 
@@ -50,7 +50,7 @@ if __name__ == "__main__":
     r1.settings.parameter_estimator.tee = False
     r1.settings.general.no_user_scaling = True
     r1.settings.parameter_estimator.solver = 'ipopt_sens'
-    r1.settings.solver.mu_init = 1e-4
+    # r1.settings.solver.mu_init = 1e-4
     
     # This is all you need to run KIPET!
     r1.run_opt()

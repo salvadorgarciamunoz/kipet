@@ -26,6 +26,14 @@ from kipet.library.common.VisitorClasses import ReplacementVisitor
 
 logger = logging.getLogger('ModelBuilderLogger')
 
+
+string_replace_dict = {
+    ' ': '_',
+    '-': 'n',
+    '+': 'p',
+    '.': '_',
+    }
+
 class ModalVar():
         
     def __init__(self, name, comp, index, model):
@@ -62,11 +70,14 @@ class Comp():
                 
                 for comp in comp_set:
                     
+                    comp = str(comp)
                     if isinstance(comp, str):
+                        if isinstance(comp[0], int):
+                            comp.insert(0, 'y')
+                        
                         comp_name = comp
-                        comp_name.replace(' ', '_')
-                    elif isinstance(comp, int):
-                        comp_name = f'y{comp}'
+                        for k, v in string_replace_dict.items():
+                            comp_name.replace(k, v)
                     
                     self.var_dict[comp_name] = ModalVar(comp_name, comp_name, mv, self._model)
                     if dim > 1:
@@ -105,6 +116,11 @@ class Comp():
         id_ = id(getattr(self, comp))
         print(id_)
         return id_
+    
+    @property
+    def get_var_list(self):
+        
+        return list(self.var_dict.keys())
     
 
 class TemplateBuilder(object):
@@ -1004,7 +1020,7 @@ class TemplateBuilder(object):
         
         return None
 
-    def set_algebraics_rule(self, rule):
+    def set_algebraics_rule(self, rule, asdict=False):
         """Set the algebraic expressions.
 
         Defines the algebraic equations for the system
@@ -1016,10 +1032,15 @@ class TemplateBuilder(object):
             None
 
         """
-        inspector = inspect.getargspec(rule)
-        if len(inspector.args) != 2:
-            raise RuntimeError('The rule should have two inputs')
-        self._algebraic_constraints = rule
+        if not asdict:
+            inspector = inspect.getargspec(rule)
+            if len(inspector.args) != 2:
+                raise RuntimeError('The rule should have two inputs')
+            self._algebraic_constraints = rule
+        else:
+            self._algebraic_constraints = rule
+            self._use_alg_dict = True
+        
         
         return None
 
@@ -1107,7 +1128,7 @@ class TemplateBuilder(object):
                     'WARNING: differential expressions not specified. Must be specified by user after creating the model')
 
         if self._algebraics:
-            if self._algebraic_constraints:
+            if self._algebraic_constraints and not isinstance(self._algebraic_constraints, dict):
                 dummy_balances = self._algebraic_constraints(model, model.start_time)
                 if len(self._algebraics) != len(dummy_balances):
                     print(
@@ -1506,25 +1527,25 @@ class TemplateBuilder(object):
         """Adds the algebraic constraints the model, if any"""
         
         if self._algebraic_constraints:
-            n_alg_eqns = len(self._algebraic_constraints(model, model.start_time))
-
-            if hasattr(self, 'reaction_dict'):
-    
+            if hasattr(self, 'reaction_dict') or hasattr(self, '_use_alg_dict') and self._use_alg_dict:
+                n_alg_eqns = self._algebraic_constraints.keys()
                 def rule_algebraics(m, t, k):
-                    alg_const = self._algebraic_constraints(m, t)[k]
-                    final_exp = alg_const == 0.0
+                    alg_const = self._algebraic_constraints[k]
+                    alg_var = getattr(m, self.__var.algebraic)[t, k]
+                    final_expr = alg_var - alg_const == 0.0
                     final_expr  = self.change_time(final_expr, self.c_mod, t, m)
                     return final_expr
             else:
+                n_alg_eqns = range(len(self._algebraic_constraints(model, model.start_time)))
                 def rule_algebraics(m, t, k):
                       
                     alg_const = self._algebraic_constraints(m, t)[k]
                     final_expr = alg_const == 0.0
                     return final_expr
     
-                model.algebraic_consts = Constraint(model.alltime,
-                                                    range(n_alg_eqns),
-                                                    rule=rule_algebraics)
+            model.algebraic_consts = Constraint(model.alltime,
+                                                n_alg_eqns,
+                                                rule=rule_algebraics)
         return None
     
     def _add_objective_custom(self, model):

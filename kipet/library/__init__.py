@@ -22,4 +22,5 @@
 
 __all__ = ['TemplateBuilder','BaseAbstractModel',
                'data_tools','fe_factory','Optimizer','ParameterEstimator',
-               'PyomoSimulator','ResultsObject','Simulator','VarianceEstimator','FESimulator']  
+               'PyomoSimulator','ResultsObject','Simulator','VarianceEstimator','FESimulator',
+                'MEE_3']  

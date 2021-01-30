@@ -18,22 +18,18 @@ from pyomo.opt import (
     )
 
 # KIPET library imports
-from kipet.library.common.pyomo_model_tools import get_index_sets
+from kipet.library.common.pyomo_model_tools import (
+    change_continuous_set,
+    get_index_sets,
+    )
 from kipet.library.common.VisitorClasses import ReplacementVisitor
 from kipet.library.top_level.variable_names import VariableNames
 
 # Pyomo version check
-try:
-    from pyomo.core.base.set import SetProduct
-except:
-    pass
-    #print('SetProduct not found')
+from pyomo.core.base.set import SetProduct
+
     
-try:
-    from pyomo.core.base.sets import _SetProduct
-except:
-    pass
-    #print('_SetProduct not found')    
+   
 
 __author__ = 'David M Thierry, Kevin McBride'  #: April 2018 - January 2021
 
@@ -147,10 +143,7 @@ class fe_initialize(object):
         
         #: Re-construct the model with [0,1] time domain
         times = getattr(self.model_ref, self.time_set)
-
-        times._bounds = (0, 1)
-        times.clear()
-        times.construct()
+        change_continuous_set(times, [0, 1])
         
         for var in self.model_ref.component_objects(Var):
             var.clear()
@@ -343,21 +336,25 @@ class fe_initialize(object):
         # inputs_sub['some_var'] = ['index0', 'index1', ('index2a', 'index2b')]
  
         self.inputs_sub = inputs_sub
+        print(times.name)
+        print([i.name for i in get_index_sets(getattr(self.model_ref, 'Dose'))])
+        
+        print(times.display())
         
         if self.inputs_sub is not None:
             for key in self.inputs_sub.keys():
                 model_var_obj = getattr(self.model_ref, key)
 
                 # This finds the index of the set    
-                if identify_member_sets(model_var_obj) is None:
-                    raise RuntimeError("This variable is does not have multiple indices"
-                                        "Pass {} as part of the inputs keyarg instead.".format(key))
-                elif model_var_obj.index_set().name == times.name:
-                    raise RuntimeError("This variable is indexed over time"
-                                        "Pass {} as part of the inputs keyarg instead.".format(key))
-                else:
-                    if not times in identify_member_sets(model_var_obj):
-                        raise RuntimeError("{} is not indexed over time; it can not be an input".format(key))
+                # if identify_member_sets(model_var_obj) is None:
+                #     raise RuntimeError("This variable is does not have multiple indices"
+                #                         "Pass {} as part of the inputs keyarg instead.".format(key))
+                # elif model_var_obj.index_set().name == times.name:
+                #     raise RuntimeError("This variable is indexed over time"
+                #                         "Pass {} as part of the inputs keyarg instead.".format(key))
+                # else:
+                #     if times not in identify_member_sets(model_var_obj):
+                #         raise RuntimeError("{} is not indexed over time; it can not be an input".format(key))
                 
                 for k in self.inputs_sub[key]:
                     if isinstance(k, str) or isinstance(k, int) or isinstance(k, tuple):
@@ -373,7 +370,7 @@ class fe_initialize(object):
             for time_step in getattr(self.model_ref, self.__var.time_step_change):
                 getattr(self.model_ref, self.__var.time_step_change)[time_step].fix()
 
-        #: Check nvars and mequations
+        # : Check n vars and m equations
         (n, m) = reconcile_nvars_mequations(self.model_ref)
         if n != m:
             raise Exception("Inconsistent problem; n={}, m={}".format(n, m))
@@ -645,6 +642,7 @@ class fe_initialize(object):
         print("Fe Factory: fe_initialize \@2018", end='\t')  # davs: :)
         print("*" * 5)
         print("*" * 5 + '\tSolving for {} elements\t'.format(len(self.fe_list)) + "*" * 5 )
+        
         for i in range(0, len(self.fe_list)):
             self.march_forward(i, resto_strategy=resto_strategy)
 

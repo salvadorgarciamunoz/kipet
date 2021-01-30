@@ -20,13 +20,13 @@ if __name__ == "__main__":
     r1 = kipet_model.new_reaction('reaction-1')
     
     # Add the model parameters
-    r1.add_parameter('k1', 2)
-    r1.add_parameter('k2', 0.2)
+    r1.add_parameter('k1', 2, units='1/min')
+    r1.add_parameter('k2', 0.2, units='1/min')
     
     # Declare the components and give the initial values
-    r1.add_component('A', state='concentration', init=1)
-    r1.add_component('B', state='concentration', init=0.0)
-    r1.add_component('C', state='concentration', init=0.0)
+    r1.add_component('A', state='concentration', init=1, units='mol/L')
+    r1.add_component('B', state='concentration', init=0.0, units='mol/L')
+    r1.add_component('C', state='concentration', init=0.0, units='mol/L')
     
     # Define explicit system of ODEs
     def rule_odes(m,t):
@@ -37,10 +37,10 @@ if __name__ == "__main__":
         return exprs
 
     # Add the rules to the model
-    r1.add_equations(rule_odes)
+    r1.add_odes(rule_odes)
   
     # Add dosing points 
-    r1.add_dosing_point('A', 3, 0.3)
+    #r1.add_dosing_point('A', 3, 0.3)
     
     # Create the model - simulations require times
     r1.set_times(0, 10)

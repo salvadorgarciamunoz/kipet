@@ -49,7 +49,7 @@ from kipet.library.top_level.settings import (
     Settings, 
     USER_DEFINED_SETTINGS,
     )
-from kipet.library.top_level.clean import remove_file
+# from kipet.library.top_level.clean import remove_file
 from kipet.library.top_level.variable_names import VariableNames
 
 __var = VariableNames()
@@ -347,6 +347,7 @@ class ReactionModel(WavelengthSelectionMixins):
             None
             
         """
+        print(kwargs)
         self.parameters.add_parameter(*args, **kwargs)
         return None
     
@@ -477,7 +478,7 @@ class ReactionModel(WavelengthSelectionMixins):
         self.settings.general.simulation_times = (start_time, end_time)
         return None
     
-    def add_equations(self, ode_fun):
+    def add_odes(self, ode_fun):
         """Wrapper for the set_odes method used in the builder"""
         if isinstance(ode_fun, dict):
             self.reaction_dict = ode_fun
@@ -535,7 +536,10 @@ class ReactionModel(WavelengthSelectionMixins):
                 raise ValueError('The model requires a set of ODEs')
             
         if hasattr(self, 'algs') and self.algs is not None:
-            self.builder.set_algebraics_rule(self.algs)
+            if isinstance(self.algs, dict):
+                self.builder.set_algebraics_rule(self.algs, asdict=True)
+            else:
+                self.builder.set_algebraics_rule(self.algs)
             
         if hasattr(self, 'custom_objective') and self.custom_objective is not None:
             self.builder.set_objective_rule(self.custom_objective)
@@ -569,6 +573,11 @@ class ReactionModel(WavelengthSelectionMixins):
         
         self.create_pyomo_model_vars()
         return self.c
+    
+    def load_vars(self):
+        
+        for var in self.c.get_var_list:
+            globals()[var] = getattr(self.c, var)
     
     def create_pyomo_model_vars(self, *args, **kwargs):
         
@@ -696,7 +705,7 @@ class ReactionModel(WavelengthSelectionMixins):
         _print('After disc')
         
         if self._has_step_or_dosing:
-            for time in simulator.model.alltime.value:
+            for time in simulator.model.alltime.data():
                 getattr(simulator.model, self.__var.dosing_variable)[time, self.__var.dosing_component].set_value(time)
                 getattr(simulator.model, self.__var.dosing_variable)[time, self.__var.dosing_component].fix()
         
@@ -761,7 +770,7 @@ class ReactionModel(WavelengthSelectionMixins):
         self._from_trajectories('p_estimator')
         return None
         
-    def iniitalize_from_simulation(self, estimator='p_estimator'):
+    def initialize_from_simulation(self, estimator='p_estimator'):
         
         if not hasattr(self, 's_model'):
             _print('Starting simulation for initialization')
@@ -815,7 +824,7 @@ class ReactionModel(WavelengthSelectionMixins):
         
         _print('Starting sim init')
         if self.settings.parameter_estimator.sim_init and estimator == 'p_estimator':
-            self.iniitalize_from_simulation(estimator=estimator)
+            self.initialize_from_simulation(estimator=estimator)
         
         if self._has_step_or_dosing:
             for time in getattr(self, estimator).model.alltime.value:
@@ -1250,6 +1259,40 @@ class ReactionModel(WavelengthSelectionMixins):
         
     #     """
     #     return step_fun_var_time(*args, **kwargs)
+    
+    def make_reaction_table(self, stoich_coeff, rxns):
+        
+        df = pd.DataFrame()
+        for k, v in stoich_coeff.items():
+            df[k] = v
+        
+        df.index = rxns
+        self.reaction_table = df
+    
+    def reaction_block(self, stoich_coeff, rxns):
+        # make a reactions_dict in __init__ and update here
+        """Method to allow for simple construction of a reaction system
+        
+        Args:
+            stoich_coeff (dict): dict with components as keys and stoichiometric
+                coeffs is lists as values:
+                    example: stoich_coeff['A'] = [-1, 0 , 1] etc
+                
+            rxns (list): list of algebraics that represent reactions
+            
+        Returns:
+            r_dict (dict): dict of completed reaction expressions
+            
+        """
+        self.make_reaction_table(stoich_coeff, rxns)
+        
+        r_dict = {}
+        
+        for com in self.components.names: 
+            if self.components[com].state == 'concentration':
+                r_dict[com] = sum(stoich_coeff[com][i] * getattr(self.c, r) for i, r in enumerate(rxns)) 
+    
+        return r_dict
     
     @property
     def models(self):

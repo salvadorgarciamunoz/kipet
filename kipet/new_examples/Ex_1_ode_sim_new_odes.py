@@ -33,13 +33,15 @@ if __name__ == "__main__":
     # and parameters
     c = r1.get_model_vars()
     
+    # globals()['A'] = c.A
+    
     # c now holds of all of the pyomo variables needed to define the equations
     rates = {}
     rates['A'] = -c.k1 * c.A
     rates['B'] = c.k1 * c.A - c.k2 * c.B
     rates['C'] = c.k2 * c.B
     
-    r1.add_equations(rates)
+    r1.add_odes(rates)
 
     # Add dosing points 
     r1.add_dosing_point('A', 3, 0.3)

@@ -4,13 +4,15 @@ Model tools
 
 from pyomo.core.base.var import Var
 from pyomo.core.base.param import Param
-from pyomo.dae import ContinuousSet
+from pyomo.core.base.set import BoundsInitializer
+from pyomo.dae.contset import ContinuousSet
 from pyomo.dae.diffvar import DerivativeVar
+
 
 
 # Pyomo version check
 try:
-    from pyomo.core.base.set import SetProduct, SimpleSet
+    from pyomo.core.base.set import SetProduct
 except:
     pass
     #print('SetProduct not found')
@@ -78,11 +80,11 @@ def get_index_sets(model_var_obj):
     index_set = []
     index = model_var_obj.index_set()
     
-    if not isinstance(index, _SetProduct):
+    if not isinstance(index, SetProduct):
         index_set.append(index)
     
-    elif isinstance(index, _SetProduct) or isinstance(index, SetProduct):
-        index_set.extend(index.set_tuple)
+    elif isinstance(index, SetProduct): # or isinstance(index, SetProduct):
+        index_set.extend(index.subsets())
     
     else:
         return None
@@ -117,3 +119,19 @@ def index_set_info(index_list):
     index_dict['other_set'] = tuple(index_dict['other_set'])
         
     return index_dict
+
+def change_continuous_set(cs, new_bounds):
+        
+    cs.clear()
+    cs._init_domain._set = None
+    cs._init_domain._set = BoundsInitializer(new_bounds)
+    domain = cs._init_domain(cs.parent_block(), None)
+    cs._domain = domain
+    domain.parent_component().construct()
+    
+    for bnd in cs.domain.bounds():
+        # Note: the base class constructor ensures that any declared
+        # set members are already within the bounds.
+        if bnd is not None and bnd not in cs:
+            cs.add(bnd)
+    cs._fe = sorted(cs)

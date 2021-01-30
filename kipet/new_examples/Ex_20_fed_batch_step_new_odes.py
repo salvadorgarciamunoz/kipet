@@ -42,6 +42,8 @@ if __name__ == "__main__":
     r1.add_constant('Cin_B', value=2.0, units='mol/L')
     
     c = r1.get_model_vars()
+    # for var in c.get_var_list:
+    #     globals()[var] = getattr(c, var)
 
     # c now holds of all of the pyomo variables needed to define the equations
     # Using this object allows for a much simpler construction of expressions
@@ -55,9 +57,9 @@ if __name__ == "__main__":
     rates['C'] = -c.C*QV + R1
     rates['V'] = Qin_B
     
-    r1.add_equations(rates)
+    r1.add_odes(rates)
     
-    r1.settings.solver.linear_solver = 'ma27'
+    r1.settings.solver.linear_solver = 'mumps'
     r1.settings.parameter_estimator.sim_init = True
     
     r1.run_opt()

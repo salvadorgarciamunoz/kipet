@@ -16,8 +16,8 @@ full_data = kipet_model.read_data_file('example_data/ratios.csv')
 r1 = kipet_model.new_reaction('reaction-1')
 
 # Add the model parameters
-r1.add_parameter('k1', init=5.0, bounds=(0.0, 10.0))
-r1.add_parameter('k2', init=5.0, bounds=(0.0, 10.0))
+r1.add_parameter('k1', init=2.0, bounds=(0.0, 10.0))
+r1.add_parameter('k2', init=0.2, bounds=(0.0, 10.0))
 
 # Declare the components and give the initial values
 r1.add_component('A', state='concentration', init=1.0)
@@ -27,30 +27,28 @@ r1.add_component('C', state='concentration', init=0.0)
 r1.add_dataset(data=full_data[['A']], remove_negatives=True)
 r1.add_dataset('y_data', category='custom', data=full_data[['y']])
 
-# Define the reaction model
-def rule_odes(m,t):
-    exprs = dict()
-    exprs['A'] = -m.P['k1']*m.Z[t,'A']
-    exprs['B'] = m.P['k1']*m.Z[t,'A']-m.P['k2']*m.Z[t,'B']
-    exprs['C'] = m.P['k2']*m.Z[t,'B']
-    return exprs 
+r1.add_algebraic_variables('y', init=0.2, bounds=(0.0, 1.0))
 
-r1.add_equations(rule_odes)
+c = r1.get_model_vars()
 
-# To use custom objective terms for special data, define the variable as an
-# algegraic and provide the relationship between components
-r1.add_algebraic_variables('y', init = 0.0, bounds = (0.0, 1.0))
+rates = {}
+rates['A'] = -c.k1 * c.A
+rates['B'] = c.k1 * c.A - c.k2 * c.B
+rates['C'] = c.k2 * c.B
 
-def rule_algebraics(m, t):
-    r = list()
-    r.append(m.Y[t, 'y']*(m.Z[t, 'B'] + m.Z[t, 'C']) - m.Z[t, 'B'])
-    return r
+r1.add_odes(rates)
 
-r1.add_algebraics(rule_algebraics)
+AE = {}
+AE['y'] = (c.B + 1e-12)/(c.B + c.C + 1e-12)
+
+r1.add_algebraics(AE)
 
 # Add the custom objective varibale to the model using the following method:
 r1.add_objective_from_algebraic('y')
  
+r1.settings.general.no_user_scaling = True
+r1.settings.solver.linear_solver = 'mumps'
+
 r1.run_opt()
 r1.results.show_parameters
 r1.results.plot('Z')
