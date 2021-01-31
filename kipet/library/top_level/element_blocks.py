@@ -84,6 +84,13 @@ class ModelElementBlock():
             
         getattr(self, self.attr_class_set_name)[element.name] = element
         
+    def as_dict(self, attr):
+        
+        return_dict = {}
+        for param, obj in self._dict.items():
+            return_dict[param] = getattr(obj, attr)
+        return return_dict
+        
     @property 
     def names(self):
         return [elem for elem in getattr(self, self.attr_class_set_name)]
@@ -99,6 +106,27 @@ class ComponentBlock(ModelElementBlock):
     
     def __init__(self, *args, **kwargs):
         super().__init__(class_name='model_component')
+    
+    
+    def var_variances(self):
+        
+        sigma_dict = {}
+        
+        for component in self.components.values():       
+            if component.state == 'trajectory':
+                continue       
+            sigma_dict[component.name] = component.variance
+            
+        return sigma_dict
+        
+    def component_set(self, category):
+        
+        component_set = []
+        for component in self.components.values():
+            if component.state == category:
+                component_set.append(component.name)
+                
+        return component_set
     
     @property
     def variances(self):
@@ -132,13 +160,6 @@ class ParameterBlock(ModelElementBlock):
     
     def __init__(self, *args, **kwargs):
         super().__init__(class_name='model_parameter')
-    
-    def as_dict(self, attr):
-        
-        return_dict = {}
-        for param, obj in self.parameters.items():
-            return_dict[param] = getattr(obj, attr)
-        return return_dict
     
     @property
     def lb(self):

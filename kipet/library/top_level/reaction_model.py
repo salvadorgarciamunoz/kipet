@@ -506,17 +506,17 @@ class ReactionModel(WavelengthSelectionMixins):
         with_data = kwargs.get('with_data', True)
         
         if len(self.components) > 0:
-            self.builder.add_components(self.components)
+            self.builder.add_model_element(self.components)
         else:
             raise ValueError('The model has no components')
             
         if len(self.parameters) > 0:
-            self.builder.add_parameters(self.parameters)
+            self.builder.add_model_element(self.parameters)
         else:
             self.allow_optimization = False   
         
         if len(self.constants) > 0:
-            self.builder.add_constants(self.constants)
+            self.builder.add_model_element(self.constants)
         
         if with_data:
             if len(self.datasets) > 0:

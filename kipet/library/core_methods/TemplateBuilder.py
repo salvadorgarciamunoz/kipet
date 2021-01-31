@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 from pyomo.environ import *
 from pyomo.dae import *
-from pyomo.environ import units as u
+# from pyomo.environ import units as u
 
 # KIPET library imports
 from kipet.library.post_model_build.scaling import scale_parameters
@@ -168,15 +168,15 @@ class TemplateBuilder(object):
         """
         self._component_names = set()
         self._component_units = dict()
-        self._parameters = dict()
-        self._parameters_init = dict()  # added for parameter initial guess CS
-        self._parameters_bounds = dict()
-        self._parameters_fixed = dict()
-        self._parameters_units = dict()
-        self._constants = dict()
-        self._constants_units = dict()
+        # self._parameters = dict()
+        # self._parameters_init = dict()  # added for parameter initial guess CS
+        # self._parameters_bounds = dict()
+        # self._parameters_fixed = dict()
+        # self._parameters_units = dict()
+        # self._constants = dict()
+        # self._constants_units = dict()
         
-        self.u = u
+        # self.u = u
         
         self._smoothparameters = dict()  # added for mutable parameters CS
         self._smoothparameters_mutable = dict() #added for mutable parameters CS
@@ -287,76 +287,13 @@ class TemplateBuilder(object):
     """
     Adding in the model elements
     """  
-    
-    def add_constants(self, ConstantBlockObject):
+    def add_model_element(self, BlockObject):
         
-        self.template_constant_data = ConstantBlockObject
-        
-        for constant in ConstantBlockObject:
-            self.add_constant(constant)
-    
-    def add_parameters(self, ParameterBlockObject):
-        
-        self.template_parameter_data = ParameterBlockObject
-        
-        # for param in ParameterBlockObject:
-        #     self.add_parameter(param)
-
-    def add_components(self, ComponentBlockObject):
-        """Add model components to template using the ComponentBlock object
-        
-        Args:
-            ComponentBlockObject (ComponentBlock): Model components
-        """
-        sigma_dict = {}
-        known_dict = ComponentBlockObject.known_values
-        
-        self.template_component_data = ComponentBlockObject
-        
-        for component in ComponentBlockObject:       
-            if component.state == 'trajectory':
-                continue       
-            self._add_state_variable(component)
-            
-            sigma_dict[component.name] = component.variance
-            
-        self._state_sigmas = sigma_dict
-        self._init_known = known_dict
-  
-    
-    def add_constant(self, ModelConstantObject):
-        """Add a kinetic parameter(s) to the model.
-
-        Args:
-            model_constant (ModelConstant): constant object
-
-        Returns:
-            None
-        """
-        const = ModelConstantObject
-        self._constants[const.name] = const.value
-        # if const.units is not None:
-        self._constants_units[const.name] = self.u._pint_registry(const.units)
-
-    # def add_parameter(self, ModelParameterObject):
-    #     """Add a kinetic parameter(s) to the model.
-
-    #     Args:
-    #         model_constant (ModelConstant): constant object
-
-    #     Returns:
-    #         None
-    #     """
-    #     param = ModelParameterObject
-        
-    #     # All of this can be removed and the parameter object used instead
-    #     # Can this be done with all cases?
-    #     self._parameters[param.name] = None
-    #     self._parameters_bounds[param.name] = param.bounds
-    #     self._parameters_init[param.name] = param.value
-    #     self._parameters_fixed[param.name] = param.fixed
-    #     self._parameters_units[param.name] = self.u._pint_registry(param.units)
-
+        data_type = BlockObject.attr_class_set_name.rstrip('s')
+        block_attr_name = f'template_{data_type}_data'
+        setattr(self, block_attr_name, BlockObject)
+        return None
+ 
     def add_smoothparameter(self, *args, **kwds):
         """Add a kinetic parameter(s) to the model.
 
@@ -387,117 +324,57 @@ class TemplateBuilder(object):
         else:
             raise RuntimeError('Parameter argument not supported. Try pandas.Dataframe and mutable=True')
 
-    def _add_state_variable(self, component, data_type=None):
+    # def add_mixture_component(self, *args):
+    #     """Add a component (reactive or product) to the model.
+
+    #     This is a wrapper for adding concentration state variables to the
+    #     template.
+
+    #     Note:
+    #         This method tries to mimic a template implmenetation. Depending
+    #         on the argument type it will behave differently.
+
+    #     Args:
+    #         param1 (str): component name.
+
+    #         param2 (float): initial concentration condition.
+
+    #         param1 (dict): Map component name(s) to initial concentrations value(s).
+
+    #     Returns:
+    #         None
+
+    #     """
+    #     self._add_state_variable(*args, data_type='concentration')
         
-        built_in_data_types = {
-            'concentration' : ('component_names', 'Mixture component'),
-            'complementary_states' : ('complementary_states', 'Complementary state'),
-           }
-        
-        print(component)
-        self._init_conditions[component.name] = component.value
-        getattr(self, f'_{built_in_data_types[component.state][0]}').add(component.name)
-        self._component_units[component.name] = self.u._pint_registry(component.units)
-        
-        # Put these checks into the component object class
-        # if len(args) == 1:
-        #     input = args[0]
-        #     if isinstance(input, dict):
-        #         for key, val in input.items():
-        #             if not isinstance(val, numbers.Number):
-        #                 raise RuntimeError('The init condition must be a number. Try str, float')
-        #             getattr(self, f'_{built_in_data_types[data_type][0]}').add(key)
-        #             self._init_conditions[key] = val
-        #     else:
-        #         raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try dict[str]=float')
-        
-        # elif len(args) == 2:
-        #     name = args[0]
-        #     init_condition = args[1]
-
-        #     if not isinstance(init_condition, numbers.Number):
-        #         raise RuntimeError('The second argument must be a number. Try str, float')
-
-        #     if isinstance(name, six.string_types):
-        #         getattr(self, f'_{built_in_data_types[data_type][0]}').add(name)
-        #         self._init_conditions[name] = init_condition
-        #     else:
-        #         raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try str, float')
-                
-        # elif len(args) == 3:
-        #     name = args[0]
-        #     init_condition = args[1]
-        #     units = args[2]
-
-        #     if not isinstance(init_condition, numbers.Number):
-        #         raise RuntimeError('The second argument must be a number. Try str, float')
-
-        #     if isinstance(name, six.string_types):
-        #         getattr(self, f'_{built_in_data_types[data_type][0]}').add(name)
-        #         self._init_conditions[name] = init_condition
-        #     else:
-        #         raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try str, float')
-            
-        #     # from pyomo.environ import units as u
-        #     # self.u = u
-        #     self._component_units[name] = self.u._pint_registry(units)
-             
-        # else:
-        #     raise RuntimeError(f'{built_in_data_types[data_type][1]} data not supported. Try str, float')
-
-        return None
-
-    def add_mixture_component(self, *args):
-        """Add a component (reactive or product) to the model.
-
-        This is a wrapper for adding concentration state variables to the
-        template.
-
-        Note:
-            This method tries to mimic a template implmenetation. Depending
-            on the argument type it will behave differently.
-
-        Args:
-            param1 (str): component name.
-
-            param2 (float): initial concentration condition.
-
-            param1 (dict): Map component name(s) to initial concentrations value(s).
-
-        Returns:
-            None
-
-        """
-        self._add_state_variable(*args, data_type='concentration')
-        
-        return None
+    #     return None
     
-    def add_complementary_state_variable(self, *args):
-        """Add an extra state variable to the model.
+    # def add_complementary_state_variable(self, *args):
+    #     """Add an extra state variable to the model.
 
-        This is a wrapper for adding complementary state variables to the
-        template.
+    #     This is a wrapper for adding complementary state variables to the
+    #     template.
 
-        Note:
-            This method tries to mimic a template implmenetation. Depending
-            on the argument type it will behave differently
+    #     Note:
+    #         This method tries to mimic a template implmenetation. Depending
+    #         on the argument type it will behave differently
 
-            Planning on changing this method to add variables in a pyomo fashion
+    #         Planning on changing this method to add variables in a pyomo fashion
 
-        Args:
-            param1 (str): variable name
+    #     Args:
+    #         param1 (str): variable name
 
-            param2 (float): initial condition
+    #         param2 (float): initial condition
 
-            param1 (dict): Map component name(s) to initial condition value(s)
+    #         param1 (dict): Map component name(s) to initial condition value(s)
 
-        Returns:
-            None
+    #     Returns:
+    #         None
 
-        """
-        self._add_state_variable(*args, data_type='complementary_states')
+    #     """
+    #     self._add_state_variable(*args, data_type='complementary_states')
         
-        return None
+        # return None
     
     def input_data(self, DataBlockObject):
         """This should take a DataContainer and input the data, but for now
@@ -999,7 +876,7 @@ class TemplateBuilder(object):
             None
 
         """
-        if not self._component_names:
+        if not self.template_component_data.component_set('concentration'):
             warnings.warn('The Model does not have any mixture components')
         else:
             if self._odes:
@@ -1055,8 +932,10 @@ class TemplateBuilder(object):
     def _add_initial_conditions(self, model):
         """Set up the initial conditions for the model"""
         
+        c_info = self.template_component_data
+        
         model.init_conditions = Var(model.states,
-                                    initialize=self._init_conditions,
+                                    initialize=c_info.as_dict('value'),
                                     )
         unknown_init = {}
         
@@ -1064,9 +943,9 @@ class TemplateBuilder(object):
             if self.template_component_data[var].known:
                 obj.fix()
             else:
-                lb = self.template_component_data[var].bounds[0]
-                ub = self.template_component_data[var].bounds[1]
-                init = self.template_component_data[var].init
+                lb = self.template_component_data[var].lb
+                ub = self.template_component_data[var].ub
+                init = self.template_component_data[var].value
                 obj.setlb(lb)
                 obj.setub(ub)
                 unknown_init[var] = init
@@ -1105,6 +984,8 @@ class TemplateBuilder(object):
     def _add_model_variables(self, model):
         """Adds the model variables to the pyomo model"""
         
+        c_info = self.template_component_data
+        
         model_pred_var_name = {
                 self.__var.concentration_model : model.mixture_components,
                 self.__var.state_model : model.complementary_states,
@@ -1128,7 +1009,8 @@ class TemplateBuilder(object):
         
             for time, comp in getattr(model, var):
                 if time == model.start_time.value:
-                    getattr(model, var)[time, comp].value = self._init_conditions[comp]
+                    print(comp, c_info[comp].value)
+                    getattr(model, var)[time, comp].value = c_info[comp].value
                    
             setattr(model, f'd{var}dt', DerivativeVar(getattr(model, var),
                                                      # units=self.u.mol/self.u.l,
@@ -1137,13 +1019,14 @@ class TemplateBuilder(object):
 
         # Variables of provided data - set as fixed variables complementary to above
         fixed_var_name = {
-               # 'C' : self._spectral_data,
                 self.__var.concentration_measured : self._concentration_data,
                 self.__var.state : self._complementary_states_data,
                 self.__var.user_defined : self._custom_data,
                     }
         
         for var, data in fixed_var_name.items():
+            
+            print(f'Set up of {var}')
             
             if data is None or len(data) == 0:
                 continue
@@ -1155,16 +1038,13 @@ class TemplateBuilder(object):
                 else:
                     c_bounds = (0.0, None)
                 
-                if data is not None:    
+                if data is not None:
+                    print('there is data')
+                    
                     for i, row in data.iterrows():
                          c_dict.update({(i, col): float(row[col]) for col in data.columns if not np.isnan(float(row[col]))})
                 
                     setattr(model, f'{var}_indx', Set(initialize=list(c_dict.keys()), ordered=True))
-                    
-                    # setattr(model, var, Var(model.allmeas_times,
-                    #                 model.mixture_components,
-                    #                 bounds=c_bounds,
-                    #                 initialize=c_dict))
                     
                     setattr(model, var, Var(getattr(model, f'{var}_indx'),
                                                   bounds=c_bounds,
@@ -1172,6 +1052,8 @@ class TemplateBuilder(object):
                                                   #units=self._component_units,
                                                   )
                             )
+                    
+                    print(c_dict)
                     
                     for k, v in getattr(model, var).items():
                         getattr(model, var)[k].fixed = True
@@ -1184,18 +1066,16 @@ class TemplateBuilder(object):
         
                     for time, comp in getattr(model, var):
                         if time == model.start_time.value:
-                          #  print(f'initial values: {time}, {comp}')
-                            getattr(model, var)[time, comp].value = self._init_conditions[comp]
+                            getattr(model, var)[time, comp].value = c_info[comp].value
 
         return None
     
     def _add_model_constants(self, model):
         
-        if len(self._constants) > 0:
+        if hasattr(self, 'template_constant_data'):
         
-            constant_designator = self.__var.model_constant
-            setattr(model, constant_designator, Param(self._constants.keys(),
-                                                      initialize=self._constants))
+            setattr(model, self.__var.model_constant, Param(self.template_constant_data.names,
+                                                      initialize=self.template_constant_data.as_dict('value')))
             
         return None
     
@@ -1204,9 +1084,7 @@ class TemplateBuilder(object):
         """Add the model parameters to the pyomo model"""
         
         p_info = self.template_parameter_data
-        
-        print(model.parameter_names.display())
-        
+     
         # Initial parameter values
         p_values = p_info.as_dict('value')
         for param, value in p_values.items():
@@ -1298,9 +1176,8 @@ class TemplateBuilder(object):
     # @staticmethod
     def change_time(self, expr_orig, c_mod, new_time, current_model):
         """Method to remove the fixed parameters from the ConcreteModel
+        TODO: move to a new expression class
         """
-        #print(f'TO change:  {expr_orig.to_string()}')
-
         expr_new_time = expr_orig
 
         var_dict = c_mod.var_dict
@@ -1315,13 +1192,8 @@ class TemplateBuilder(object):
                 old_var = getattr(c_mod, model_var)
                 new_var = getattr(current_model, var_obj.index)[new_time, var_obj.comp]
             
-            # print(old_var)
-            # print(new_var)
-            
             expr_new_time = self._update_expression(expr_new_time, old_var, new_var)
     
-        #print(f'Changed TO: {expr_new_time.to_string()}')
-        
         return expr_new_time
 
     @staticmethod
@@ -1758,11 +1630,11 @@ class TemplateBuilder(object):
         pyomo_model = ConcreteModel()
 
         # Declare Sets
-        pyomo_model.mixture_components = Set(initialize=list(self._component_names))
+        pyomo_model.mixture_components = Set(initialize=self.template_component_data.component_set('concentration'))
         pyomo_model.parameter_names = Set(initialize=self.template_parameter_data.names)
-        pyomo_model.complementary_states = Set(initialize=list(self._complementary_states))
+        pyomo_model.complementary_states = Set(initialize=self.template_component_data.component_set('complementary_states'))
+        
         pyomo_model.states = pyomo_model.mixture_components | pyomo_model.complementary_states
-       
         pyomo_model.measured_data = Set(initialize=self._all_state_data)
         
         # Set up the model time sets and parameters
@@ -1810,6 +1682,7 @@ class TemplateBuilder(object):
         self._apply_bounds_to_variables(pyomo_model)
        
         # Add given state standard deviations to the pyomo model
+        self._state_sigmas = self.template_component_data.var_variances()
         if self._state_sigmas is not None:
             state_sigmas = {k: v for k, v in self._state_sigmas.items() if k in pyomo_model.measured_data}
             pyomo_model.sigma = Param(pyomo_model.measured_data, initialize=state_sigmas) #, mutable=True)

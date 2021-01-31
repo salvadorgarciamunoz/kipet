@@ -85,7 +85,7 @@ class ModelComponent(ModelElement):
     def __repr__(self):
         
         return f'ModelComponent({self.name})'
-        
+
         
 class ModelParameter(ModelElement):
     """A simple class for holding kinetic parameter data
