@@ -370,6 +370,10 @@ class fe_initialize(object):
             for time_step in getattr(self.model_ref, self.__var.time_step_change):
                 getattr(self.model_ref, self.__var.time_step_change)[time_step].fix()
 
+        if hasattr(self.model_ref, self.__var.model_constant):
+            for param, obj in getattr(self.model_ref, self.__var.model_constant).items():
+                obj.fix()
+
         # : Check n vars and m equations
         (n, m) = reconcile_nvars_mequations(self.model_ref)
         if n != m:

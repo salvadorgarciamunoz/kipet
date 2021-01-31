@@ -87,7 +87,7 @@ class VariableNames(object):
                       self.model_parameter,
                       self.algebraic,
                       self.step_variable,
-                     # self.model_constant,
+                      self.model_constant,
                       ]
         
         return model_vars

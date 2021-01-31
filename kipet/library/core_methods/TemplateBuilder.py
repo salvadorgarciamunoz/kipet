@@ -919,16 +919,24 @@ class TemplateBuilder(object):
         
         if hasattr(self, 'template_constant_data'):
         
-            for constant in self.template_constant_data:    
+            con_info = self.template_constant_data
+            
+            setattr(model, self.__var.model_constant, Var(con_info.names,
+                                                            initialize=con_info.as_dict('value'),
+                                                            ))    
+        
+            for param, obj in getattr(model, self.__var.model_constant).items():
+                obj.fix()
+            #for constant in self.template_constant_data:    
                 #print('adding constants')
-                name = f'con_{constant.name}'
-                init = constant.value
-                units = constant.units
+                # name = f'con_{constant.name}'
+                # init = constant.value
+                # units = constant.units
                 
-                setattr(model, name, Param([0],
-                                         initialize=init,
-                                         units=units,
-                                        ))
+                # setattr(model, name, Param([0],
+                #                          initialize=init,
+                #                          units=units,
+                #                         ))
                 # getattr(model, name).fix()
                 
                 #print(getattr(model, name).display())
@@ -1051,11 +1059,11 @@ class TemplateBuilder(object):
 
         for model_var, var_obj in var_dict.items():
             
-            model_var_current = model_var
-            if hasattr(self, 'template_constant_data'):
-                if model_var in self.template_constant_data.names:
-                    model_var_current = 'con_' + model_var
-                    var_obj.comp = 0#model_var_current    
+            # model_var_current = model_var
+            # if hasattr(self, 'template_constant_data'):
+            #     if model_var in self.template_constant_data.names:
+            #         model_var_current = 'con_' + model_var
+            #         var_obj.comp = 0#model_var_current    
                 
             #print(model_var, model_var_current)
             if getattr(current_model, var_obj.index).dim() == 1:
