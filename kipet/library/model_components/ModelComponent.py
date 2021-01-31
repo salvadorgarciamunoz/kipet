@@ -1,7 +1,14 @@
 """
 ModelComponent Class
 """
+# Third party imports
 import pint
+
+# KIPET library imports
+
+CONCENTRATION_BASE = 'mol/l'
+TIME_BASE = 's'
+
 
 class ModelElement():
     
@@ -18,9 +25,27 @@ class ModelElement():
         self.class_ = class_
         self.value = value
     
-        ur = pint.UnitRegistry()    
-        self.units = 1*ur('') if units is None else 1*ur(units)
+        self.ur = pint.UnitRegistry()
+        self.units = 1*self.ur('') if units is None else 1*self.ur(units)
+        #self._check_scaling()
 
+    def _check_scaling(self):
+        
+        quantity = self.value * self.units
+        quantity.ito_base_units()
+        
+        concentration_units = self.ur(CONCENTRATION_BASE)
+        time_units = self.ur(TIME_BASE)
+        
+        if quantity.units.dimensionality == concentration_units.dimensionality:
+            quantity.ito(concentration_units)
+            
+        # elif quantity.units.dimensionality == time_units.dimensionality:
+        #     quantity.ito(time_units)
+            
+        self.units = quantity.units
+        self.value = quantity.m
+    
     def _check_name(self, name):
         """Check for valid attr names in the given string
         

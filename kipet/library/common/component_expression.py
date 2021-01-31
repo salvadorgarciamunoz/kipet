@@ -178,7 +178,7 @@ def get_unit_model(reaction_model):
         
             block = CompBlocks[index_var]
             m_units = block[key].units
-            units = block[key].units.u
+            units = block[key].units
             
             if units.dimensionless:
                 m_units = str(1)
