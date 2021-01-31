@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 from pyomo.environ import *
 from pyomo.dae import *
-# from pyomo.environ import units as u
+from pyomo.environ import units as u
 
 # KIPET library imports
 from kipet.library.post_model_build.scaling import scale_parameters
@@ -23,105 +23,10 @@ from kipet.library.core_methods.PyomoSimulator import PyomoSimulator
 from kipet.library.top_level.variable_names import VariableNames
 from kipet.library.common.pyomo_model_tools import get_index_sets
 from kipet.library.common.VisitorClasses import ReplacementVisitor
+from kipet.library.common.component_expression import Comp
 
 logger = logging.getLogger('ModelBuilderLogger')
 
-
-string_replace_dict = {
-    ' ': '_',
-    '-': 'n',
-    '+': 'p',
-    '.': '_',
-    }
-
-class ModalVar():
-        
-    def __init__(self, name, comp, index, model):
-        
-        self.name = name
-        self.comp = comp
-        self.index = index
-        self.model = model
-    
-class Comp():
-    
-    var = VariableNames()
-    
-    def __init__(self, model):
-        
-        #self._r_model = model
-        self._model = model
-        self._model_vars = self.var.model_vars
-        self._rate_vars = self.var.rate_vars
-        self.var_dict = {}
-        self.assign_vars()
-        self.assign_rate_vars()
-        
-    def assign_vars(self):
-        """Digs through and assigns the variables as top-level attributes
-        
-        """
-        for mv in self._model_vars:
-            if hasattr(self._model, mv):
-                mv_obj = getattr(self._model, mv)
-                index_sets = get_index_sets(mv_obj)
-                comp_set = list(index_sets[-1].keys())
-                dim = len(index_sets)
-                
-                for comp in comp_set:
-                    
-                    comp = str(comp)
-                    if isinstance(comp, str):
-                        if isinstance(comp[0], int):
-                            comp.insert(0, 'y')
-                        
-                        comp_name = comp
-                        for k, v in string_replace_dict.items():
-                            comp_name.replace(k, v)
-                    
-                    self.var_dict[comp_name] = ModalVar(comp_name, comp_name, mv, self._model)
-                    if dim > 1:
-                        setattr(self, comp_name, mv_obj[0, comp])
-                    else:
-                        setattr(self, comp_name, mv_obj[comp])
-
-    def assign_rate_vars(self):
-
-        for mv in self._rate_vars:
-            if hasattr(self._model, mv):
-                
-                mv_obj = getattr(self._model, mv)
-                index_sets = get_index_sets(mv_obj)
-                comp_set = list(index_sets[-1].keys())
-                dim = len(index_sets)
-                
-                for comp in comp_set:
-                    
-                    if isinstance(comp, str):
-                        comp_name = comp
-                        comp_name.replace(' ', '_')
-                    elif isinstance(comp, int):
-                        comp_name = f'y{comp}'
-                    
-                    comp_name = f'd{comp_name}dt'
-                    
-                    self.var_dict[comp_name] = ModalVar(comp_name, str(comp), mv, self._model)
-                    if dim > 1:
-                        setattr(self, comp_name, mv_obj[0, comp])
-                    else:
-                        setattr(self, comp_name, mv_obj[comp])  
-
-    def _id(self, comp):
-        
-        id_ = id(getattr(self, comp))
-        print(id_)
-        return id_
-    
-    @property
-    def get_var_list(self):
-        
-        return list(self.var_dict.keys())
-    
 
 class TemplateBuilder(object):
     """Helper class for creation of models.
@@ -166,18 +71,6 @@ class TemplateBuilder(object):
             extra_states (dictionary): map of state name to initial condition
 
         """
-        self._component_names = set()
-        self._component_units = dict()
-        # self._parameters = dict()
-        # self._parameters_init = dict()  # added for parameter initial guess CS
-        # self._parameters_bounds = dict()
-        # self._parameters_fixed = dict()
-        # self._parameters_units = dict()
-        # self._constants = dict()
-        # self._constants_units = dict()
-        
-        # self.u = u
-        
         self._smoothparameters = dict()  # added for mutable parameters CS
         self._smoothparameters_mutable = dict() #added for mutable parameters CS
 
@@ -191,7 +84,7 @@ class TemplateBuilder(object):
         self._y_bounds = dict()  # added for additional optional bounds CS
         self._y_init = dict()
         self._prof_bounds = list()  # added for additional optional bounds MS
-        self._init_conditions = dict()
+       # self._init_conditions = dict()
         self._spectral_data = None
         self._concentration_data = None
         self._complementary_states_data = None # added for complementary state data (Est.) KM
@@ -323,58 +216,6 @@ class TemplateBuilder(object):
                 raise RuntimeError('Parameter argument not supported. Try pandas.Dataframe and mutable=True')
         else:
             raise RuntimeError('Parameter argument not supported. Try pandas.Dataframe and mutable=True')
-
-    # def add_mixture_component(self, *args):
-    #     """Add a component (reactive or product) to the model.
-
-    #     This is a wrapper for adding concentration state variables to the
-    #     template.
-
-    #     Note:
-    #         This method tries to mimic a template implmenetation. Depending
-    #         on the argument type it will behave differently.
-
-    #     Args:
-    #         param1 (str): component name.
-
-    #         param2 (float): initial concentration condition.
-
-    #         param1 (dict): Map component name(s) to initial concentrations value(s).
-
-    #     Returns:
-    #         None
-
-    #     """
-    #     self._add_state_variable(*args, data_type='concentration')
-        
-    #     return None
-    
-    # def add_complementary_state_variable(self, *args):
-    #     """Add an extra state variable to the model.
-
-    #     This is a wrapper for adding complementary state variables to the
-    #     template.
-
-    #     Note:
-    #         This method tries to mimic a template implmenetation. Depending
-    #         on the argument type it will behave differently
-
-    #         Planning on changing this method to add variables in a pyomo fashion
-
-    #     Args:
-    #         param1 (str): variable name
-
-    #         param2 (float): initial condition
-
-    #         param1 (dict): Map component name(s) to initial condition value(s)
-
-    #     Returns:
-    #         None
-
-    #     """
-    #     self._add_state_variable(*args, data_type='complementary_states')
-        
-        # return None
     
     def input_data(self, DataBlockObject):
         """This should take a DataContainer and input the data, but for now
@@ -775,9 +616,9 @@ class TemplateBuilder(object):
             None
 
         """
-        inspector = inspect.getargspec(rule)
-        if len(inspector.args) != 2:
-            raise RuntimeError('The rule should have two inputs')
+        # inspector = inspect.getargspec(rule)
+        # if len(inspector.args) != 2:
+        #     raise RuntimeError('The rule should have two inputs')
         self._odes = rule
         
         return None
@@ -880,7 +721,10 @@ class TemplateBuilder(object):
             warnings.warn('The Model does not have any mixture components')
         else:
             if self._odes:
-                dummy_balances = self._odes(model, model.start_time)
+                if isinstance(self._odes, dict):
+                    dummy_balances = self._odes
+                else:
+                    dummy_balances = self._odes(model, model.start_time)
                 if len(self._component_names) + len(self._complementary_states) != len(dummy_balances):
                     print(
                         'WARNING: The number of ODEs is not the same as the number of state variables.\n If this is the desired behavior, some odes must be added after the model is created.')
@@ -985,6 +829,7 @@ class TemplateBuilder(object):
         """Adds the model variables to the pyomo model"""
         
         c_info = self.template_component_data
+        self._component_names = c_info.component_set('concentration')
         
         model_pred_var_name = {
                 self.__var.concentration_model : model.mixture_components,
@@ -1003,13 +848,13 @@ class TemplateBuilder(object):
             setattr(model, var, Var(model.alltime,
                                           model_set,
                                           # bounds=(0.0,None),
-                                          #units=self._component_units,
+                                          units=c_info.as_dict('units'),
                                           initialize=1) 
                     )    
         
             for time, comp in getattr(model, var):
                 if time == model.start_time.value:
-                    print(comp, c_info[comp].value)
+                    #print(comp, c_info[comp].value)
                     getattr(model, var)[time, comp].value = c_info[comp].value
                    
             setattr(model, f'd{var}dt', DerivativeVar(getattr(model, var),
@@ -1026,7 +871,7 @@ class TemplateBuilder(object):
         
         for var, data in fixed_var_name.items():
             
-            print(f'Set up of {var}')
+            # print(f'Set up of {var}')
             
             if data is None or len(data) == 0:
                 continue
@@ -1039,7 +884,7 @@ class TemplateBuilder(object):
                     c_bounds = (0.0, None)
                 
                 if data is not None:
-                    print('there is data')
+                    #print('there is data')
                     
                     for i, row in data.iterrows():
                          c_dict.update({(i, col): float(row[col]) for col in data.columns if not np.isnan(float(row[col]))})
@@ -1053,7 +898,7 @@ class TemplateBuilder(object):
                                                   )
                             )
                     
-                    print(c_dict)
+                    #print(c_dict)
                     
                     for k, v in getattr(model, var).items():
                         getattr(model, var)[k].fixed = True
@@ -1074,8 +919,19 @@ class TemplateBuilder(object):
         
         if hasattr(self, 'template_constant_data'):
         
-            setattr(model, self.__var.model_constant, Param(self.template_constant_data.names,
-                                                      initialize=self.template_constant_data.as_dict('value')))
+            for constant in self.template_constant_data:    
+                #print('adding constants')
+                name = f'con_{constant.name}'
+                init = constant.value
+                units = constant.units
+                
+                setattr(model, name, Param([0],
+                                         initialize=init,
+                                         units=units,
+                                        ))
+                # getattr(model, name).fix()
+                
+                #print(getattr(model, name).display())
             
         return None
     
@@ -1098,7 +954,10 @@ class TemplateBuilder(object):
                                                            initialize=1))
 
         else:
-            setattr(model, self.__var.model_parameter, Var(model.parameter_names,
+            setattr(model, self.__var.model_parameter,
+                    Var(model.parameter_names,
+                        #units=p_info.as_dict('units'),
+                        #fixed=p_info.as_dict('fixed'),
                             initialize=p_values))
 
         # Set the bounds
@@ -1108,7 +967,7 @@ class TemplateBuilder(object):
             if self._scale_parameters:
                 factor = p_values[k]
                 
-            print(p_info)
+            #print(p_info)
 
             if p_info[param].lb is not None:
                 lb = p_info[param].lb/factor
@@ -1139,6 +998,14 @@ class TemplateBuilder(object):
         p_fixed = p_info.as_dict('fixed')
         for param, v in p_fixed.items():
             getattr(model, self.__var.model_parameter)[param].fixed = v
+            
+        # Set units - if you want to use units, you have to use different indecies...
+        # p_units = p_info.as_dict('units')
+        # print(p_units)
+        # for param, v in p_units.items():
+        #     parent = getattr(model, self.__var.model_parameter)[param].parent_component()
+        #     print(parent)
+        #     parent._units = u._pint_registry(v)
 
         return None
 
@@ -1184,13 +1051,22 @@ class TemplateBuilder(object):
 
         for model_var, var_obj in var_dict.items():
             
+            model_var_current = model_var
+            if hasattr(self, 'template_constant_data'):
+                if model_var in self.template_constant_data.names:
+                    model_var_current = 'con_' + model_var
+                    var_obj.comp = 0#model_var_current    
+                
+            #print(model_var, model_var_current)
             if getattr(current_model, var_obj.index).dim() == 1:
                 old_var = getattr(c_mod, model_var)
+                #print(var_obj.index, var_obj.name, var_obj.comp)
                 new_var = getattr(current_model, var_obj.index)[var_obj.comp]
-            
+
             else:
                 old_var = getattr(c_mod, model_var)
                 new_var = getattr(current_model, var_obj.index)[new_time, var_obj.comp]
+                
             
             expr_new_time = self._update_expression(expr_new_time, old_var, new_var)
     
@@ -1222,10 +1098,11 @@ class TemplateBuilder(object):
     def _add_model_odes(self, model):
         """Adds the ODE system to the model, if any"""
         
-        if hasattr(self, 'reaction_dict'):
-
+        # if hasattr(self, 'reaction_dict'):
+        if isinstance(self._odes, dict):
+            
             def rule_odes(m, t, k):
-                exprs = self.reaction_dict                
+                exprs = self._odes                
                
                 if t == m.start_time.value:
                     return Constraint.Skip
@@ -1233,7 +1110,7 @@ class TemplateBuilder(object):
                     if k in m.mixture_components:
                         if k in exprs.keys():
                             deriv_var = f'd{self.__var.concentration_model}dt'
-                            final_expr = getattr(m, deriv_var)[t, k] == exprs[k]
+                            final_expr = getattr(m, deriv_var)[t, k] == exprs[k].expression
                             final_expr  = self.change_time(final_expr, self.c_mod, t, m)
                             return final_expr
                         else:
@@ -1241,7 +1118,7 @@ class TemplateBuilder(object):
                     else:
                         if k in exprs.keys():
                             deriv_var = f'd{self.__var.state_model}dt'
-                            final_expr = getattr(m, deriv_var)[t, k] == exprs[k]
+                            final_expr = getattr(m, deriv_var)[t, k] == exprs[k].expression
                             final_expr  = self.change_time(final_expr, self.c_mod, t, m)
                             return final_expr
                         else:
@@ -1283,7 +1160,7 @@ class TemplateBuilder(object):
             if hasattr(self, 'reaction_dict') or hasattr(self, '_use_alg_dict') and self._use_alg_dict:
                 n_alg_eqns = self._algebraic_constraints.keys()
                 def rule_algebraics(m, t, k):
-                    alg_const = self._algebraic_constraints[k]
+                    alg_const = self._algebraic_constraints[k].expression
                     alg_var = getattr(m, self.__var.algebraic)[t, k]
                     final_expr = alg_var - alg_const == 0.0
                     final_expr  = self.change_time(final_expr, self.c_mod, t, m)
@@ -1558,8 +1435,8 @@ class TemplateBuilder(object):
         the model time bounds
         
         """
-        print(time_set)
-        print(start_time, end_time)
+        # print(time_set)
+        # print(start_time, end_time)
         
         if time_set[0] < start_time:
             raise RuntimeError(f'Measurement time {time_set[0]} not within ({start_time}, {end_time})')
@@ -1660,8 +1537,11 @@ class TemplateBuilder(object):
         self._add_time_steps(pyomo_model)
 
         if not hasattr(self, 'c_mod'):
-            self.c_mod = Comp(pyomo_model)
-        
+            if hasattr(self, 'template_constant_data'):
+                self.c_mod = Comp(pyomo_model, constant_info=self.template_constant_data)
+            else:
+                self.c_mod = Comp(pyomo_model, constant_info=None) #self.template_constant_data)
+            
         if hasattr(self, 'early_return') and self.early_return:
             return pyomo_model
 

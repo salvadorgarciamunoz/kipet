@@ -336,10 +336,10 @@ class fe_initialize(object):
         # inputs_sub['some_var'] = ['index0', 'index1', ('index2a', 'index2b')]
  
         self.inputs_sub = inputs_sub
-        print(times.name)
-        print([i.name for i in get_index_sets(getattr(self.model_ref, 'Dose'))])
+        #print(times.name)
+        #print([i.name for i in get_index_sets(getattr(self.model_ref, 'Dose'))])
         
-        print(times.display())
+        #print(times.display())
         
         if self.inputs_sub is not None:
             for key in self.inputs_sub.keys():

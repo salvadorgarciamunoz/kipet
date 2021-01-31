@@ -39,7 +39,9 @@ from kipet.library.post_model_build.scaling import scale_models
 from kipet.library.post_model_build.replacement import ParameterReplacer
 from kipet.library.mixins.TopLevelMixins import WavelengthSelectionMixins
 from kipet.library.top_level.datahandler import DataBlock, DataSet
+from kipet.library.top_level.expression import Expression
 from kipet.library.top_level.helper import DosingPoint
+
 # from kipet.library.top_level.model_components import (
     # ComponentBlock,
     # ParameterBlock,
@@ -349,7 +351,6 @@ class ReactionModel(WavelengthSelectionMixins):
             None
             
         """
-        print(kwargs)
         self.parameters.add_element(*args, **kwargs)
         return None
     
@@ -482,16 +483,21 @@ class ReactionModel(WavelengthSelectionMixins):
     
     def add_odes(self, ode_fun):
         """Wrapper for the set_odes method used in the builder"""
+        
         if isinstance(ode_fun, dict):
-            self.reaction_dict = ode_fun
-            return None
-        else:
-            self.odes = ode_fun
-            return None
+            for key, value in ode_fun.items():
+                ode_fun[key] = Expression(key, value)
+            
+        self.odes = ode_fun
+        return None
     
     def add_algebraics(self, algebraics):
         """Wrapper for the set_algebraics method used in the builder"""
         
+        if isinstance(algebraics, dict):
+            for key, value in algebraics.items():
+                algebraics[key] = Expression(key, value)
+            
         self.algs = algebraics
         return None
     
@@ -590,6 +596,7 @@ class ReactionModel(WavelengthSelectionMixins):
         self.create_pyomo_model(self, *args, **kwargs)
         self.c = self.builder.c_mod
         delattr(self.builder, 'early_return')
+        self.set_up_model = self.model
         self.model = None
         self.settings.general.simulation_times = None
         
@@ -1081,12 +1088,27 @@ class ReactionModel(WavelengthSelectionMixins):
             method(variable, self._get_source_data(source, variable))
         return None
     
-    def fix_from_trajectory(self, variable_name, variable_index, trajectories):
+    def fix_from_trajectory(self, variable_index, trajectories=None):
         """Wrapper for fix_from_trajectory in PyomoSimulator. This stores the
         information and then fixes the data after the simulator or estimator
         has been declared
         
         """
+        variable_name = self.__var.algebraic
+        
+        if trajectories is None:
+            dataset_with_traj = []
+            for key, dataset in self.datasets.datasets.items():
+                if variable_index in dataset.species:
+                    dataset_with_traj.append(key)
+            
+            if len(dataset_with_traj) > 1:
+                raise ValueError('There are more than one dataset with this trajectory, please specify with trajectory key word.')
+            elif len(dataset_with_traj) == 1:
+                trajectories = dataset_with_traj[0]
+            else:
+                raise ValueError('No dataset with this trajectory.')
+        
         self._var_to_fix_from_trajectory.append([variable_name, variable_index, trajectories])
         return None
                                                
@@ -1320,7 +1342,15 @@ class ReactionModel(WavelengthSelectionMixins):
         
         return hasattr(self.p_model, 'objective')
 
+    def check_model_units(self, expr=None):
 
+        from kipet.library.common.component_expression import get_unit_model, check_units
+
+        self.c_units = get_unit_model(self)
+        for key, expr in self.odes.items():
+            check_units(key, expr, self.c, self.c_units)
+
+        return None
     
             
 def _set_directory(model_object, filename, abs_dir=False):

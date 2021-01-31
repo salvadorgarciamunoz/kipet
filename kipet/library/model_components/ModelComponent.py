@@ -1,6 +1,7 @@
 """
 ModelComponent Class
 """
+import pint
 
 class ModelElement():
     
@@ -10,13 +11,15 @@ class ModelElement():
                  name=None,
                  class_=None, 
                  value=None,
-                 units=None
+                 units=None,
                  ): 
         
         self.name = self._check_name(name)
         self.class_ = class_
         self.value = value
-        self.units = units
+    
+        ur = pint.UnitRegistry()    
+        self.units = 1*ur('') if units is None else 1*ur(units)
 
     def _check_name(self, name):
         """Check for valid attr names in the given string
@@ -170,19 +173,3 @@ class ModelConstant(ModelElement):
     def __repr__(self):
         
         return f'ModelConstant({self.name})'
-    
-    
-    
- 
-# p = ModelParameter('0P', value=10, fixed=False)
-# print(p)
-
-# c = ModelComponent('A 2', value=1.0, state='concentration', variance=1e-4)
-# print(c)
-
-# k = ModelConstant('Tc', value=293.15, units='K')
-# print(k)
-    
-    
-    
-    
