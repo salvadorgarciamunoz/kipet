@@ -142,7 +142,7 @@ def get_unit_model(element_dict, set_up_model):
                   __var.state_model,
                 #self.state_model_rate,
                   __var.model_parameter,
-                #self.algebraic,
+                  __var.algebraic,
                   #__var.step_variable,
                   __var.model_constant,
                 ]
@@ -153,6 +153,7 @@ def get_unit_model(element_dict, set_up_model):
                   'Z': element_dict['components'],
                   'X': element_dict['components'],
                   'Const': element_dict['constants'],
+                  'Y': element_dict['algebraics'],
                   }
     
     for index_var in index_vars:
