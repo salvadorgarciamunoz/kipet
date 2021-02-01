@@ -88,12 +88,14 @@ class ModelAlgebraic(ModelElement):
                  units=None,
                  description=None,
                  data=None,
+                 step=None,
                  ):
     
         super().__init__(name, ModelComponent.class_, value, units, description)
    
         self.bounds = bounds
         self.data = data
+        self.step = step
    
     def __str__(self):
         
