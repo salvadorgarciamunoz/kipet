@@ -69,6 +69,7 @@ class Expression():
         self.name = name
         self.expression = expression
         self.units = None
+        self.expression_orig = None
         
     def __str__(self):
         
@@ -84,6 +85,8 @@ class Expression():
         """
         var_dict = c_mod_new.var_dict
         expr_new = self.expression
+        if self.expression_orig is not None:
+            expr_new = self.expression_orig
         for model_var, var_obj in var_dict.items():
             old_var = getattr(c_mod, model_var)
             new_var = getattr(c_mod_new, model_var)         
@@ -124,6 +127,7 @@ class Expression():
             expr_new = ex1/ex2
             
             self.expression = expr_new
+            self.expression_orig = expr
     
         return None
 
