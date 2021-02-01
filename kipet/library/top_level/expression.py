@@ -3,6 +3,7 @@ Expression Classes
 """
 from kipet.library.common.VisitorClasses import ReplacementVisitor
 from pyomo.environ import ConcreteModel, Var, Objective
+from pyomo.core.expr.numeric_expr import DivisionExpression
 from pyomo.environ import units as u
 from pyomo.util.check_units import assert_units_consistent, assert_units_equivalent, check_units_equivalent
 from kipet.library.post_model_build.replacement import _update_expression
@@ -111,5 +112,21 @@ class Expression():
         self.units = u.get_units(expr)
         return None
 
+    def check_division(self, eps=1e-12):
+        
+        expr = self.expression
+        
+        if isinstance(expr, DivisionExpression):
+        
+            ex1, ex2 = expr.args
+            ex1 += eps
+            ex2 += eps
+            expr_new = ex1/ex2
+            
+            self.expression = expr_new
+    
+        return None
+
+ 
     
     

@@ -491,6 +491,7 @@ class ReactionModel(WavelengthSelectionMixins):
         
         """
         expr = Expression(alg_var, expr)
+        expr.check_division()
         self.algs_dict.update(**{alg_var: expr})
     
         return None
