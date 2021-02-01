@@ -3,6 +3,7 @@ from kipet.library.common.pyomo_model_tools import get_index_sets
 from pyomo.environ import *
 from pyomo.environ import units as u
 from kipet.library.common.VisitorClasses import ReplacementVisitor
+from kipet.library.post_model_build.replacement import _update_expression
 
 string_replace_dict = {
     ' ': '_',
@@ -39,7 +40,6 @@ class Comp():
         """Digs through and assigns the variables as top-level attributes
         
         """
-        
         list_of_vars = self._model_vars
         
         for mv in list_of_vars:
@@ -113,7 +113,6 @@ class Comp_Check():
         self._model = model
         self._param_list = param_list
         self.var_dict = {}
-        self.var_unit_dict = {}
         self.assign_params_for_units_check()
         # self.assign_rate_vars()
         
@@ -128,14 +127,15 @@ class Comp_Check():
                 self.var_dict[var] = var_obj
                 setattr(self, var, var_obj)
                 
-def get_unit_model(reaction_model):
-            
-    m = ConcreteModel()
+def get_unit_model(element_dict, set_up_model):
+    """Takes a ReactionModel instance and returns a Comp_Check object
+    representing the model's varialbes with units
+    """            
+    unit_model = ConcreteModel()
     __var = VariableNames()
-    # Pass the kipet model here
     
-    r = reaction_model
-    old_m = r.set_up_model
+    # set_up_model = reaction_model.set_up_model
+    new_params = set()
     
     model_vars = [__var.concentration_model,
                 #self.concentration_model_rate,
@@ -149,20 +149,18 @@ def get_unit_model(reaction_model):
     
     index_vars = model_vars
      
-    CompBlocks = {'P': r.parameters,
-                  'Z': r.components,
-                  'X': r.components,
-                  'Const': r.constants,
+    CompBlocks = {'P': element_dict['parameters'],
+                  'Z': element_dict['components'],
+                  'X': element_dict['components'],
+                  'Const': element_dict['constants'],
                   }
-    
-    new_params = set()
     
     for index_var in index_vars:
         
-        if not hasattr(old_m, index_var):
+        if not hasattr(set_up_model, index_var):
             continue
         
-        var_obj = getattr(old_m, index_var)
+        var_obj = getattr(set_up_model, index_var)
         
         for k, v in var_obj.items():
             
@@ -173,69 +171,17 @@ def get_unit_model(reaction_model):
             if key in new_params:
                 continue
             
-            index_name = key
             new_params.add(key)
-        
             block = CompBlocks[index_var]
             m_units = block[key].units
-            units = block[key].units
-            
-            if units.dimensionless:
+        
+            if m_units.dimensionless:
                 m_units = str(1)
             else:
                 m_units = getattr(u, str(m_units))
                 
-            setattr(m, index_name, Var(initialize=1, units=m_units))
+            setattr(unit_model, key, Var(initialize=1, units=m_units))
     
-    param_list = list(new_params)
+    c_units = Comp_Check(unit_model, list(new_params))
     
-    cn = Comp_Check(m, param_list)
-    return cn
-
-def change_to_unit(expr, c_mod, c_mod_new):
-        """Method to remove the fixed parameters from the ConcreteModel
-        TODO: move to a new expression class
-        """
-        #print(expr)
-        var_dict = c_mod_new.var_dict
-        expr_new = expr
-        for model_var, var_obj in var_dict.items():
-            #print(model_var)
-            old_var = getattr(c_mod, model_var)
-            #print(old_var)
-            new_var = getattr(c_mod_new, model_var)         
-            #print(new_var)
-            expr_new = _update_expression(expr_new, old_var, new_var)
-            
-        #print(expr_new)
-        return expr_new
-  
-    # new_expr = change_to_unit(r1.odes['B'].expression, c, cn, '')
-
-def check_units(key, expr, c_mod, c_mod_new):
-    
-    expr = change_to_unit(expr.expression, c_mod, c_mod_new)
-    print(f'The units for expression {key} are:')
-    print(u.get_units(expr))
-
-def _update_expression(expr, replacement_param, change_value):
-    """Takes the non-estiambale parameter and replaces it with its intitial
-    value
-    
-    Args:
-        expr (pyomo constraint expr): the target ode constraint
-        
-        replacement_param (str): the non-estimable parameter to replace
-        
-        change_value (float): initial value for the above parameter
-        
-    Returns:
-        new_expr (pyomo constraint expr): updated constraints with the
-            desired parameter replaced with a float
-    
-    """
-    visitor = ReplacementVisitor()
-    visitor.change_replacement(change_value)
-    visitor.change_suspect(id(replacement_param))
-    new_expr = visitor.dfs_postorder_stack(expr)       
-    return new_expr
+    return c_units

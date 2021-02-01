@@ -5,9 +5,61 @@ from kipet.library.common.VisitorClasses import ReplacementVisitor
 from pyomo.environ import ConcreteModel, Var, Objective
 from pyomo.environ import units as u
 from pyomo.util.check_units import assert_units_consistent, assert_units_equivalent, check_units_equivalent
+from kipet.library.post_model_build.replacement import _update_expression
+
+class ExpressionBlock():
+    
+    """Class for general expression block classes"""
+    
+    def __init__(self,
+                 exprs=None,
+                 ):
+        
+        self.exprs = exprs
+        self._title = 'EXPR'
+        
+    def display(self):
+        
+        if self.exprs is not None:
+            print(f'{self._title} expressions:')
+            for key, expr in self.exprs.items():
+                print(f'{key}: {expr.expression.to_string()}')
+
+
+    def display_units(self):
+
+        if self.exprs is not None:
+            print(f'{self._title} units:')
+            for key, expr in self.exprs.items():
+                print(f'{key}: {expr.units}')
+    
+
+class ODEExpressions(ExpressionBlock):
+    
+    """Class for ODE expressions"""
+    
+    def __init__(self,
+                 ode_exprs=None,
+                 ):
+        
+        super().__init__(ode_exprs)
+        self._title = 'ODE'
+        
+        
+class AEExpressions(ExpressionBlock):
+    
+    """Class for AE expressions"""
+    
+    def __init__(self,
+                 alg_exprs=None,
+                 ):
+        
+        super().__init__(alg_exprs)
+        self._title = 'ALG'
 
 class Expression():
     
+    """Class for individual expressions"""
     
     def __init__(self,
                  name,
@@ -15,75 +67,49 @@ class Expression():
         
         self.name = name
         self.expression = expression
+        self.units = None
         
     def __str__(self):
         
         return self.expression.to_string()
     
-    # def units(self):
-        
-    #     return(u.get_units(self.expression))
-    #%%
-#     def change_to_unit(expr, c_mod, c_mod_new, var): #, current_model):
-#         """Method to remove the fixed parameters from the ConcreteModel
-#         TODO: move to a new expression class
-#         """
-#         print(expr)
-#         var_dict = c_mod_new.var_dict
-#         expr_new = expr
-#         for model_var, var_obj in var_dict.items():
-#             print(model_var)
-#             old_var = getattr(c_mod, model_var)
-#             print(old_var)
-#             new_var = getattr(c_mod_new, model_var)         
-#             print(new_var)
-#             expr_new = _update_expression(expr_new, old_var, new_var)
+    @property
+    def show_units(self):
+        return self.units.to_string()
+    
+    def _change_to_unit(self, c_mod, c_mod_new):
+        """Method to remove the fixed parameters from the ConcreteModel
+        TODO: move to a new expression class
+        """
+        var_dict = c_mod_new.var_dict
+        expr_new = self.expression
+        for model_var, var_obj in var_dict.items():
+            old_var = getattr(c_mod, model_var)
+            new_var = getattr(c_mod_new, model_var)         
+            expr_new = _update_expression(expr_new, old_var, new_var)
             
-#         print(expr_new)
-#         return expr_new
-  
-#     new_expr = change_to_unit(r1.odes['B'].expression, c, cn, '')
+        return expr_new
 
-
-# #%%
-#     @staticmethod
-#     def _update_expression(expr, replacement_param, change_value):
-#         """Takes the non-estiambale parameter and replaces it with its intitial
-#         value
+    def check_units(self, c_mod, c_mod_new):
+        """Check the expr units by exchanging the real model with unit model
+        components
         
-#         Args:
-#             expr (pyomo constraint expr): the target ode constraint
+        Args:
+            key (str): component represented in ODE
             
-#             replacement_param (str): the non-estimable parameter to replace
+            expr (Expression): Expression object of ODE
             
-#             change_value (float): initial value for the above parameter
+            c_mod (Comp): original Comp object used to declare the expressions
             
-#         Returns:
-#             new_expr (pyomo constraint expr): updated constraints with the
-#                 desired parameter replaced with a float
+            c_mod_new (Comp_Check): dummy model with unit components
+            
+        Returns:
+            pint_units (): Returns expression with unit model components
         
-#         """
-#         visitor = ReplacementVisitor()
-#         visitor.change_replacement(change_value)
-#         visitor.change_suspect(id(replacement_param))
-#         new_expr = visitor.dfs_postorder_stack(expr)       
-#         return new_expr
+        """
+        expr = self._change_to_unit(c_mod, c_mod_new)
+        self.units = u.get_units(expr)
+        return None
 
     
     
-#%% 
-# ex = Expression('r1', c.k1*c.A)
-
-# from pyomo.environ import ConcreteModel, Var, Objective
-# from pyomo.environ import units as u
-# from pyomo.util.check_units import assert_units_consistent, assert_units_equivalent, check_units_equivalent
-# model = ConcreteModel()
-# model.acc = Var(initialize=5.0, units=u.m/u.s**2)
-# model.obj = Objective(expr=(model.acc - 9.81*u.m/u.s**2)**2)
-# assert_units_consistent(model.obj) # raise exc if units invalid on obj
-# assert_units_consistent(model) # raise exc if units invalid anywhere on the model
-# assert_units_equivalent(model.obj.expr, u.m**2/u.s**4) # raise exc if units not equivalent
-# print(u.get_units(model.obj.expr)) # print the units on the objective
-# print(check_units_equivalent(model.acc, u.m/u.s**2))
-#%%
-

@@ -2,6 +2,7 @@
 ModelElement Blocks
 """
 import kipet.library.model_components.ModelComponent as model_components
+from kipet.library.top_level.variable_names import VariableNames
 
 class ModelElementBlock():
     
@@ -25,16 +26,15 @@ class ModelElementBlock():
     def __str__(self):
         
         
-        format_string = "{:<10}{:<10}{:<15}\n"
+        format_string = "{:<10}{:<15}{:<15}\n"
         param_str = f'{self.element_object_name}:\n'
         param_str += format_string.format(*['Name', 'Value', 'Units'])
         
         for elem in self._dict.values():
     
-            print(elem.name)
             elem_name = elem.name
             elem_value = 'None' if elem.value is None else elem.value
-            elem_units = 'None' if elem.units is None else elem.units
+            elem_units = 'None' if elem.units is None or elem.units  else elem.units
 
             param_str += format_string.format(elem_name, elem_value, elem_units)
         
@@ -101,6 +101,22 @@ class ConstantBlock(ModelElementBlock):
     def __init__(self, *args, **kwargs):
         super().__init__(class_name='model_constant')
         
+class AlgebraicBlock(ModelElementBlock):
+    
+    __var = VariableNames()
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(class_name='model_algebraic')
+       
+    @property
+    def fixed(self):
+        
+        fix_from_traj = []
+        for alg in self.algebraics.values():
+            if alg.data is not None:
+                fix_from_traj.append([self.__var.algebraic, alg.name, alg.data])
+        
+        return fix_from_traj
         
 class ComponentBlock(ModelElementBlock):
     

@@ -101,6 +101,19 @@ class VariableNames(object):
             ]
         
         return model_vars
+    
+    @property
+    def plot_vars(self):
+        
+        model_vars = [
+            self.concentration_model_rate,
+            self.state_model_rate,
+            self.algebraic,
+            self.step_variable,
+            self.spectra_species,
+            ]
+        
+        return model_vars
                       
         
         

@@ -538,48 +538,6 @@ class TemplateBuilder(object):
             t = round(t,6)  # for added ones when generating data otherwise too many digits due to different data types CS
             self._huplcmeas_times.add(t)
 
-            
-    def add_algebraic_variable(self, *args, **kwds):
-        """Add an algebraic variable to the model
-
-            This method tries to mimic a template implmenetation. Depending
-            on the argument type it will behave differently
-
-        Args:
-            param1 (str): Variable name. Creates a variable parameter
-
-            param1 (list): Variable names. Creates a list of variable parameters
-
-        Returns:
-            None
-
-        """
-        init = kwds.pop('init', None)
-        bounds = kwds.pop('bounds', None)
-
-        if len(args) == 1:
-            name = args[0]
-            if isinstance(name, six.string_types):
-                self._algebraics[name] = None
-                if bounds is not None:
-                    self._y_bounds[name] = bounds
-                if init is not None:
-                    self._y_init[name] = init
-            elif isinstance(name, list) or isinstance(name, set):
-                if bounds is not None:
-                    if len(bounds) != len(name):
-                        raise RuntimeError('the list of bounds must be equal to the list of parameters')
-                for i, n in enumerate(name):
-                    self._algebraics[n] = None
-                    if bounds is not None:
-                        self._y_bounds[n] = bounds[i]
-                    if init is not None:
-                        self._y_init[n] = init[i]
-            else:
-                raise RuntimeError('To add an algebraic please pass name')
-                
-        return None
-
     # read bounds and initialize for qr and g (unwanted contri variables) from users KH.L
     def add_qr_bounds_init(self, **kwds):
         bounds = kwds.pop('bounds', None)
@@ -751,26 +709,19 @@ class TemplateBuilder(object):
     def _add_algebraic_var(self, model):
         """If algebraics are present, add the algebraic variable to the model
         """
-        if len(self._algebraics) > 0:
-            
-            # if 'init' in self._y_bounds:
-            #     bounds = self._y_bounds[]
-            
-            setattr(model, self.__var.algebraic, Var(model.alltime,
-                                                     model.algebraics,
-                                                     initialize=1.0))
-                                                    #bounds=())
-            
-            for t in model.alltime:
-                for k, v in self._y_bounds.items():
-                    lb = v[0]
-                    ub = v[1]
-                    getattr(model, self.__var.algebraic)[t, k].setlb(lb)
-                    getattr(model, self.__var.algebraic)[t, k].setub(ub)
-                    
-                # for k, v in self._y_init.items():
-                #     model.Y[0, k].set_value(v)
+        if hasattr(self, 'template_algebraic_data'):    
+            a_info = self.template_algebraic_data
         
+            setattr(model, self.__var.algebraic, Var(model.alltime,
+                                                     a_info.names,
+                                                     initialize=a_info.as_dict('value')))
+                                                     
+            for alg in a_info:
+                if alg.bounds is not None:
+                    for t in model.alltime:
+                        getattr(model, self.__var.algebraic)[t, alg.name].setlb(alg.lb)
+                        getattr(model, self.__var.algebraic)[t, alg.name].setub(alg.ub)
+    
         return None
     
     def _add_initial_conditions(self, model):
@@ -1059,22 +1010,13 @@ class TemplateBuilder(object):
 
         for model_var, var_obj in var_dict.items():
             
-            # model_var_current = model_var
-            # if hasattr(self, 'template_constant_data'):
-            #     if model_var in self.template_constant_data.names:
-            #         model_var_current = 'con_' + model_var
-            #         var_obj.comp = 0#model_var_current    
-                
-            #print(model_var, model_var_current)
             if getattr(current_model, var_obj.index).dim() == 1:
                 old_var = getattr(c_mod, model_var)
-                #print(var_obj.index, var_obj.name, var_obj.comp)
                 new_var = getattr(current_model, var_obj.index)[var_obj.comp]
 
             else:
                 old_var = getattr(c_mod, model_var)
                 new_var = getattr(current_model, var_obj.index)[new_time, var_obj.comp]
-                
             
             expr_new_time = self._update_expression(expr_new_time, old_var, new_var)
     
@@ -1545,10 +1487,7 @@ class TemplateBuilder(object):
         self._add_time_steps(pyomo_model)
 
         if not hasattr(self, 'c_mod'):
-            if hasattr(self, 'template_constant_data'):
-                self.c_mod = Comp(pyomo_model, constant_info=self.template_constant_data)
-            else:
-                self.c_mod = Comp(pyomo_model, constant_info=None) #self.template_constant_data)
+            self.c_mod = Comp(pyomo_model)
             
         if hasattr(self, 'early_return') and self.early_return:
             return pyomo_model

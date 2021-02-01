@@ -42,12 +42,9 @@ from kipet.library.top_level.datahandler import DataBlock, DataSet
 from kipet.library.top_level.expression import Expression
 from kipet.library.top_level.helper import DosingPoint
 
-# from kipet.library.top_level.model_components import (
-    # ComponentBlock,
-    # ParameterBlock,
-    # ConstantBlock,
-    # )
-from kipet.library.top_level.element_blocks import ConstantBlock, ComponentBlock, ParameterBlock
+from kipet.library.top_level.expression import ODEExpressions, AEExpressions
+from kipet.library.top_level.element_blocks import AlgebraicBlock, ConstantBlock, ComponentBlock, ParameterBlock
+from kipet.library.common.component_expression import get_unit_model
 
 from kipet.library.top_level.settings import (
     Settings, 
@@ -59,70 +56,6 @@ from kipet.library.top_level.variable_names import VariableNames
 __var = VariableNames()
 DEBUG=__var.DEBUG
 _print = Print(verbose=DEBUG)
-
-# class ModalVar():
-        
-#     def __init__(self, name, comp, index, model):
-        
-#         self.name = name
-#         self.comp = comp
-#         self.index = index
-#         self.model = model
-    
-# class Comp():
-    
-#     var = VariableNames()
-    
-#     def __init__(self, model):
-        
-#         self._r_model = model
-#         self._model = model.model
-#         self._model_vars = var.model_vars
-#         self._rate_vars = var.rate_vars
-#         self.var_dict = {}
-#         self.assign_vars()
-#         self.assign_rate_vars()
-        
-#     def assign_vars(self):
-#         """Digs through and assigns the variables as top-level attributes
-        
-#         """
-#         for mv in self._model_vars:
-#             if hasattr(self._model, mv):
-#                 mv_obj = getattr(self._model, mv)
-#                 index_sets = get_index_sets(mv_obj)
-#                 comp_set = list(index_sets[-1].keys())
-#                 dim = len(index_sets)
-                
-#                 for comp in comp_set:
-#                     self.var_dict[str(comp)] = ModalVar(str(comp), str(comp), mv, self._model)
-#                     if dim > 1:
-#                         setattr(self, str(comp), mv_obj[0, comp])
-#                     else:
-#                         setattr(self, str(comp), mv_obj[comp])
-
-#     def assign_rate_vars(self):
-
-#         for mv in self._rate_vars:
-#             if hasattr(self._model, mv):
-                
-#                 print(mv)
-                
-#                 mv_obj = getattr(self._model, mv)
-#                 index_sets = get_index_sets(mv_obj)
-#                 comp_set = list(index_sets[-1].keys())
-#                 dim = len(index_sets)
-                
-#                 print(comp_set)
-                
-#                 for comp in comp_set:
-#                     comp_name = f'd{comp}dt'
-                    
-#                     self.var_dict[comp_name] = ModalVar(comp_name, str(comp), mv, self._model)
-#                     if dim > 1:
-#                         setattr(self, comp_name, mv_obj[0, comp])
-#                     else:
-#                         setattr(self, comp_name, mv_obj[comp])            
 
 
 class ReactionModel(WavelengthSelectionMixins):
@@ -141,6 +74,7 @@ class ReactionModel(WavelengthSelectionMixins):
         self.components = ComponentBlock()   
         self.parameters = ParameterBlock()
         self.constants = ConstantBlock()
+        self.algebraics = AlgebraicBlock()
         self.datasets = DataBlock()
         self.results_dict = {}
         self.settings = Settings(category='model')
@@ -148,8 +82,15 @@ class ReactionModel(WavelengthSelectionMixins):
         
         self.variances = {}
         
-        self.odes = None
-        self.algs = None
+        self.odes = ODEExpressions()
+        self.algs = AEExpressions()
+        
+        self.odes_dict = {}
+        self.algs_dict = {}
+        
+        self.__flag_odes_built = False
+        self.__flag_algs_built = False
+        
         self.custom_objective = None
         self.optimized = False
         
@@ -163,6 +104,8 @@ class ReactionModel(WavelengthSelectionMixins):
         
         self._var_to_fix_from_trajectory = []
         self._var_to_initialize_from_trajectory = []
+        
+        self._default_time_unit = 'seconds'
         
         self.__var = VariableNames()
 
@@ -325,6 +268,25 @@ class ReactionModel(WavelengthSelectionMixins):
             
         return new_kipet_model
         
+    def add_alg_var(self, *args, **kwargs):
+        
+        self.algebraics.add_element(*args, **kwargs)
+    
+    def add_state(self, *args, **kwargs):
+        """Add the components to the Kipet instance
+        
+        Args:
+            components (list): list of Component instances
+            
+        Returns:
+            None
+            
+        """
+        kwargs['state'] = 'complementary_states'
+        
+        self.components.add_element(*args, **kwargs)
+        return None
+    
     def add_component(self, *args, **kwargs):
         """Add the components to the Kipet instance
         
@@ -335,6 +297,7 @@ class ReactionModel(WavelengthSelectionMixins):
             None
             
         """
+        kwargs['state'] = 'concentration'
         self.components.add_element(*args, **kwargs)
         return None
     
@@ -462,16 +425,6 @@ class ReactionModel(WavelengthSelectionMixins):
         
         return None
     
-    def add_algebraic_variables(self, *args, **kwargs):
-        
-        if isinstance(args[0], list):
-            self.algebraic_variables.extend(args[0])
-        else:
-            self.algebraic_variables.append(args[0])
-            
-        self.builder.add_algebraic_variable(*args, **kwargs)
-        return None
-    
     def set_times(self, start_time=None, end_time=None):
         """Add times to model for simulation (overrides data-based times)"""
         
@@ -481,35 +434,121 @@ class ReactionModel(WavelengthSelectionMixins):
         self.settings.general.simulation_times = (start_time, end_time)
         return None
     
-    def add_odes(self, ode_fun):
-        """Wrapper for the set_odes method used in the builder"""
+    def add_ode(self, ode_var, expr):
+        """Method to add an ode expression to the ReactionModel
         
+        Args:
+            ode_var (str): state variable
+            
+            expr (Expression): expression for rate equation as Pyomo Expression
+            
+        Returns:
+            None
+        
+        """
+        expr = Expression(ode_var, expr)
+        self.odes_dict.update(**{ode_var: expr})
+        
+        return None
+    
+    def add_odes(self, ode_fun):
+        """Takes in a dict of ODE expressions and sends them to add_ode
+        
+        Args:
+            ode_fun (dict): dict of ode expressions
+            
+        Returns:
+            None
+        """
         if isinstance(ode_fun, dict):
             for key, value in ode_fun.items():
-                ode_fun[key] = Expression(key, value)
-            
-        self.odes = ode_fun
-        return None
-    
-    def add_algebraics(self, algebraics):
-        """Wrapper for the set_algebraics method used in the builder"""
+                self.add_ode(key, value)
         
-        if isinstance(algebraics, dict):
-            for key, value in algebraics.items():
-                algebraics[key] = Expression(key, value)
+        return None
+
+    def _build_odes(self):
+        """Builds the ODEs by passing them to the ODEExpressions class
+        
+        """
+        odes = ODEExpressions(self.odes_dict)
+        setattr(self, 'ode_obj', odes)
+        self.odes = odes.exprs
+        self.__flag_odes_built = True
+        
+        return None
+        
+    def add_algebraic(self, alg_var, expr):
+        """Method to add an algebraic expression to the ReactionModel
+        
+        Args:
+            alg_var (str): state variable
             
-        self.algs = algebraics
+            expr (Expression): expression for algebraic equation as Pyomo
+                Expression
+            
+        Returns:
+            None
+        
+        """
+        expr = Expression(alg_var, expr)
+        self.algs_dict.update(**{alg_var: expr})
+    
         return None
     
+    def add_algebraics(self, alg_fun):
+        """Takes in a dict of algebraic expressions and sends them to
+        add_algebraic
+        
+        Args:
+            algebraics (dict): dict of algebraic expressions
+            
+        Returns:
+            None
+        """
+        if isinstance(alg_fun, dict):
+            for key, value in alg_fun.items():
+                self.add_algebraic(key, value)
+        
+        return None
+    
+    def _build_algs(self):
+        """Builds the algebraics by passing them to the AEExpressions class
+        
+        """ 
+        algs = AEExpressions(self.algs_dict)
+        setattr(self, 'alg_obj', algs)
+        self.algs = algs.exprs
+        self.__flag_algs_built = True
+
+        return None
+    
+      
     def add_objective_from_algebraic(self, algebraic_var):
-        """Wrapper for the set_algebraics method used in the builder"""
+        """Declare an algebraic variable that is to be used in the objective
         
+        TODO: add multiple alg vars for obj
+        
+        Args:
+            algebraic_var (str): Variable representing the formula to be added
+                to the objective
+                
+        Returns:
+            None
+            
+        """
         self.custom_objective = algebraic_var
+        
         return None
     
     def populate_template(self, *args, **kwargs):
+        """Method handling all of the preparation for the TB
+        
+        """
         
         with_data = kwargs.get('with_data', True)
+        
+        if len(self.algebraics) > 0:
+            self.builder.add_model_element(self.algebraics)
         
         if len(self.components) > 0:
             self.builder.add_model_element(self.components)
@@ -533,17 +572,17 @@ class ReactionModel(WavelengthSelectionMixins):
             else:
                 pass
             
-        if hasattr(self, 'odes') and self.odes is not None:
+        # Add the ODEs
+        if len(self.odes_dict) != 0:
+            self._build_odes()
             self.builder.set_odes_rule(self.odes)
-        elif hasattr(self, 'reaction_dict'):
-            self.builder.reaction_dict = self.reaction_dict
+        elif 'odes_bypass' in kwargs and kwargs['odes_bypass']:
+            pass
         else:
-            if 'odes_bypass' in kwargs and kwargs['odes_bypass']:
-                pass
-            else:
-                raise ValueError('The model requires a set of ODEs')
+            raise ValueError('The model requires a set of ODEs')
             
-        if hasattr(self, 'algs') and self.algs is not None:
+        if len(self.algs_dict) != 0:
+            self._build_algs()
             if isinstance(self.algs, dict):
                 self.builder.set_algebraics_rule(self.algs, asdict=True)
             else:
@@ -645,6 +684,8 @@ class ReactionModel(WavelengthSelectionMixins):
         trajectory data
         
         """
+        self._var_to_fix_from_trajectory = self.algebraics.fixed
+        
         if len(self._var_to_fix_from_trajectory) > 0:
             for fix in self._var_to_fix_from_trajectory:
                 if isinstance(fix[2], str):
@@ -1088,29 +1129,29 @@ class ReactionModel(WavelengthSelectionMixins):
             method(variable, self._get_source_data(source, variable))
         return None
     
-    def fix_from_trajectory(self, variable_index, trajectories=None):
-        """Wrapper for fix_from_trajectory in PyomoSimulator. This stores the
-        information and then fixes the data after the simulator or estimator
-        has been declared
+    # def fix_from_trajectory(self, variable_index, trajectories=None):
+    #     """Wrapper for fix_from_trajectory in PyomoSimulator. This stores the
+    #     information and then fixes the data after the simulator or estimator
+    #     has been declared
         
-        """
-        variable_name = self.__var.algebraic
+    #     """
+    #     variable_name = self.__var.algebraic
         
-        if trajectories is None:
-            dataset_with_traj = []
-            for key, dataset in self.datasets.datasets.items():
-                if variable_index in dataset.species:
-                    dataset_with_traj.append(key)
+        # if trajectories is None:
+        #     dataset_with_traj = []
+        #     for key, dataset in self.datasets.datasets.items():
+        #         if variable_index in dataset.species:
+        #             dataset_with_traj.append(key)
             
-            if len(dataset_with_traj) > 1:
-                raise ValueError('There are more than one dataset with this trajectory, please specify with trajectory key word.')
-            elif len(dataset_with_traj) == 1:
-                trajectories = dataset_with_traj[0]
-            else:
-                raise ValueError('No dataset with this trajectory.')
+        #     if len(dataset_with_traj) > 1:
+        #         raise ValueError('There are more than one dataset with this trajectory, please specify with trajectory key word.')
+        #     elif len(dataset_with_traj) == 1:
+        #         trajectories = dataset_with_traj[0]
+        #     else:
+        #         raise ValueError('No dataset with this trajectory.')
         
-        self._var_to_fix_from_trajectory.append([variable_name, variable_index, trajectories])
-        return None
+        # self._var_to_fix_from_trajectory.append([variable_name, variable_index, trajectories])
+        # return None
                                                
     def set_known_absorbing_species(self, *args, **kwargs):
         """Wrapper for set_known_absorbing_species in TemplateBuilder
@@ -1342,17 +1383,74 @@ class ReactionModel(WavelengthSelectionMixins):
         
         return hasattr(self.p_model, 'objective')
 
-    def check_model_units(self, expr=None):
+    def check_model_units(self, display=False):
 
-        from kipet.library.common.component_expression import get_unit_model, check_units
+        if not self.__flag_odes_built:
+            self._build_odes()
+        if not self.__flag_algs_built:
+            self._build_algs()
 
-        self.c_units = get_unit_model(self)
-        for key, expr in self.odes.items():
-            check_units(key, expr, self.c, self.c_units)
+        element_dict = {
+           'parameters': self.parameters,
+           'components': self.components,
+           'constants': self.constants,
+                }
 
+        self.c_units = get_unit_model(element_dict, self.set_up_model)
+        
+        for key, expr in self.odes_dict.items():
+            expr.check_units(self.c, self.c_units)
+        for key, expr in self.algs_dict.items():
+            expr.check_units(self.c, self.c_units)
+
+        if display:
+            self.ode_obj.display_units()
+            print('')
+            self.alg_obj.display_units()
+            
         return None
     
+    
+    def plot(self, var=None):
+        
+        """Plot results using the variable or variable class"""
+        
+        from kipet.library.visuals.plots import PlotObject
+        
+        p = PlotObject(self)
+        
+        # if var in self.__var.plot_vars:
+        if var == 'Z':
+            p._plot_all_Z()
             
+        elif var in self.components.component_set('concentration'):
+            p._plot_Z(var)            
+            
+        elif var in self.components.component_set('complementary_states'):
+            p._plot_X(var)
+
+        elif var in self.algebraics.names:
+            p._plot_Y(var)            
+                    
+        elif var is None:
+            p._plot_all_Z()
+            
+            for var in self.components.component_set('complementary_states'):
+                p._plot_X(var)
+                
+            for var in self.algebraics.names:
+                p._plot_Y(var)  
+            
+        return None
+        
+
+    def ae(self, alg_var):
+        return self.algs_dict[alg_var].expression
+    
+    def ode(self, ode_var):
+        return self.odes_dict[ode_var].expression
+    
+    
 def _set_directory(model_object, filename, abs_dir=False):
     """Wrapper for the set_directory method. This replaces the awkward way
     of ensuring the correct directory for the data is used.
