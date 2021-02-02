@@ -28,29 +28,35 @@ from kipet.library.core_methods.ParameterEstimator import ParameterEstimator
 from kipet.library.core_methods.PyomoSimulator import PyomoSimulator
 from kipet.library.core_methods.TemplateBuilder import TemplateBuilder
 from kipet.library.core_methods.VarianceEstimator import VarianceEstimator
-from kipet.library.common.model_funs import (
-    step_fun,
-    # step_fun_var_time,
-    )
+from kipet.library.common.component_expression import get_unit_model
+from kipet.library.common.model_funs import step_fun
 from kipet.library.common.pre_process_tools import decrease_wavelengths
 from kipet.library.common.pyomo_model_tools import get_vars
 from kipet.library.dev_tools.display import Print
 from kipet.library.post_model_build.scaling import scale_models
 from kipet.library.post_model_build.replacement import ParameterReplacer
 from kipet.library.mixins.TopLevelMixins import WavelengthSelectionMixins
-from kipet.library.top_level.datahandler import DataBlock, DataSet
-from kipet.library.top_level.expression import Expression
+from kipet.library.top_level.datahandler import (
+    DataBlock, 
+    DataSet,
+    )
+from kipet.library.top_level.element_blocks import (
+    AlgebraicBlock,
+    ComponentBlock,
+    ConstantBlock, 
+    ParameterBlock, 
+    StateBlock,
+    )
+from kipet.library.top_level.expression import (
+    AEExpressions,
+    Expression,
+    ODEExpressions,
+    )
 from kipet.library.top_level.helper import DosingPoint
-
-from kipet.library.top_level.expression import ODEExpressions, AEExpressions
-from kipet.library.top_level.element_blocks import AlgebraicBlock, ConstantBlock, ComponentBlock, ParameterBlock, StateBlock
-from kipet.library.common.component_expression import get_unit_model
-
 from kipet.library.top_level.settings import (
     Settings, 
     USER_DEFINED_SETTINGS,
     )
-# from kipet.library.top_level.clean import remove_file
 from kipet.library.top_level.variable_names import VariableNames
 
 __var = VariableNames()
@@ -80,34 +86,23 @@ class ReactionModel(WavelengthSelectionMixins):
         self.results_dict = {}
         self.settings = Settings(category='model')
         self.algebraic_variables = []
-        
         self.variances = {}
-        
         self.odes = ODEExpressions()
         self.algs = AEExpressions()
-        
         self.odes_dict = {}
         self.algs_dict = {}
-        
         self.__flag_odes_built = False
         self.__flag_algs_built = False
-        
         self.custom_objective = None
         self.optimized = False
-        
         self.dosing_var = None
         self.dosing_points = None
         self._has_dosing_points = False
-        
         self._has_step_or_dosing = False
-        
         self._has_non_absorbing_species = False
-        
         self._var_to_fix_from_trajectory = []
         self._var_to_initialize_from_trajectory = []
-        
         self._default_time_unit = 'seconds'
-        
         self.__var = VariableNames()
 
     def __repr__(self):
@@ -160,24 +155,16 @@ class ReactionModel(WavelengthSelectionMixins):
         conversion_dict = {'state': self.__var.state_model, 
                            'concentration': self.__var.concentration_model,
                            }
-        
-        
-        
         if component not in self.components.names:
             raise ValueError('Invalid component name')
-        
         dosing_point = DosingPoint(component, time, step)
-
         model_var = conversion_dict[self.components[component].state]
-        
         if self.dosing_points is None:
             self.dosing_points = {}
-        
         if model_var not in self.dosing_points.keys():
             self.dosing_points[model_var] = [dosing_point]
         else:
             self.dosing_points[model_var].append(dosing_point)
-            
         self._has_dosing_points = True
         self._has_step_or_dosing = True
         
@@ -194,7 +181,6 @@ class ReactionModel(WavelengthSelectionMixins):
         self.constants.add_element(*args, **kwargs)
         return None
         
-    
     def call_fe_factory(self):
         """Somewhat of a wrapper for this simulator method, but better"""
 
@@ -224,47 +210,33 @@ class ReactionModel(WavelengthSelectionMixins):
         copy_algs = kwargs.get('algs', True)
         
         # Reset the datasets
-        
         new_kipet_model.name = name
-        
         if not copy_model:
             new_kipet_model.model = None
-        
         if not copy_builder:
             new_kipet_model.builder = TemplateBuilder()
-            
         if not copy_components:
             new_kipet_model.components = ComponentBlock()
-        
         if not copy_parameters:
             new_kipet_model.parameters = ParameterBlock()
-            
         if not copy_datasets:
             del new_kipet_model.datasets
-            new_kipet_model.datasets = DataBlock()
-            
+            new_kipet_model.datasets = DataBlock()    
         if not copy_constants:
             new_kipet_model.constants = None
-            
         if not copy_algebraic_variables:
             new_kipet_model.algebraic_variables = []
-            
         if not copy_settings:
             new_kipet_model.settings = Settings()
-            
         if not copy_odes:
             new_kipet_model.odes = None
-            
         if not copy_algs:
             new_kipet_model.algs = None
-        
         list_of_attr_to_delete = ['p_model', 'v_model', 'p_estimator',
                                   'v_estimator', 'simulator']
-        
         for attr in list_of_attr_to_delete:
             if hasattr(new_kipet_model, attr):
                 setattr(new_kipet_model, attr, None)
-        
         new_kipet_model.results_dict = {}
             
         return new_kipet_model
@@ -1146,30 +1118,6 @@ class ReactionModel(WavelengthSelectionMixins):
         else:
             method(variable, self._get_source_data(source, variable))
         return None
-    
-    # def fix_from_trajectory(self, variable_index, trajectories=None):
-    #     """Wrapper for fix_from_trajectory in PyomoSimulator. This stores the
-    #     information and then fixes the data after the simulator or estimator
-    #     has been declared
-        
-    #     """
-    #     variable_name = self.__var.algebraic
-        
-        # if trajectories is None:
-        #     dataset_with_traj = []
-        #     for key, dataset in self.datasets.datasets.items():
-        #         if variable_index in dataset.species:
-        #             dataset_with_traj.append(key)
-            
-        #     if len(dataset_with_traj) > 1:
-        #         raise ValueError('There are more than one dataset with this trajectory, please specify with trajectory key word.')
-        #     elif len(dataset_with_traj) == 1:
-        #         trajectories = dataset_with_traj[0]
-        #     else:
-        #         raise ValueError('No dataset with this trajectory.')
-        
-        # self._var_to_fix_from_trajectory.append([variable_name, variable_index, trajectories])
-        # return None
                                                
     def set_known_absorbing_species(self, *args, **kwargs):
         """Wrapper for set_known_absorbing_species in TemplateBuilder
