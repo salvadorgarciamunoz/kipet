@@ -20,20 +20,17 @@ if __name__ == "__main__":
     r1 = kipet_model.new_reaction('reaction-1')
     
     # Add the model parameters
-    r1.add_parameter('k1', 2)
-    r1.add_parameter('k2', 0.2)
+    r1.add_parameter('k1', value=2, units='1/s')
+    r1.add_parameter('k2', value=0.2, units='1/s')
     
     # Declare the components and give the initial values
-    r1.add_component('A', state='concentration', init=1)
-    r1.add_component('B', state='concentration', init=0.0)
-    r1.add_component('C', state='concentration', init=0.0)
-    
+    r1.add_component('A', value=1.0, units='M')
+    r1.add_component('B', value=0.0, units='M')
+    r1.add_component('C', value=0.0, units='M')
     
     # New way of writing ODEs - only after declaring components, algebraics,
     # and parameters
     c = r1.get_model_vars()
-    
-    # globals()['A'] = c.A
     
     # c now holds of all of the pyomo variables needed to define the equations
     rates = {}
@@ -42,7 +39,9 @@ if __name__ == "__main__":
     rates['C'] = c.k2 * c.B
     
     r1.add_odes(rates)
-
+ 
+    # Option to check the units of your models
+    r1.check_model_units()
     # Add dosing points 
     r1.add_dosing_point('A', 3, 0.3)
     
@@ -50,14 +49,10 @@ if __name__ == "__main__":
     r1.set_times(0, 10)
     r1.create_pyomo_model()
     
-    # print(r1.model.odes.display())
-    
     r1.settings.collocation.ncp = 3
     r1.settings.collocation.nfe = 50
-    # r1.settings.simulator.method = 'fe'
-    
+
     #Simulate with default options
     r1.simulate()
     
-    if with_plots:
-        r1.results.plot()
+    r1.plot()
