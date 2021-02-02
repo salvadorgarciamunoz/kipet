@@ -114,7 +114,3 @@ class VariableNames(object):
             ]
         
         return model_vars
-                      
-        
-        
-        

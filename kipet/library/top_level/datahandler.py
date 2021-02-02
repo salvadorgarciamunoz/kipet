@@ -15,7 +15,7 @@ from plotly import __version__
 from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
 
 from kipet.library.core_methods.data_tools import *
-from kipet.library.core_methods.ResultsObject import colors
+from kipet.library.visuals.plots import colors
 
 data_categories = ['concentration', 'spectral', 'state', 'trajectory', 'custom']
 

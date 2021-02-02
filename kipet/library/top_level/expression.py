@@ -1,12 +1,21 @@
 """
 Expression Classes
 """
-from kipet.library.common.VisitorClasses import ReplacementVisitor
-from pyomo.environ import ConcreteModel, Var, Objective
+# Standad library imports
+
+# Third party imports
 from pyomo.core.expr.numeric_expr import DivisionExpression
+from pyomo.environ import (
+    ConcreteModel,
+    Objective,
+    Var, 
+    )
 from pyomo.environ import units as u
-from pyomo.util.check_units import assert_units_consistent, assert_units_equivalent, check_units_equivalent
+
+# KIPET library imports
+from kipet.library.common.VisitorClasses import ReplacementVisitor
 from kipet.library.post_model_build.replacement import _update_expression
+
 
 class ExpressionBlock():
     
@@ -116,7 +125,10 @@ class Expression():
         return None
 
     def check_division(self, eps=1e-12):
+        """Add a small amount to the numerator and denominator in a
+        DivisionExpression to improve the numerics
         
+        """
         expr = self.expression
         
         if isinstance(expr, DivisionExpression):
@@ -130,7 +142,3 @@ class Expression():
             self.expression_orig = expr
     
         return None
-
- 
-    
-    

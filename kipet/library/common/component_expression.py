@@ -1,9 +1,18 @@
-from kipet.library.top_level.variable_names import VariableNames
-from kipet.library.common.pyomo_model_tools import get_index_sets
-from pyomo.environ import *
+"""
+Component expression handling and units model development
+"""
+# Standard library imports
+
+# Third party imports
+from pyomo.core.base.PyomoModel import ConcreteModel
+from pyomo.core.base.var import Var
 from pyomo.environ import units as u
+
+# KIPET library imports
+from kipet.library.common.pyomo_model_tools import get_index_sets
 from kipet.library.common.VisitorClasses import ReplacementVisitor
 from kipet.library.post_model_build.replacement import _update_expression
+from kipet.library.top_level.variable_names import VariableNames
 
 string_replace_dict = {
     ' ': '_',
@@ -46,9 +55,14 @@ class Comp():
             if hasattr(self._model, mv):
                 mv_obj = getattr(self._model, mv)
                 index_sets = get_index_sets(mv_obj)
-                comp_set = list(index_sets[-1].keys())
-                dim = len(index_sets)
                 
+                dim = len(index_sets)
+                if dim > 1:
+                    indx = 1
+                else:
+                    indx = 0
+                
+                comp_set = list(index_sets[indx].keys())
                 for comp in comp_set:
                     
                     comp = str(comp)
@@ -61,6 +75,7 @@ class Comp():
                             comp_name.replace(k, v)
                     
                     self.var_dict[comp_name] = ModalVar(comp_name, comp_name, mv, self._model)
+                    
                     if dim > 1:
                         setattr(self, comp_name, mv_obj[0, comp])
                     else:
@@ -109,12 +124,10 @@ class Comp_Check():
     
     def __init__(self, model, param_list):
         
-        #self._r_model = model
         self._model = model
         self._param_list = param_list
         self.var_dict = {}
         self.assign_params_for_units_check()
-        # self.assign_rate_vars()
         
     def assign_params_for_units_check(self):
         """Digs through and assigns the variables as top-level attributes
@@ -134,7 +147,6 @@ def get_unit_model(element_dict, set_up_model):
     unit_model = ConcreteModel()
     __var = VariableNames()
     
-    # set_up_model = reaction_model.set_up_model
     new_params = set()
     
     model_vars = [__var.concentration_model,
@@ -151,27 +163,23 @@ def get_unit_model(element_dict, set_up_model):
      
     CompBlocks = {'P': element_dict['parameters'],
                   'Z': element_dict['components'],
-                  'X': element_dict['components'],
+                  'X': element_dict['states'],
                   'Const': element_dict['constants'],
                   'Y': element_dict['algebraics'],
                   }
     
     for index_var in index_vars:
-        
+        print(index_var)
         if not hasattr(set_up_model, index_var):
             continue
         
         var_obj = getattr(set_up_model, index_var)
-        
         for k, v in var_obj.items():
-            
             key = k
             if isinstance(k, tuple):
                 key = k[1]
-                
             if key in new_params:
                 continue
-            
             new_params.add(key)
             block = CompBlocks[index_var]
             m_units = block[key].units

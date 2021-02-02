@@ -43,7 +43,7 @@ from kipet.library.top_level.expression import Expression
 from kipet.library.top_level.helper import DosingPoint
 
 from kipet.library.top_level.expression import ODEExpressions, AEExpressions
-from kipet.library.top_level.element_blocks import AlgebraicBlock, ConstantBlock, ComponentBlock, ParameterBlock
+from kipet.library.top_level.element_blocks import AlgebraicBlock, ConstantBlock, ComponentBlock, ParameterBlock, StateBlock
 from kipet.library.common.component_expression import get_unit_model
 
 from kipet.library.top_level.settings import (
@@ -75,6 +75,7 @@ class ReactionModel(WavelengthSelectionMixins):
         self.parameters = ParameterBlock()
         self.constants = ConstantBlock()
         self.algebraics = AlgebraicBlock()
+        self.states = StateBlock()
         self.datasets = DataBlock()
         self.results_dict = {}
         self.settings = Settings(category='model')
@@ -271,6 +272,19 @@ class ReactionModel(WavelengthSelectionMixins):
     def add_alg_var(self, *args, **kwargs):
         
         self.algebraics.add_element(*args, **kwargs)
+        # if 'step' in kwargs and kwargs['step'] is not None:
+        #     self.add_step(f's_{args[0]}', time=15, switch='off')
+    
+    def add_step(self, name, *args, **kwargs):
+        
+        self._has_step_or_dosing = True
+        if not hasattr(self, '_step_list'):
+            self._step_list = {}
+            
+        if name not in self._step_list:
+            self._step_list[name] = [kwargs]
+        else:
+            self._step_list[name].append(kwargs)
     
     def add_state(self, *args, **kwargs):
         """Add the components to the Kipet instance
@@ -282,9 +296,7 @@ class ReactionModel(WavelengthSelectionMixins):
             None
             
         """
-        kwargs['state'] = 'complementary_states'
-        
-        self.components.add_element(*args, **kwargs)
+        self.states.add_element(*args, **kwargs)
         return None
     
     def add_component(self, *args, **kwargs):
@@ -297,7 +309,7 @@ class ReactionModel(WavelengthSelectionMixins):
             None
             
         """
-        kwargs['state'] = 'concentration'
+        # kwargs['state'] = 'concentration'
         self.components.add_element(*args, **kwargs)
         return None
     
@@ -547,6 +559,9 @@ class ReactionModel(WavelengthSelectionMixins):
         """
         
         with_data = kwargs.get('with_data', True)
+        
+        if len(self.states) > 0:
+            self.builder.add_model_element(self.states)
         
         if len(self.algebraics) > 0:
             self.builder.add_model_element(self.algebraics)
@@ -878,7 +893,7 @@ class ReactionModel(WavelengthSelectionMixins):
             self.initialize_from_simulation(estimator=estimator)
         
         if self._has_step_or_dosing:
-            for time in getattr(self, estimator).model.alltime.value:
+            for time in getattr(self, estimator).model.alltime.data():
                 getattr(getattr(self, estimator).model, self.__var.dosing_variable)[time, self.__var.dosing_component].set_value(time)
                 getattr(getattr(self, estimator).model, self.__var.dosing_variable)[time, self.__var.dosing_component].fix()
         
@@ -921,6 +936,8 @@ class ReactionModel(WavelengthSelectionMixins):
         if self.settings.parameter_estimator['solver'] in ['k_aug', 'ipopt_sens']:
             self.settings.parameter_estimator['covariance'] = True
         
+        
+        # Move lambda subset to general data method and out of RM
         #Subset of lambdas
         if self.settings.variance_estimator['freq_subset_lambdas'] is not None:
             if type(self.settings.variance_estimator['freq_subset_lambdas'], int):
@@ -989,7 +1006,7 @@ class ReactionModel(WavelengthSelectionMixins):
             
             # Create the VE
             self.create_estimator(estimator='v_estimator')
-            
+            self.settings.variance_estimator.solver_opts = self.settings.solver
             # Optional max device variance
             if self.settings.variance_estimator.max_device_variance:
                 max_device_variance = self.v_estimator.solve_max_device_variance(**self.settings.variance_estimator)
@@ -1304,13 +1321,7 @@ class ReactionModel(WavelengthSelectionMixins):
         param_replacer.remove_fixed_vars()
     
         return None
-    
-    def add_step(self, name, *args, **kwargs):
-        
-        self._has_step_or_dosing = True
-        if not hasattr(self, '_step_list'):
-            self._step_list = {}
-        self._step_list[name] = kwargs
+
         
     """MODEL FUNCTION AREA"""
     
@@ -1395,6 +1406,8 @@ class ReactionModel(WavelengthSelectionMixins):
            'parameters': self.parameters,
            'components': self.components,
            'constants': self.constants,
+           'algebraics': self.algebraics,
+           'states': self.states,
                 }
 
         self.c_units = get_unit_model(element_dict, self.set_up_model)
@@ -1418,30 +1431,39 @@ class ReactionModel(WavelengthSelectionMixins):
         
         from kipet.library.visuals.plots import PlotObject
         
-        p = PlotObject(self)
+        self._plot_object = PlotObject(self)
         
-        # if var in self.__var.plot_vars:
         if var == 'Z':
-            p._plot_all_Z()
+            self._plot_object._plot_all_Z()
             
-        elif var in self.components.component_set('concentration'):
-            p._plot_Z(var)            
+        if var == 'S':
+            self._plot_object._plot_all_S()
             
-        elif var in self.components.component_set('complementary_states'):
-            p._plot_X(var)
+        elif var in self.components.names:
+            self._plot_object._plot_Z(var)           
+            
+        elif var in self.states.names:
+            self._plot_object._plot_X(var)
 
         elif var in self.algebraics.names:
-            p._plot_Y(var)            
+            self._plot_object._plot_Y(var)            
                     
         elif var is None:
-            p._plot_all_Z()
+            self._plot_object._plot_all_Z()
             
-            for var in self.components.component_set('complementary_states'):
-                p._plot_X(var)
-                
+            if hasattr(self.results, 'S'):
+                self._plot_object._plot_all_S()
+            
+            for var in self.states.names:
+                self._plot_object._plot_X(var)
+            
             for var in self.algebraics.names:
-                p._plot_Y(var)  
-            
+                self._plot_object._plot_Y(var)  
+                
+            if hasattr(self.results, 'step'):
+                for var in self.results.step:
+                    self._plot_object._plot_step(var)
+                
         return None
         
 

@@ -1,5 +1,5 @@
 """
-ModelComponent Class
+ModelComponent Classes
 """
 # Third party imports
 import pint
@@ -145,9 +145,7 @@ class ModelComponent(ModelElement):
    
         # component attributes
         self.variance = variance
-        if state == 'state':
-            state = 'complementary_states'
-        self.state = state
+        self.state = 'concentration'
         self.known = known
         self.bounds = bounds
         
@@ -176,6 +174,56 @@ class ModelComponent(ModelElement):
     def __repr__(self):
         
         return f'ModelComponent({self.name})'
+    
+class ModelState(ModelElement):
+    """A simple class for holding non-component state information"""
+    
+    class_ = 'model_state'
+    
+    def __init__(self,
+                 name=None,
+                 state='state',
+                 value=None,
+                 variance=None,
+                 units=None,
+                 known=True,
+                 bounds=None,
+                 description=None,
+                 ):
+    
+        super().__init__(name, ModelComponent.class_, value, units, description)
+   
+        # component attributes
+        self.variance = variance
+        self.state = state
+        self.known = known
+        self.bounds = bounds
+        
+        #self._check_units()
+        
+    def __str__(self):
+        
+        margin = 25
+        settings = f'ModelState\n'
+        
+        for key in self.__dict__: #['name', 'class_', 'value', 'units']:
+            if key == 'class_':
+                continue
+            settings += f'{str(key).rjust(margin)} : {getattr(self, key)}\n'
+            
+        return settings
+        
+    def _check_units(self):
+      
+        if self.state == 'state':
+            check_quantity = 1 * self.units
+            if not check_quantity.check('[concentration]'):
+                raise AttributeError(f'Concentration units incorrect for species {self.name}')
+    
+    
+    def __repr__(self):
+        
+        return f'ModelState({self.name})'
 
         
 class ModelParameter(ModelElement):

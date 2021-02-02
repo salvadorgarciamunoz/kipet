@@ -194,6 +194,12 @@ class Settings():
             'scheme': USER_DEFINED_SETTINGS.get('DISCRETIZATION_SCHEME', 'LAGRANGE-RADAU'),
             }
         
+        units = {
+            'concentration': 'M',
+            'time' : 'h',
+            'volume' : 'L',
+            }
+        
         # This should only be in model and not in block:
     
         # ve_opt = { 
@@ -251,6 +257,7 @@ class Settings():
     
         self.collocation = AttrDict(collocation)
         self.general = AttrDict(general)
+        self.units = AttrDict(units)
         self.parameter_estimator = AttrDict(p_estimator)
         self.variance_estimator = AttrDict(v_estimator)
         self.solver = AttrDict(solver)

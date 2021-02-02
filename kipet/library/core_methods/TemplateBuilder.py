@@ -721,26 +721,48 @@ class TemplateBuilder(object):
                     for t in model.alltime:
                         getattr(model, self.__var.algebraic)[t, alg.name].setlb(alg.lb)
                         getattr(model, self.__var.algebraic)[t, alg.name].setub(alg.ub)
+                        
+            # for alg in a_info:
+            #     if alg.step is not None:
+                     
+            #     setattr(model, self.__var.step_variable, Var(model.alltime,
+            #                                                  steps,
+            #                                                  initialize=1.0))
+                
+            #     #Constraint to keep track of the step values (for diagnostics)
+            #     def rule_step_function(m, t, k):
+            #         step_const = getattr(m, self.__var.step_variable)[t, k] - step_fun(m, t, num=k, **self._step_data[k])
+            #         return step_const == 0.0
+    
+            #     constraint_suffix = 'constraint'
+                
+            #     setattr(model, self.__var.step_variable + constraint_suffix,
+            #             Constraint(model.alltime,
+            #                        steps,
+            #                        rule=rule_step_function))
     
         return None
     
     def _add_initial_conditions(self, model):
         """Set up the initial conditions for the model"""
         
-        c_info = self.template_component_data
+        var_info = dict(self.template_component_data._dict)
+        
+        if hasattr(self, 'template_state_data'):
+            var_info.update(self.template_state_data._dict)
         
         model.init_conditions = Var(model.states,
-                                    initialize=c_info.as_dict('value'),
+                                    initialize={k: v.value for k, v in var_info.items()},
                                     )
         unknown_init = {}
         
         for var, obj in model.init_conditions.items():
-            if self.template_component_data[var].known:
+            if var_info[var].known:
                 obj.fix()
             else:
-                lb = self.template_component_data[var].lb
-                ub = self.template_component_data[var].ub
-                init = self.template_component_data[var].value
+                lb = var_info[var].lb
+                ub = var_info[var].ub
+                init = var_info[var].value
                 obj.setlb(lb)
                 obj.setub(ub)
                 unknown_init[var] = init
@@ -780,17 +802,25 @@ class TemplateBuilder(object):
         """Adds the model variables to the pyomo model"""
         
         c_info = self.template_component_data
-        self._component_names = c_info.component_set('concentration')
+        self._component_names = c_info.names
         
-        model_pred_var_name = {
-                self.__var.concentration_model : model.mixture_components,
-                self.__var.state_model : model.complementary_states,
-                    }
+        var_set = [c_info]
         
-        for var, model_set in model_pred_var_name.items():
+        if hasattr(self, 'template_state_data'):
+            s_info = self.template_state_data
+            self._complementary_states = s_info.names
+            var_set.append(s_info)
+        
+        for var_class in var_set:
+        
+            v_info = var_class    
+        
+            model_pred_var_name = {
+                    'components' : [self.__var.concentration_model, model.mixture_components],
+                    'states' : [self.__var.state_model, model.complementary_states],
+                        }
             
-            if model_set is None or len(model_set) == 0:
-                continue
+            var, model_set = model_pred_var_name[var_class.attr_class_set_name]
             
             # Check if any data for the variable type exists (Pyomo 5.7 update)
             if hasattr(model_set, 'ordered_data') and len(model_set.ordered_data()) == 0:
@@ -798,15 +828,14 @@ class TemplateBuilder(object):
             
             setattr(model, var, Var(model.alltime,
                                           model_set,
-                                          # bounds=(0.0,None),
-                                          units=c_info.as_dict('units'),
+                                          units=v_info.as_dict('units'),
                                           initialize=1) 
                     )    
         
             for time, comp in getattr(model, var):
                 if time == model.start_time.value:
-                    #print(comp, c_info[comp].value)
-                    getattr(model, var)[time, comp].value = c_info[comp].value
+                    
+                    getattr(model, var)[time, comp].value = v_info[comp].value
                    
             setattr(model, f'd{var}dt', DerivativeVar(getattr(model, var),
                                                      # units=self.u.mol/self.u.l,
@@ -821,9 +850,7 @@ class TemplateBuilder(object):
                     }
         
         for var, data in fixed_var_name.items():
-            
-            # print(f'Set up of {var}')
-            
+           
             if data is None or len(data) == 0:
                 continue
             
@@ -835,7 +862,6 @@ class TemplateBuilder(object):
                     c_bounds = (0.0, None)
                 
                 if data is not None:
-                    #print('there is data')
                     
                     for i, row in data.iterrows():
                          c_dict.update({(i, col): float(row[col]) for col in data.columns if not np.isnan(float(row[col]))})
@@ -845,11 +871,8 @@ class TemplateBuilder(object):
                     setattr(model, var, Var(getattr(model, f'{var}_indx'),
                                                   bounds=c_bounds,
                                                   initialize=c_dict,
-                                                  #units=self._component_units,
                                                   )
                             )
-                    
-                    #print(c_dict)
                     
                     for k, v in getattr(model, var).items():
                         getattr(model, var)[k].fixed = True
@@ -862,7 +885,7 @@ class TemplateBuilder(object):
         
                     for time, comp in getattr(model, var):
                         if time == model.start_time.value:
-                            getattr(model, var)[time, comp].value = c_info[comp].value
+                            getattr(model, var)[time, comp].value = v_info[comp].value
 
         return None
     
@@ -878,20 +901,7 @@ class TemplateBuilder(object):
         
             for param, obj in getattr(model, self.__var.model_constant).items():
                 obj.fix()
-            #for constant in self.template_constant_data:    
-                #print('adding constants')
-                # name = f'con_{constant.name}'
-                # init = constant.value
-                # units = constant.units
-                
-                # setattr(model, name, Param([0],
-                #                          initialize=init,
-                #                          units=units,
-                #                         ))
-                # getattr(model, name).fix()
-                
-                #print(getattr(model, name).display())
-            
+          
         return None
     
     
@@ -915,8 +925,6 @@ class TemplateBuilder(object):
         else:
             setattr(model, self.__var.model_parameter,
                     Var(model.parameter_names,
-                        #units=p_info.as_dict('units'),
-                        #fixed=p_info.as_dict('fixed'),
                             initialize=p_values))
 
         # Set the bounds
@@ -957,15 +965,7 @@ class TemplateBuilder(object):
         p_fixed = p_info.as_dict('fixed')
         for param, v in p_fixed.items():
             getattr(model, self.__var.model_parameter)[param].fixed = v
-            
-        # Set units - if you want to use units, you have to use different indecies...
-        # p_units = p_info.as_dict('units')
-        # print(p_units)
-        # for param, v in p_units.items():
-        #     parent = getattr(model, self.__var.model_parameter)[param].parent_component()
-        #     print(parent)
-        #     parent._units = u._pint_registry(v)
-
+    
         return None
 
     def _add_unwanted_contribution_variables(self, model):
@@ -1407,34 +1407,89 @@ class TemplateBuilder(object):
         from kipet.library.common.model_funs import step_fun
     
         # Add dosing var
-        #if self._add_dosing_var:
         setattr(model, self.__var.dosing_variable, Var(model.alltime,
                                                       [self.__var.dosing_component],
                                                       initialize=0))
             
+        def build_step_funs(m, t, k, data):
+            
+            step = 0
+            off_modifier = 0
+            for i in range(len(data)):
+                if i > 0 and data[i]['switch'] == 'off':
+                    off_modifier += 1
+                step += step_fun(m, t, num=f'{k}_{i}', **data[i])
+                
+            return step - off_modifier
+        
+        def rule_step_function(m, t, k):
+            step_const = getattr(m, self.__var.step_variable)[t, k] - build_step_funs(m, t, k, self._step_data[k])    # step_fun(m, t, num=k, **self._step_data[k])
+            return step_const == 0.0
+        
         if hasattr(self, '_step_data') and len(self._step_data) > 0:
             steps = list(self._step_data.keys())
             
-            setattr(model, self.__var.time_step_change, Var(steps, 
+            for step in steps:
+                step_info = self._step_data[step]
+                num_of_steps = len(step_info)
+                step_index = list(range(num_of_steps))
+                
+            tsc_index = []
+            tsc_init = {}
+        
+            for k, v in self._step_data.items():
+                for i, step_dict in enumerate(v):
+                    tsc_init[f'{k}_{i}'] = step_dict['time']
+                    tsc_index.append(f'{k}_{i}')
+            
+            setattr(model, self.__var.time_step_change, Var(tsc_index,
+                                                           # step_index,
                     bounds=(model.start_time, model.end_time), 
-                    initialize=(model.end_time - model.start_time)/2))
+                    initialize=tsc_init,
+                    ))
                    
             
             setattr(model, self.__var.step_variable, Var(model.alltime,
                                                          steps,
+                                         #                step_index,
                                                          initialize=1.0))
-                                          
+                
             #Constraint to keep track of the step values (for diagnostics)
-            def rule_step_function(m, t, k):
-                step_const = getattr(m, self.__var.step_variable)[t, k] - step_fun(m, t, num=k, **self._step_data[k])
-                return step_const == 0.0
+                
+            
 
             constraint_suffix = 'constraint'
             
             setattr(model, self.__var.step_variable + constraint_suffix,
                     Constraint(model.alltime,
                                steps,
-                               rule=rule_step_function))
+                         #      step_index,
+                               rule=rule_step_function))   
+            
+            # def rule_step_alg(m, t, k, k2, factor):
+            #       print(t, k, k2, factor)
+            #       step_const = 1/factor*getattr(m, self.__var.algebraic)[t, k] - step_fun(m, t, num=k2, **self._step_data[k2])
+            #       return step_const == 0.0
+
+            # if hasattr(self, 'template_algebraic_data'):
+            #     alg_steps = self.template_algebraic_data.steps
+                
+            #     alg_values = {alg.name: alg.value for alg in alg_steps.values()}
+            #     alg_set = [alg.name for alg in alg_steps.values()]
+            #     alg_step = {alg.name: alg.step for alg in alg_steps.values()}
+                           
+            #     steps = list(set(steps).difference(alg_set))                  
+        
+            #     setattr(model, self.__var.algebraic + constraint_suffix,
+            #             Constraint(model.alltime,
+            #                        alg_set,
+            #                        alg_step.values(),
+            #                        alg_values.values(),
+            #                        rule=rule_step_alg,
+            #                        ))
+                
+                     
+                   
         return None
             
     def create_pyomo_model(self, start_time=None, end_time=None):
@@ -1457,9 +1512,14 @@ class TemplateBuilder(object):
         pyomo_model = ConcreteModel()
 
         # Declare Sets
-        pyomo_model.mixture_components = Set(initialize=self.template_component_data.component_set('concentration'))
+        pyomo_model.mixture_components = Set(initialize=self.template_component_data.names)
         pyomo_model.parameter_names = Set(initialize=self.template_parameter_data.names)
-        pyomo_model.complementary_states = Set(initialize=self.template_component_data.component_set('complementary_states'))
+        
+        if not hasattr(self, 'template_state_data'):
+            state_names = []
+        else:
+            state_names = self.template_state_data.names
+        pyomo_model.complementary_states = Set(initialize=state_names)
         
         pyomo_model.states = pyomo_model.mixture_components | pyomo_model.complementary_states
         pyomo_model.measured_data = Set(initialize=self._all_state_data)

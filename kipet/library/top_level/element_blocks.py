@@ -22,6 +22,10 @@ class ModelElementBlock():
     def __getitem__(self, value):
         
         return getattr(self, self.attr_class_set_name)[value]
+    
+    def __add__(self, other):
+        
+        return {**self._dict, **other._dict}
          
     def __str__(self):
         
@@ -63,18 +67,7 @@ class ModelElementBlock():
     
     def add_element(self, *args, **kwargs):
         
-        """Should handle a series of different input methods:
-          
-        KP = KineticParameter('k1', init=1.0, bounds=(0.01, 10))
-        builder.add_parameter_temp(KP)
-        
-        - or -
-        
-        builder.add_parameter('k1', init=1.0, bounds=(0.01, 10))
-        
-        - or -
-        
-        builder.add_parameter('k1', 1.0, (0.01, 10))
+        """
             
         """
         name = args[0]
@@ -117,6 +110,16 @@ class AlgebraicBlock(ModelElementBlock):
                 fix_from_traj.append([self.__var.algebraic, alg.name, alg.data])
         
         return fix_from_traj
+    
+    @property
+    def steps(self):
+        
+        steps = {}
+        for alg in self.algebraics.values():
+            if alg.step is not None:
+                steps[alg.name] = alg
+        
+        return steps
         
 class ComponentBlock(ModelElementBlock):
     
@@ -159,6 +162,59 @@ class ComponentBlock(ModelElementBlock):
     @property
     def names(self):
         return [comp.name for comp in self.components.values()]
+    
+    @property
+    def has_all_variances(self):
+    
+        all_component_variances = True
+        for comp in self.components.values():
+            if comp.variance is None:
+                all_component_variances = False
+            if not all_component_variances:
+                break
+        return all_component_variances
+    
+class StateBlock(ModelElementBlock):
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(class_name='model_state')
+    
+    
+    def var_variances(self):
+        
+        sigma_dict = {}
+        
+        for component in self.states.values():       
+            if component.state == 'trajectory':
+                continue       
+            sigma_dict[component.name] = component.variance
+            
+        return sigma_dict
+        
+    def component_set(self, category):
+        
+        component_set = []
+        for component in self.states.values():
+            if component.state == category:
+                component_set.append(component.name)
+                
+        return component_set
+    
+    @property
+    def variances(self):
+        return {comp.name: comp.variance for comp in self.states.values()}
+    
+    @property
+    def init_values(self):
+        return {comp.name: comp.value for comp in self.states.values()}
+    
+    @property
+    def known_values(self):
+        return {comp.name: comp.known for comp in self.states.values()}
+        
+    @property
+    def names(self):
+        return [comp.name for comp in self.states.values()]
     
     @property
     def has_all_variances(self):
