@@ -137,7 +137,7 @@ class ModelComponent(ModelElement):
                  variance=None,
                  units=None,
                  known=True,
-                 bounds=None,
+                 bounds=(None,None),
                  description=None,
                  absorbing=True,
                  ):
@@ -176,6 +176,18 @@ class ModelComponent(ModelElement):
     def __repr__(self):
         
         return f'ModelComponent({self.name})'
+    
+    @property
+    def lb(self):
+        """Lower bound property"""
+        return self.bounds[0]
+
+    @property
+    def ub(self):
+        """Upper bound property"""
+        return self.bounds[1]
+
+    
     
 class ModelState(ModelElement):
     """A simple class for holding non-component state information"""
