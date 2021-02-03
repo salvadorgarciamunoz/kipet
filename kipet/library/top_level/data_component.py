@@ -288,49 +288,6 @@ class DataSet(object):
     def time_span(self):
         return self.data.index.min(), self.data.index.max()
 
-class SpectralData():
-    
-    """All of the spectral tools will be moved here"""   
- 
-    def __init__(self, name, data=None):
-        
-        self.name = name
-        self.data = data
-        
-    def add_data(self, data):
-        
-        setattr(self, 'data', data)
-        
-    def plot(self):
-        """ Plots spectral data
-        
-            Args:
-                dataFrame (DataFrame): spectral data
-              
-            Returns:
-                None
-    
-        """
-       
-        fig = go.Figure()
-        fig.add_trace(go.Surface(x=self.data.columns,
-                           y=self.data.index,
-                           z=self.data.values,
-                          ))
-        
-        fig.update_layout(scene = dict(
-                            xaxis_title='Wavelength',
-                            yaxis_title='Time',
-                            zaxis_title='Absorbance'),
-                            margin=dict(r=100, b=50, l=100, t=50),
-                            title_text=f'{self.name}: Spectral Data',
-                            title_font_size=30)
-        
-        plot(fig)
-            
-        return None
-    
-
 
 if __name__ == '__main__':
 
