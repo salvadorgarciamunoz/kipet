@@ -40,6 +40,7 @@ from kipet.library.top_level.data_component import (
     DataBlock, 
     DataSet,
     )
+from kipet.library.top_level.spectral_handler import SpectralData
 from kipet.library.top_level.element_blocks import (
     AlgebraicBlock,
     ComponentBlock,
@@ -305,8 +306,6 @@ class ReactionModel(WavelengthSelectionMixins):
         return None
     
     def add_data(self, *args, **kwargs):
-        
-        from kipet.library.top_level.data_component import SpectralData
         
         name = kwargs.get('name', None)
         if len(args) > 0:
