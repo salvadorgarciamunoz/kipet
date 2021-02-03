@@ -36,7 +36,7 @@ from kipet.library.dev_tools.display import Print
 from kipet.library.post_model_build.scaling import scale_models
 from kipet.library.post_model_build.replacement import ParameterReplacer
 from kipet.library.mixins.TopLevelMixins import WavelengthSelectionMixins
-from kipet.library.top_level.datahandler import (
+from kipet.library.top_level.data_component import (
     DataBlock, 
     DataSet,
     )
@@ -83,6 +83,9 @@ class ReactionModel(WavelengthSelectionMixins):
         self.algebraics = AlgebraicBlock()
         self.states = StateBlock()
         self.datasets = DataBlock()
+        self.data = {}
+        self.D_data = None
+        
         self.results_dict = {}
         self.settings = Settings(category='model')
         self.algebraic_variables = []
@@ -301,114 +304,213 @@ class ReactionModel(WavelengthSelectionMixins):
         self.parameters.add_element(*args, **kwargs)
         return None
     
-    def add_dataset(self, *args, **kwargs):
-        """Add the datasets to the Kipet instance
+    def add_data(self, *args, **kwargs):
         
-        Args:
-            datasets (list): list of Parameter instances
-            
-            factor (float): defaults to 1, the scalar multiple of the parameters
-            for simulation purposes
-            
-        Returns:
-            None
-            
-        """
+        from kipet.library.top_level.data_component import SpectralData
+        
         name = kwargs.get('name', None)
         if len(args) > 0:
             name = args[0]
         filename = kwargs.get('file', None)
         data = kwargs.pop('data', None)
-        category = kwargs.get('category', None)
-        
-        # Check if file name is given and add directory (general)
+        category = kwargs.pop('category', None)
+        remove_negatives = kwargs.get('remove_negatives', False)
+    
         if filename is not None:
             filename = _set_directory(self, filename)
             kwargs['file'] = filename
-            #kwargs['data'] = None
-            
-            # Read data from file
             dataframe = data_tools.read_file(filename)
-        
         elif filename is None and data is not None:
             dataframe = data
-        
         else:
             raise ValueError('User must provide filename or dataframe')
         
-        # Now we have the dataframe of data - check labels for components
-        if category is None:
-            self._check_data_category(name, dataframe, **kwargs)    
-        else:
-            self._add_categorized_dataset(name, dataframe, **kwargs)
         
+        if category == 'spectral':
+            D_data = SpectralData(name)    
+            D_data.add_data(dataframe)
+            self.D_data = D_data
+                    
+        else:
+            self.data[name] = dataframe
+            dataset = DataSet(name,
+                              category=category,
+                              data = dataframe,
+                              file = filename,
+                              )
+            
+            if remove_negatives:
+                dataset.remove_negatives()
+            self.datasets.add_dataset(dataset)
+        
+        self._check_data_matches()
+            
         return None
     
-    def _check_data_category(self, name, data, **kwargs):
-        """Checks the category for data entered without a category"""
+    def _check_data_matches(self):
+        """Easy data mapping to ElementBlocks"""
+        #%%
+        blocks = ['components', 'states', 'algebraics']
         
-        # if components have already been entered, check them
-        if len(self.components) > 0:
-            data_labels = []
+        all_data_cols = []
+        for dataset in self.datasets:
+            if dataset.category == 'spectral':
+                continue
+            all_data_cols.extend(dataset.data.columns)
+        
+        num_duplicates = len(all_data_cols) - len(set(all_data_cols))
+        if num_duplicates != 0:
+            raise ValueError('Duplicate data detected!')
+        
+        # Reassignment
+        
+        # for name, dataset in self.data.items():
+        #     print(name)
+        #     for col in dataset.columns:
+        #         print(col)
+        #         for block in blocks:
+        #             comp_set = getattr(self, block).names
+        #             for comp in comp_set:
+        #                 if col in comp_set:
+        #                     print(block)
+        #                     getattr(self, block)[col].data = dataset[col]
             
-            # The types of data that can be autormated (concentration and state)
-            concentration_data_labels = []
-            state_data_labels = []
+        
+        matched_data_vars = set()
+        all_data_vars = set()
+        
+        for dataset in self.datasets:
+            if dataset.category == 'spectral':
+                continue
+            print(f'Current dataset: {dataset}')
+            for block in blocks:    
+                print('Current block')
+                print(block)
+                for col in dataset.data.columns:
+                    print(col)
+                    print(getattr(self, block).names)
+                    all_data_vars.add(col)
+                    if col in getattr(self, block).names:
+                        print(f'found {col}')
+                        # if hasattr(getattr(self, block)[col], 'data_link'):
+                        #     getattr(self, block)[col].data_link.append(name)
+                        # else:
+                        setattr(getattr(self, block)[col], 'data_link', dataset.name)
+                        print(getattr(self, block)[col].data_link)
+                        matched_data_vars.add(col)
+        
+        unmatched_vars = all_data_vars.difference(matched_data_vars)
+        print(unmatched_vars)
+       #%%
+    
+    # def add_dataset(self, *args, **kwargs):
+    #     """Add the datasets to the Kipet instance
+        
+    #     Args:
+    #         datasets (list): list of Parameter instances
+            
+    #         factor (float): defaults to 1, the scalar multiple of the parameters
+    #         for simulation purposes
+            
+    #     Returns:
+    #         None
+            
+    #     """
+    #     name = kwargs.get('name', None)
+    #     if len(args) > 0:
+    #         name = args[0]
+    #     filename = kwargs.get('file', None)
+    #     data = kwargs.pop('data', None)
+    #     category = kwargs.get('category', None)
+        
+    #     # Check if file name is given and add directory (general)
+    #     if filename is not None:
+    #         filename = _set_directory(self, filename)
+    #         kwargs['file'] = filename
+    #         #kwargs['data'] = None
+            
+    #         # Read data from file
+    #         dataframe = data_tools.read_file(filename)
+        
+    #     elif filename is None and data is not None:
+    #         dataframe = data
+        
+    #     else:
+    #         raise ValueError('User must provide filename or dataframe')
+        
+    #     # Now we have the dataframe of data - check labels for components
+    #     if category is None:
+    #         self._check_data_category(name, dataframe, **kwargs)    
+    #     else:
+    #         self._add_categorized_dataset(name, dataframe, **kwargs)
+        
+    #     return None
+    
+    # def _check_data_category(self, name, data, **kwargs):
+    #     """Checks the category for data entered without a category"""
+        
+    #     # if components have already been entered, check them
+    #     if len(self.components) > 0:
+    #         data_labels = []
+            
+    #         # The types of data that can be autormated (concentration and state)
+    #         concentration_data_labels = []
+    #         state_data_labels = []
 
-            for col in data.columns:
-                if col in self.components.names:
-                    if self.components[col].state == 'concentration':
-                        concentration_data_labels.append(col)
-                    elif self.components[col].state == 'state':
-                        state_data_labels.append(col)
+    #         for col in data.columns:
+    #             if col in self.components.names:
+    #                 if self.components[col].state == 'concentration':
+    #                     concentration_data_labels.append(col)
+    #                 elif self.components[col].state == 'state':
+    #                     state_data_labels.append(col)
                         
-            if len(concentration_data_labels) > 0:
-                state_data = data.loc[:, concentration_data_labels]
-                df_name = name if name is not None else 'C_data'
-                self.datasets.add_dataset(df_name, category='concentration', data=state_data)
+    #         if len(concentration_data_labels) > 0:
+    #             state_data = data.loc[:, concentration_data_labels]
+    #             df_name = name if name is not None else 'C_data'
+    #             self.datasets.add_dataset(df_name, category='concentration', data=state_data)
                 
-            if len(state_data_labels) > 0:
-                state_data = data.loc[:, state_data_labels]
-                df_name = name if name is not None else 'U_data'
-                self.datasets.add_dataset(df_name, category='state', data=state_data)
+    #         if len(state_data_labels) > 0:
+    #             state_data = data.loc[:, state_data_labels]
+    #             df_name = name if name is not None else 'U_data'
+    #             self.datasets.add_dataset(df_name, category='state', data=state_data)
 
-        else:
-            raise AttributeError('Data must have a cateogory or be matched to component data')
+    #     else:
+    #         raise AttributeError('Data must have a cateogory or be matched to component data')
             
-        remove_negatives = kwargs.get('remove_negatives', False)
-        if remove_negatives:
-            self.datasets[df_name].remove_negatives()
+    #     remove_negatives = kwargs.get('remove_negatives', False)
+    #     if remove_negatives:
+    #         self.datasets[df_name].remove_negatives()
             
-        return None
+    #     return None
     
-    def _add_categorized_dataset(self, name, data, **kwargs):
-        """Specific function for adding concentration data"""
+    # def _add_categorized_dataset(self, name, data, **kwargs):
+    #     """Specific function for adding concentration data"""
         
-        category = kwargs.get('category', None)
+    #     category = kwargs.get('category', None)
 
-        # General trajectory data
-        if category == 'trajectory':
-            df_name = name if name is not None else 'Traj_data'
-            self.datasets.add_dataset(df_name, category=category, data=data)
-        elif category == 'concentration':
-            df_name = name if name is not None else 'C_data'
-            self.datasets.add_dataset(df_name, category=category, data=data)
-        elif category == 'state':
-            df_name = name if name is not None else 'U_data'
-            self.datasets.add_dataset(df_name, category=category, data=data)
-        elif category == 'spectral':
-            df_name = name if name is not None else 'D_data'
-            self.datasets.add_dataset(df_name, category=category, data=data)
-        else:
-            df_name = name if name is not None else 'UD_data'
-            self.datasets.add_dataset(df_name, category='custom', data=data)
+    #     # General trajectory data
+    #     if category == 'trajectory':
+    #         df_name = name if name is not None else 'Traj_data'
+    #         self.datasets.add_dataset(df_name, category=category, data=data)
+    #     elif category == 'concentration':
+    #         df_name = name if name is not None else 'C_data'
+    #         self.datasets.add_dataset(df_name, category=category, data=data)
+    #     elif category == 'state':
+    #         df_name = name if name is not None else 'U_data'
+    #         self.datasets.add_dataset(df_name, category=category, data=data)
+    #     elif category == 'spectral':
+    #         df_name = name if name is not None else 'D_data'
+    #         self.datasets.add_dataset(df_name, category=category, data=data)
+    #     else:
+    #         df_name = name if name is not None else 'UD_data'
+    #         self.datasets.add_dataset(df_name, category='custom', data=data)
                 
-        remove_negatives = kwargs.get('remove_negatives', False)
-        if remove_negatives:
-            self.datasets[df_name].remove_negatives()
+    #     remove_negatives = kwargs.get('remove_negatives', False)
+    #     if remove_negatives:
+    #         self.datasets[df_name].remove_negatives()
         
-        return None
-    
+    #     return None
+    #%%
     def set_times(self, start_time=None, end_time=None):
         """Add times to model for simulation (overrides data-based times)"""
         
@@ -529,7 +631,6 @@ class ReactionModel(WavelengthSelectionMixins):
         """Method handling all of the preparation for the TB
         
         """
-        
         with_data = kwargs.get('with_data', True)
         
         if len(self.states) > 0:
@@ -552,10 +653,10 @@ class ReactionModel(WavelengthSelectionMixins):
             self.builder.add_model_element(self.constants)
         
         if with_data:
-            if len(self.datasets) > 0:
-                self.builder.input_data(self.datasets)
+            if len(self.datasets) > 0 or self.D_data is not None:
+                self.builder.input_data(self.datasets, self.D_data)
                 self.allow_optimization = True
-            elif len(self.datasets) == 0:
+            elif len(self.datasets) == 0 and self._D_data is None:
                 self.allow_optimization = False
             else:
                 pass
@@ -645,10 +746,13 @@ class ReactionModel(WavelengthSelectionMixins):
             del self.model
             
         start_time, end_time = self.populate_template(*args, **kwargs)
+        print(start_time, end_time)
         self.model = self.builder.create_pyomo_model(start_time, end_time)
         
-        if self._has_non_absorbing_species:
-            self.builder.set_non_absorbing_species(self.model, self.non_abs_list, check=True)    
+        non_abs_comp = self.components.get_match('absorbing', False)
+        
+        if len(non_abs_comp) > 0:
+            self.builder.set_non_absorbing_species(self.model, non_abs_comp, check=True)    
         
         if hasattr(self,'fixed_params') and len(self.fixed_params) > 0:
             for param in self.fixed_params:
@@ -728,8 +832,9 @@ class ReactionModel(WavelengthSelectionMixins):
         
         self.s_model = self.model.clone()
         
-        for param in getattr(self.s_model, self.__var.model_parameter).values():
-            param.fix()
+        if hasattr(self.s_model, self.__var.model_parameter):
+            for param in getattr(self.s_model, self.__var.model_parameter).values():
+                param.fix()
         
         _print(simulation_class)
         
@@ -963,7 +1068,7 @@ class ReactionModel(WavelengthSelectionMixins):
         self._update_related_settings()
         
         # Check if all component variances are given; if not run VarianceEstimator
-        has_spectral_data = 'spectral' in [d.category for d in self.datasets]
+        has_spectral_data = self.D_data is not None
         has_all_variances = self.components.has_all_variances
         variances_with_delta = None
         

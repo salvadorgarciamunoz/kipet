@@ -84,6 +84,24 @@ class ModelElementBlock():
             return_dict[param] = getattr(obj, attr)
         return return_dict
         
+    def update(self, attr, dict_data):
+        
+        for elem, new_data in dict_data.items():
+            if elem in self._dict:
+                setattr(self._dict[elem], attr, new_data)
+
+        return None
+    
+    def get_match(self, attr, query):
+        
+        query_list = []
+        for elem, obj in self._dict.items():
+            if getattr(obj, attr) == query:
+                query_list.append(elem)
+                
+        return query_list
+    
+    
     @property 
     def names(self):
         return [elem for elem in getattr(self, self.attr_class_set_name)]

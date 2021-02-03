@@ -217,21 +217,50 @@ class TemplateBuilder(object):
         else:
             raise RuntimeError('Parameter argument not supported. Try pandas.Dataframe and mutable=True')
     
-    def input_data(self, DataBlockObject):
+    def input_data(self, data_block_dict=None, spectral_data=None):
         """This should take a DataContainer and input the data, but for now
         it will take a DataBlock list
         
         """
-        for db in DataBlockObject:
-            if db.category == 'state':     
-                self.add_data(db.data, 'complementary_states')
-            elif db.category == 'trajectory':
-                continue
-            else:
-                self.add_data(db.data, db.category)
+        time_span = 0
         
-        self.datablock = DataBlockObject
-        
+        if data_block_dict is not None:
+            
+            if hasattr(self, 'template_component_data'):
+                c_info = self.template_component_data
+                for comp in c_info:
+                    if hasattr(comp, 'data_link'):
+                        data_block = data_block_dict[comp.data_link]
+                        time_span = max(time_span, data_block.time_span[1])
+                        data_frame = data_block.data[comp.name]
+                        self._add_state_data(data_frame, 'concentration', overwrite=False)
+                        
+            if hasattr(self, 'template_state_data'):
+                c_info = self.template_state_data
+                for comp in c_info:
+                    if hasattr(comp, 'data_link'):
+                        data_block = data_block_dict[comp.data_link]
+                        time_span = max(time_span, data_block.time_span[1])
+                        data_frame = data_block.data[comp.name]
+                        self._add_state_data(data_frame, 'complementary_states', overwrite=False)
+                        
+            if hasattr(self, 'template_algebraic_data'):
+                c_info = self.template_algebraic_data
+                for comp in c_info:
+                    if hasattr(comp, 'data_link'):
+                        data_block = data_block_dict[comp.data_link]
+                        time_span = max(time_span, data_block.time_span[1])
+                        data_frame = data_block.data[comp.name]
+                        self._add_state_data(data_frame, 'custom', overwrite=False)
+
+        if spectral_data is not None:
+    
+            print('HERE')
+            self._add_state_data(spectral_data.data, 'spectral')
+            time_span = max(time_span, spectral_data.data.index.max())
+                
+        self.time_span_max = time_span
+       
         return None
     
     def clear_data(self):
@@ -243,16 +272,6 @@ class TemplateBuilder(object):
         self._smoothparam_data = None  # added for additional smoothing parameter data CS
         self._absorption_data = None
         
-        return None
-    
-    def add_data(self, data, data_type=None, label=None):
-        
-        if data_type is not None:
-            self._add_state_data(data, data_type, label=label)
-        
-        else:
-            self.add_experimental_data(data)
-
         return None
 
     def _add_state_data(self, data, data_type, label=None, overwrite=True):
@@ -331,7 +350,7 @@ class TemplateBuilder(object):
             if not overwrite:
                 if hasattr(self, f'_{data_type}_data'):
                     df_data = getattr(self, f'_{data_type}_data')
-                    #print(f'df_data:\n{df_data}')
+                    print(f'df_data:\n{df_data}')
                     df_data = pd.concat([df_data, dfallc], axis=1)
                     setattr(self, f'_{data_type}_data', df_data)
             else:
@@ -351,101 +370,13 @@ class TemplateBuilder(object):
                         pass
                     else:
                         setattr(self, f'_is_{label}_deriv', True)
-            #print(label, hasattr(self, f'_is_{label}_deriv'))
+            print(label, hasattr(self, f'_is_{label}_deriv'))
             if getattr(self, f'_is_{label}_deriv') == True:
                 print(
                     f"Warning! Since {label}-matrix contains negative values Kipet is assuming a derivative of {label} has been inputted")
 
         return None
-    
-    def add_experimental_data(self, data):
-        """Generic function to add all data at once if in the same dataframe.
-        At the moment this works for concentration and complementary states
-        
-        Use this for mixed and missing data
-        """
-        exp_data = pd.DataFrame(data)
-        
-        conc_state_headers = self._component_names & set(exp_data.columns)
-        if len(conc_state_headers) > 0:
-            for i, c in enumerate(conc_state_headers):
-                overwrite = True if i == 0 else False
-                self.add_concentration_data(pd.DataFrame(exp_data[c].dropna()), overwrite=overwrite)
-                
-        comp_state_headers = self._complementary_states & set(exp_data.columns)
-        if len(comp_state_headers) > 0:
-            for i, c in enumerate(comp_state_headers):
-                overwrite = True if i == 0 else False
-                self.add_complementary_states_data(pd.DataFrame(exp_data[c].dropna()), overwrite=overwrite)
-        
-        return None
-    
-    def add_user_defined_data(self, data, overwrite=True):
-        """Add concentration data as a wrapper to _add_state_data
-
-        Args:
-            data (DataFrame): DataFrame with measurement times as
-                              indices and concentrations as columns.
-
-        Returns:
-            None
-
-        """
-        self._add_state_data(data,
-                             data_type='custom',
-                             overwrite=overwrite)
-        
-        return None
-        
-    def add_concentration_data(self, data, overwrite=True):
-        """Add concentration data as a wrapper to _add_state_data
-
-        Args:
-            data (DataFrame): DataFrame with measurement times as
-                              indices and concentrations as columns.
-
-        Returns:
-            None
-
-        """
-        self._add_state_data(data,
-                             data_type='concentration',
-                             overwrite=overwrite)
-        
-        return None
-        
-    def add_complementary_states_data(self, data, overwrite=True):
-        """Add complementary state data as a wrapper to _add_state_data
-
-        Args:
-            data (DataFrame): DataFrame with measurement times as
-                              indices and complmentary states as columns.
-
-        Returns:
-            None
-
-        """
-        self._add_state_data(data,
-                             data_type='complementary_states',
-                             overwrite=overwrite)
-                           
-        return None
-    
-    def add_spectral_data(self, data, overwrite=True):
-        """Add spectral data as a wrapper to _add_state_data
-
-        Args:
-            data (DataFrame): DataFrame with measurement times as
-                              indices and wavelengths as columns.
-
-        Returns:
-            None
-
-        """
-        self._add_state_data(data,
-                             data_type='spectral',
-                             overwrite=overwrite)
-        
+           
     def add_huplc_data(self, data, overwrite=True): #added for the inclusion of h/uplc data CS
         """Add HPLC or UPLC data as a wrapper to _add_state_data
 
@@ -491,6 +422,10 @@ class TemplateBuilder(object):
         else:
             raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
 
+    def round_time(self, time):
+        
+        return round(time, 6)
+
     # For inclusion of discrete jumps
     def add_feed_times(self, times):
         """Add measurement times to the model
@@ -503,8 +438,7 @@ class TemplateBuilder(object):
 
         """
         for t in times:
-            t = round(t,
-                      6)  # for added ones when generating data otherwise too many digits due to different data types CS
+            t = self.round_time(t)  # for added ones when generating data otherwise too many digits due to different data types CS
             self._feed_times.add(t)
             self._meas_times.add(t)  # added here to avoid double addition CS
 
@@ -520,7 +454,7 @@ class TemplateBuilder(object):
 
         """
         for t in times:
-            t = round(t,6)  # for added ones when generating data otherwise too many digits due to different data types CS
+            t = self.round_time(t)  # for added ones when generating data otherwise too many digits due to different data types CS
             self._meas_times.add(t)
 
     # Why is this function here?
@@ -535,7 +469,7 @@ class TemplateBuilder(object):
 
         """
         for t in times:
-            t = round(t,6)  # for added ones when generating data otherwise too many digits due to different data types CS
+            t = self.round_time(t)  # for added ones when generating data otherwise too many digits due to different data types CS
             self._huplcmeas_times.add(t)
 
     # read bounds and initialize for qr and g (unwanted contri variables) from users KH.L
@@ -908,64 +842,66 @@ class TemplateBuilder(object):
     def _add_model_parameters(self, model):
         """Add the model parameters to the pyomo model"""
         
-        p_info = self.template_parameter_data
-     
-        # Initial parameter values
-        p_values = p_info.as_dict('value')
-        for param, value in p_values.items():
-            if value is None:
-                if p_info[param].bounds[0] is not None and p_info[param].bounds[1] is not None:
-                    p_values[param] = sum(p_info[param].bounds)/2
-                    
-        if self._scale_parameters:
-            setattr(model, self.__var.model_parameter, Var(model.parameter_names,
-                                                           bounds = (0.1, 10),
-                                                           initialize=1))
-
-        else:
-            setattr(model, self.__var.model_parameter,
-                    Var(model.parameter_names,
-                            initialize=p_values))
-
-        # Set the bounds
-        p_bounds = p_info.as_dict('bounds')
-        for k, v in p_bounds.items():
-            factor = 1
+        if hasattr(self, 'template_parameter_data'):
+            
+            p_info = self.template_parameter_data
+         
+            # Initial parameter values
+            p_values = p_info.as_dict('value')
+            for param, value in p_values.items():
+                if value is None:
+                    if p_info[param].bounds[0] is not None and p_info[param].bounds[1] is not None:
+                        p_values[param] = sum(p_info[param].bounds)/2
+                        
             if self._scale_parameters:
-                factor = p_values[k]
-                
-            #print(p_info)
-
-            if p_info[param].lb is not None:
-                lb = p_info[param].lb/factor
-                getattr(model, self.__var.model_parameter)[k].setlb(lb)
-
-            if p_info[param].ub is not None:
-                ub = p_info[param].ub/factor
-                getattr(model, self.__var.model_parameter)[k].setub(ub)
-                
-        #for optional smoothing parameters (CS):
-        if isinstance(self._smoothparameters, dict) and self._smoothparam_data is not None:
-            ps_dict = dict()
-            for k in self._smoothparam_data.columns:
-                for c in model.allsmooth_times:
-                    ps_dict[c, k] = float(self._smoothparam_data[k][c])
-
-            ps_dict2 = dict()
-            for p in self._smoothparameters.keys():
-                for t in model.alltime:
-                    if t in model.allsmooth_times:
-                        ps_dict2[t, p] = float(ps_dict[t, p])
-                    else:
-                        ps_dict2[t, p] = 0.0
-
-            model.Ps = Param(model.alltime, model.smoothparameter_names, initialize=ps_dict2, mutable=True, default=20.)#here just set to some value that is noc
-
-        # Fix parameters declared as fixed
-        p_fixed = p_info.as_dict('fixed')
-        for param, v in p_fixed.items():
-            getattr(model, self.__var.model_parameter)[param].fixed = v
+                setattr(model, self.__var.model_parameter, Var(model.parameter_names,
+                                                               bounds = (0.1, 10),
+                                                               initialize=1))
     
+            else:
+                setattr(model, self.__var.model_parameter,
+                        Var(model.parameter_names,
+                            initialize=p_values))
+    
+            # Set the bounds
+            p_bounds = p_info.as_dict('bounds')
+            for k, v in p_bounds.items():
+                factor = 1
+                if self._scale_parameters:
+                    factor = p_values[k]
+                    
+                #print(p_info)
+    
+                if p_info[param].lb is not None:
+                    lb = p_info[param].lb/factor
+                    getattr(model, self.__var.model_parameter)[k].setlb(lb)
+    
+                if p_info[param].ub is not None:
+                    ub = p_info[param].ub/factor
+                    getattr(model, self.__var.model_parameter)[k].setub(ub)
+                    
+            #for optional smoothing parameters (CS):
+            if isinstance(self._smoothparameters, dict) and self._smoothparam_data is not None:
+                ps_dict = dict()
+                for k in self._smoothparam_data.columns:
+                    for c in model.allsmooth_times:
+                        ps_dict[c, k] = float(self._smoothparam_data[k][c])
+    
+                ps_dict2 = dict()
+                for p in self._smoothparameters.keys():
+                    for t in model.alltime:
+                        if t in model.allsmooth_times:
+                            ps_dict2[t, p] = float(ps_dict[t, p])
+                        else:
+                            ps_dict2[t, p] = 0.0
+    
+                model.Ps = Param(model.alltime, model.smoothparameter_names, initialize=ps_dict2, mutable=True, default=20.)#here just set to some value that is noc
+    
+            # Fix parameters declared as fixed
+            p_fixed = p_info.as_dict('fixed')
+            for param, v in p_fixed.items():
+                getattr(model, self.__var.model_parameter)[param].fixed = v
+        
         return None
 
     def _add_unwanted_contribution_variables(self, model):
@@ -1262,8 +1198,8 @@ class TemplateBuilder(object):
         else:
             if start_time is None and end_time is None:
                 try:    
-                    start_time = 0 #self.datablock.time_span[0]
-                    end_time = self.datablock.time_span[1]
+                    start_time = 0
+                    end_time = self.time_span_max
                 except:
                     raise ValueError('A model requires a start and end time or a dataset')
         
@@ -1513,7 +1449,12 @@ class TemplateBuilder(object):
 
         # Declare Sets
         pyomo_model.mixture_components = Set(initialize=self.template_component_data.names)
-        pyomo_model.parameter_names = Set(initialize=self.template_parameter_data.names)
+        
+        if not hasattr(self, 'template_parameter_data'):
+            parameter_names = []
+        else:
+            parameter_names = self.template_parameter_data.names
+        pyomo_model.parameter_names = Set(initialize=parameter_names)
         
         if not hasattr(self, 'template_state_data'):
             state_names = []

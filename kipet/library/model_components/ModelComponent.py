@@ -139,6 +139,7 @@ class ModelComponent(ModelElement):
                  known=True,
                  bounds=None,
                  description=None,
+                 absorbing=True,
                  ):
     
         super().__init__(name, ModelComponent.class_, value, units, description)
@@ -148,6 +149,7 @@ class ModelComponent(ModelElement):
         self.state = 'concentration'
         self.known = known
         self.bounds = bounds
+        self.absorbing = absorbing
         
         #self._check_units()
         
