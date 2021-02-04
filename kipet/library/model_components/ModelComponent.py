@@ -29,7 +29,7 @@ class ModelElement():
         self.ur = pint.UnitRegistry()
         self.units = 1*self.ur('') if units is None else 1*self.ur(units)
         self.conversion_factor = 1
-        self._check_scaling()
+        # self._check_scaling()
 
     def _check_scaling(self):
             

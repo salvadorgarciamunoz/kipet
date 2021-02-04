@@ -1321,6 +1321,25 @@ class ReactionModel(WavelengthSelectionMixins):
         
         return hasattr(self.p_model, 'objective')
 
+
+    def check_component_units(self):
+        
+        element_dict = {
+           'parameters': self.parameters,
+           'components': self.components,
+           'constants': self.constants,
+           'algebraics': self.algebraics,
+           'states': self.states,
+                }
+        
+        for elem, obj in element_dict.items():
+            for comp in obj:
+                comp._check_scaling()
+        
+        self._units_checked = True
+        
+        return None
+
     def check_model_units(self, display=False):
 
         if not self.__flag_odes_built:
