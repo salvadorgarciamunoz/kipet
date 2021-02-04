@@ -102,6 +102,21 @@ class DataBlock():
                 self.datasets[args[0]] = dataset
     
         return None
+    
+    def _check_duplicates(self):
+        """Easy data mapping to ElementBlocks"""
+
+        blocks = ['components', 'states', 'algebraics']
+        
+        all_data_cols = []
+        for dataset in self.datasets.values():
+            if dataset.category in ['spectral', 'trajectory']:
+                continue
+            all_data_cols.extend(dataset.data.columns)
+        
+        num_duplicates = len(all_data_cols) - len(set(all_data_cols))
+        if num_duplicates != 0:
+            raise ValueError('Duplicates ({num_duplicates}) in component, state, and algebraic data detected!')
 
     @property
     def names(self):

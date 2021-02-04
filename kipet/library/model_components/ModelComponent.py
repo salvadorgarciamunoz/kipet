@@ -6,9 +6,8 @@ import pint
 
 # KIPET library imports
 
-CONCENTRATION_BASE = 'mol/l'
-TIME_BASE = 's'
-
+VOLUME_BASE = 'L'
+TIME_BASE = 'min'
 
 class ModelElement():
     
@@ -29,25 +28,59 @@ class ModelElement():
     
         self.ur = pint.UnitRegistry()
         self.units = 1*self.ur('') if units is None else 1*self.ur(units)
-        #self._check_scaling()
+        self.conversion_factor = 1
+        self._check_scaling()
 
     def _check_scaling(self):
-        
-        quantity = self.value * self.units
+            
+        quantity = 1 * self.units
         quantity.ito_base_units()
         
-        concentration_units = self.ur(CONCENTRATION_BASE)
+        quantity = self.convert_single_dimension(quantity, TIME_BASE)
+        quantity = self.convert_single_dimension(quantity, VOLUME_BASE)
+
         time_units = self.ur(TIME_BASE)
         
-        # if quantity.units.dimensionality == concentration_units.dimensionality:
-        #     quantity.ito(concentration_units)
-            
-        # else:
-        # quantity.ito_base_units()
         print(f'Converting {self.name} to base units {quantity.m} {quantity.units}')
-            
+        
+        self.conversion_factor = quantity.m
         self.units = quantity.units
-        self.value = quantity.m
+        
+        if self.value is not None:
+            self.value = quantity.m*self.value
+
+    def convert_unit(self, u_orig, u_goal, scalar=1, power=1):
+   
+        c1 = 1*self.ur(u_orig)
+        c2 = 1*self.ur(u_goal)
+    
+        con = (c1**power).to(c2.u)/c2 * c2.u/(c1**power).u
+        
+        return scalar * con
+    
+    def convert_single_dimension(self, unit_to_convert, u_goal):
+        
+        u_g = self.ur(u_goal)
+        orig_dim = {k.replace('[', '').replace(']', ''): v for k, v in dict(u_g.dimensionality).items()}
+        units = {k: v for k, v in unit_to_convert._units.items()}
+        dim_to_find = list(orig_dim.keys())[0]
+        power = orig_dim[dim_to_find]
+        
+        for dims in units:
+            
+            s = self.ur(dims)
+            s = list({k.replace('[', '').replace(']', ''): v for k, v in dict(s.dimensionality).items()})[0]
+            
+            if s == dim_to_find and abs(units[dims]) == power:
+                u_orig = dims
+                power = units[dims]
+                con = self.convert_unit(u_orig, u_goal, power=abs(power))
+                con = con ** (power/abs(power))
+                new_unit = unit_to_convert * con
+        
+                return new_unit
+        
+        return unit_to_convert
         
     def _check_name(self, name):
         """Check for valid attr names in the given string

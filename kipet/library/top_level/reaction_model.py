@@ -342,25 +342,14 @@ class ReactionModel(WavelengthSelectionMixins):
                 dataset.remove_negatives()
             self.datasets.add_dataset(dataset)
         
-        self._check_data_matches()
+        self._check_data_matches(name)
+        self.datasets._check_duplicates()
             
         return None
     
-    def _check_data_matches(self):
+    # Check for duplicates ==> DataBlock
+    def _check_data_matches(self, name):
         """Easy data mapping to ElementBlocks"""
-        #%%
-        blocks = ['components', 'states', 'algebraics']
-        
-        all_data_cols = []
-        for dataset in self.datasets:
-            if dataset.category == 'spectral':
-                continue
-            all_data_cols.extend(dataset.data.columns)
-        
-        num_duplicates = len(all_data_cols) - len(set(all_data_cols))
-        if num_duplicates != 0:
-            raise ValueError('Duplicate data detected!')
-        
         # Reassignment
         
         # for name, dataset in self.data.items():
@@ -377,139 +366,23 @@ class ReactionModel(WavelengthSelectionMixins):
         
         matched_data_vars = set()
         all_data_vars = set()
+        dataset = self.datasets[name]
+        blocks = ['components', 'states', 'algebraics']
         
-        for dataset in self.datasets:
-            if dataset.category == 'spectral':
-                continue
-            print(f'Current dataset: {dataset}')
+        if dataset.category in ['spectral', 'trajectory']:
+            return None
+        else:
             for block in blocks:    
-                print('Current block')
-                print(block)
                 for col in dataset.data.columns:
-                    print(col)
-                    print(getattr(self, block).names)
                     all_data_vars.add(col)
                     if col in getattr(self, block).names:
-                        print(f'found {col}')
-                        # if hasattr(getattr(self, block)[col], 'data_link'):
-                        #     getattr(self, block)[col].data_link.append(name)
-                        # else:
                         setattr(getattr(self, block)[col], 'data_link', dataset.name)
-                        print(getattr(self, block)[col].data_link)
                         matched_data_vars.add(col)
-        
+    
         unmatched_vars = all_data_vars.difference(matched_data_vars)
-        print(unmatched_vars)
-       #%%
-    
-    # def add_dataset(self, *args, **kwargs):
-    #     """Add the datasets to the Kipet instance
-        
-    #     Args:
-    #         datasets (list): list of Parameter instances
-            
-    #         factor (float): defaults to 1, the scalar multiple of the parameters
-    #         for simulation purposes
-            
-    #     Returns:
-    #         None
-            
-    #     """
-    #     name = kwargs.get('name', None)
-    #     if len(args) > 0:
-    #         name = args[0]
-    #     filename = kwargs.get('file', None)
-    #     data = kwargs.pop('data', None)
-    #     category = kwargs.get('category', None)
-        
-    #     # Check if file name is given and add directory (general)
-    #     if filename is not None:
-    #         filename = _set_directory(self, filename)
-    #         kwargs['file'] = filename
-    #         #kwargs['data'] = None
-            
-    #         # Read data from file
-    #         dataframe = data_tools.read_file(filename)
-        
-    #     elif filename is None and data is not None:
-    #         dataframe = data
-        
-    #     else:
-    #         raise ValueError('User must provide filename or dataframe')
-        
-    #     # Now we have the dataframe of data - check labels for components
-    #     if category is None:
-    #         self._check_data_category(name, dataframe, **kwargs)    
-    #     else:
-    #         self._add_categorized_dataset(name, dataframe, **kwargs)
-        
-    #     return None
-    
-    # def _check_data_category(self, name, data, **kwargs):
-    #     """Checks the category for data entered without a category"""
-        
-    #     # if components have already been entered, check them
-    #     if len(self.components) > 0:
-    #         data_labels = []
-            
-    #         # The types of data that can be autormated (concentration and state)
-    #         concentration_data_labels = []
-    #         state_data_labels = []
 
-    #         for col in data.columns:
-    #             if col in self.components.names:
-    #                 if self.components[col].state == 'concentration':
-    #                     concentration_data_labels.append(col)
-    #                 elif self.components[col].state == 'state':
-    #                     state_data_labels.append(col)
-                        
-    #         if len(concentration_data_labels) > 0:
-    #             state_data = data.loc[:, concentration_data_labels]
-    #             df_name = name if name is not None else 'C_data'
-    #             self.datasets.add_dataset(df_name, category='concentration', data=state_data)
-                
-    #         if len(state_data_labels) > 0:
-    #             state_data = data.loc[:, state_data_labels]
-    #             df_name = name if name is not None else 'U_data'
-    #             self.datasets.add_dataset(df_name, category='state', data=state_data)
+        return None
 
-    #     else:
-    #         raise AttributeError('Data must have a cateogory or be matched to component data')
-            
-    #     remove_negatives = kwargs.get('remove_negatives', False)
-    #     if remove_negatives:
-    #         self.datasets[df_name].remove_negatives()
-            
-    #     return None
-    
-    # def _add_categorized_dataset(self, name, data, **kwargs):
-    #     """Specific function for adding concentration data"""
-        
-    #     category = kwargs.get('category', None)
-
-    #     # General trajectory data
-    #     if category == 'trajectory':
-    #         df_name = name if name is not None else 'Traj_data'
-    #         self.datasets.add_dataset(df_name, category=category, data=data)
-    #     elif category == 'concentration':
-    #         df_name = name if name is not None else 'C_data'
-    #         self.datasets.add_dataset(df_name, category=category, data=data)
-    #     elif category == 'state':
-    #         df_name = name if name is not None else 'U_data'
-    #         self.datasets.add_dataset(df_name, category=category, data=data)
-    #     elif category == 'spectral':
-    #         df_name = name if name is not None else 'D_data'
-    #         self.datasets.add_dataset(df_name, category=category, data=data)
-    #     else:
-    #         df_name = name if name is not None else 'UD_data'
-    #         self.datasets.add_dataset(df_name, category='custom', data=data)
-                
-    #     remove_negatives = kwargs.get('remove_negatives', False)
-    #     if remove_negatives:
-    #         self.datasets[df_name].remove_negatives()
-        
-    #     return None
-    #%%
     def set_times(self, start_time=None, end_time=None):
         """Add times to model for simulation (overrides data-based times)"""
         
@@ -655,7 +528,7 @@ class ReactionModel(WavelengthSelectionMixins):
             if len(self.datasets) > 0 or self.D_data is not None:
                 self.builder.input_data(self.datasets, self.D_data)
                 self.allow_optimization = True
-            elif len(self.datasets) == 0 and self._D_data is None:
+            elif len(self.datasets) == 0 and self.D_data is None:
                 self.allow_optimization = False
             else:
                 pass
@@ -827,6 +700,7 @@ class ReactionModel(WavelengthSelectionMixins):
             simulation_class = PyomoSimulator
         
         if self.model is None:
+            # with_data her
             self.create_pyomo_model(*self.settings.general.simulation_times)
         
         self.s_model = self.model.clone()

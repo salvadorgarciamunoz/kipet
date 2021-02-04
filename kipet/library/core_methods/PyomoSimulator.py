@@ -427,7 +427,7 @@ class PyomoSimulator(Simulator):
         # variables
         Z_var = self.model.Z
         #dZ_var = self.model.dZdt
-        P_var = self.model.P
+        #P_var = self.model.P
         #X_var = self.model.X
         #U_var = self.model.U
         #dX_var = self.model.dXdt
@@ -437,10 +437,10 @@ class PyomoSimulator(Simulator):
             Dhat_var = self.model.Dhat
             Chat_var = self.model.Chat
         # check all parameters are fixed before simulating
-        for p_var_data in P_var.values():
-            if not p_var_data.fixed:
-                raise RuntimeError(
-                    'For simulation fix all parameters. Parameter {} is unfixed'.format(p_var_data.getname()))
+        # for p_var_data in P_var.values():
+        #     if not p_var_data.fixed:
+        #         raise RuntimeError(
+        #             'For simulation fix all parameters. Parameter {} is unfixed'.format(p_var_data.getname()))
 
         # deactivates objective functions for simulation
         if self.model.nobjectives():
@@ -577,16 +577,16 @@ class PyomoSimulator(Simulator):
                         d_results.append(suma)
                         # print(d_results)
         # added due to new structure for non_abs species, non-absorbing species not included in S (CS):
-        if hasattr(self, '_abs_components'):
-            s_array = np.array(s_results).reshape((self._n_meas_lambdas, self._nabs_components))
-            results.S = pd.DataFrame(data=s_array,
-                                     columns=self._abs_components,
-                                     index=self._meas_lambdas)
-        else:
-            s_array = np.array(s_results).reshape((self._n_meas_lambdas, self._n_components))
-            results.S = pd.DataFrame(data=s_array,
-                                     columns=self._mixture_components,
-                                     index=self._meas_lambdas)
+        # if hasattr(self, '_abs_components'):
+        #     s_array = np.array(s_results).reshape((self._n_meas_lambdas, self._nabs_components))
+        #     results.S = pd.DataFrame(data=s_array,
+        #                              columns=self._abs_components,
+        #                              index=self._meas_lambdas)
+        # else:
+        #     s_array = np.array(s_results).reshape((self._n_meas_lambdas, self._n_components))
+        #     results.S = pd.DataFrame(data=s_array,
+        #                              columns=self._mixture_components,
+                                     # index=self._meas_lambdas)
 
 
         d_array = np.array(d_results).reshape((self._n_meas_times, self._n_meas_lambdas))

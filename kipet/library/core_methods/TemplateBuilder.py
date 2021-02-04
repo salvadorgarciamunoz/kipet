@@ -120,11 +120,6 @@ class TemplateBuilder(object):
         self._scale_parameters = False # Should be True for EstimationPotential (automatic)
         self._times = None
         self._all_state_data = list()
-
-        #New for estimate initial conditions of complementary states CS:
-        # self._estim_init = False
-        # self._allinitcomponents=dict()
-        # self._initextra_est_list = None
         
         # bounds and init for unwanted contributions KH.L
         self._G_contribution = None
@@ -223,6 +218,7 @@ class TemplateBuilder(object):
         
         """
         time_span = 0
+        time_conversion_factor = 1
         
         if data_block_dict is not None:
             
@@ -231,8 +227,9 @@ class TemplateBuilder(object):
                 for comp in c_info:
                     if hasattr(comp, 'data_link'):
                         data_block = data_block_dict[comp.data_link]
-                        time_span = max(time_span, data_block.time_span[1])
-                        data_frame = data_block.data[comp.name]
+                        time_span = max(time_span, data_block.time_span[1]*time_conversion_factor)
+                        data_frame = data_block.data[comp.name]*comp.conversion_factor
+                        data_frame.index = data_frame.index*time_conversion_factor
                         self._add_state_data(data_frame, 'concentration', overwrite=False)
                         
             if hasattr(self, 'template_state_data'):
@@ -240,8 +237,9 @@ class TemplateBuilder(object):
                 for comp in c_info:
                     if hasattr(comp, 'data_link'):
                         data_block = data_block_dict[comp.data_link]
-                        time_span = max(time_span, data_block.time_span[1])
-                        data_frame = data_block.data[comp.name]
+                        time_span = max(time_span, data_block.time_span[1]*time_conversion_factor)
+                        data_frame = data_block.data[comp.name]*comp.conversion_factor
+                        data_frame.index = data_frame.index*time_conversion_factor
                         self._add_state_data(data_frame, 'complementary_states', overwrite=False)
                         
             if hasattr(self, 'template_algebraic_data'):
@@ -249,14 +247,15 @@ class TemplateBuilder(object):
                 for comp in c_info:
                     if hasattr(comp, 'data_link'):
                         data_block = data_block_dict[comp.data_link]
-                        time_span = max(time_span, data_block.time_span[1])
-                        data_frame = data_block.data[comp.name]
+                        time_span = max(time_span, data_block.time_span[1]*time_conversion_factor)
+                        data_frame = data_block.data[comp.name]*comp.conversion_factor
+                        data_frame.index = data_frame.index*time_conversion_factor
                         self._add_state_data(data_frame, 'custom', overwrite=False)
 
         if spectral_data is not None:
     
-            print('HERE')
             self._add_state_data(spectral_data.data, 'spectral')
+            spectral_data.data.index = spectral_data.data.index*time_conversion_factor
             time_span = max(time_span, spectral_data.data.index.max())
                 
         self.time_span_max = time_span
@@ -350,7 +349,7 @@ class TemplateBuilder(object):
             if not overwrite:
                 if hasattr(self, f'_{data_type}_data'):
                     df_data = getattr(self, f'_{data_type}_data')
-                    print(f'df_data:\n{df_data}')
+                    #print(f'df_data:\n{df_data}')
                     df_data = pd.concat([df_data, dfallc], axis=1)
                     setattr(self, f'_{data_type}_data', df_data)
             else:
@@ -370,7 +369,7 @@ class TemplateBuilder(object):
                         pass
                     else:
                         setattr(self, f'_is_{label}_deriv', True)
-            print(label, hasattr(self, f'_is_{label}_deriv'))
+            #print(label, hasattr(self, f'_is_{label}_deriv'))
             if getattr(self, f'_is_{label}_deriv') == True:
                 print(
                     f"Warning! Since {label}-matrix contains negative values Kipet is assuming a derivative of {label} has been inputted")
@@ -502,15 +501,12 @@ class TemplateBuilder(object):
         Defines the ordinary differential equations that define the dynamics of the model
 
         Args:
-            rule (function): Python function that returns a dictionary
+            rule (dict) : Model expressions for the rate equations
 
         Returns:
             None
 
         """
-        # inspector = inspect.getargspec(rule)
-        # if len(inspector.args) != 2:
-        #     raise RuntimeError('The rule should have two inputs')
         self._odes = rule
         
         return None
@@ -535,7 +531,6 @@ class TemplateBuilder(object):
         else:
             self._algebraic_constraints = rule
             self._use_alg_dict = True
-        
         
         return None
 
@@ -762,7 +757,7 @@ class TemplateBuilder(object):
             
             setattr(model, var, Var(model.alltime,
                                           model_set,
-                                          units=v_info.as_dict('units'),
+                                          # units=v_info.as_dict('units'),
                                           initialize=1) 
                     )    
         
@@ -941,9 +936,7 @@ class TemplateBuilder(object):
         TODO: move to a new expression class
         """
         expr_new_time = expr_orig
-
         var_dict = c_mod.var_dict
-
         for model_var, var_obj in var_dict.items():
             
             if getattr(current_model, var_obj.index).dim() == 1:

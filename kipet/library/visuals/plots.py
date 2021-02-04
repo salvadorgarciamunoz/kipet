@@ -137,7 +137,7 @@ class PlotObject():
         state = f'{self.reaction_model.components[col].state}'.capitalize()
         title = f'Model: {self.reaction_model.name} | Concentration Profiles'
         time_scale = f'Time [{self.reaction_model._default_time_unit}]'
-        state_units = var_data.units.u
+        state_units = var_data.units
         fig.update_layout(
                 title=title,
                 xaxis_title=f'{time_scale}',
@@ -195,7 +195,7 @@ class PlotObject():
         description = f'| Description: {var_data.description}' if var_data.description is not None else ''
         title = f'Model: {self.reaction_model.name} | Variable: {var_data.name} {description}'
         time_scale = f'Time [{self.reaction_model._default_time_unit}]'
-        state_units = var_data.units.u
+        state_units = var_data.units
         fig.update_layout(
             title=title,
             xaxis_title=f'{time_scale}',
@@ -222,7 +222,7 @@ class PlotObject():
         title = f'Model: {self.reaction_model.name} | Variable: {var_data.name} {description}'
         time_scale = f'Time [{self.reaction_model._default_time_unit}]'
         state = f'{var_data.description}'.capitalize() if var_data.description is not None else 'State' 
-        state_units = var_data.units.u
+        state_units = var_data.units
         fig.update_layout(
                 title=title,
                 xaxis_title=f'{time_scale}',

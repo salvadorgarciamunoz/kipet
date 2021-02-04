@@ -169,7 +169,6 @@ def get_unit_model(element_dict, set_up_model):
                   }
     
     for index_var in index_vars:
-        print(index_var)
         if not hasattr(set_up_model, index_var):
             continue
         
