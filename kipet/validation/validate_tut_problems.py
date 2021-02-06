@@ -19,11 +19,11 @@ import time
 
 examplesMainDir = os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(inspect.getfile(
-        inspect.currentframe()))), '..', 'new_examples'))
+        inspect.currentframe()))), '..', 'examples'))
 
 from pathlib import Path
 
-emd = Path().absolute().joinpath('new_examples')
+emd = Path().absolute().joinpath('examples')
 print(emd)
 print(examplesMainDir)
 
