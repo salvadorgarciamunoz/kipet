@@ -474,46 +474,46 @@ class PyomoSimulator(Simulator):
         results.load_from_pyomo_model(self.model,
                                       to_load=None)
 
-        c_noise_results = []
+        # c_noise_results = []
 
-        w = np.zeros((self._n_components, self._n_allmeas_times))
-        n_sig = np.zeros((self._n_components, self._n_allmeas_times))
-        # for the noise term
-        if sigmas:
-            for i, k in enumerate(self._mixture_components):
-                if k in sigmas.keys():
-                    sigma = sigmas[k] ** 0.5
-                    dw_k = np.random.normal(0.0, sigma, self._n_allmeas_times)
-                    n_sig[i, :] = np.random.normal(0.0, sigma, self._n_allmeas_times)
-                    w[i, :] = np.cumsum(dw_k)
+        # w = np.zeros((self._n_components, self._n_allmeas_times))
+        # n_sig = np.zeros((self._n_components, self._n_allmeas_times))
+        # # for the noise term
+        # if sigmas:
+        #     for i, k in enumerate(self._mixture_components):
+        #         if k in sigmas.keys():
+        #             sigma = sigmas[k] ** 0.5
+        #             dw_k = np.random.normal(0.0, sigma, self._n_allmeas_times)
+        #             n_sig[i, :] = np.random.normal(0.0, sigma, self._n_allmeas_times)
+        #             w[i, :] = np.cumsum(dw_k)
 
-        # this addition is not efficient but it can be changed later
+        # # this addition is not efficient but it can be changed later
 
-        for i, t in enumerate(self._allmeas_times):
-            for j, k in enumerate(self._mixture_components):
-                # c_noise_results.append(Z_var[t,k].value+ w[j,i])
-                c_noise_results.append(Z_var[t, k].value + n_sig[j, i])
+        # for i, t in enumerate(self._allmeas_times):
+        #     for j, k in enumerate(self._mixture_components):
+        #         # c_noise_results.append(Z_var[t,k].value+ w[j,i])
+        #         c_noise_results.append(Z_var[t, k].value + n_sig[j, i])
 
-        c_noise_array = np.array(c_noise_results).reshape((self._n_allmeas_times, self._n_components))
-        results.C = pd.DataFrame(data=c_noise_array,
-                                 columns=self._mixture_components,
-                                 index=self._allmeas_times)
+        # c_noise_array = np.array(c_noise_results).reshape((self._n_allmeas_times, self._n_components))
+        # results.C = pd.DataFrame(data=c_noise_array,
+        #                           columns=self._mixture_components,
+        #                           index=self._allmeas_times)
 
-        #added due to new structure for non_abs species, Cs as subset of C (CS):
-        if hasattr(self, '_abs_components'):
-            cs_noise_results=[]
-            for i, t in enumerate(self._allmeas_times):
-                # if i in self._meas_times:
-                for j, k in enumerate(self._abs_components):
-                    # c_noise_results.append(Z_var[t,k].value+ w[j,i])
-                    cs_noise_results.append(Z_var[t, k].value + n_sig[j, i])
+        # #added due to new structure for non_abs species, Cs as subset of C (CS):
+        # if hasattr(self, '_abs_components'):
+        #     cs_noise_results=[]
+        #     for i, t in enumerate(self._allmeas_times):
+        #         # if i in self._meas_times:
+        #         for j, k in enumerate(self._abs_components):
+        #             # c_noise_results.append(Z_var[t,k].value+ w[j,i])
+        #             cs_noise_results.append(Z_var[t, k].value + n_sig[j, i])
 
-            cs_noise_array = np.array(cs_noise_results).reshape((self._n_allmeas_times, self._nabs_components))
-            results.Cs = pd.DataFrame(data=cs_noise_array,
-                                     columns=self._abs_components,
-                                     index=self._allmeas_times)
+        #     cs_noise_array = np.array(cs_noise_results).reshape((self._n_allmeas_times, self._nabs_components))
+        #     results.Cs = pd.DataFrame(data=cs_noise_array,
+        #                               columns=self._abs_components,
+        #                               index=self._allmeas_times)
 
-        # addition for inputs estimation with concentration data CS:
+#        addition for inputs estimation with concentration data CS:
         # if self._concentration_given == True and self._absorption_given == False:
         #     c_noise_results = []
         #     for i, t in enumerate(self._allmeas_times):
@@ -522,98 +522,98 @@ class PyomoSimulator(Simulator):
         #             c_noise_results.append(C_var[t, k].value)
         #     c_noise_array = np.array(c_noise_results).reshape((self._n_allmeas_times, self._n_components))
         #     results.C = pd.DataFrame(data=c_noise_array,
-        #                              columns=self._mixture_components,
-        #                              index=self._allmeas_times)
+        #                               columns=self._mixture_components,
+        #                               index=self._allmeas_times)
 
-        if self._huplc_given == True:
-            results.load_from_pyomo_model(self.model,
-                                      to_load=['Chat'])
-        s_results = []
-        # added due to new structure for non_abs species, non-absorbing species not included in S (CS):
-        if hasattr(self, '_abs_components'):
-            for l in self._meas_lambdas:
-                for k in self._abs_components:
-                    s_results.append(self.model.S[l, k].value)
-        else:
-            for l in self._meas_lambdas:
-                for k in self._mixture_components:
-                    s_results.append(self.model.S[l, k].value)
+        # if self._huplc_given == True:
+        #     results.load_from_pyomo_model(self.model,
+        #                               to_load=['Chat'])
+        # s_results = []
+        # # added due to new structure for non_abs species, non-absorbing species not included in S (CS):
+        # if hasattr(self, '_abs_components'):
+        #     for l in self._meas_lambdas:
+        #         for k in self._abs_components:
+        #             s_results.append(self.model.S[l, k].value)
+        # else:
+        #     for l in self._meas_lambdas:
+        #         for k in self._mixture_components:
+        #             s_results.append(self.model.S[l, k].value)
 
-        d_results = []
-        if sigmas:
-            sigma_d = sigmas.get('device') ** 0.5 if "device" in sigmas.keys() else 0
-        else:
-            sigma_d = 0
-        if s_results and c_noise_results:
-            # added due to new structure for non_abs species, Cs and S as above(CS):
-            if hasattr(self,'_abs_components'):
-                for i, t in enumerate(self._meas_times):
-                    #if t in self._meas_times:
-                        # print(i, t)
-                    for j, l in enumerate(self._meas_lambdas):
-                        suma = 0.0
-                        for w, k in enumerate(self._abs_components):
-                            # print(i, self._meas_times)
-                            Cs = cs_noise_results[i * self._nabs_components + w]
-                            S = s_results[j * self._nabs_components + w]
-                            suma += Cs * S
-                        if sigma_d:
-                            suma += np.random.normal(0.0, sigma_d)
-                        d_results.append(suma)
-                        # print(d_results)
-            else:
-                for i, t in enumerate(self._meas_times):
-                    # # print(i, t)
-                    # if t in self._meas_times:
-                    for j, l in enumerate(self._meas_lambdas):
-                        suma = 0.0
-                        for w, k in enumerate(self._mixture_components):
-                            # print(i, self._meas_times)
-                            C = c_noise_results[i * self._n_components + w]
-                            S = s_results[j * self._n_components + w]
-                            suma += C * S
-                        if sigma_d:
-                            suma += np.random.normal(0.0, sigma_d)
-                        d_results.append(suma)
-                        # print(d_results)
-        # added due to new structure for non_abs species, non-absorbing species not included in S (CS):
+        # d_results = []
+        # if sigmas:
+        #     sigma_d = sigmas.get('device') ** 0.5 if "device" in sigmas.keys() else 0
+        # else:
+        #     sigma_d = 0
+        # if s_results and c_noise_results:
+        #     # added due to new structure for non_abs species, Cs and S as above(CS):
+        #     if hasattr(self,'_abs_components'):
+        #         for i, t in enumerate(self._meas_times):
+        #             #if t in self._meas_times:
+        #                 # print(i, t)
+        #             for j, l in enumerate(self._meas_lambdas):
+        #                 suma = 0.0
+        #                 for w, k in enumerate(self._abs_components):
+        #                     # print(i, self._meas_times)
+        #                     Cs = cs_noise_results[i * self._nabs_components + w]
+        #                     S = s_results[j * self._nabs_components + w]
+        #                     suma += Cs * S
+        #                 if sigma_d:
+        #                     suma += np.random.normal(0.0, sigma_d)
+        #                 d_results.append(suma)
+        #                 # print(d_results)
+        #     else:
+        #         for i, t in enumerate(self._meas_times):
+        #             # # print(i, t)
+        #             # if t in self._meas_times:
+        #             for j, l in enumerate(self._meas_lambdas):
+        #                 suma = 0.0
+        #                 for w, k in enumerate(self._mixture_components):
+        #                     # print(i, self._meas_times)
+        #                     C = c_noise_results[i * self._n_components + w]
+        #                     S = s_results[j * self._n_components + w]
+        #                     suma += C * S
+        #                 if sigma_d:
+        #                     suma += np.random.normal(0.0, sigma_d)
+        #                 d_results.append(suma)
+        #                 # print(d_results)
+        # # added due to new structure for non_abs species, non-absorbing species not included in S (CS):
         # if hasattr(self, '_abs_components'):
         #     s_array = np.array(s_results).reshape((self._n_meas_lambdas, self._nabs_components))
         #     results.S = pd.DataFrame(data=s_array,
-        #                              columns=self._abs_components,
-        #                              index=self._meas_lambdas)
+        #                               columns=self._abs_components,
+        #                               index=self._meas_lambdas)
         # else:
         #     s_array = np.array(s_results).reshape((self._n_meas_lambdas, self._n_components))
         #     results.S = pd.DataFrame(data=s_array,
-        #                              columns=self._mixture_components,
-                                     # index=self._meas_lambdas)
+        #                               columns=self._mixture_components,
+        #                               index=self._meas_lambdas)
 
 
-        d_array = np.array(d_results).reshape((self._n_meas_times, self._n_meas_lambdas))
-        results.D = pd.DataFrame(data=d_array,
-                                 columns=self._meas_lambdas,
-                                 index=self._meas_times)
+        # d_array = np.array(d_results).reshape((self._n_meas_times, self._n_meas_lambdas))
+        # results.D = pd.DataFrame(data=d_array,
+        #                          columns=self._meas_lambdas,
+        #                          index=self._meas_times)
 
-        s_data_dict = dict()
-        for t in self._meas_times:
-            for l in self._meas_lambdas:
-                s_data_dict[t, l] = float(results.D[l][t])
+        # s_data_dict = dict()
+        # for t in self._meas_times:
+        #     for l in self._meas_lambdas:
+        #         s_data_dict[t, l] = float(results.D[l][t])
 
-        # Added due to estimation with fe-factory and inputs where data already loaded to model before (CS)
-        if self._spectra_given:
-            self.model.del_component(self.model.D)
-            self.model.del_component(self.model.D_index)
-        #########
+        # # Added due to estimation with fe-factory and inputs where data already loaded to model before (CS)
+        # if self._spectra_given:
+        #     self.model.del_component(self.model.D)
+        #     self.model.del_component(self.model.D_index)
+        # #########
 
-        self.model.D = Param(self._meas_times,
-                             self._meas_lambdas,
-                             initialize=s_data_dict)
+        # self.model.D = Param(self._meas_times,
+        #                      self._meas_lambdas,
+        #                      initialize=s_data_dict)
 
-        param_vals = dict()
-        for name in self.model.parameter_names:
-            param_vals[name] = self.model.P[name].value
+        # param_vals = dict()
+        # for name in self.model.parameter_names:
+        #     param_vals[name] = self.model.P[name].value
 
-        results.P = param_vals
+        # results.P = param_vals
         return results
     
 # def rgetattr(obj, attr, *args):
