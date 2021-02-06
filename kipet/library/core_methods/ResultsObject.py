@@ -66,8 +66,11 @@ class ResultsObject(object):
         """Convert results dict into df for initialization
         This is used for data with dimensions larger than 2
         """
+        #try:
         index_sets = get_index_sets(var)
         index_dict = index_set_info(index_sets)
+        # print(var)
+        # print(index_dict)
         time_set = index_sets[index_dict['cont_set'][0]].name
         component_indecies = index_dict['other_set']
         component_sets = [index_sets[i].name for i in component_indecies]
@@ -82,6 +85,8 @@ class ResultsObject(object):
                 df.loc[i,j] = var[tuple(jl)].value
                 
         return df
+        #except:
+         #   return None
 
     def load_from_pyomo_model(self, instance, to_load=None):
         """Load variables from the pyomo model into various formats"""
