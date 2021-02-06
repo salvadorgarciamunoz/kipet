@@ -17,17 +17,44 @@ class SpectralData():
     
     """All of the spectral tools will be moved here"""   
  
-    def __init__(self, name, data=None):
+    def __init__(self, name, data=None, remove_negatives=False):
         
         self.name = name
         self.data = data
         self.data_orig = data
+        self.remove_negatives=remove_negatives
+        
+        if self.remove_negatives and self.data is not None:
+            self._remove_negatives()
+        
+        self._check_columns()
         
     def add_data(self, data):
         
         setattr(self, 'data', data)
+
+        if self.remove_negatives:
+            self._remove_negatives()
         if self.data_orig is None:
             setattr(self, 'data_orig', data)
+            
+        self._check_columns()
+        
+    def _check_columns(self):
+        
+        if hasattr(self, 'data') and self.data is not None:
+            old_columns = self.data.columns
+            new_columns = [float(col) for col in old_columns]
+            self.data.columns = new_columns
+        if hasattr(self, 'data_orig') and self.data_orig is not None:
+            old_columns = self.data.columns
+            new_columns = [float(col) for col in old_columns]
+            self.data.columns = new_columns
+            
+    def reset(self):
+        
+        self.data = self.data_orig
+        return None
         
     def plot(self, data_set='data'):
         """ Plots spectral data
@@ -59,7 +86,11 @@ class SpectralData():
             
         return None
     
-    def savitzky_golay(self, dataFrame=None, window_size=3, orderPoly=2, orderDeriv=0, inPlace=False):
+    def _remove_negatives(self):
+        
+        self.data[self.data < 0] = 0
+    
+    def savitzky_golay(self, window_size=3, orderPoly=2, orderDeriv=0, in_place=True):
         """
         Implementation of the Savitzky-Golay filter for Kipet. Used for smoothing data, with
         the option to also differentiate the data. Can be used to remove high-frequency noise.
@@ -82,8 +113,8 @@ class SpectralData():
             Simplified Least Squares Procedures. Analytical Chemistry, 1964, 36 (8), pp 1627-1639.
         """
         # data checks
-        if dataFrame is None:
-            dataFrame = self.data_orig
+        dataFrame = self.data
+            #dataFrame = self.data_orig
         try:
             window_size = np.abs(np.int(window_size))
             orderPoly = np.abs(np.int(orderPoly))
@@ -130,12 +161,12 @@ class SpectralData():
                                   columns = dataFrame.columns,
                                   index=dataFrame.index)
         
-        if inPlace:
+        if in_place:
             self.data = data_frame
         
         return data_frame
     
-    def snv(self, dataFrame=None, offset=0, inPlace=False):
+    def snv(self, offset=0, in_place=True):
         """
         Implementation of the Standard Normal Variate (SNV) filter for Kipet which is a weighted normalization
         method that is commonly used to remove scatter effects in spectroscopic data, this pre-processing 
@@ -155,8 +186,9 @@ class SpectralData():
         References:
     
         """
-        if dataFrame is None:
-            dataFrame = self.data_orig
+        dataFrame = self.data
+        # if dataFrame is None:
+        #     dataFrame = self.data_orig
             
         # data checks
         if not isinstance(dataFrame, pd.DataFrame):
@@ -188,11 +220,11 @@ class SpectralData():
         data_frame = pd.DataFrame(data=snv_proc,
                                   columns = dataFrame.columns,
                                   index=dataFrame.index)
-        if inPlace:
+        if in_place:
             self.data = data_frame
         return data_frame
     
-    def msc(self, dataFrame=None, reference_spectra=None, inPlace=False):
+    def msc(self, reference_spectra=None, in_place=True):
         """
         Implementation of the Multiplicative Scatter Correction (MSC) filter for Kipet which is simple pre-processing
         method that attempts to remove scaling effects and offset effects in spectroscopic data. This pre-processing 
@@ -211,8 +243,9 @@ class SpectralData():
         References:
     
         """
-        if dataFrame is None:
-            dataFrame = self.data_orig
+        dataFrame = self.data
+        # if dataFrame is None:
+        #     dataFrame = self.data_orig
         # data checks
         if not isinstance(dataFrame, pd.DataFrame):
             raise TypeError("data must be inputted as a pandas DataFrame, try using read_spectral_data_from_txt or similar function first")
@@ -256,11 +289,11 @@ class SpectralData():
         data_frame = pd.DataFrame(data=msc_proc,
                                   columns = dataFrame.columns,
                                   index=dataFrame.index)
-        if inPlace:
+        if in_place:
             self.data = data_frame
         return data_frame
     
-    def baseline_shift(self, dataFrame=None, shift=None, inPlace=False):
+    def baseline_shift(self, shift=None, in_place=True):
         """
         Implementation of basic baseline shift. 2 modes are avaliable: 1. Automatic mode that requires no
         user arguments. The method identifies the lowest value (NOTE THAT THIS ONLY WORKS IF LOWEST VALUE
@@ -278,8 +311,9 @@ class SpectralData():
         References:
     
         """
-        if dataFrame is None:
-            dataFrame = self.data_orig
+        dataFrame = self.data
+        # if dataFrame is None:
+        #     dataFrame = self.data_orig
         # data checks
         if not isinstance(dataFrame, pd.DataFrame):
             raise TypeError("data must be inputted as a pandas DataFrame, try using read_spectral_data_from_txt or similar function first")
@@ -295,11 +329,11 @@ class SpectralData():
         
         data_frame = pd.DataFrame(data=D, columns = dataFrame.columns, index = dataFrame.index)
         
-        if inPlace:
+        if in_place:
             self.data = data_frame
         return data_frame
     
-    def decrease_wavelengths(self, original_dataset=None, A_set=2, specific_subset=None, inPlace=False):
+    def decrease_wavelengths(self, A_set=2, specific_subset=None, in_place=True):
         '''
         Takes in the original, full dataset and removes specific wavelengths, or only keeps every
         multiple of A_set. Returns a new, smaller dataset that should be easier to solve
@@ -315,8 +349,9 @@ class SpectralData():
             DataFrame with the smaller dataset
         
         '''
-        if original_dataset is None:
-            original_dataset = self.data_orig
+        original_dataset = self.data
+        # if original_dataset is None:
+        #     original_dataset = self.data_orig
             
         if specific_subset != None:
             if not isinstance(specific_subset, (list, dict)):
@@ -341,6 +376,6 @@ class SpectralData():
                 count+=1
             new_D = original_dataset[original_dataset.columns[::A_set]] 
             
-        if inPlace:
+        if in_place:
             self.data = new_D
         return new_D
