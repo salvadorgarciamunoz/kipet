@@ -854,6 +854,7 @@ class TemplateBuilder(object):
                                                                initialize=1))
     
             else:
+                # print(p_values)
                 setattr(model, self.__var.model_parameter,
                         Var(model.parameter_names,
                             initialize=p_values))
@@ -867,12 +868,12 @@ class TemplateBuilder(object):
                     
                 #print(p_info)
     
-                if p_info[param].lb is not None:
-                    lb = p_info[param].lb/factor
+                if p_info[k].lb is not None:
+                    lb = p_info[k].lb/factor
                     getattr(model, self.__var.model_parameter)[k].setlb(lb)
     
-                if p_info[param].ub is not None:
-                    ub = p_info[param].ub/factor
+                if p_info[k].ub is not None:
+                    ub = p_info[k].ub/factor
                     getattr(model, self.__var.model_parameter)[k].setub(ub)
                     
             #for optional smoothing parameters (CS):
@@ -1087,7 +1088,7 @@ class TemplateBuilder(object):
             for t in model.meas_times:
                 for l in model.meas_lambdas:
                     if t in model.meas_times:
-                        s_data_dict[t, l] = float(self._spectral_data[l][t])
+                        s_data_dict[t, l] = float(self._spectral_data.loc[t, l])
                     else:
                         s_data_dict[t, l] = float('nan')
 
@@ -1504,6 +1505,8 @@ class TemplateBuilder(object):
        
         # Add given state standard deviations to the pyomo model
         self._state_sigmas = self.template_component_data.var_variances()
+        if hasattr(self, 'template_state_data'):
+            self._state_sigmas.update(**self.template_state_data.var_variances())
         if self._state_sigmas is not None:
             state_sigmas = {k: v for k, v in self._state_sigmas.items() if k in pyomo_model.measured_data}
             pyomo_model.sigma = Param(pyomo_model.measured_data, initialize=state_sigmas) #, mutable=True)
