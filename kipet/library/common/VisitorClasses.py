@@ -1,7 +1,6 @@
 """
 Replacement and Scaling Mixins used in model modification
 """
-
 from pyomo.core.expr import current as EXPR
 from pyomo.environ import *
 from pyomo.core.expr.numvalue import NumericConstant
@@ -71,5 +70,35 @@ class ScalingVisitor(EXPR.ExpressionReplacementVisitor):
             return True, node_
 
         return False, None
-    
 
+
+class FindingVisitor(EXPR.ExpressionValueVisitor):
+            
+    def __init__(self):
+        super(FindingVisitor, self).__init__()
+        self._suspect = None
+        self._found = False
+
+    def find_suspect(self, suspect_):
+        self._suspect = suspect_
+
+    def visiting_potential_leaf(self, node):
+        """Clone leaf in expression tree
+        
+        """
+        if id(node) == self._suspect:
+             self._found = True
+  
+        if node.__class__ in native_numeric_types:
+            return True, node
+
+        if node.__class__ is NumericConstant:
+            return True, node
+
+        if node.is_variable_type():
+            return True, node
+            
+        if node.is_parameter_type():
+            return True, node
+            
+        return False, None
