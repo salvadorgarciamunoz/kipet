@@ -45,7 +45,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
 
     def __init__(self, reaction_models):
         
-        super(MultipleExperimentsEstimator, self).__init__()
+        #super(MultipleExperimentsEstimator, self).__init__()
         self.reaction_models = reaction_models
         self.experiments = list(self.reaction_models.keys())
         self._idx_to_variable = dict()
@@ -483,11 +483,12 @@ class MultipleExperimentsEstimator(PEMixins, object):
         from each experiment
         
         """
-        solver_opts = kwargs.get('solver_opts')
-        tee = kwargs.get('tee')
-        scaled_variance = kwargs.get('scaled_variance')
-        shared_spectra = kwargs.get('shared_spectra')
-        solver = kwargs.get('solver')
+        solver_opts = kwargs.get('solver_opts', {'linear_solver': 'ma57'})
+        tee = kwargs.get('tee', False)
+        scaled_variance = kwargs.get('scaled_variance', False)
+        shared_spectra = kwargs.get('shared_spectra', True)
+        solver = kwargs.get('solver', 'ipopt')
+        parameter_means = kwargs.get('mean_start', True)
         
         print("\nSOLVING PARAMETER ESTIMATION FOR MULTIPLE DATASETS\n")
        
@@ -497,8 +498,8 @@ class MultipleExperimentsEstimator(PEMixins, object):
         if scaled_variance == True:
             self._scale_variances()
             
-        if self.parameter_means:
-            initialize_parameters(self.reaction_models)
+        # if parameter_means:
+        #     initialize_parameters(self.reaction_models)
         
         if global_params is None:
             global_params = self.all_params
@@ -525,7 +526,8 @@ class MultipleExperimentsEstimator(PEMixins, object):
             if hasattr(m, 'alltime_domain'):
                 m.del_component('alltime_domain')
             
-            if with_d_vars and self._spectra_given:
+            if with_d_vars and hasattr(m, 'D'): #self._spectra_given:
+              
                 m.D_bar = Var(m.meas_times,
                               m.meas_lambdas)
     
@@ -551,7 +553,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
                 if hasattr(m, self.__var.spectra_data):
                     spectral_term = absorption_objective(m, 
                                                  device_variance=obj_variances[exp]['device'],
-                                                 g_option=self.reaction_models[exp].settings.parameter_estimator.G_contribution,
+                                                 g_option=self.reaction_models[exp]._G_data['G_contribution'],
                                                  with_d_vars=with_d_vars,
                                                  shared_spectra=shared_spectra,
                                                  species_list=list_components)
@@ -666,3 +668,15 @@ class MultipleExperimentsEstimator(PEMixins, object):
         for name, model in self.reaction_models.items():
             set_of_all_species = set_of_all_species.union(model.components.names)
         return set_of_all_species
+    
+#%%
+
+# combined_model = kipet_model.mee.model
+
+# from kipet.library.core_methods.ResultsObject import ResultsObject
+
+# for i in combined_model.experiment:
+#       solver_results[i] = ResultsObject()
+#       solver_results[i].load_from_pyomo_model(combined_model.experiment[i])
+                                            
+# print(solver_results)
