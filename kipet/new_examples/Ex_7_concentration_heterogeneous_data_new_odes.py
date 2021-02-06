@@ -20,7 +20,7 @@ if __name__ == "__main__":
     r1 = kipet_model.new_reaction('reaction-1')   
  
     # Add the model parameters
-    r1.add_parameter('k1', value=2.0, bounds=(0.0, 5.0), fixed=False)
+    r1.add_parameter('k1', value=2.0, bounds=(0.0, 5.0))
     r1.add_parameter('k2', value=0.2, bounds=(0.0, 2.0))
     
     # Declare the components and give the valueial values
@@ -31,7 +31,7 @@ if __name__ == "__main__":
     # Use this function to replace the old filename set-up
     filename = 'example_data/missing_data_no_start.txt'
     
-    r1.add_dataset('C_data', category='concentration', file=filename)
+    r1.add_data('C_data', category='concentration', file=filename)
     
     c = r1.get_model_vars()
     
@@ -42,7 +42,6 @@ if __name__ == "__main__":
     
     # Settings
     r1.settings.collocation.nfe = 60
-    r1.settings.solver.linear_solver = 'mumps'
     
     # Run KIPET
     r1.run_opt()  

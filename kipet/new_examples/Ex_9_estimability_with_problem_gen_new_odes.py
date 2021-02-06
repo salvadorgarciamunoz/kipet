@@ -63,10 +63,10 @@ if __name__ == "__main__":
     """Make the model for estimability analysis"""
     
     # Clone the simulation model for the estimability analysis
-    r1 = kipet_model.new_reaction('reaction-1', model_to_clone=sim_model, items_not_copied='model')
+    r1 = kipet_model.new_reaction('reaction-1', model=sim_model, items_not_copied='model')
     
     # Add the generated data
-    r1.add_dataset('C_data', category='concentration', file=filename)
+    r1.add_data('C_data', category='concentration', file=filename)
 
     # Change the parameter initial values and add bounds
     new_inits = {'k1': 0.2,
@@ -113,7 +113,7 @@ if __name__ == "__main__":
     """Run the PE again"""
     
     # Clone the simulation model without the model
-    final_model = kipet_model.new_reaction('final', model_to_clone=sim_model, items_not_copied='model')
+    final_model = kipet_model.new_reaction('final', model=sim_model, items_not_copied='model')
 
     # Add bounds to the parameter variables and change k5 to 0.032
     final_model.parameters.update('bounds', new_bounds)
@@ -123,7 +123,7 @@ if __name__ == "__main__":
     final_model.components.update('variance', sigmas)
     
     # Add the experimental data
-    final_model.add_dataset('C_data', category='concentration', file=filename)
+    final_model.add_data('C_data', category='concentration', file=filename)
     
     # Settings
     final_model.settings.parameter_estimator.solver = 'k_aug'
@@ -136,4 +136,5 @@ if __name__ == "__main__":
     
     # Results and plot
     final_model.results.show_parameters
-    final_model.plot()
+    if with_plots:
+        final_model.plot()

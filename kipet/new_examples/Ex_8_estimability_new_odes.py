@@ -31,15 +31,15 @@ if __name__ == "__main__":
     r1.add_component('E', value=0.0)
     
     filename = 'example_data/new_estim_problem_conc.csv'
-    r1.add_dataset('C_frame', category='concentration', file=filename) 
+    r1.add_data('C_frame', category='concentration', file=filename) 
     
     c = r1.get_model_vars()
     
     r1.add_ode('A', -c.k1*c.A - c.k4*c.A )
     r1.add_ode('B',  c.k1*c.A - c.k2*c.B - c.k3*c.B )
     r1.add_ode('C',  c.k2*c.B - c.k4*c.C )
-    r1.add_ode('A',  c.k4*c.A - c.k3*c.D )
-    r1.add_ode('A',  c.k3*c.B )
+    r1.add_ode('D',  c.k4*c.A - c.k3*c.D )
+    r1.add_ode('E',  c.k3*c.B )
     
     r1.set_times(0, 20)
     r1.create_pyomo_model()
@@ -47,23 +47,13 @@ if __name__ == "__main__":
     """
     USER INPUT SECTION - ESTIMABILITY ANALYSIS
     """
-    # Here we use the estimability analysis tools
-    e_analyzer = EstimabilityAnalyzer(r1.model)
-    # Problem needs to be discretized first
-    e_analyzer.apply_discretization('dae.collocation',nfe=60,ncp=1,scheme='LAGRANGE-RADAU')
-    # define the uncertainty surrounding each of the parameters
-    # This is used for scaling the variables (i.e. 0.01 means that we are sure that the initial 
-    # value ofthat parameter is within 1 % of the real value)
     param_uncertainties = {'k1':0.09,'k2':0.01,'k3':0.02,'k4':0.5}
     # sigmas, as before, represent the variances in regard to component
     sigmas = {'A':1e-10,'B':1e-10,'C':1e-11, 'D':1e-11,'E':1e-11,'device':3e-9}
     # measurement scaling
     meas_uncertainty = 0.05
-    # The rank_params_yao function ranks parameters from most estimable to least estimable 
-    # using the method of Yao (2003). Notice the required arguments. Returns a dictionary of rankings.
-    listparams = e_analyzer.rank_params_yao(meas_scaling = meas_uncertainty, param_scaling = param_uncertainties, sigmas =sigmas)
-    print(listparams)
-    # Now we can run the analyzer using the list of ranked parameters
-    params_to_select = e_analyzer.run_analyzer(method = 'Wu', parameter_rankings = listparams,meas_scaling = meas_uncertainty, variances =sigmas)
-    # We can then use this information to fix certain parameters and run the parameter estimation
-    print(params_to_select)
+    
+    r1.analyze_parameters(method='yao',
+                          parameter_uncertainties=param_uncertainties,
+                          meas_uncertainty=meas_uncertainty,
+                          sigmas=sigmas)

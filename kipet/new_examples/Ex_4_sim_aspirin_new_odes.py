@@ -94,19 +94,19 @@ if __name__ == "__main__":
     partial_vol['H2O']=0.0883603912169
 
     filename = 'example_data/extra_states.txt'
-    r1.add_dataset('traj', category='trajectory', file=filename)
+    r1.add_data('traj', category='trajectory', file=filename)
     
     filename = 'example_data/concentrations.txt'
-    r1.add_dataset('conc', category='trajectory', file=filename)
+    r1.add_data('conc', category='trajectory', file=filename)
     
     filename = 'example_data/init_Z.csv'
-    r1.add_dataset('init_Z', category='trajectory', file=filename)
+    r1.add_data('init_Z', category='trajectory', file=filename)
     
     filename = 'example_data/init_X.csv'
-    r1.add_dataset('init_X', category='trajectory', file=filename)
+    r1.add_data('init_X', category='trajectory', file=filename)
     
     filename = 'example_data/init_Y.csv'
-    r1.add_dataset('init_Y', category='trajectory', file=filename)
+    r1.add_data('init_Y', category='trajectory', file=filename)
 
     c = r1.get_model_vars()
 
@@ -125,7 +125,7 @@ if __name__ == "__main__":
     Cin = 39.1
     v_sum = 0.0
    
-    for com in r1.components.component_set('concentration'):
+    for com in r1.components.names:
         v_sum += partial_vol[com]*(sum(gammas[com][j]*r1.ae(f'r{j}') for j in range(6)) + epsilon[com]*c.f/c.V*Cin)
     
     r1.add_algebraic('v_sum', v_sum)
@@ -134,7 +134,7 @@ if __name__ == "__main__":
     Cin = 41.4
     r1.add_ode('V', c.V*c.v_sum )
     
-    for com in r1.components.component_set('concentration'):
+    for com in r1.components.names:
         r1.add_ode(com, sum(gammas[com][j]*r1.ae(f'r{j}') for j in range(6)) + epsilon[com]*c.f/c.V*Cin - c.v_sum*getattr(c, com))
     
     r1.add_ode('Masa', 180.157*c.V*c.r5 )
@@ -155,6 +155,5 @@ if __name__ == "__main__":
     r1.simulate()
 
     # # Plot the results
-    if with_plots:   
+    if with_plots:
         r1.plot()
-        

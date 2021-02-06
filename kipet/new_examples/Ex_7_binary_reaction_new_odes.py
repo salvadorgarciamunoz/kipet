@@ -33,7 +33,7 @@ if __name__ == "__main__":
     full_data = kipet_model.read_data_file(filename)
     
     data_set = full_data.iloc[::3]
-    r1.add_dataset('C_data', category='concentration', data=data_set)
+    r1.add_data('C_data', data=data_set)
     
     # Use step functions to turn on the reactions
     r1.add_step('b1', time=2, fixed=False, switch='on')
@@ -42,7 +42,7 @@ if __name__ == "__main__":
     c = r1.get_model_vars()
     
     R1 = c.b1 * (c.k1 * c.A)
-    R2 = c.b1 * (c.k2 * c.B)
+    R2 = c.b2 * (c.k2 * c.B)
     
     # Define the reaction model
     r1.add_ode('A', -R1 )
@@ -62,4 +62,5 @@ if __name__ == "__main__":
     # Display the results
     r1.results.show_parameters
 
-    r1.plot()
+    if with_plots:
+        r1.plot()

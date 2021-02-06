@@ -55,4 +55,5 @@ if __name__ == "__main__":
     #Simulate with default options
     r1.simulate()
     
-    r1.plot()
+    if with_plots:
+        r1.plot()

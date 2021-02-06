@@ -28,15 +28,14 @@ if __name__ == "__main__":
     r1.add_parameter('k2', value=0.2, bounds=(0.0, 2.0), fixed=False)
     
     # Declare the components and give the initial values
-    r1.add_component('A', value=0.001, variance=1e-10)
+    r1.add_component('A', value=0.001, variance=1e-10, known=False, bounds=(0.0, 3))
     r1.add_component('B', value=0.0, variance=1e-11)
     r1.add_component('C', value=0.0, variance=1e-8)
    
     # Use this function to replace the old filename set-up
     filename = 'example_data/Ex_1_C_data.txt'
     
-    r1.add_dataset(data=full_data.iloc[::10, :], remove_negatives=True)   
-    # r1.add_dataset('C_data', category='concentration', file=filename)
+    r1.add_data(data=full_data.iloc[::10, :], remove_negatives=True)   
     
     c = r1.get_model_vars()
     
@@ -55,5 +54,5 @@ if __name__ == "__main__":
     # Display the results
     r1.results.show_parameters
 
-    if with_plots:
-        r1.plot()
+    # if with_plots:
+    #     r1.plot()

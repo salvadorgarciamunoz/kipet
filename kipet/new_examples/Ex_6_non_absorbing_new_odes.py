@@ -29,7 +29,7 @@ if __name__ == "__main__":
     r1.add_component('C', value=0.0, absorbing=False)
     
     # Use this function to replace the old filename set-up
-    r1.add_dataset('D_frame', category='spectral', file='example_data/Dij.txt')
+    r1.add_data('D_frame', category='spectral', file='example_data/Dij.txt')
 
     c = r1.get_model_vars()
     # define explicit system of ODEs
