@@ -4,11 +4,6 @@ ModelComponent Classes
 # Third party imports
 import pint
 
-# KIPET library imports
-
-VOLUME_BASE = 'L'
-TIME_BASE = 'min'
-
 class ModelElement():
     
     """Abstract Class to handle the modeling components in KIPET"""
@@ -18,6 +13,7 @@ class ModelElement():
                  class_=None, 
                  value=None,
                  units=None,
+                 unit_base=None,
                  description=None,
                  ): 
         
@@ -26,20 +22,19 @@ class ModelElement():
         self.value = value
         self.description = description
     
-        self.ur = pint.UnitRegistry()
+        self.unit_base = unit_base
+        self.ur = unit_base.ur
         self.units = 1*self.ur('') if units is None else 1*self.ur(units)
         self.conversion_factor = 1
-        # self._check_scaling()
+        #self._check_scaling()
 
     def _check_scaling(self):
             
         quantity = 1 * self.units
         quantity.ito_base_units()
         
-        quantity = self.convert_single_dimension(quantity, TIME_BASE)
-        quantity = self.convert_single_dimension(quantity, VOLUME_BASE)
-
-        time_units = self.ur(TIME_BASE)
+        quantity = self.convert_single_dimension(quantity, self.unit_base.TIME_BASE)
+        quantity = self.convert_single_dimension(quantity, self.unit_base.VOLUME_BASE)
         
         print(f'Converting {self.name} to base units {quantity.m} {quantity.units}')
         
@@ -48,6 +43,14 @@ class ModelElement():
         
         if self.value is not None:
             self.value = quantity.m*self.value
+            
+        if hasattr(self, 'bounds') and self.bounds is not None:
+            bounds = list(self.bounds)
+            if bounds[0] is not None:
+                bounds[0] *= self.conversion_factor
+            if bounds[1] is not None:
+                bounds[1] *= self.conversion_factor
+            self.bounds = (bounds)
 
     def convert_unit(self, u_orig, u_goal, scalar=1, power=1):
    
@@ -119,12 +122,13 @@ class ModelAlgebraic(ModelElement):
                  value=None,
                  bounds=(None, None),
                  units=None,
+                 unit_base=None,
                  description=None,
                  data=None,
                  step=None,
                  ):
     
-        super().__init__(name, ModelComponent.class_, value, units, description)
+        super().__init__(name, ModelComponent.class_, value, units, unit_base, description)
    
         self.bounds = bounds
         self.data = data
@@ -169,13 +173,14 @@ class ModelComponent(ModelElement):
                  value=None,
                  variance=None,
                  units=None,
+                 unit_base=None,
                  known=True,
                  bounds=(None,None),
                  description=None,
                  absorbing=True,
                  ):
     
-        super().__init__(name, ModelComponent.class_, value, units, description)
+        super().__init__(name, ModelComponent.class_, value, units, unit_base, description)
    
         # component attributes
         self.variance = variance
@@ -233,12 +238,13 @@ class ModelState(ModelElement):
                  value=None,
                  variance=None,
                  units=None,
+                 unit_base=None,
                  known=True,
-                 bounds=None,
+                 bounds=(None, None),
                  description=None,
                  ):
     
-        super().__init__(name, ModelComponent.class_, value, units, description)
+        super().__init__(name, ModelComponent.class_, value, units, unit_base, description)
    
         # component attributes
         self.variance = variance
@@ -285,18 +291,22 @@ class ModelParameter(ModelElement):
                  name,
                  value=None,
                  units=None,
+                 unit_base=None,
                  bounds=(None, None),
                  fixed=False,
                  variance=None,
                  description=None,
                  ):
 
-        super().__init__(name, ModelParameter.class_, value, units, description)
+        super().__init__(name, ModelParameter.class_, value, units, unit_base, description)
         
         # parameter attributes
         self.bounds = bounds
         self.fixed = fixed
         self.variance = variance
+        
+        if self.value is None:
+            self.value = sum(self.bounds)/2
     
     def __str__(self):
         
@@ -337,10 +347,11 @@ class ModelConstant(ModelElement):
                  name,
                  value=None,
                  units=None,
+                 unit_base=None,
                  description=None,
                  ):
 
-        super().__init__(name, ModelConstant.class_, value, units, description)
+        super().__init__(name, ModelConstant.class_, value, units, unit_base, description)
         self._class_ = type(self)
     
     def __str__(self):
