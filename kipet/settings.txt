@@ -18,7 +18,7 @@
     #SCALE_PARAMETER_ESTIMATOR=True
     #SCALE_PARAMETERS=False
     #SIMULATION_TIMES=None
-    #NO_USER_SCALING=False
+    NO_USER_SCALING=True
 
 # Collocation Settings:
 
@@ -29,8 +29,8 @@
 
 # Optimization Solver Settings:
 
-    #NLP_SCALING_METHOD=gradient-based
-    #LINEAR_SOLVER=ma57
+    NLP_SCALING_METHOD=gradient-based
+    LINEAR_SOLVER=ma57
 
 # Simulation Default Settings:
 
