@@ -59,6 +59,7 @@ from kipet.library.top_level.settings import (
     USER_DEFINED_SETTINGS,
     )
 from kipet.library.top_level.variable_names import VariableNames
+# from kipet.library.common.VisitorClasses import FindingVisitor
 
 __var = VariableNames()
 DEBUG=__var.DEBUG
@@ -85,7 +86,7 @@ class ReactionModel(WavelengthSelectionMixins):
         self.states = StateBlock()
         self.datasets = DataBlock()
         self.data = {}
-        self.D_data = None
+        self.spectra = None
         
         self.results_dict = {}
         self.settings = Settings(category='model')
@@ -107,8 +108,18 @@ class ReactionModel(WavelengthSelectionMixins):
         self._var_to_fix_from_trajectory = []
         self._var_to_initialize_from_trajectory = []
         self._default_time_unit = 'seconds'
+        
+        self._G_data = {'G_contribution': None, 'Z_in': dict(), 'St': dict()}
         self.__var = VariableNames()
 
+        # self.components_used = set()
+        self.component_map = {k: getattr(self, k) for k in ['components',
+                                                            'states',
+                                                            'parameters',
+                                                            'algebraics',
+                                                            'constants']}
+
+        
     def __repr__(self):
         
         # m = 20
@@ -180,11 +191,7 @@ class ReactionModel(WavelengthSelectionMixins):
     
         return None
     
-    def add_constant(self, *args, **kwargs):
-        
-        self.constants.add_element(*args, **kwargs)
-        return None
-        
+
     def call_fe_factory(self):
         """Somewhat of a wrapper for this simulator method, but better"""
 
@@ -194,59 +201,16 @@ class ReactionModel(WavelengthSelectionMixins):
 
         return None
     
-    def clone(self, *args, **kwargs):
-        """Makes a copy of the ReactionModel and removes the data. This is done
-        to reuse the model, components, and parameters in an easier manner
         
-        """
-        new_kipet_model = copy.deepcopy(self)
+    def add_constant(self, *args, **kwargs):
         
-        name = kwargs.get('name', self.name + '_copy')
-        copy_model = kwargs.get('model', True)
-        copy_builder = kwargs.get('builder', True)
-        copy_components = kwargs.get('components', True)   
-        copy_parameters = kwargs.get('parameters', True)
-        copy_datasets = kwargs.get('datasets', True)
-        copy_constants = kwargs.get('constants', True)
-        copy_settings = kwargs.get('settings', True)
-        copy_algebraic_variables = kwargs.get('alg_vars', True)
-        copy_odes = kwargs.get('odes', True)
-        copy_algs = kwargs.get('algs', True)
-        
-        # Reset the datasets
-        new_kipet_model.name = name
-        if not copy_model:
-            new_kipet_model.model = None
-        if not copy_builder:
-            new_kipet_model.builder = TemplateBuilder()
-        if not copy_components:
-            new_kipet_model.components = ComponentBlock()
-        if not copy_parameters:
-            new_kipet_model.parameters = ParameterBlock()
-        if not copy_datasets:
-            del new_kipet_model.datasets
-            new_kipet_model.datasets = DataBlock()    
-        if not copy_constants:
-            new_kipet_model.constants = None
-        if not copy_algebraic_variables:
-            new_kipet_model.algebraic_variables = []
-        if not copy_settings:
-            new_kipet_model.settings = Settings()
-        if not copy_odes:
-            new_kipet_model.odes = None
-        if not copy_algs:
-            new_kipet_model.algs = None
-        list_of_attr_to_delete = ['p_model', 'v_model', 'p_estimator',
-                                  'v_estimator', 'simulator']
-        for attr in list_of_attr_to_delete:
-            if hasattr(new_kipet_model, attr):
-                setattr(new_kipet_model, attr, None)
-        new_kipet_model.results_dict = {}
-            
-        return new_kipet_model
+        kwargs['unit_base'] = self.ub
+        self.constants.add_element(*args, **kwargs)
+        return None
         
     def add_alg_var(self, *args, **kwargs):
         
+        kwargs['unit_base'] = self.ub
         self.algebraics.add_element(*args, **kwargs)
         # if 'step' in kwargs and kwargs['step'] is not None:
         #     self.add_step(f's_{args[0]}', time=15, switch='off')
@@ -272,6 +236,7 @@ class ReactionModel(WavelengthSelectionMixins):
             None
             
         """
+        kwargs['unit_base'] = self.ub
         self.states.add_element(*args, **kwargs)
         return None
     
@@ -285,7 +250,7 @@ class ReactionModel(WavelengthSelectionMixins):
             None
             
         """
-        # kwargs['state'] = 'concentration'
+        kwargs['unit_base'] = self.ub
         self.components.add_element(*args, **kwargs)
         return None
     
@@ -302,6 +267,7 @@ class ReactionModel(WavelengthSelectionMixins):
             None
             
         """
+        kwargs['unit_base'] = self.ub
         self.parameters.add_element(*args, **kwargs)
         return None
     
@@ -310,6 +276,8 @@ class ReactionModel(WavelengthSelectionMixins):
         name = kwargs.get('name', None)
         if len(args) > 0:
             name = args[0]
+        if name is None:
+            name = f'ds{len(self.data) + 1}'
         filename = kwargs.get('file', None)
         data = kwargs.pop('data', None)
         category = kwargs.pop('category', None)
@@ -326,9 +294,10 @@ class ReactionModel(WavelengthSelectionMixins):
         
         
         if category == 'spectral':
-            D_data = SpectralData(name)    
+            D_data = SpectralData(name, remove_negatives=remove_negatives)    
             D_data.add_data(dataframe)
-            self.D_data = D_data
+            self.spectra = D_data
+            return None
                     
         else:
             self.data[name] = dataframe
@@ -406,6 +375,21 @@ class ReactionModel(WavelengthSelectionMixins):
         """
         expr = Expression(ode_var, expr)
         self.odes_dict.update(**{ode_var: expr})
+        
+        # for var in self.c.var_dict:
+        #     model_var = getattr(self.c, var)
+        #     visitor = FindingVisitor()
+        #     visitor.find_suspect(id(model_var))
+        #     new_expr = visitor.dfs_postorder_stack(expr.expression)
+        #     if visitor._found:
+                
+        #         if var in self.components_used:
+        #             continue
+        #         else:
+        #             self.components_used.add(var)
+        #             self.
+    
+        #print(self.components_used)
         
         return None
     
@@ -505,6 +489,11 @@ class ReactionModel(WavelengthSelectionMixins):
         """
         with_data = kwargs.get('with_data', True)
         
+        # for model_component, obj in self.component_map.items():
+            
+        #     if len(obj) > 0:
+        #         self.builder.add_model_element(obj)
+                
         if len(self.states) > 0:
             self.builder.add_model_element(self.states)
         
@@ -525,10 +514,10 @@ class ReactionModel(WavelengthSelectionMixins):
             self.builder.add_model_element(self.constants)
         
         if with_data:
-            if len(self.datasets) > 0 or self.D_data is not None:
-                self.builder.input_data(self.datasets, self.D_data)
+            if len(self.datasets) > 0 or self.spectra is not None:
+                self.builder.input_data(self.datasets, self.spectra)
                 self.allow_optimization = True
-            elif len(self.datasets) == 0 and self.D_data is None:
+            elif len(self.datasets) == 0 and self.spectra is None:
                 self.allow_optimization = False
             else:
                 pass
@@ -565,10 +554,12 @@ class ReactionModel(WavelengthSelectionMixins):
             self.builder.add_step_vars(self._step_list)
             
         # It seems this is repetitive - refactor
-        self.builder._G_contribution = self.settings.parameter_estimator.G_contribution
-        
-        if self.settings.parameter_estimator.G_contribution is not None:
+        if hasattr(self, '_G_contribution') and self._G_contribution is not None:
+        #if self.settings.parameter_estimator.G_contribution is not None:
             self._unwanted_G_initialization()
+            self.builder._G_contribution = self._G_contribution
+        else:
+            self.builder._G_contribution = None
         
         start_time, end_time = None, None
         if self.settings.general.simulation_times is not None:
@@ -593,6 +584,7 @@ class ReactionModel(WavelengthSelectionMixins):
         self.set_times(0, 1)
         kwargs.update({'odes_bypass': True})
         kwargs.update({'with_data': False})
+        kwargs.update({'skip_non_abs': True})
         self.create_pyomo_model(self, *args, **kwargs)
         self.c = self.builder.c_mod
         delattr(self.builder, 'early_return')
@@ -617,13 +609,18 @@ class ReactionModel(WavelengthSelectionMixins):
         if hasattr(self, 'model'):
             del self.model
             
+        skip_non_abs = kwargs.pop('skip_non_abs', False)
+            
         start_time, end_time = self.populate_template(*args, **kwargs)
-        print(start_time, end_time)
+        # print(start_time, end_time)
+        if hasattr(self, 'c'):
+            setattr(self.builder, 'c_mod', self.c)
+        
         self.model = self.builder.create_pyomo_model(start_time, end_time)
         
         non_abs_comp = self.components.get_match('absorbing', False)
         
-        if len(non_abs_comp) > 0:
+        if not skip_non_abs and len(non_abs_comp) > 0:
             self.builder.set_non_absorbing_species(self.model, non_abs_comp, check=True)    
         
         if hasattr(self,'fixed_params') and len(self.fixed_params) > 0:
@@ -868,8 +865,12 @@ class ReactionModel(WavelengthSelectionMixins):
     
     def run_pe_opt(self):
         """Wrapper for run_opt method in ParameterEstimator"""
-        
-        self._run_opt('p_estimator', **self.settings.parameter_estimator)
+        if hasattr(self, '_G_data') and self._G_data is not None:
+            pe_settings = {**self.settings.parameter_estimator, **self._G_data}
+        else:
+            pe_settings = {**self.settings.parameter_estimator} #, **self._G_data}, 
+            
+        self._run_opt('p_estimator', **pe_settings)
         
         return None
     
@@ -882,15 +883,14 @@ class ReactionModel(WavelengthSelectionMixins):
             if self.settings.parameter_estimator['solver'] not in ['k_aug', 'ipopt_sens']:
                 raise ValueError('Solver must be k_aug or ipopt_sens for covariance matrix')
         
-        # If using sensitivity solvers switch covariance to True
+        # If using sensitivity
+        # solvers switch covariance to True
         if self.settings.parameter_estimator['solver'] in ['k_aug', 'ipopt_sens']:
             self.settings.parameter_estimator['covariance'] = True
         
-        
-        # Move lambda subset to general data method and out of RM
         #Subset of lambdas
         if self.settings.variance_estimator['freq_subset_lambdas'] is not None:
-            if type(self.settings.variance_estimator['freq_subset_lambdas'], int):
+            if isinstance(self.settings.variance_estimator['freq_subset_lambdas'], int):
                 self.settings.variance_estimator['subset_lambdas' ] = self.reduce_spectra_data_set(self.settings.variance_estimator['freq_subset_lambdas']) 
         
         if self.settings.general.scale_pe and not self.settings.general.no_user_scaling:
@@ -941,7 +941,7 @@ class ReactionModel(WavelengthSelectionMixins):
         self._update_related_settings()
         
         # Check if all component variances are given; if not run VarianceEstimator
-        has_spectral_data = self.D_data is not None
+        has_spectral_data = self.spectra is not None
         has_all_variances = self.components.has_all_variances
         variances_with_delta = None
         
@@ -967,6 +967,7 @@ class ReactionModel(WavelengthSelectionMixins):
             else:
                 self.run_ve_opt()
                 
+                #print('Finished VE Opt - moving to PE opt')
         # If not a spectral problem and not all variances are provided, they
         # set to 1
         elif not has_all_variances and not has_spectral_data:
@@ -1193,6 +1194,14 @@ class ReactionModel(WavelengthSelectionMixins):
             self.datasets[var].data = dataframe
         return data_tools.add_noise_to_signal(dataframe, noise)    
     
+    def unwanted_contribution(self, variant, **kwargs):
+        
+        self._G_contribution = variant
+        self._G_data = {'G_contribution': variant,
+                        'Z_in': kwargs.get('Z_in', dict()),
+                        'St': kwargs.get('St', dict()),
+                        }
+    
     def analyze_parameters(self, 
                         method=None,
                         parameter_uncertainties=None,
@@ -1222,7 +1231,7 @@ class ReactionModel(WavelengthSelectionMixins):
             listparams = self.e_analyzer.rank_params_yao(meas_scaling=meas_uncertainty,
                                                          param_scaling=parameter_uncertainties,
                                                          sigmas=sigmas)
-            print(listparams)
+            #print(listparams)
             
             # Now we can run the analyzer using the list of ranked parameters
             params_to_select = self.e_analyzer.run_analyzer(method='Wu', 
