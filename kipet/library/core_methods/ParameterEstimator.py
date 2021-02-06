@@ -28,6 +28,7 @@ from kipet.library.spectra_methods.G_handling import (
     )
 from kipet.library.common.objectives import (
     conc_objective, 
+    comp_objective,
     absorption_objective,
     )
 
@@ -488,8 +489,10 @@ class ParameterEstimator(PEMixins, Optimizer):
                         sumpen = sumpen + m.Y[t,'npen']
                     fifth_term = rho*sumpen
                     expr += fifth_term
-                    
+
             return expr
+
+        
 
         # estimation without model variance and only device variance
         def rule_objective_device_only(model):
@@ -511,6 +514,8 @@ class ParameterEstimator(PEMixins, Optimizer):
             model.objective = Objective(rule=rule_objective)
         else:
             model.objective = Objective(rule=rule_objective_device_only)
+
+        #print(model.objective.expr.to_string())
 
         if warmstart==True:
             if hasattr(model,'dual') and hasattr(model,'ipopt_zL_out') and hasattr(model,'ipopt_zU_out') and hasattr(model,'ipopt_zL_in') and hasattr(model,'ipopt_zU_in'):
@@ -604,21 +609,23 @@ class ParameterEstimator(PEMixins, Optimizer):
                 rho = 100
                 sumpen = 0.0
                 obj += conc_objective(model, variance=sigma_sq)    
+                obj += comp_objective(model)
                 for t in model.allmeas_times:
                     sumpen += model.Y[t, 'npen']
                 fifth_term = rho * sumpen
                 obj += fifth_term
             else:
                 obj += conc_objective(model, variance=sigma_sq)
+                obj += comp_objective(model)
             return obj
 
         model.objective = Objective(rule=rule_objective)
-        #print(model.objective.expr.to_string())
+        # print(model.objective.expr.to_string())
 
         if hasattr(model, 'custom_obj'):
             model.objective.expr += model.custom_obj
         
-        # print(model.objective.expr.to_string())
+        #print(model.objective.expr.to_string())
 
 
         if warmstart==True:
@@ -1376,7 +1383,7 @@ def construct_model_from_reduced_set(builder_clone, end_time, D):
     #if not isinstance(end_time, int):
     #    raise RuntimeError('nfe needs to be type int. Number of finite elements must be defined')
 
-    builder_clone.add_spectral_data(D)
+    builder_clone._spectral_data = D
     opt_model = builder_clone.create_pyomo_model(0.0, end_time)
 
     return opt_model
