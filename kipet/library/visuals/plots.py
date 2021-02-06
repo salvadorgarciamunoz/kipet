@@ -67,7 +67,7 @@ class PlotObject():
                     )
         return None
 
-    def _fig_finishing(self, fig, pred):
+    def _fig_finishing(self, fig, pred, is_S_plot=False):
         """Finish the plots before showing
         
         """
@@ -136,7 +136,7 @@ class PlotObject():
         var_data = self.reaction_model.components[col]
         state = f'{self.reaction_model.components[col].state}'.capitalize()
         title = f'Model: {self.reaction_model.name} | Concentration Profiles'
-        time_scale = f'Time [{self.reaction_model._default_time_unit}]'
+        time_scale = f'Time [{self.reaction_model.ub.TIME_BASE}]'
         state_units = var_data.units
         fig.update_layout(
                 title=title,
@@ -168,7 +168,7 @@ class PlotObject():
         state = f'{self.reaction_model.components[var].state}'.capitalize()
         description = f'| Description: {var_data.description}' if var_data.description is not None else ''
         title = f'Model: {self.reaction_model.name} | Variable: {var_data.name} {description}'
-        time_scale = f'Time [{self.reaction_model._default_time_unit}]'
+        time_scale = f'Time [{self.reaction_model.ub.TIME_BASE}]'
         state_units = var_data.units.u
         fig.update_layout(
                 title=title,
@@ -194,7 +194,7 @@ class PlotObject():
         var_data = self.reaction_model.algebraics[var]
         description = f'| Description: {var_data.description}' if var_data.description is not None else ''
         title = f'Model: {self.reaction_model.name} | Variable: {var_data.name} {description}'
-        time_scale = f'Time [{self.reaction_model._default_time_unit}]'
+        time_scale = f'Time [{self.reaction_model.ub.TIME_BASE}]'
         state_units = var_data.units
         fig.update_layout(
             title=title,
@@ -220,7 +220,7 @@ class PlotObject():
         var_data = self.reaction_model.states[var]
         description = f'| Description: {var_data.description}' if var_data.description is not None else ''
         title = f'Model: {self.reaction_model.name} | Variable: {var_data.name} {description}'
-        time_scale = f'Time [{self.reaction_model._default_time_unit}]'
+        time_scale = f'Time [{self.reaction_model.ub.TIME_BASE}]'
         state = f'{var_data.description}'.capitalize() if var_data.description is not None else 'State' 
         state_units = var_data.units
         fig.update_layout(
@@ -251,8 +251,8 @@ class PlotObject():
                 xaxis_title=f'{time_scale}',
                 yaxis_title=f'{state} [{state_units}]',
                 )
-        self._fig_finishing(fig, pred)
-        
+        self._fig_finishing(fig, pred, is_S_plot=True)
+
     def _plot_S(self, var):
         """Plot individual S profile
         
@@ -280,7 +280,7 @@ class PlotObject():
         pred = self.reaction_model.results.step
         self._state_plot(fig, var, pred, None)
         title = f'Model: {self.reaction_model.name} | Variable: {var} | Step Function'
-        time_scale = f'Time [{self.reaction_model._default_time_unit}]'
+        time_scale = f'Time [{self.reaction_model.ub.TIME_BASE}]'
         fig.update_layout(
             title=title,
             xaxis_title=f'{time_scale}',
