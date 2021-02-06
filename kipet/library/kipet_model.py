@@ -23,6 +23,16 @@ from kipet.library.top_level.settings import (
     Settings, 
     USER_DEFINED_SETTINGS,
     )
+from kipet.library.top_level.unit_base import UnitBase
+
+# from kipet.library.top_level.element_blocks import (
+#     AlgebraicBlock,
+#     ComponentBlock,
+#     ConstantBlock, 
+#     ParameterBlock, 
+#     StateBlock,
+#     )
+from kipet.library.core_methods.TemplateBuilder import TemplateBuilder
 
 class KipetModel():
     
@@ -35,7 +45,19 @@ class KipetModel():
         self.results = {}
         self.global_parameters = None
         self.method = 'mee'
-         
+        
+        self.use_individual_settings = False
+        # ub = UnitBase()
+        self.ub = UnitBase()
+        self.reset_base_units()    
+    
+        # self.components = ComponentBlock()   
+        # self.parameters = ParameterBlock()
+        # self.constants = ConstantBlock()
+        # self.algebraics = AlgebraicBlock()
+        # self.states = StateBlock()
+    
+        
     def __str__(self):
         
         block_str = "KipetModel\n\n"
@@ -57,6 +79,11 @@ class KipetModel():
             
     def __len__(self):
         return len(self.models)
+
+    def reset_base_units(self):
+        
+        self.ub.TIME_BASE = self.settings.units.time
+        self.ub.VOLUME_BASE = self.settings.units.volume
 
     def add_model_list(self, model_list):
         """Handles lists of parameters or single parameters added to the model
@@ -87,7 +114,7 @@ class KipetModel():
             print('KipetModel does not have specified model')
         return None    
     
-    def new_reaction(self, name, model_to_clone=None, items_not_copied=None):
+    def new_reaction(self, name, model=None, ignore=None):
         
         """New reactions can be added to KIPET using this function
         
@@ -106,22 +133,39 @@ class KipetModel():
                 ReactionModel instance
                 
         """
-        if model_to_clone is None:
+        ignore = ignore if ignore is not None else []
+        
+        if model is None:
         
             self.models[name] = ReactionModel(name=name)
             self.models[name].settings.general.data_directory = self.settings.general.data_directory
+            
+            assign_list = ['components', 'parameters', 'constants', 'algebraics',
+                             'states', 'ub', 'c']
+        
+            for item in assign_list:
+                if item not in ignore and hasattr(self, item):
+                    setattr(self.models[name], item, getattr(self, item))
         
         else:
-            if isinstance(model_to_clone, ReactionModel):
+            if isinstance(model, ReactionModel):
                 kwargs = {}
                 kwargs['name'] = name
-                if items_not_copied is not None:
-                    if isinstance(items_not_copied, str):
-                        items_not_copied = [items_not_copied]
-                    if isinstance(items_not_copied, list):
-                        for item in items_not_copied:
-                            kwargs[item] = False
-                self.models[name] = model_to_clone.clone(**kwargs)             
+                self.models[name] = ReactionModel(name=name)
+                
+                assign_list = ['components', 'parameters', 'constants', 'algebraics',
+                             'states', 'ub', 'settings', 'c', 'odes_dict']
+        
+              #  copy_list = []#'c', 'odes_dict']# 'set_up_model']
+                for item in assign_list:
+                    if item not in ignore and hasattr(model, item):
+                        setattr(self.models[name], item, getattr(model, item))
+                
+                # import copy
+                # for item in copy_list:
+                #     if item not in ignore and hasattr(model, item):
+                #         setattr(self.models[name], item, copy.copy(getattr(model, item)))
+                
             else:
                 raise ValueError('KipetModel can only add ReactionModel instances.')
         
@@ -129,13 +173,123 @@ class KipetModel():
     
     def add_reaction(self, kipet_model_instance):
     
-        if isinstance(model, ReactionModel):
-            self.models[model.name] = model
-            self.models[model.name].settings.general.data_directory = self.settings.general.data_directory
+        if isinstance(kipet_model_instance, ReactionModel):
+            self.models[kipet_model_instance.name] = kipet_model_instance
+            self.models[kipet_model_instance.name].settings.general.data_directory = self.settings.general.data_directory
         else:
             raise ValueError('KipetModel can only add ReactionModel instances.')
 
         return None
+    
+    # def constant(self, *args, **kwargs):
+        
+    #     kwargs['unit_base'] = self.ub
+    #     self.constants.add_element(*args, **kwargs)
+    #     return None
+        
+    # def algebraic(self, *args, **kwargs):
+        
+    #     kwargs['unit_base'] = self.ub
+    #     self.algebraics.add_element(*args, **kwargs)
+    #     # if 'step' in kwargs and kwargs['step'] is not None:
+    #     #     self.add_step(f's_{args[0]}', time=15, switch='off')
+    
+    # # def add_step(self, name, *args, **kwargs):
+        
+    # #     self._has_step_or_dosing = True
+    # #     if not hasattr(self, '_step_list'):
+    # #         self._step_list = {}
+            
+    # #     if name not in self._step_list:
+    # #         self._step_list[name] = [kwargs]
+    # #     else:
+    # #         self._step_list[name].append(kwargs)
+    
+    # def state(self, *args, **kwargs):
+    #     """Add the components to the Kipet instance
+        
+    #     Args:
+    #         components (list): list of Component instances
+            
+    #     Returns:
+    #         None
+            
+    #     """
+    #     kwargs['unit_base'] = self.ub
+    #     self.states.add_element(*args, **kwargs)
+    #     return None
+    
+    # def component(self, *args, **kwargs):
+    #     """Add the components to the Kipet instance
+        
+    #     Args:
+    #         components (list): list of Component instances
+            
+    #     Returns:
+    #         None
+            
+    #     """
+    #     kwargs['unit_base'] = self.ub
+    #     self.components.add_element(*args, **kwargs)
+    #     return None
+    
+    # def parameter(self, *args, **kwargs):
+    #     """Add the parameters to the Kipet instance
+        
+    #     Args:
+    #         parameters (list): list of Parameter instances
+            
+    #         factor (float): defaults to 1, the scalar multiple of the parameters
+    #         for simulation purposes
+            
+    #     Returns:
+    #         None
+            
+    #     """
+    #     kwargs['unit_base'] = self.ub
+    #     self.parameters.add_element(*args, **kwargs)
+    #     return None
+    
+    # def get_model_vars(self):
+        
+    #     self.create_pyomo_model_vars()
+    #     return self.c
+    
+    # # def load_vars(self):
+        
+    # #     for var in self.c.get_var_list:
+    # #         globals()[var] = getattr(self.c, var)
+    
+    # def create_pyomo_model_vars(self, *args, **kwargs):
+        
+    #     self.builder = TemplateBuilder()
+    #     setattr(self.builder, 'early_return', True)
+            
+    #     if len(self.states) > 0:
+    #         self.builder.add_model_element(self.states)
+        
+    #     if len(self.algebraics) > 0:
+    #         self.builder.add_model_element(self.algebraics)
+        
+    #     if len(self.components) > 0:
+    #         self.builder.add_model_element(self.components)
+            
+    #     if len(self.parameters) > 0:
+    #         self.builder.add_model_element(self.parameters)
+        
+    #     if len(self.constants) > 0:
+    #         self.builder.add_model_element(self.constants)
+        
+    #     if hasattr(self, 'c'):
+    #         setattr(self.builder, 'c_mod', self.c)
+        
+    #     self.model = self.builder.create_pyomo_model(0, 1)
+    #     self.c = self.builder.c_mod
+    #     #self.set_up_model = self.model
+    #     self.model = None
+            
+    #     return None
+    
             
     def run_opt(self, *args, **kwargs):
         """Solve a single model or solve multiple models using the MEE
@@ -165,14 +319,14 @@ class KipetModel():
         
         """
         self.mee = MultipleExperimentsEstimator(self.models)
-        self.mee.confidence_interval = self.settings.parameter_estimator.confidence
+        self.mee.confidence_interval = self.settings.general.confidence
         
         if 'spectral' in self.data_types:
-            self.settings.parameter_estimator.spectra_problem = True
+            self.settings.general.spectra_problem = True
         else:
-            self.settings.parameter_estimator.spectra_problem = False    
+            self.settings.general.spectra_problem = False    
         
-        self.mee.spectra_problem = self.settings.parameter_estimator.spectra_problem
+        self.mee.spectra_problem = self.settings.general.spectra_problem
         
     def _calculate_parameters(self):
         """Uses the ReactionModel framework to calculate parameters instead of 
@@ -181,11 +335,16 @@ class KipetModel():
         """
         for name, model in self.models.items():
             if not model.optimized:
-                for dataset in model.datasets:
-                    if self.settings.general.freq_wavelength_subset is not None:
-                        if model.datasets[dataset.name].category == 'spectral':
-                            freq = self.settings.general.freq_wavelength_subset
-                            model.datasets[dataset.name].data = decrease_wavelengths(dataset.data, freq)
+                # Do this for each model separately...
+                # for dataset in model.datasets:
+                #     if self.settings.general.freq_wavelength_subset is not None:
+                #         if model.datasets[dataset.name].category == 'spectral':
+                #             freq = self.settings.general.freq_wavelength_subset
+                #             model.datasets[dataset.name].data = decrease_wavelengths(dataset.data, freq)
+                
+                # if not self.use_individual_settings:
+                    
+                #     model.settings.update(**self.settings)
                 
                 model.run_opt()
             else:
@@ -195,12 +354,18 @@ class KipetModel():
     
     def run_full_model(self):
         
+        # self.settings.parameter_estimator.solver_opts = self.settings.solver
+        consolidated_settings = self.settings.general
+        consolidated_settings.solver_opts = self.settings.solver
+        
         results = self.mee.solve_consolidated_model(self.global_parameters,
-                                                    **self.settings.parameter_estimator)
+                                                    **consolidated_settings)
     
         self.results = results
         for key, results_obj in self.results.items():
             results_obj.file_dir = self.settings.general.charts_directory
+            self.models[key].results = results[key]
+            
         return results
     
     def mee_nsd(self, strategy='ipopt'):
@@ -320,38 +485,7 @@ class KipetModel():
             set_of_all_model_params = set_of_all_model_params.union(model.parameters.names)
             
         return set_of_all_model_params
-    
-    # @property
-    # def global_params(self):
-        
-    #     parameter_counter = collections.Counter()
-    #     global_params = set()
-    #     for name, model in self.models.items():
-    #         for param in model.parameters.names:
-    #             parameter_counter[param] += 1
-        
-    #     for param, num in parameter_counter.items():
-    #         if num > 1:
-    #             global_params.add(param)
-            
-    #     return global_params
-    
-    # @property
-    # def all_wavelengths(self):
-    #     set_of_all_wavelengths = set()
-    #     for name, model in self.models.items():
-    #         set_of_all_wavelengths = set_of_all_wavelengths.union(list(model.model.meas_lambdas))
-            
-    #     return set_of_all_wavelengths
-    
-    # @property
-    # def all_species(self):
-    #     set_of_all_species = set()
-    #     for name, model in self.models.items():
-    #         set_of_all_species = set_of_all_species.union(model.components.names)
-            
-    #     return set_of_all_species
-    
+   
     @property
     def model_list(self):
         return [model.name for model in self.models.values()]
@@ -380,3 +514,13 @@ class KipetModel():
     def get_p_models(self):
         
         return [model.p_model for model in self.models.values()]
+    
+    
+    # Testing placing components into the KM
+    
+    
+    
+    
+    
+    
+    
