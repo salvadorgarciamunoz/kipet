@@ -90,5 +90,6 @@ if __name__ == "__main__":
     # results = r1.rhps_method(calc_method=rh_method)
 
     # # results is a standard ResultsObject
-    r1.plot()
+    if with_plots:
+        r1.plot()
     # results.plot('X', show_plot=with_plots)
