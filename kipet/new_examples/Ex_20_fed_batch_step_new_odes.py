@@ -20,6 +20,7 @@ if __name__ == "__main__":
             with_plots = False
 
     kipet_model = KipetModel()
+    kipet_model.ub.TIME_BASE = 'min'
     
     r1 = kipet_model.new_reaction('fed_batch_parest')
     
