@@ -30,11 +30,12 @@ class ModelElement():
 
     def _check_scaling(self):
             
+        print(f'\nConverting {self.name} ################################################')
         quantity = 1 * self.units
         quantity.ito_base_units()
         
-        quantity = self.convert_single_dimension(quantity, self.unit_base.TIME_BASE)
-        quantity = self.convert_single_dimension(quantity, self.unit_base.VOLUME_BASE)
+        quantity = self.convert_single_dimension(quantity, self.unit_base.TIME_BASE, power_fixed=False)
+        quantity = self.convert_single_dimension(quantity, self.unit_base.VOLUME_BASE, power_fixed=True)
         
         print(f'Converting {self.name} to base units {quantity.m} {quantity.units}')
         
@@ -52,16 +53,20 @@ class ModelElement():
                 bounds[1] *= self.conversion_factor
             self.bounds = (bounds)
 
-    def convert_unit(self, u_orig, u_goal, scalar=1, power=1):
+    def convert_unit(self, u_orig, u_goal, scalar=1, power=1, both_powers=False):
    
         c1 = 1*self.ur(u_orig)
         c2 = 1*self.ur(u_goal)
-    
-        con = (c1**power).to(c2.u)/c2 * c2.u/(c1**power).u
+        
+        power2 = 1
+        if both_powers:
+            power2 = power
+            
+        con = (c1**power).to((c2**power2).u)/c2**power2 * (c2**power2).u/(c1**power).u
         
         return scalar * con
     
-    def convert_single_dimension(self, unit_to_convert, u_goal):
+    def convert_single_dimension(self, unit_to_convert, u_goal, power_fixed=False):
         
         u_g = self.ur(u_goal)
         orig_dim = {k.replace('[', '').replace(']', ''): v for k, v in dict(u_g.dimensionality).items()}
@@ -69,19 +74,35 @@ class ModelElement():
         dim_to_find = list(orig_dim.keys())[0]
         power = orig_dim[dim_to_find]
         
+        # print(f'unit_to_convert: {unit_to_convert}')
+        # print(f'dim_to_find: {dim_to_find}')
+        # print(f'power {power}')
+        
         for dims in units:
             
             s = self.ur(dims)
             s = list({k.replace('[', '').replace(']', ''): v for k, v in dict(s.dimensionality).items()})[0]
+            # print(f's: {s}')
             
-            if s == dim_to_find and abs(units[dims]) == power:
-                u_orig = dims
-                power = units[dims]
-                con = self.convert_unit(u_orig, u_goal, power=abs(power))
-                con = con ** (power/abs(power))
-                new_unit = unit_to_convert * con
-        
-                return new_unit
+            if s == dim_to_find:
+                if power_fixed and abs(units[dims]) == power:                                       
+                    power = units[dims]
+                    u_orig = dims
+                    # print(dims, power)
+                    con = self.convert_unit(u_orig, u_goal, power=abs(power))
+                    # print(con)
+                    con = con ** (power/abs(power))
+                    new_unit = unit_to_convert * con
+                    return new_unit
+                elif not power_fixed:
+                    power = units[dims]
+                    u_orig = dims
+                    # print(dims, power)
+                    con = self.convert_unit(u_orig, u_goal, power=abs(power), both_powers=True)
+                    # print(con)
+                    con = con ** (power/abs(power))
+                    new_unit = unit_to_convert * con
+                    return new_unit
         
         return unit_to_convert
         

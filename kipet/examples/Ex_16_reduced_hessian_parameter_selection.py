@@ -39,12 +39,12 @@ if __name__ == "__main__":
     r1.add_parameter('Tf', value=293.15*factor, bounds=(250, 350), units='K')
     r1.add_parameter('Cfa', value=2500*factor, bounds=(100, 5000), units='mol/m**3')
     r1.add_parameter('rho', value=1025*factor, bounds=(800, 1100), units='kg/m**3')
-    r1.add_parameter('delH', value=160*factor, bounds=(10, 400), units='')
-    r1.add_parameter('ER', value=255*factor, bounds=(10, 500), units='')
-    r1.add_parameter('k', value=2.5*factor, bounds=(0.1, 10), units='')
+    r1.add_parameter('delH', value=160*factor, bounds=(10, 400), units='kJ/mol')
+    r1.add_parameter('ER', value=255*factor, bounds=(10, 500), units='K')
+    r1.add_parameter('k', value=2.5*factor, bounds=(0.1, 10), units='1/hour')
     r1.add_parameter('Tfc', value=283.15*factor, bounds=(250, 300), units='K')
     r1.add_parameter('rhoc', value=1000*factor, bounds=(800, 2000), units='kg/m**3')
-    r1.add_parameter('h', value=3600*factor, bounds=(10, 5000), units='')
+    r1.add_parameter('h', value=1000*factor, bounds=(10, 5000), units='W/m**2/K')
     
     # Declare the components and give the valueial values
     r1.add_component('A', value=1000, variance=0.001, units='mol/m**3')
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     r1.add_data('T_data', data=full_data[['T']].iloc[0::3])
     r1.add_data('A_data', data=full_data[['A']].loc[[3.9, 2.6, 1.115505]])
     
-    r1.add_alg_var('rA')
+    r1.add_alg_var('rA', units='mole/hour/m**3')
     
     c = r1.get_model_vars()
     
@@ -76,6 +76,9 @@ if __name__ == "__main__":
     r1.add_ode('T', c.F/c.V *(c.Tf - c.T) + c.delH/c.rho/c.Cp*c.rA - c.h*c.Area/c.rho/c.Cp/c.V*(c.T -c.Tc) )
     r1.add_ode('Tc', c.Fc/c.Vc *(c.Tfc - c.Tc) + c.h*c.Area/c.rhoc/c.Cpc/c.Vc*(c.T -c.Tc) )
     
+    # Convert the units to a uniform base
+    r1.check_component_units()
+    r1.check_model_units()
     
     r1.settings.solver.print_level = 5
     r1.settings.collocation.ncp = 3
