@@ -299,7 +299,17 @@ class ModelState(ModelElement):
         
         return f'ModelState({self.name})'
 
-        
+    @property
+    def lb(self):
+        """Lower bound property"""
+        return self.bounds[0]
+
+    @property
+    def ub(self):
+        """Upper bound property"""
+        return self.bounds[1]        
+
+
 class ModelParameter(ModelElement):
     """A simple class for holding kinetic parameter data
     
