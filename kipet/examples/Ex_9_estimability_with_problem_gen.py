@@ -53,7 +53,9 @@ if __name__ == "__main__":
     # sim_model.add_equations(rule_odes)
     sim_model.set_times(0, 20)
     sim_model.simulate()
-    sim_model.plot('Z')
+    
+    if with_plots:
+        sim_model.plot('Z')
 
     # Add some noise and save the data
     data = kipet_model.add_noise_to_data(sim_model.results.Z, 0.02)
