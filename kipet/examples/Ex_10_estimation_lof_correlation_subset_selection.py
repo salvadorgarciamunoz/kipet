@@ -57,13 +57,11 @@ if __name__ == "__main__":
     
     r1.run_opt()
    
-    
-    
-    #%%
     # Display the results
     r1.results.show_parameters
         
-    r1.plot()
+    if with_plots:
+        r1.plot()
     
     """Wavelength subset selection methods"""
     
