@@ -17,12 +17,14 @@ URL = 'https://github.com/salvadorgarciamunoz/kipet'
 setuptools_kwargs = {
     'zip_safe': False,
     'install_requires': ['six',
-                         'pyomo>=5.5',
+                         'pyomo>=5.7.2',
                          'numpy',
                          'scipy',
                          'pandas',
                          'plotly',
-                         'matplotlib'],
+                         'matplotlib'
+                         'pint',
+                         'cyipopt'],
     'scripts': [],
     'include_package_data': True,
     'data_files': [('kipet', ['kipet/settings.txt'])],
