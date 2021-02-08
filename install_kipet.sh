@@ -7,10 +7,34 @@
 ################################################################################
 
 env_name="test_env"
-install_path="directory to where you want to install it"
+install_path="/home/user/directory_for_kipet"
+                  
 git_url="git@github.com:salvadorgarciamunoz/kipet.git"
+
 branch="master"
 python_version="3.8.2"
+
+################################################################################
+# Display                                                                      #
+################################################################################
+Display()
+{
+   # Display Help
+   echo "Default KIPET Install Variables"
+   echo 
+   echo "Installation directory:"
+   echo $install_path
+   echo 
+   echo "Git URL:"
+   echo $git_url
+   echo
+   echo "Branch:"
+   echo $branch
+   echo 
+   echo "Conda environment name:"
+   echo $env_name
+   echo
+}
 
 ################################################################################
 # Install                                                                      #
@@ -34,8 +58,6 @@ Install()
     echo y | conda install cyipopt
     echo y | conda install pint
 
-    python kipet/validation/validate_tut_problems.py 
-
 }
 
 ################################################################################
@@ -55,7 +77,6 @@ Validate()
 
 }
 
-
 ################################################################################
 # Help                                                                         #
 ################################################################################
@@ -64,12 +85,15 @@ Help()
    # Display Help
    echo "KIPET Test Install Help."
    echo
-   echo "Syntax: kipet [-h|i|c]"
+   echo "Syntax: kipet [-h|i|v|c]"
    echo "options:"
-   echo "h     Print this Help."
-   echo "i     Install KIPET version and run validation" 
-   echo "c     Delete env and all files"
+   echo "  -h     Print this Help."
+   echo "  -i     Install KIPET version"
+   echo "  -v     Run validation checks" 
+   echo "  -c     Delete env and all files"
+   echo "  -d     Display installation information"
    echo
+
 }
 
 ################################################################################
@@ -89,26 +113,44 @@ Clean()
 # Run                                                                          #
 ################################################################################
 
-while getopts ":hic" option; do
-   case $option in
-      h) # display Help
-         Help
-         exit;;
-      i) # Install and run validation
+while [ ! -z "$1" ]; do
+  case "$1" in
+      --install|-i) # Install and run validation
          Install
 	     exit;;
-	  v) # Install and run validation
-         Validate
+	  -validate|-v) # Validate the install
+	     Validate
 	     exit;;
-      c) # Delete
+      -clean|-c) # Delete
          Clean
          exit;;
-      \?) # incorrect option
-         echo "Error: Invalid option"
-         exit;;
-
-   esac
+     --dir) # Set the  install directory
+         shift
+         install_path=$1
+         echo "KIPET installation directory: $install_path"
+         ;;
+     --url|-u)
+         shift
+         git_url="git@github.com:"$1
+         echo "GitHub URL: $git_url"
+         ;;
+     --branch|-b)
+        shift
+        branch=$1
+        echo "Branch: $branch"
+         ;;
+     --env|-e)
+        shift
+        env_name=$1
+        echo "Conda environment: $env_name"
+         ;;
+     --display|-d)
+         Display
+         ;;
+      *)
+        Help
+        ;;
+  esac
+shift
 done
 
-# Default Install
-Install
