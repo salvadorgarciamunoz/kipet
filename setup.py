@@ -4,7 +4,7 @@ import pathlib
 from setuptools import setup, find_packages
 
 DISTNAME = 'kipet'
-VERSION = '2.0.0'
+VERSION = '2.1.0'
 PACKAGES = find_packages()
 EXTENSIONS = []
 DESCRIPTION = 'Package for kinetic parameter estimation based on spectral or concentration data'
