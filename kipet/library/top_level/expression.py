@@ -102,6 +102,43 @@ class Expression():
             expr_new = _update_expression(expr_new, old_var, new_var)
             
         return expr_new
+    
+    def _change_to_unit2(self, c_mod, c_mod_new):
+        """Method to remove the fixed parameters from the ConcreteModel
+        TODO: move to a new expression class
+        """
+        var_dict = c_mod_new.var_dict
+        expr_new = self.expression
+        if self.expression_orig is not None:
+            expr_new = self.expression_orig    
+        for model_var, var_obj in var_dict.items():
+            old_var = c_mod[model_var]
+            new_var = var_dict[model_var]         
+            expr_new = _update_expression(expr_new, old_var, new_var)
+            
+        return expr_new
+
+    """
+    def change_time(self, expr_orig, c_mod, new_time, current_model):
+           
+            expr_new_time = expr_orig
+            var_dict = c_mod
+            
+            for model_var, obj_list in var_dict.items():
+                
+                if not isinstance(obj_list[1].index(), int):
+                    old_var = obj_list[1]
+                    new_var = getattr(current_model, obj_list[0])[new_time, model_var]
+            
+                else:
+                    old_var = obj_list[1]
+                    new_var = getattr(current_model, obj_list[0])[model_var]
+            
+                expr_new_time = self._update_expression(expr_new_time, old_var, new_var)
+        
+            return expr_new_time
+    """
+
 
     def check_units(self, c_mod, c_mod_new):
         """Check the expr units by exchanging the real model with unit model
@@ -121,6 +158,27 @@ class Expression():
         
         """
         expr = self._change_to_unit(c_mod, c_mod_new)
+        self.units = u.get_units(expr)
+        return None
+    
+    def check_units2(self, c_mod, c_mod_new):
+        """Check the expr units by exchanging the real model with unit model
+        components
+        
+        Args:
+            key (str): component represented in ODE
+            
+            expr (Expression): Expression object of ODE
+            
+            c_mod (Comp): original Comp object used to declare the expressions
+            
+            c_mod_new (Comp_Check): dummy model with unit components
+            
+        Returns:
+            pint_units (): Returns expression with unit model components
+        
+        """
+        expr = self._change_to_unit2(c_mod, c_mod_new)
         self.units = u.get_units(expr)
         return None
 

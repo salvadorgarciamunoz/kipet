@@ -57,7 +57,7 @@ class PyomoSimulator(Simulator):
         self._allmeas_times=sorted(self.model.allmeas_times)
         self._ipopt_scaled = False
         self._spectra_given = hasattr(self.model, self.__var.spectra_data)
-        self._concentration_given = hasattr(self.model, self.__var.concentration_measured) or hasattr(self.model, self.__var.user_defined)
+        self._concentration_given = hasattr(self.model, self.__var.concentration_measured) or hasattr(self.model, self.__var.user_defined) or hasattr(self.model, self.__var.state)
         self._conplementary_states_given = hasattr(self.model, self.__var.state)
         self._absorption_given = hasattr(self.model, self.__var.spectra_species)  # added for special case of absorption data available but not concentration data CS
         self._huplc_given = hasattr(self.model, 'Chat')
@@ -351,12 +351,12 @@ class PyomoSimulator(Simulator):
             return None
 
         for component in component_set:
-            
-            single_trajectory = trajectories[component]
-            values = interpolate_trajectory(inner_set, single_trajectory)
-            for i, t in enumerate(inner_set):
-                if not np.isnan(values[i]):
-                    var[t, component].value = values[i]
+            if component in trajectories.columns:
+                single_trajectory = trajectories[component]
+                values = interpolate_trajectory(inner_set, single_trajectory)
+                for i, t in enumerate(inner_set):
+                    if not np.isnan(values[i]):
+                        var[t, component].value = values[i]
 
         return None
 

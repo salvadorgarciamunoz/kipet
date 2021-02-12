@@ -12,7 +12,7 @@ import weakref
 # Third party imports
 import numpy as np
 import pandas as pd
-from pyomo.environ import Var
+from pyomo.environ import ConcreteModel, Set, Var
 from pyomo.core.base.var import IndexedVar
 from pyomo.dae.diffvar import DerivativeVar
 
@@ -36,6 +36,7 @@ from kipet.library.dev_tools.display import Print
 from kipet.library.post_model_build.scaling import scale_models
 from kipet.library.post_model_build.replacement import ParameterReplacer
 from kipet.library.mixins.TopLevelMixins import WavelengthSelectionMixins
+from kipet.library.model_components.Parameter import Component
 from kipet.library.top_level.data_component import (
     DataBlock, 
     DataSet,
@@ -64,7 +65,7 @@ from kipet.library.top_level.variable_names import VariableNames
 __var = VariableNames()
 DEBUG=__var.DEBUG
 _print = Print(verbose=DEBUG)
-
+model_components = ['parameters', 'components', 'states', 'algebraics', 'constants', 'steps']
 
 class ReactionModel(WavelengthSelectionMixins):
     
@@ -75,6 +76,10 @@ class ReactionModel(WavelengthSelectionMixins):
     __var = VariableNames()
     
     def __init__(self, *args, **kwargs):
+        
+        
+        # self.Parameter = Parameter
+        # self.Component = Component
         
         self.name = kwargs.get('name', 'Model-1')
         self.model = None
@@ -118,7 +123,6 @@ class ReactionModel(WavelengthSelectionMixins):
                                                             'parameters',
                                                             'algebraics',
                                                             'constants']}
-
         
     def __repr__(self):
         
@@ -154,14 +158,129 @@ class ReactionModel(WavelengthSelectionMixins):
     
         return kipet_str
     
-    def _unwanted_G_initialization(self, *args, **kwargs):
-        """Prepare the ParameterEstimator model for unwanted G contributions
+    """Model Components"""
+    
+    def _make_set_up_model(self):
+        """Make the dummy model for initial pyomo vars
         
         """
-        self.builder.add_qr_bounds_init(bounds=(0,None),init=1.1)
-        self.builder.add_g_bounds_init(bounds=(0,None))
-        
+        self._set_up_model = ConcreteModel()
+        self._set_up_model.indx = Set(initialize=[0])
         return None
+    
+    def Component(self, name, index, units):
+        """Creates the initial pyomo variables for model building
+        
+        """
+        if not hasattr(self, '_set_up_model'):
+            self._make_set_up_model()
+        
+        sets = [self._set_up_model.indx]*index
+        m_units = self.ub.ur(units).units
+        if m_units.dimensionless:
+            m_units = str(1)
+        else:
+            m_units = getattr(self.ub.ur, str(m_units))
+        
+        setattr(self._set_up_model, name, Var(*sets, initialize=1))#, units=units))
+        var = getattr(self._set_up_model, name)
+        return var[tuple([0 for i in range(index)])]
+    
+    def _add_model_component(self, name, index, model_var, *args, **kwargs):
+        """Generic method for adding modeling components to the ReactionModel
+        
+        """
+        par = self.Component(args[0], index, units=kwargs.get('units', None))
+        kwargs['unit_base'] = self.ub
+        kwargs['pyomo_var'] = par
+        kwargs['model_var'] = model_var
+        getattr(self, f'{name}s').add_element(*args, **kwargs)
+        return par
+    
+    def parameter(self, *args, **kwargs):
+        """Create a parameter with a localized pyomo var
+        
+        """
+        return self._add_model_component('parameter',
+                                        1, 
+                                        self.__var.model_parameter, 
+                                        *args, 
+                                        **kwargs)
+        
+    def component(self, *args, **kwargs):
+        """Create a component with a localized pyomo var
+        
+        """
+        return self._add_model_component('component', 
+                                        2, 
+                                        self.__var.concentration_model, 
+                                        *args, 
+                                        **kwargs)
+    
+    def state(self, *args, **kwargs):
+        """Create a state with a localized pyomo var
+        
+        """
+        return self._add_model_component('state', 
+                                        2, 
+                                        self.__var.state_model, 
+                                        *args, 
+                                        **kwargs)
+    
+    def constant(self, *args, **kwargs):
+        """Create a constant with a localized pyomo var
+        
+        """
+        return self._add_model_component('constant', 
+                                        1, 
+                                        self.__var.model_constant, 
+                                        *args, 
+                                        **kwargs)
+        
+    def algebraic(self, *args, **kwargs):
+        """Create a algebraic variable with a localized pyomo var
+        
+        """
+        return self._add_model_component('algebraic', 
+                                        2, 
+                                        self.__var.algebraic, 
+                                        *args, 
+                                        **kwargs)
+    
+    # def variable(self, *args, **kwargs):
+    #     """Create a generic variable with a localized pyomo var
+          # This will be a generic method that others can use...
+    #     """
+    #     if kwargs.get('index', None) is None:
+    #         raise ValueError('Custom variables require an index list')
+        
+    #     return self._add_model_component('custom', 
+    #                                     kwargs['index'], 
+    #                                     'V', 
+    #                                     *args, 
+    #                                     **kwargs)
+    
+    def step(self, name, *args, **kwargs):
+        """Create a step variable with a localized pyomo var
+        
+        """
+        self._has_step_or_dosing = True
+        if not hasattr(self, '_step_list'):
+            self._step_list = {}
+            
+        var_name = 'step'
+        if name not in self._step_list:
+            self._step_list[name] = [kwargs]
+        else:
+            self._step_list[name].append(kwargs)
+            
+        par = self.Component(name, 2, None)
+        if not hasattr(self, f'{var_name}s'):
+            setattr(self, f'{var_name}s', {})
+        getattr(self, f'{var_name}s')[name] = [self.__var.step_variable, par]
+        return par
+    
+    """Dosing profiles"""
     
     def add_dosing_point(self, component, time, step):
         """Add a dosing point or several (check template for how this is handled)
@@ -191,7 +310,6 @@ class ReactionModel(WavelengthSelectionMixins):
     
         return None
     
-
     def call_fe_factory(self):
         """Somewhat of a wrapper for this simulator method, but better"""
 
@@ -201,75 +319,7 @@ class ReactionModel(WavelengthSelectionMixins):
 
         return None
     
-        
-    def add_constant(self, *args, **kwargs):
-        
-        kwargs['unit_base'] = self.ub
-        self.constants.add_element(*args, **kwargs)
-        return None
-        
-    def add_alg_var(self, *args, **kwargs):
-        
-        kwargs['unit_base'] = self.ub
-        self.algebraics.add_element(*args, **kwargs)
-        # if 'step' in kwargs and kwargs['step'] is not None:
-        #     self.add_step(f's_{args[0]}', time=15, switch='off')
-    
-    def add_step(self, name, *args, **kwargs):
-        
-        self._has_step_or_dosing = True
-        if not hasattr(self, '_step_list'):
-            self._step_list = {}
-            
-        if name not in self._step_list:
-            self._step_list[name] = [kwargs]
-        else:
-            self._step_list[name].append(kwargs)
-    
-    def add_state(self, *args, **kwargs):
-        """Add the components to the Kipet instance
-        
-        Args:
-            components (list): list of Component instances
-            
-        Returns:
-            None
-            
-        """
-        kwargs['unit_base'] = self.ub
-        self.states.add_element(*args, **kwargs)
-        return None
-    
-    def add_component(self, *args, **kwargs):
-        """Add the components to the Kipet instance
-        
-        Args:
-            components (list): list of Component instances
-            
-        Returns:
-            None
-            
-        """
-        kwargs['unit_base'] = self.ub
-        self.components.add_element(*args, **kwargs)
-        return None
-    
-    def add_parameter(self, *args, **kwargs):
-        """Add the parameters to the Kipet instance
-        
-        Args:
-            parameters (list): list of Parameter instances
-            
-            factor (float): defaults to 1, the scalar multiple of the parameters
-            for simulation purposes
-            
-        Returns:
-            None
-            
-        """
-        kwargs['unit_base'] = self.ub
-        self.parameters.add_element(*args, **kwargs)
-        return None
+    """Model data"""
     
     def add_data(self, *args, **kwargs):
         
@@ -352,6 +402,8 @@ class ReactionModel(WavelengthSelectionMixins):
 
         return None
 
+    """Template building"""
+
     def set_times(self, start_time=None, end_time=None):
         """Add times to model for simulation (overrides data-based times)"""
         
@@ -359,6 +411,35 @@ class ReactionModel(WavelengthSelectionMixins):
             raise ValueError('Time needs to be a number')
         
         self.settings.general.simulation_times = (start_time, end_time)
+        return None
+    
+    def _unwanted_G_initialization(self, *args, **kwargs):
+        """Prepare the ParameterEstimator model for unwanted G contributions
+        
+        """
+        self.builder.add_qr_bounds_init(bounds=(0,None),init=1.1)
+        self.builder.add_g_bounds_init(bounds=(0,None))
+        
+        return None
+    
+    def expression(self, label, expr):
+        """
+        Parameters
+        ----------
+        label : TYPE
+            DESCRIPTION.
+        expr : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        """
+        expr = Expression(label, expr)
+        if not hasattr(self, 'expr_dict'):
+            self.expr_dict = {}
+        self.expr_dict.update(**{label: expr})
         return None
     
     def add_ode(self, ode_var, expr):
@@ -375,21 +456,6 @@ class ReactionModel(WavelengthSelectionMixins):
         """
         expr = Expression(ode_var, expr)
         self.odes_dict.update(**{ode_var: expr})
-        
-        # for var in self.c.var_dict:
-        #     model_var = getattr(self.c, var)
-        #     visitor = FindingVisitor()
-        #     visitor.find_suspect(id(model_var))
-        #     new_expr = visitor.dfs_postorder_stack(expr.expression)
-        #     if visitor._found:
-                
-        #         if var in self.components_used:
-        #             continue
-        #         else:
-        #             self.components_used.add(var)
-        #             self.
-    
-        #print(self.components_used)
         
         return None
     
@@ -568,31 +634,19 @@ class ReactionModel(WavelengthSelectionMixins):
        
         return start_time, end_time
     
-    def get_model_vars(self):
+    def _make_c_dict(self):
         
-        self.create_pyomo_model_vars()
-        return self.c
+        model_components = ['parameters', 'components', 'states', 'algebraics', 'constants']
+        
+        if not hasattr(self, 'c'):
+            self.c = dict()
+            for mc in model_components: 
+                if hasattr(self, f'{mc}'):
+                    for comp in getattr(self, f'{mc}'):
+                        self.c.update({comp.name: [comp.model_var, comp.pyomo_var]})
     
-    def load_vars(self):
-        
-        for var in self.c.get_var_list:
-            globals()[var] = getattr(self.c, var)
-    
-    def create_pyomo_model_vars(self, *args, **kwargs):
-        
-        setattr(self.builder, 'early_return', True)
-        self.set_times(0, 1)
-        kwargs.update({'odes_bypass': True})
-        kwargs.update({'with_data': False})
-        kwargs.update({'skip_non_abs': True})
-        self.create_pyomo_model(self, *args, **kwargs)
-        self.c = self.builder.c_mod
-        delattr(self.builder, 'early_return')
-        self.set_up_model = self.model
-        self.model = None
-        self.settings.general.simulation_times = None
-        
-        return None
+            if hasattr(self, 'steps'):
+                self.c.update(getattr(self, 'steps'))
     
     def create_pyomo_model(self, *args, **kwargs):
         """Adds the component, parameter, data, and odes to the TemplateBuilder
@@ -612,9 +666,8 @@ class ReactionModel(WavelengthSelectionMixins):
         skip_non_abs = kwargs.pop('skip_non_abs', False)
             
         start_time, end_time = self.populate_template(*args, **kwargs)
-        # print(start_time, end_time)
-        if hasattr(self, 'c'):
-            setattr(self.builder, 'c_mod', self.c)
+        self._make_c_dict()
+        setattr(self.builder, 'c_mod', self.c)
         
         self.model = self.builder.create_pyomo_model(start_time, end_time)
         
@@ -662,6 +715,8 @@ class ReactionModel(WavelengthSelectionMixins):
                 getattr(self, estimator).initialize_from_trajectory(*init)
                 
         return None
+    
+    """Simulation"""
     
     def simulate(self):
         """This should try to handle all of the simulation cases"""
@@ -743,19 +798,21 @@ class ReactionModel(WavelengthSelectionMixins):
     
         return None
     
-    def reduce_spectra_data_set(self, dropout=4):
-        """To reduce the computational burden, this can be used to reduce 
-        the amount of spectral data used
+    # def reduce_spectra_data_set(self, dropout=4):
+    #     """To reduce the computational burden, this can be used to reduce 
+    #     the amount of spectral data used
         
-        """
-        A_set = [l for i, l in enumerate(self.model.meas_lambdas) if (i % dropout == 0)]
-        return A_set
+    #     """
+    #     A_set = [l for i, l in enumerate(self.model.meas_lambdas) if (i % dropout == 0)]
+    #     return A_set
     
     def bound_profile(self, var, bounds):
         """Wrapper for TemplateBuilder bound_profile method"""
         
         self.builder.bound_profile(var=var, bounds=bounds)
         return None
+    
+    """Estimators"""
     
     def create_variance_estimator(self, **kwargs):
         """This is a wrapper for creating the VarianceEstimator"""
@@ -1115,6 +1172,71 @@ class ReactionModel(WavelengthSelectionMixins):
                                                                  )         
         return scaled_parameter_dict, scaled_models_dict
     
+    def clone(self, *args, **kwargs):
+        """Makes a copy of the ReactionModel and removes the data. This is done
+        to reuse the model, components, and parameters in an easier manner
+        
+        """
+        new_kipet_model = copy.deepcopy(self)
+        
+        name = kwargs.get('name', self.name + '_copy')
+        copy_model = kwargs.get('model', True)
+        copy_builder = kwargs.get('builder', True)
+        copy_components = kwargs.get('components', True)   
+        copy_parameters = kwargs.get('parameters', True)
+        copy_datasets = kwargs.get('datasets', True)
+        copy_constants = kwargs.get('constants', True)
+        copy_settings = kwargs.get('settings', True)
+        copy_algebraic_variables = kwargs.get('alg_vars', True)
+        copy_odes = kwargs.get('odes', True)
+        copy_algs = kwargs.get('algs', True)
+        
+        # Reset the datasets
+        
+        new_kipet_model.name = name
+        
+        if not copy_model:
+            new_kipet_model.model = None
+        
+        if not copy_builder:
+            new_kipet_model.builder = TemplateBuilder()
+            
+        if not copy_components:
+            new_kipet_model.components = ComponentBlock()
+        
+        if not copy_parameters:
+            new_kipet_model.parameters = ParameterBlock()
+            
+        if not copy_datasets:
+            del new_kipet_model.datasets
+            new_kipet_model.datasets = DataBlock()
+            
+        if not copy_constants:
+            new_kipet_model.constants = None
+            
+        if not copy_algebraic_variables:
+            new_kipet_model.algebraic_variables = []
+            
+        if not copy_settings:
+            new_kipet_model.settings = Settings()
+            
+        if not copy_odes:
+            new_kipet_model.odes = None
+            
+        if not copy_algs:
+            new_kipet_model.algs = None
+        
+        list_of_attr_to_delete = ['p_model', 'v_model', 'p_estimator',
+                                  'v_estimator', 'simulator']
+        
+        for attr in list_of_attr_to_delete:
+            if hasattr(new_kipet_model, attr):
+                setattr(new_kipet_model, attr, None)
+        
+        new_kipet_model.results_dict = {}
+            
+        return new_kipet_model
+    
     def rhps_method(self,
                      method='k_aug',
                      calc_method='global',
@@ -1146,36 +1268,44 @@ class ReactionModel(WavelengthSelectionMixins):
         kwargs['scaled'] = scaled
         kwargs['use_bounds'] = False
         kwargs['use_duals'] = False
+        kwargs['ncp'] = self.settings.collocation.ncp
+        kwargs['nfe'] = self.settings.collocation.nfe
         
-        parameter_dict = self.parameters.as_dict(bounds=True)
+        # parameter_dict = self.parameters.as_dict(bounds=True)
         results, reduced_model = rhps_method(self.model, **kwargs)
         
         results.file_dir = self.settings.general.charts_directory
         
-        #self.reduced_model = reduced_model
-        #self.using_reduced_model = True
-        #self.reduced_model_results = results
+        self.reduced_model = reduced_model
+        self.using_reduced_model = True
+        self.reduced_model_results = results
         
-        # Make a KipetModel as the result using the reduced model
+        #Make a KipetModel as the result using the reduced model
+        red_model = ReactionModel()
+        self.red_model = ReactionModel(name=self.name+'_reduced')
+                
+        assign_list = ['components', 'parameters', 'constants', 'algebraics',
+                       'states', 'ub', 'settings', 'c', 'odes_dict']
+  
+        ignore = []
+        for item in assign_list:
+            if item not in ignore and hasattr(self, item):
+                setattr(self.red_model, item, getattr(self, item))
         
-        items_not_copied = {'model': False,
-                            'parameters': False,
-                            }
+        # reduced_kipet_model = self.clone('reduced_model', **items_not_copied)
         
-        reduced_kipet_model = self.clone('reduced_model', **items_not_copied)
-        
-        
+        #%%
         # reduced_kipet_model.add_parameter()
         # self, name=None, init=None, bounds=None
         
-        reduced_kipet_model.model = reduced_model
-        reduced_kipet_model.results = results
+        # reduced_kipet_model.model = reduced_model
+        # reduced_kipet_model.results = results
         
-        reduced_parameter_set = {k: [v.value, (v.lb, v.ub)] for k, v in reduced_kipet_model.model.P.items()}
-        for param, param_data in reduced_parameter_set.items():
-            reduced_kipet_model.add_parameter(param, init=param_data[0], bounds=param_data[1])
+        # reduced_parameter_set = {k: [v.value, (v.lb, v.ub)] for k, v in reduced_kipet_model.model.P.items()}
+        # for param, param_data in reduced_parameter_set.items():
+        #     reduced_kipet_model.add_parameter(param, init=param_data[0], bounds=param_data[1])
         
-        return reduced_kipet_model
+        # return reduced_kipet_model
     
     def set_non_absorbing_species(self, non_abs_list):
         """Wrapper for set_non_absorbing_species in TemplateBuilder"""
@@ -1260,11 +1390,11 @@ class ReactionModel(WavelengthSelectionMixins):
         
     """MODEL FUNCTION AREA"""
     
-    def step(self, *args, **kwargs):
-        """Wrapper for the step_fun in model_funs module
+    # def step(self, *args, **kwargs):
+    #     """Wrapper for the step_fun in model_funs module
         
-        """
-        return step_fun(*args, **kwargs)
+    #     """
+    #     return step_fun(*args, **kwargs)
     
     # def step_var(self, *args, **kwargs):
     #     """Wrapper for the step_fun in model_funs module
@@ -1301,8 +1431,7 @@ class ReactionModel(WavelengthSelectionMixins):
         r_dict = {}
         
         for com in self.components.names: 
-            if self.components[com].state == 'concentration':
-                r_dict[com] = sum(stoich_coeff[com][i] * getattr(self.c, r) for i, r in enumerate(rxns)) 
+            r_dict[com] = sum(stoich_coeff[com][i] * self.ae(r) for i, r in enumerate(rxns)) 
     
         return r_dict
     
@@ -1355,22 +1484,24 @@ class ReactionModel(WavelengthSelectionMixins):
             self._build_odes()
         if not self.__flag_algs_built:
             self._build_algs()
-
-        element_dict = {
-           'parameters': self.parameters,
-           'components': self.components,
-           'constants': self.constants,
-           'algebraics': self.algebraics,
-           'states': self.states,
-                }
-
-        self.c_units = get_unit_model(element_dict, self.set_up_model)
         
-        for key, expr in self.odes_dict.items():
-            expr.check_units(self.c, self.c_units)
+        elements = ['parameters', 'components', 'states', 'constants', 'algebraics']
+        element_dict = {}
+        for element in elements:
+            if hasattr(self, f'{element}'):
+                element_dict[element] = getattr(self, f'{element}')
+            else:
+                element_dict[element] = {}
+                
+        self._make_c_dict()
+        
+        self.c_units = get_unit_model(element_dict, self._set_up_model)
+        
         for key, expr in self.algs_dict.items():
-            expr.check_units(self.c, self.c_units)
-
+            expr.check_units2(self.c, self.c_units)
+        for key, expr in self.odes_dict.items():
+            expr.check_units2(self.c, self.c_units)
+        
         if display:
             self.ode_obj.display_units()
             print('')

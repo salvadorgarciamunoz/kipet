@@ -15,6 +15,8 @@ class ModelElement():
                  units=None,
                  unit_base=None,
                  description=None,
+                 pyomo_var=None,
+                 model_var=None
                  ): 
         
         self.name = self._check_name(name)
@@ -22,6 +24,8 @@ class ModelElement():
         self.value = value
         self.description = description
     
+        self.pyomo_var = pyomo_var
+        self.model_var = model_var
         self.unit_base = unit_base
         self.ur = unit_base.ur
         self.units = 1*self.ur('') if units is None else 1*self.ur(units)
@@ -51,7 +55,7 @@ class ModelElement():
                 bounds[0] *= self.conversion_factor
             if bounds[1] is not None:
                 bounds[1] *= self.conversion_factor
-            self.bounds = (bounds)
+            self.bounds = (bounds) 
 
     def convert_unit(self, u_orig, u_goal, scalar=1, power=1, both_powers=False):
    
@@ -147,9 +151,11 @@ class ModelAlgebraic(ModelElement):
                  description=None,
                  data=None,
                  step=None,
+                 pyomo_var=None,
+                 model_var=None,
                  ):
     
-        super().__init__(name, ModelComponent.class_, value, units, unit_base, description)
+        super().__init__(name, ModelComponent.class_, value, units, unit_base, description, pyomo_var, model_var)
    
         self.bounds = bounds
         self.data = data
@@ -199,9 +205,11 @@ class ModelComponent(ModelElement):
                  bounds=(None,None),
                  description=None,
                  absorbing=True,
+                 pyomo_var=None,
+                 model_var=None,
                  ):
     
-        super().__init__(name, ModelComponent.class_, value, units, unit_base, description)
+        super().__init__(name, ModelComponent.class_, value, units, unit_base, description, pyomo_var, model_var)
    
         # component attributes
         self.variance = variance
@@ -263,9 +271,11 @@ class ModelState(ModelElement):
                  known=True,
                  bounds=(None, None),
                  description=None,
+                 pyomo_var=None,
+                 model_var=None,
                  ):
     
-        super().__init__(name, ModelComponent.class_, value, units, unit_base, description)
+        super().__init__(name, ModelComponent.class_, value, units, unit_base, description, pyomo_var, model_var)
    
         # component attributes
         self.variance = variance
@@ -327,9 +337,11 @@ class ModelParameter(ModelElement):
                  fixed=False,
                  variance=None,
                  description=None,
+                 pyomo_var=None,
+                 model_var=None,
                  ):
-
-        super().__init__(name, ModelParameter.class_, value, units, unit_base, description)
+    
+        super().__init__(name, ModelComponent.class_, value, units, unit_base, description, pyomo_var, model_var)
         
         # parameter attributes
         self.bounds = bounds
@@ -380,9 +392,11 @@ class ModelConstant(ModelElement):
                  units=None,
                  unit_base=None,
                  description=None,
+                 pyomo_var=None,
+                 model_var=None,
                  ):
-
-        super().__init__(name, ModelConstant.class_, value, units, unit_base, description)
+    
+        super().__init__(name, ModelComponent.class_, value, units, unit_base, description, pyomo_var)
         self._class_ = type(self)
     
     def __str__(self):

@@ -142,8 +142,8 @@ class TemplateBuilder(object):
         Returns:
             None
         """
-        self._state_sigmas = sigma_dict #{'A': 0.0001, 'T': 0.0625}
-        # perhaps make this more secure later on and account for different input types
+        self._state_sigmas = sigma_dict 
+        
         return None
 
     def set_parameter_scaling(self, use_scaling: bool):
@@ -220,40 +220,25 @@ class TemplateBuilder(object):
         time_span = 0
         time_conversion_factor = 1
         
-        if data_block_dict is not None:
-            
-            if hasattr(self, 'template_component_data'):
-                c_info = self.template_component_data
-                for comp in c_info:
-                    if hasattr(comp, 'data_link'):
-                        data_block = data_block_dict[comp.data_link]
-                        time_span = max(time_span, data_block.time_span[1]*time_conversion_factor)
-                        data_frame = data_block.data[comp.name]*comp.conversion_factor
-                        data_frame.index = data_frame.index*time_conversion_factor
-                        self._add_state_data(data_frame, 'concentration', overwrite=False)
-                        
-            if hasattr(self, 'template_state_data'):
-                c_info = self.template_state_data
-                for comp in c_info:
-                    if hasattr(comp, 'data_link'):
-                        data_block = data_block_dict[comp.data_link]
-                        time_span = max(time_span, data_block.time_span[1]*time_conversion_factor)
-                        data_frame = data_block.data[comp.name]*comp.conversion_factor
-                        data_frame.index = data_frame.index*time_conversion_factor
-                        self._add_state_data(data_frame, 'complementary_states', overwrite=False)
-                        
-            if hasattr(self, 'template_algebraic_data'):
-                c_info = self.template_algebraic_data
-                for comp in c_info:
-                    if hasattr(comp, 'data_link'):
-                        data_block = data_block_dict[comp.data_link]
-                        time_span = max(time_span, data_block.time_span[1]*time_conversion_factor)
-                        data_frame = data_block.data[comp.name]*comp.conversion_factor
-                        data_frame.index = data_frame.index*time_conversion_factor
-                        self._add_state_data(data_frame, 'custom', overwrite=False)
+        data_type_labels = {'component' : 'concentration',
+                            'state': 'complementary_states',
+                            'algebraic': 'custom',
+                            }
 
+        if data_block_dict is not None:
+            for data_type, data_label in data_type_labels.items():
+                if hasattr(self, f'template_{data_type}_data'):
+                    c_info = getattr(self, f'template_{data_type}_data')
+                    for comp in c_info:
+                        if hasattr(comp, 'data_link'):
+                            data_block = data_block_dict[comp.data_link]
+                            time_span = max(time_span, data_block.time_span[1]*time_conversion_factor)
+                            data_frame = data_block.data[comp.name]*comp.conversion_factor
+                            data_frame.index = data_frame.index*time_conversion_factor
+                            self._add_state_data(data_frame, data_label, overwrite=False)
+
+        # Spectral data is handled differently
         if spectral_data is not None:
-    
             self._add_state_data(spectral_data.data, 'spectral')
             spectral_data.data.index = spectral_data.data.index*time_conversion_factor
             time_span = max(time_span, spectral_data.data.index.max())
@@ -935,19 +920,22 @@ class TemplateBuilder(object):
     def change_time(self, expr_orig, c_mod, new_time, current_model):
         """Method to remove the fixed parameters from the ConcreteModel
         TODO: move to a new expression class
+        
+        At the moment, this only supports one and two dimensional variables
         """
         expr_new_time = expr_orig
-        var_dict = c_mod.var_dict
-        for model_var, var_obj in var_dict.items():
+        var_dict = c_mod
+        
+        for model_var, obj_list in var_dict.items():
             
-            if getattr(current_model, var_obj.index).dim() == 1:
-                old_var = getattr(c_mod, model_var)
-                new_var = getattr(current_model, var_obj.index)[var_obj.comp]
-
+            if not isinstance(obj_list[1].index(), int):
+                old_var = obj_list[1]
+                new_var = getattr(current_model, obj_list[0])[new_time, model_var]
+        
             else:
-                old_var = getattr(c_mod, model_var)
-                new_var = getattr(current_model, var_obj.index)[new_time, var_obj.comp]
-            
+                old_var = obj_list[1]
+                new_var = getattr(current_model, obj_list[0])[model_var]
+        
             expr_new_time = self._update_expression(expr_new_time, old_var, new_var)
     
         return expr_new_time
@@ -1007,30 +995,6 @@ class TemplateBuilder(object):
             setattr(model, self.__var.ode_constraints, Constraint(model.alltime,
                                                                   model.states,
                                                                   rule=rule_odes))
-
-        elif self._odes:
-            def rule_odes(m, t, k):
-                exprs = self._odes(m, t)
-            
-                if t == m.start_time.value:
-                    return Constraint.Skip
-                else:
-                    if k in m.mixture_components:
-                        if k in exprs.keys():
-                            deriv_var = f'd{self.__var.concentration_model}dt'
-                            return getattr(m, deriv_var)[t, k] == exprs[k]
-                        else:
-                            return Constraint.Skip
-                    else:
-                        if k in exprs.keys():
-                            deriv_var = f'd{self.__var.state_model}dt'
-                            return getattr(m, deriv_var)[t, k] == exprs[k]
-                        else:
-                            return Constraint.Skip
-
-            setattr(model, self.__var.ode_constraints, Constraint(model.alltime,
-                                                                  model.states,
-                                                                  rule=rule_odes))
         return None
     
     def _add_algebraic_constraints(self, model):
@@ -1038,19 +1002,12 @@ class TemplateBuilder(object):
         
         if self._algebraic_constraints:
             if hasattr(self, 'reaction_dict') or hasattr(self, '_use_alg_dict') and self._use_alg_dict:
-                n_alg_eqns = self._algebraic_constraints.keys()
+                n_alg_eqns = list(self._algebraic_constraints.keys())
                 def rule_algebraics(m, t, k):
                     alg_const = self._algebraic_constraints[k].expression
                     alg_var = getattr(m, self.__var.algebraic)[t, k]
                     final_expr = alg_var - alg_const == 0.0
                     final_expr  = self.change_time(final_expr, self.c_mod, t, m)
-                    return final_expr
-            else:
-                n_alg_eqns = range(len(self._algebraic_constraints(model, model.start_time)))
-                def rule_algebraics(m, t, k):
-                      
-                    alg_const = self._algebraic_constraints(m, t)[k]
-                    final_expr = alg_const == 0.0
                     return final_expr
     
             model.algebraic_consts = Constraint(model.alltime,
@@ -1094,6 +1051,7 @@ class TemplateBuilder(object):
 
             setattr(model, self.__var.spectra_data, Param(model.meas_times,
                                                           model.meas_lambdas,
+                                                          domain=Any,
                                                           initialize=s_data_dict))
             
             setattr(model, self.__var.concentration_spectra, Var(model.meas_times,
@@ -1304,8 +1262,8 @@ class TemplateBuilder(object):
         model.alltime = ContinuousSet(initialize=model.allmeas_times,
                                       bounds=(start_time, end_time)) #add for new data structure CS
         
-        model.start_time = Param(initialize=start_time)
-        model.end_time = Param(initialize=end_time)
+        model.start_time = Param(initialize=start_time, domain=Reals)
+        model.end_time = Param(initialize=end_time, domain=Reals)
         
         return None
     
@@ -1466,7 +1424,11 @@ class TemplateBuilder(object):
         self._add_model_variables(pyomo_model)
         self._add_model_parameters(pyomo_model)
             
-        pyomo_model.algebraics = Set(initialize=list(self._algebraics.keys()))
+        if not hasattr(self, 'template_algebraic_data'):
+            alg_names = []
+        else:
+            alg_names = self.template_algebraic_data.names
+        pyomo_model.algebraics = Set(initialize=alg_names)
             
         self._add_algebraic_var(pyomo_model)
         self._add_model_constants(pyomo_model)

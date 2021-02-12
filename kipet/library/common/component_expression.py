@@ -145,51 +145,20 @@ def get_unit_model(element_dict, set_up_model):
     representing the model's varialbes with units
     """            
     unit_model = ConcreteModel()
-    __var = VariableNames()
-    
     new_params = set()
-    
-    model_vars = [__var.concentration_model,
-                #self.concentration_model_rate,
-                  __var.state_model,
-                #self.state_model_rate,
-                  __var.model_parameter,
-                  __var.algebraic,
-                  #__var.step_variable,
-                  __var.model_constant,
-                ]
-    
-    index_vars = model_vars
-     
-    CompBlocks = {'P': element_dict['parameters'],
-                  'Z': element_dict['components'],
-                  'X': element_dict['states'],
-                  'Const': element_dict['constants'],
-                  'Y': element_dict['algebraics'],
-                  }
-    
-    for index_var in index_vars:
-        if not hasattr(set_up_model, index_var):
-            continue
-        
-        var_obj = getattr(set_up_model, index_var)
-        for k, v in var_obj.items():
-            key = k
-            if isinstance(k, tuple):
-                key = k[1]
-            if key in new_params:
-                continue
-            new_params.add(key)
-            block = CompBlocks[index_var]
-            m_units = block[key].units
-        
-            if m_units.dimensionless:
-                m_units = str(1)
-            else:
-                m_units = getattr(u, str(m_units))
+    for elem, comp_block in element_dict.items():
+        if len(comp_block) > 0:
+            for comp in comp_block:
                 
-            setattr(unit_model, key, Var(initialize=1, units=m_units))
-    
+                new_params.add(comp.name)
+                m_units = comp.units
+                if m_units is None:
+                    m_units = str(1)
+                else:
+                    m_units = getattr(u, str(m_units))
+                    
+                setattr(unit_model, comp.name, Var(initialize=1, units=m_units))
+        
     c_units = Comp_Check(unit_model, list(new_params))
     
     return c_units

@@ -137,7 +137,7 @@ class PlotObject():
         state = f'{self.reaction_model.components[col].state}'.capitalize()
         title = f'Model: {self.reaction_model.name} | Concentration Profiles'
         time_scale = f'Time [{self.reaction_model.ub.TIME_BASE}]'
-        state_units = var_data.units
+        state_units = var_data.units.u
         fig.update_layout(
                 title=title,
                 xaxis_title=f'{time_scale}',

@@ -242,7 +242,7 @@ class ParameterEstimator(PEMixins, Optimizer):
                                        **kwds)
             
        
-        elif self._concentration_given or self._custom_data_given:
+        elif self._concentration_given: # or self._custom_data_given:
             self.objective_value, self.cov_mat = self._solve_model_given_c(variances, 
                                       opt,
                                       tee=tee,
@@ -585,7 +585,7 @@ class ParameterEstimator(PEMixins, Optimizer):
         list_components = self._get_list_components(species_list)
         model = self.model
 
-        if not self._concentration_given and not self._custom_data_given:
+        if not self._concentration_given: # and not self._custom_data_given:
             raise NotImplementedError(
                 "Parameter Estimation from concentration data requires concentration data model.C[ti,cj]")
 
