@@ -28,31 +28,30 @@ if __name__ == "__main__":
     r1 = kipet_model.new_reaction('reaction-1')
     
     # Add the model parameters
-    r1.add_parameter('k1', value=2, bounds=(0.0, 10.0), units='1/s')
-    r1.add_parameter('k2', value=0.2, bounds=(0.0, 10.0), units='1/s')
+    k1 = r1.parameter('k1', value=2, bounds=(0.0, 10.0), units='1/s')
+    k2 = r1.parameter('k2', value=0.2, bounds=(0.0, 10.0), units='1/s')
     
     # Declare the components and give the valueial values
-    r1.add_component('A', value=1.0, units='mol/l')
-    r1.add_component('B', value=0.0, units='mol/l')
-    r1.add_component('C', value=0.0, units='mol/l')
+    A = r1.component('A', value=1.0, units='mol/l')
+    B = r1.component('B', value=0.0, units='mol/l')
+    C = r1.component('C', value=0.0, units='mol/l')
     
-    r1.add_alg_var('y', description='Ratio of B to B + C')
+    y = r1.algebraic('y', description='Ratio of B to B + C')
     
     r1.add_data('C_data', data=full_data[['A']], remove_negatives=True)
     r1.add_data('y_data', data=full_data[['y']])
     
     # r1.add_data('y_data', file='example_data/ratios.csv')
-    r1.add_data('traj', file='example_data/extra_states.txt')
+    # r1.add_data('traj', file='example_data/extra_states.txt')
     
-    c = r1.get_model_vars()
+    r1.add_ode('A', -k1 * A )
+    r1.add_ode('B', k1 * A - k2 * B )
+    r1.add_ode('C', k2 * B )
     
-    r1.add_ode('A', -c.k1 * c.A )
-    r1.add_ode('B', c.k1 * c.A - c.k2 * c.B )
-    r1.add_ode('C', c.k2 * c.B )
-    
-    r1.add_algebraic('y', (c.B)/(c.B + c.C) )
+    r1.add_algebraic('y', B/(B + C) )
     
     r1.check_model_units()
+    
     # Add the custom objective varibale to the model using the following method:
     r1.add_objective_from_algebraic('y')
      

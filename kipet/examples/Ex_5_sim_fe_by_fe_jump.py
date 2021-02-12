@@ -26,35 +26,28 @@ if __name__ == "__main__":
     
     # components
     components = dict()
-    components['AH'] = 0.395555
-    components['B'] = 0.0351202
-    components['C'] = 0.0
-    components['BHp'] = 0.0
-    components['Am'] = 0.0
-    components['ACm'] = 0.0
-    components['P'] = 0.0
-
-    for comp, init_value in components.items():
-        r1.add_component(comp, value=init_value)
+    AH = r1.component('AH', value= 0.395555)
+    B = r1.component('B', value= 0.0351202)
+    C = r1.component('C', value= 0.0)
+    BHp = r1.component('BHp', value= 0.0)
+    Am = r1.component('Am', value= 0.0)
+    ACm = r1.component('ACm', value= 0.0)
+    P = r1.component('P', value= 0.0)
     
-    r1.add_alg_var('y0', value=0, description='Reaction 0')
-    r1.add_alg_var('y1', value=0, description='Reaction 1')
-    r1.add_alg_var('y2', value=0, description='Reaction 2')
-    r1.add_alg_var('y3', value=0, description='Reaction 3')
-    r1.add_alg_var('y4', value=0, description='Reaction 4')
+    y0 = r1.algebraic('y0', value=0, description='Reaction 0')
+    y1 = r1.algebraic('y1', value=0, description='Reaction 1')
+    y2 = r1.algebraic('y2', value=0, description='Reaction 2')
+    y3 = r1.algebraic('y3', value=0, description='Reaction 3')
+    y4 = r1.algebraic('y4', value=0, description='Reaction 4')
 
-    params = dict()
-    params['k0'] = 49.7796
-    params['k1'] = 8.93156
-    params['k2'] = 1.31765
-    params['k3'] = 0.310870
-    params['k4'] = 3.87809
-
-    for param, init_value in params.items():
-        r1.add_parameter(param, value=init_value)
-
+    k0 = r1.parameter('k0', value=49.7796)
+    k1 = r1.parameter('k1', value=8.93156)
+    k2 = r1.parameter('k2', value=1.31765)
+    k3 = r1.parameter('k3', value=0.31087)
+    k4 = r1.parameter('k4', value=3.87809)
+    
     # add additional state variables
-    r1.add_state('V', state='state', value=0.0629418)
+    V = r1.state('V', state='state', value=0.0629418)
 
     # stoichiometric coefficients
     stoich_coeff = dict()
@@ -66,20 +59,17 @@ if __name__ == "__main__":
     stoich_coeff['ACm'] = [0, 1, -1, -1, -1]
     stoich_coeff['P'] = [0, 0, 0, 1, 1]
     
-    r1.add_step('V_step', time=210, fixed=True, switch='off')   
+    V_step = r1.step('V_step', time=210, fixed=True, switch='off')   
  
-    r1.add_constant('V_flow', value=7.27609e-5)   
+    V_flow = r1.constant('V_flow', value=7.27609e-5)   
  
-    # Get the model variables
-    c = r1.get_model_vars()
-    
     # Algebraics (written as y0 = k0*AH*B)
     AE = {}
-    AE['y0'] = c.k0*c.AH*c.B
-    AE['y1'] = c.k1*c.Am*c.C
-    AE['y2'] = c.k2*c.ACm
-    AE['y3'] = c.k3*c.ACm*c.AH
-    AE['y4'] = c.k4*c.ACm*c.BHp
+    AE['y0'] = k0*AH*B
+    AE['y1'] = k1*Am*C
+    AE['y2'] = k2*ACm
+    AE['y3'] = k3*ACm*AH
+    AE['y4'] = k4*ACm*BHp
     
     r1.add_algebraics(AE)
     
@@ -87,8 +77,8 @@ if __name__ == "__main__":
     reaction_vars = r1.algebraics.names
     
     RE = r1.reaction_block(stoich_coeff, reaction_vars)
-    RE['C'] += 0.02247311828 / (c.V * 210) * c.V_step
-    RE['V'] = c.V_flow * c.V_step
+    RE['C'] += 0.02247311828 / (V * 210) * V_step
+    RE['V'] = V_flow * V_step
 
     r1.add_odes(RE)
     

@@ -21,16 +21,12 @@ if __name__ == "__main__":
     
     r1 = kipet_model.new_reaction('reaction-1')
     
-    components = dict()
-    components['A'] = 3e-2
-    components['B'] = 4e-2
-    components['C'] = 0.0
-    components['D'] = 2e-2
-    components['E'] = 0.0
-    components['F'] = 0.0
-    
-    for comp, init_value in components.items():
-        r1.add_component(comp, value=init_value)
+    A = r1.component('A', value=3e-2)
+    B = r1.component('B', value=4e-2)
+    C = r1.component('C', value=0.0)
+    D = r1.component('D', value=2e-2)
+    E = r1.component('E', value=0.0)
+    F = r1.component('F', value=0.0)
 
     filename = 'example_data/varest3.csv'
     r1.add_data(category='spectral', file=filename, remove_negatives=True)
@@ -38,18 +34,16 @@ if __name__ == "__main__":
     
     # r1.spectra.decrease_wavelengths(2)
 
-    r1.add_parameter('k1', value=1.5, bounds=(0.5, 2.0)) 
-    r1.add_parameter('k2', value=28.0, bounds=(1, 30))
-    r1.add_parameter('k3', value=0.3, bounds=(0.001, 0.5))
+    k1 = r1.parameter('k1', value=1.5, bounds=(0.5, 2.0)) 
+    k2 = r1.parameter('k2', value=28.0, bounds=(1, 30))
+    k3 = r1.parameter('k3', value=0.3, bounds=(0.001, 0.5))
 
-    c = r1.get_model_vars()
-
-    r1.add_ode('A', -c.k1*c.A )
-    r1.add_ode('B', -c.k1*c.A - c.k3*c.B )
-    r1.add_ode('C', -c.k2*c.C*c.D + c.k1*c.A )
-    r1.add_ode('D', -2*c.k2*c.C*c.D )
-    r1.add_ode('E', c.k2*c.C*c.D )
-    r1.add_ode('F', c.k3*c.B )
+    r1.add_ode('A', -k1*A )
+    r1.add_ode('B', -k1*A - k3*B )
+    r1.add_ode('C', -k2*C*D + k1*A )
+    r1.add_ode('D', -2*k2*C*D )
+    r1.add_ode('E', k2*C*D )
+    r1.add_ode('F', k3*B )
     
     # r1.add_equations(rule_odes)
     r1.bound_profile(var='S', bounds=(0, 20))
