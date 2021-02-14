@@ -23,8 +23,7 @@ setuptools_kwargs = {
                          'pandas',
                          'plotly',
                          'matplotlib'
-                         'pint',
-                         'cyipopt'],
+                         ],
     'scripts': [],
     'include_package_data': True,
     'data_files': [('kipet', ['kipet/settings.txt'])],
