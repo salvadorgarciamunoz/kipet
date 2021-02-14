@@ -36,7 +36,7 @@ from kipet.library.dev_tools.display import Print
 from kipet.library.post_model_build.scaling import scale_models
 from kipet.library.post_model_build.replacement import ParameterReplacer
 from kipet.library.mixins.TopLevelMixins import WavelengthSelectionMixins
-from kipet.library.model_components.Parameter import Component
+# from kipet.library.model_components.Parameter import Component
 from kipet.library.top_level.data_component import (
     DataBlock, 
     DataSet,
