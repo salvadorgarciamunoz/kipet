@@ -1,0 +1,3 @@
+include kipet/settings.yml
+include LICENSE
+include README.md
