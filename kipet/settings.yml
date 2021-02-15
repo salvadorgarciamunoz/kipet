@@ -8,6 +8,7 @@ general:
     scale_parameters: False
     simulation_times: None
     no_user_scaling: True
+    confidence: 1
 
 # Collocation Settings
 collocation:

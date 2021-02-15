@@ -37,6 +37,7 @@ class PlotObject():
     def __init__(self, reaction_model):
         
         self.reaction_model = reaction_model
+        self.name = reaction_model.name
         self.color_num = 0
         self.filename = None
         
@@ -80,7 +81,7 @@ class PlotObject():
         if self.filename is None:
             t = time.localtime()
             date = f'{t.tm_year}-{t.tm_mon}-{t.tm_mday}-{t.tm_hour}:{t.tm_min}:{t.tm_sec}'
-            filename = f'{plot_name}-{date}.html'
+            filename = f'{self.name}-{plot_name}-{date}.html'
             
         default_dir = Path.cwd().joinpath('charts')
         default_dir.mkdir(parents=True, exist_ok=True)
