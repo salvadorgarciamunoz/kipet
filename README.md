@@ -1,8 +1,8 @@
 # KIPET
 
 [![](https://img.shields.io/pypi/v/kipet.svg?style=flat)](https://pypi.org/pypi/kipet/)
-[![](https://img.shields.io/github/license/kwmcbride/kipet)](https://github.com/kwmcbride/kipet/blob/master/LICENSE)
-[![](https://img.shields.io/github/last-commit/kwmcbride/kipet)](https://github.com/kwmcbride/kipet/)
+[![](https://img.shields.io/github/license/salvadorgarciamunoz/kipet)](https://github.com/salvadorgarciamunoz/kipet/blob/master/LICENSE)
+[![](https://img.shields.io/github/last-commit/salvadorgarciamunoz/kipet)](https://github.com/salvadorgarciamunoz/kipet/)
 [![](https://img.shields.io/pypi/wheel/kipet)](https://pypi.org/manage/project/kipet/release/0.1.1/)
 
 
