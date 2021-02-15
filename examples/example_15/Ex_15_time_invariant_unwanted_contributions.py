@@ -9,7 +9,7 @@ import pandas as pd
 
 # Kipet library imports
 from kipet import KipetModel
-from kipet.library.common.read_write_tools import read_file
+
 
 if __name__ == "__main__":
 
