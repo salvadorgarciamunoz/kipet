@@ -1,2 +1,2 @@
-from .library.kipet_model import KipetModel
-from .library.core_methods.data_tools import *
+from .kipet_model import KipetModel
+from .core_methods.data_tools import *
