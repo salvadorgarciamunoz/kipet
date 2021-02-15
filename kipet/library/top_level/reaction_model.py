@@ -57,7 +57,6 @@ from kipet.library.top_level.expression import (
 from kipet.library.top_level.helper import DosingPoint
 from kipet.library.top_level.settings import (
     Settings, 
-    USER_DEFINED_SETTINGS,
     )
 from kipet.library.top_level.variable_names import VariableNames
 # from kipet.library.common.VisitorClasses import FindingVisitor
@@ -794,7 +793,7 @@ class ReactionModel(WavelengthSelectionMixins):
         simulator_options = self.settings.simulator
         simulator_options.pop('method', None)
         self.results = self.simulator.run_sim(**simulator_options)
-        self.results.file_dir = self.settings.general.charts_directory
+#        self.results.file_dir = self.settings.general.charts_directory
     
         return None
     
@@ -1079,7 +1078,7 @@ class ReactionModel(WavelengthSelectionMixins):
         
         # Save results in the results_dict
         self.results = self.results_dict['p_estimator']
-        self.results.file_dir = self.settings.general.charts_directory
+        self.results.file_dir = pathlib.Path.cwd() #self.settings.general.charts_directory
         
         # Tells MEE that the individual model is already solved
         self.optimized = True
@@ -1569,7 +1568,8 @@ def _set_directory(model_object, filename, abs_dir=False):
     Returns:
         file_path (pathlib Path): The absolute path of the given file
     """
-    directory = model_object.settings.general.data_directory
+    #directory = model_object.settings.general.data_directory
+    directory = pathlib.Path.cwd()
     file_path = pathlib.Path(directory).joinpath(filename)
     
     return file_path

@@ -11,9 +11,9 @@ import sys
 import numpy as np
 import pandas as pd
 
-from kipet.library.top_level.settings import USER_DEFINED_SETTINGS
+#from kipet.library.top_level.settings import USER_DEFINED_SETTINGS
 
-DEFAULT_DIR = USER_DEFINED_SETTINGS['DATA_DIRECTORY']
+DEFAULT_DIR = Path.cwd()
 
 # def set_directory(filename, data_dir=DEFAULT_DIR, abs_dir=False):
 #     """Sets the current working directory plus the given subdirectory as the

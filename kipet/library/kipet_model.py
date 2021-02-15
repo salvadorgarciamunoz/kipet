@@ -21,7 +21,6 @@ from kipet.library.top_level.reaction_model import (
     )
 from kipet.library.top_level.settings import (
     Settings, 
-    USER_DEFINED_SETTINGS,
     )
 from kipet.library.top_level.unit_base import UnitBase
 
@@ -138,7 +137,7 @@ class KipetModel():
         if model is None:
         
             self.models[name] = ReactionModel(name=name)
-            self.models[name].settings.general.data_directory = self.settings.general.data_directory
+#            self.models[name].settings.general.data_directory = self.settings.general.data_directory
             
             assign_list = ['components', 'parameters', 'constants', 'algebraics',
                              'states', 'ub', 'c']
