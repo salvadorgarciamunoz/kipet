@@ -80,7 +80,7 @@ class PlotObject():
 
         if self.filename is None:
             t = time.localtime()
-            date = f'{t.tm_year}-{t.tm_mon}-{t.tm_mday}-{t.tm_hour}:{t.tm_min}:{t.tm_sec}'
+            date = f'{t.tm_year}-{t.tm_mon:02}-{t.tm_mday:02}-{t.tm_hour:02}:{t.tm_min:02}:{t.tm_sec:02}'
             filename = f'{self.name}-{plot_name}-{date}.html'
             
         default_dir = Path.cwd().joinpath('charts')
