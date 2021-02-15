@@ -1,4 +1,4 @@
-# <img alt="KIPET" src="/branding/logo/primary/kipetlogo.svg" height="60">
+# KIPET
 
 [![](https://img.shields.io/pypi/v/kipet.svg?style=flat)](https://pypi.org/pypi/kipet/)
 [![](https://img.shields.io/github/license/kwmcbride/kipet)](https://github.com/kwmcbride/kipet/blob/master/LICENSE)
