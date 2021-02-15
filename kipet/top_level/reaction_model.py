@@ -30,13 +30,12 @@ from kipet.core_methods.TemplateBuilder import TemplateBuilder
 from kipet.core_methods.VarianceEstimator import VarianceEstimator
 from kipet.common.component_expression import get_unit_model
 from kipet.common.model_funs import step_fun
-from kipet.common.pre_process_tools import decrease_wavelengths
-from kipet.common.pyomo_model_tools import get_vars
+from kipet.post_model_build.pyomo_model_tools import get_vars
 from kipet.dev_tools.display import Print
 from kipet.post_model_build.scaling import scale_models
 from kipet.post_model_build.replacement import ParameterReplacer
 from kipet.mixins.TopLevelMixins import WavelengthSelectionMixins
-# from kipet.model_components.Parameter import Component
+
 from kipet.top_level.data_component import (
     DataBlock, 
     DataSet,

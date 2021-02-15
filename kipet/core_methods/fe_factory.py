@@ -18,7 +18,7 @@ from pyomo.opt import (
     )
 
 # KIPET library imports
-from kipet.common.pyomo_model_tools import (
+from kipet.post_model_build.pyomo_model_tools import (
     change_continuous_set,
     get_index_sets,
     )

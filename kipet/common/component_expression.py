@@ -9,7 +9,7 @@ from pyomo.core.base.var import Var
 from pyomo.environ import units as u
 
 # KIPET library imports
-from kipet.common.pyomo_model_tools import get_index_sets
+from kipet.post_model_build.pyomo_model_tools import get_index_sets
 from kipet.common.VisitorClasses import ReplacementVisitor
 from kipet.post_model_build.replacement import _update_expression
 from kipet.top_level.variable_names import VariableNames

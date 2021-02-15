@@ -21,7 +21,7 @@ from pyomo.environ import units as u
 from kipet.post_model_build.scaling import scale_parameters
 from kipet.core_methods.PyomoSimulator import PyomoSimulator
 from kipet.top_level.variable_names import VariableNames
-from kipet.common.pyomo_model_tools import get_index_sets
+from kipet.post_model_build.pyomo_model_tools import get_index_sets
 from kipet.common.VisitorClasses import ReplacementVisitor
 from kipet.common.component_expression import Comp
 

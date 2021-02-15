@@ -8,7 +8,7 @@ from pyomo.environ import *
 
 from kipet.core_methods.ResultsObject import *
 from kipet.core_methods.Simulator import *
-from kipet.common.pyomo_model_tools import (
+from kipet.post_model_build.pyomo_model_tools import (
     index_set_info,
     get_index_sets,
     )

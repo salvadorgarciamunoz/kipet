@@ -15,7 +15,7 @@ from pyomo.core.base.PyomoModel import ConcreteModel
 from pyomo.environ import *
 
 # Kipet library imports
-from kipet.common.pyomo_model_tools import (
+from kipet.post_model_build.pyomo_model_tools import (
     get_vars, 
     get_vars_block, 
     get_result_vars,
