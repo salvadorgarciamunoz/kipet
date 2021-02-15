@@ -13,7 +13,7 @@ import pandas as pd
 # Kipet library imports
 from kipet.common.pre_process_tools import decrease_wavelengths
 import kipet.core_methods.data_tools as data_tools
-from kipet.core_methods.MEE_3 import MultipleExperimentsEstimator
+from kipet.core_methods.MEE import MultipleExperimentsEstimator
 from kipet.nsd_funs.NSD_KIPET import NSD
 from kipet.top_level.reaction_model import (
     ReactionModel,
