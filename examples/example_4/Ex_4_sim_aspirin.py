@@ -54,13 +54,14 @@ if __name__ == "__main__":
     # dataset where the data is
     
     # Change to a state - but fix it
-    f = rm.algebraic('f',  value=0, description='flow f', data='traj')
-    r0 = rm.algebraic('r0', value=0, description='Reaction 0')
-    r1 = rm.algebraic('r1', value=0, description='Reaction 1')
-    r2 = rm.algebraic('r2', value=0, description='Reaction 2')
-    r3 = rm.algebraic('r3', value=0, description='Reaction 3')
-    r4 = rm.algebraic('r4', value=0, description='Reaction 4')
-    r5 = rm.algebraic('r5', value=0, description='Reaction 5')
+    f = rm.algebraic('f', description='flow f', data='traj')
+    
+    r0 = rm.algebraic('r0', description='Reaction 0')
+    r1 = rm.algebraic('r1', description='Reaction 1')
+    r2 = rm.algebraic('r2', description='Reaction 2')
+    r3 = rm.algebraic('r3', description='Reaction 3')
+    r4 = rm.algebraic('r4', description='Reaction 4')
+    r5 = rm.algebraic('r5', description='Reaction 5')
     
     # Equation not part of declaration -- keep the old method or combine them
     v_sum = rm.algebraic('v_sum', value=0, description='Volumne Sum')
@@ -132,7 +133,7 @@ if __name__ == "__main__":
     rm.add_ode('V', V*v_sum )
     
     for com in rm.components.names:
-        rm.add_ode(com, sum(gammas[com][j]*rm.ae(f'r{j}') for j in range(6)) + epsilon[com]*f/V*Cin - v_sum*rm.components[com].pyomo_var[1])
+        rm.add_ode(com, sum(gammas[com][j]*rm.ae(f'r{j}') for j in range(6)) + epsilon[com]*f/V*Cin - v_sum*rm.components[com].pyomo_var)
     
     rm.add_ode('Masa', 180.157*V*r5 )
     rm.add_ode('Msa', -138.121*V*r4 )
