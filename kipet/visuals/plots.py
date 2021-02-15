@@ -300,7 +300,6 @@ class PlotObject():
     @staticmethod
     def _get_proper_unit_str(var_data):
         
-        print(var_data.units)
         try:
             str_units = var_data.units.u
         except:
