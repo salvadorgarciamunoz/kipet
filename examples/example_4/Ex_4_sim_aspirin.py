@@ -94,9 +94,9 @@ if __name__ == "__main__":
 
     # Algebraics
     r0 = rm.add_expression('r0', k0*SA*AA, description='Reaction 0')
-    r1 = rm.add_expression('r1', k1*ASA*AA, description='Reaction 0' )
-    r2 = rm.add_expression('r2', k2*ASAA*H2O, description='Reaction 0' )
-    r3 = rm.add_expression('r3', k3*AA*H2O, description='Reaction 0')
+    r1 = rm.add_expression('r1', k1*ASA*AA, description='Reaction 1' )
+    r2 = rm.add_expression('r2', k2*ASAA*H2O, description='Reaction 2' )
+    r3 = rm.add_expression('r3', k3*AA*H2O, description='Reaction 3')
     
     step = 1/(1 + exp(-Msa/1e-4))
     r4 = rm.add_expression('r4', kd*(Csa - SA + 1e-6)**1.90*step, description='Reaction 4' )
