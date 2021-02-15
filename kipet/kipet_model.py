@@ -39,7 +39,7 @@ class KipetModel():
     def __init__(self):
         
         self.models = {}
-        self.settings = Settings(category='block')
+        self.settings = Settings()
         self.results = {}
         self.global_parameters = None
         self.method = 'mee'
