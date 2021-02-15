@@ -362,7 +362,7 @@ class KipetModel():
     
         self.results = results
         for key, results_obj in self.results.items():
-            results_obj.file_dir = self.settings.general.charts_directory
+#            results_obj.file_dir = self.settings.general.charts_directory
             self.models[key].results = results[key]
             
         return results
