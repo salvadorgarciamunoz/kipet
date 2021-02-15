@@ -396,7 +396,7 @@ class ModelConstant(ModelElement):
                  model_var=None,
                  ):
     
-        super().__init__(name, ModelComponent.class_, value, units, unit_base, description, pyomo_var)
+        super().__init__(name, ModelComponent.class_, value, units, unit_base, description, pyomo_var, model_var)
         self._class_ = type(self)
     
     def __str__(self):

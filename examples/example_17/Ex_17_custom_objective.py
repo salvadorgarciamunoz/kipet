@@ -36,19 +36,16 @@ if __name__ == "__main__":
     B = r1.component('B', value=0.0, units='mol/l')
     C = r1.component('C', value=0.0, units='mol/l')
     
-    y = r1.algebraic('y', description='Ratio of B to B + C')
+    #y = r1.algebraic('y', description='Ratio of B to B + C')
     
     r1.add_data('C_data', data=full_data[['A']], remove_negatives=True)
     r1.add_data('y_data', data=full_data[['y']])
-    
-    # r1.add_data('y_data', file='example_data/ratios.csv')
-    # r1.add_data('traj', file='example_data/extra_states.txt')
     
     r1.add_ode('A', -k1 * A )
     r1.add_ode('B', k1 * A - k2 * B )
     r1.add_ode('C', k2 * B )
     
-    r1.add_algebraic('y', B/(B + C) )
+    r1.add_expression('y', B/(B + C), description='Ratio of B to (B + C)' )
     
     r1.check_model_units()
     

@@ -50,24 +50,8 @@ if __name__ == "__main__":
     # Algebraics
     reactions = ['r0','r1','r2','r3','r4','r5']
     
-    # Fix a trajectory using the data key word - it should be the name of the
-    # dataset where the data is
-    
-    # Change to a state - but fix it
-    f = rm.algebraic('f', description='flow f', data='traj')
-    
-    r0 = rm.algebraic('r0', description='Reaction 0')
-    r1 = rm.algebraic('r1', description='Reaction 1')
-    r2 = rm.algebraic('r2', description='Reaction 2')
-    r3 = rm.algebraic('r3', description='Reaction 3')
-    r4 = rm.algebraic('r4', description='Reaction 4')
-    r5 = rm.algebraic('r5', description='Reaction 5')
-    
-    # Equation not part of declaration -- keep the old method or combine them
-    v_sum = rm.algebraic('v_sum', value=0, description='Volumne Sum')
-    
-    # Change to state but fix it
-    Csat = rm.algebraic('Csat', value=0, description='C saturation', data='traj')
+    f = rm.fixed_state('f', description='flow f', data='traj')
+    Csat = rm.fixed_state('Csat', description='C saturation', data='traj')
 
     gammas = dict()
     gammas['SA']=    [-1, 0, 0, 0, 1, 0]
@@ -109,16 +93,16 @@ if __name__ == "__main__":
     rm.add_data('init_Y', category='trajectory', file=filename)
 
     # Algebraics
-    rm.add_algebraic('r0', k0*SA*AA )
-    rm.add_algebraic('r1', k1*ASA*AA )
-    rm.add_algebraic('r2', k2*ASAA*H2O )
-    rm.add_algebraic('r3', k3*AA*H2O )
+    r0 = rm.add_expression('r0', k0*SA*AA, description='Reaction 0')
+    r1 = rm.add_expression('r1', k1*ASA*AA, description='Reaction 0' )
+    r2 = rm.add_expression('r2', k2*ASAA*H2O, description='Reaction 0' )
+    r3 = rm.add_expression('r3', k3*AA*H2O, description='Reaction 0')
     
     step = 1/(1 + exp(-Msa/1e-4))
-    rm.add_algebraic('r4', kd*(Csa - SA + 1e-6)**1.90*step )
+    r4 = rm.add_expression('r4', kd*(Csa - SA + 1e-6)**1.90*step, description='Reaction 4' )
     
     diff = ASA - Csat
-    rm.add_algebraic('r5', 0.3950206559*kc*(diff+((diff)**2+1e-6)**0.5)**1.34 )
+    r5 = rm.add_expression('r5', 0.3950206559*kc*(diff+((diff)**2+1e-6)**0.5)**1.34, description='Reaction 5' )
     
     Cin = 39.1
     v_sum_float = 0.0
@@ -126,7 +110,7 @@ if __name__ == "__main__":
     for com in rm.components.names:
         v_sum_float += partial_vol[com]*(sum(gammas[com][j]*rm.ae(f'r{j}') for j in range(6)) + epsilon[com]*f/V*Cin)
     
-    rm.add_algebraic('v_sum', v_sum_float)
+    v_sum = rm.add_expression('v_sum', v_sum_float, description='Volume Sum')
     
     # ODES
     Cin = 41.4

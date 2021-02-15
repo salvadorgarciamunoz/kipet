@@ -67,11 +67,11 @@ if __name__ == "__main__":
     r1.add_data('T_data', data=full_data[['T']]) # .iloc[0::3])
     #r1.add_data('A_data', data=full_data[['A']].loc[[3.9, 2.6, 1.115505]])
     
-    test = False
+    test = True
     
     if test:
-        rA = r1.algebraic('rA', units='mole/hour/m**3')
-        r1.add_algebraic('rA', k*exp(-ER/T)*A )
+        # rA = r1.algebraic('rA', units='mole/hour/m**3')
+        rA = r1.add_expression('rA', k*exp(-ER/T)*A, units='mole/hour/m**3', description='Reaction A' )
     else: 
         rA = k*exp(-ER/T)*A
     
@@ -90,7 +90,7 @@ if __name__ == "__main__":
     r1.set_times(0, 5)
     #r1.simulate()
 
-    #r1.run_opt()
+    r1.run_opt()
     
     #print(r1.p_model.P.display())
 #     The estimable parameters are: Tf, Cfa, ER
@@ -108,12 +108,11 @@ if __name__ == "__main__":
 #        k : 3.3515406821369402
 #      rho : 1179.3532710305524
 #     rhoc : 1192.1386076798353
-#%%
-    rh_method = 'fixed'
-    results = r1.rhps_method(method='k_aug',
-                              calc_method=rh_method)
+    # rh_method = 'fixed'
+    # results = r1.rhps_method(method='k_aug',
+    #                           calc_method=rh_method)
 
     # # # results is a standard ResultsObject
-    # if with_plots:
-    #     r1.plot()
+    if with_plots:
+        r1.plot()
     # results.plot('X', show_plot=with_plots)

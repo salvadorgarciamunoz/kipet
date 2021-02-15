@@ -188,6 +188,7 @@ class ReactionModel(WavelengthSelectionMixins):
         """Generic method for adding modeling components to the ReactionModel
         
         """
+        #print(name, index, model_var, args)
         par = self.Component(args[0], index, units=kwargs.get('units', None))
         kwargs['unit_base'] = self.ub
         kwargs['pyomo_var'] = par
@@ -244,6 +245,17 @@ class ReactionModel(WavelengthSelectionMixins):
                                         self.__var.algebraic, 
                                         *args, 
                                         **kwargs)
+    
+    def fixed_state(self, *args, **kwargs):
+        """Create a algebraic variable for fixed states
+        
+        """
+        return self._add_model_component('algebraic', 
+                                        2, 
+                                        self.__var.algebraic, 
+                                        *args, 
+                                        **kwargs)
+        
     
     # def variable(self, *args, **kwargs):
     #     """Create a generic variable with a localized pyomo var
@@ -365,7 +377,7 @@ class ReactionModel(WavelengthSelectionMixins):
         return None
     
     # Check for duplicates ==> DataBlock
-    def _check_data_matches(self, name):
+    def _check_data_matches(self, name, name_is_from_model=False):
         """Easy data mapping to ElementBlocks"""
         # Reassignment
         
@@ -380,23 +392,31 @@ class ReactionModel(WavelengthSelectionMixins):
         #                     print(block)
         #                     getattr(self, block)[col].data = dataset[col]
             
-        
-        matched_data_vars = set()
-        all_data_vars = set()
-        dataset = self.datasets[name]
         blocks = ['components', 'states', 'algebraics']
         
-        if dataset.category in ['spectral', 'trajectory']:
-            return None
+        if not name_is_from_model:
+            # matched_data_vars = set()
+            # all_data_vars = set()
+            dataset = self.datasets[name]
+            if dataset.category in ['spectral', 'trajectory']:
+                return None
+            else:
+                for block in blocks:
+                    for col in dataset.data.columns:
+                        #all_data_vars.add(col)
+                        if col in getattr(self, block).names:
+                            setattr(getattr(self, block)[col], 'data_link', dataset.name)
+                            #matched_data_vars.add(col)
+        
+            #unmatched_vars = all_data_vars.difference(matched_data_vars)
+
         else:
-            for block in blocks:    
-                for col in dataset.data.columns:
-                    all_data_vars.add(col)
-                    if col in getattr(self, block).names:
-                        setattr(getattr(self, block)[col], 'data_link', dataset.name)
-                        matched_data_vars.add(col)
-    
-        unmatched_vars = all_data_vars.difference(matched_data_vars)
+            for block in blocks:
+                if name in getattr(self, block).names:
+                    for dataset in self.datasets:
+                        for col in dataset.data.columns:
+                            if col == name:
+                                setattr(getattr(self, block)[name], 'data_link', dataset.name)
 
         return None
 
@@ -420,6 +440,28 @@ class ReactionModel(WavelengthSelectionMixins):
         
         return None
     
+    """ Expressions """
+    
+    def add_expression(self, name, expr, *args, **kwargs):
+        """Add expressions (prev. algebraics) to the reaction model
+        
+        """        
+        args_ = list(args)
+        args_.insert(0, name)
+        args = tuple(args_)
+        
+        # Adds algebraics anyways, for comparison purposes
+        self._add_model_component('algebraic', 
+                                  2, 
+                                  self.__var.algebraic, 
+                                  *args, 
+                                  **kwargs)
+        
+        expr_ = Expression(name, expr)
+        expr_.check_division()
+        self.algs_dict.update(**{name: expr_})
+        return expr
+        
     def expression(self, label, expr):
         """
         Parameters
@@ -543,6 +585,7 @@ class ReactionModel(WavelengthSelectionMixins):
             None
             
         """
+        self._check_data_matches(algebraic_var, name_is_from_model=True)
         self.custom_objective = algebraic_var
         
         return None
@@ -639,8 +682,10 @@ class ReactionModel(WavelengthSelectionMixins):
         if not hasattr(self, 'c'):
             self.c = dict()
             for mc in model_components: 
-                if hasattr(self, f'{mc}'):
+                if hasattr(self, f'{mc}') and len(getattr(self, f'{mc}')) > 0:
                     for comp in getattr(self, f'{mc}'):
+                        #print(comp)
+                        #print(comp.model_var, comp.pyomo_var)
                         self.c.update({comp.name: [comp.model_var, comp.pyomo_var]})
     
             if hasattr(self, 'steps'):

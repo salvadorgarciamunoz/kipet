@@ -28,11 +28,8 @@ if __name__ == "__main__":
     B = r1.component('B', value=0.0, units='M')
     C = r1.component('C', value=0.0, units='M')
     
-    rA = r1.algebraic('rA')
-    rB = r1.algebraic('rB')
-    
-    r1.add_algebraic('rA', k1*A)
-    r1.add_algebraic('rB', k2*B)
+    rA = r1.add_expression('rA', k1*A)
+    rB = r1.add_expression('rB', k2*B)
     
     r1.add_ode('A', -rA )
     r1.add_ode('B', rA - rB )
