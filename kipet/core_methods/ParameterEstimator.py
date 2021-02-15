@@ -21,17 +21,11 @@ from pyomo.opt import (
 from kipet.core_methods.Optimizer import *
 from kipet.core_methods.TemplateBuilder import *
 from kipet.common.read_hessian import *
-
-from kipet.spectra_methods.G_handling import (
-    decompose_G_test,
-    g_handling_status_messages,
-    )
 from kipet.common.objectives import (
     conc_objective, 
     comp_objective,
     absorption_objective,
     )
-
 from kipet.mixins.PEMixins import PEMixins 
 from kipet.top_level.variable_names import VariableNames
 
@@ -186,9 +180,8 @@ class ParameterEstimator(PEMixins, Optimizer):
         opt = SolverFactory(self.solver)
         
         if self.G_contribution == 'time_invariant_G':
-            decompose_G_test(self, St, Z_in)
-        g_handling_status_messages(self)
-        
+            self.decompose_G_test(St, Z_in)
+        self.g_handling_status_messages()
 
         if covariance:
             if self.solver != 'ipopt_sens' and self.solver != 'k_aug':
@@ -1321,6 +1314,39 @@ class ParameterEstimator(PEMixins, Optimizer):
 
         print("The lack of fit for the huplc data is ", lof, " %")
         return lof
+    
+    def g_handling_status_messages(self):
+        if self.G_contribution == 'unwanted_G':
+            print("\nType of unwanted contributions not set, so assumed that it is time-variant.\n")
+            self.G_contribution = 'time_variant_G'
+        elif self.G_contribution == 'time_variant_G':
+            print("\nTime-variant unwanted contribution is involved.\n")
+        elif self.G_contribution == 'time_invariant_G_decompose':
+            print("\nTime-invariant unwanted contribution is involved and G can be decomposed.\n")
+        elif self.G_contribution == 'time_invariant_G_no_decompose':
+            print("\nTime-invariant unwanted contribution is involved but G cannot be decomposed.\n")
+        return None
+     
+    def decompose_G_test(self, St, Z_in):
+        """Check whether or not G can be decomposed"""
+        
+        if St == dict() and Z_in == dict():
+            raise RuntimeError('Because time-invariant unwanted contribution is chosen, please provide information of St or Z_in to build omega matrix.')
+        
+        omega_list = [St[i] for i in St.keys()]
+        omega_list += [Z_in[i] for i in Z_in.keys()]
+        omega_sub = np.array(omega_list)
+        rank = np.linalg.matrix_rank(omega_sub)
+        cols = omega_sub.shape[1]
+        rko = cols - rank
+        
+        if rko > 0:
+            self.time_invariant_G_decompose = True
+            self.G_contribution = 'time_invariant_G_decompose'
+        else:
+            self.time_invariant_G_no_decompose = True
+            self.G_contribution = 'time_invariant_G_no_decompose'
+        return None
 
 def wavelength_subset_selection(correlations=None, n=None):
     """ identifies the subset of wavelengths that needs to be chosen, based
