@@ -67,7 +67,7 @@ class PlotObject():
                     )
         return None
 
-    def _fig_finishing(self, fig, pred, is_S_plot=False):
+    def _fig_finishing(self, fig, pred, plot_name='Z'):
         """Finish the plots before showing
         
         """
@@ -78,9 +78,12 @@ class PlotObject():
         fig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor='#4e4e4e')
 
         if self.filename is None:
-            filename = f'chart_{str(time.time())[-4:]}.html'
+            t = time.localtime()
+            date = f'{t.tm_year}-{t.tm_mon}-{t.tm_mday}-{t.tm_hour}:{t.tm_min}:{t.tm_sec}'
+            filename = f'{plot_name}-{date}.html'
             
-        default_dir = Path(self.reaction_model.settings.general.charts_directory)
+        default_dir = Path.cwd().joinpath('charts')
+        default_dir.mkdir(parents=True, exist_ok=True)
         filename = default_dir.joinpath(filename)
         print(f'Plot saved as: {filename}')
         plot(fig, filename=filename.as_posix())
@@ -143,7 +146,7 @@ class PlotObject():
                 xaxis_title=f'{time_scale}',
                 yaxis_title=f'{state} [{state_units}]',
                 )
-        self._fig_finishing(fig, pred)
+        self._fig_finishing(fig, pred, plot_name='all-concentration-profiles')
 
     def _plot_Z(self, var):
         """Plot state profiles
@@ -175,7 +178,7 @@ class PlotObject():
                 xaxis_title=f'{time_scale}',
                 yaxis_title=f'{state} [{state_units}]',
                 )
-        self._fig_finishing(fig, pred)
+        self._fig_finishing(fig, pred, plot_name=f'{var}-concentration-profile')
         
     def _plot_Y(self, var, extra=None):
         """Plot state profiles
@@ -201,7 +204,7 @@ class PlotObject():
             xaxis_title=f'{time_scale}',
             yaxis_title=f'[{state_units}]',
             )
-        self._fig_finishing(fig, pred)
+        self._fig_finishing(fig, pred, plot_name=f'{var}-profile')
 
     def _plot_X(self, var):
         """Plot state profiles
@@ -228,7 +231,7 @@ class PlotObject():
                 xaxis_title=f'{time_scale}',
                 yaxis_title=f'{state} [{state_units}]',
                 )
-        self._fig_finishing(fig, pred)
+        self._fig_finishing(fig, pred, plot_name=f'{var}-state-profile')
         
     def _plot_all_S(self):
         """Plot all S profiles
@@ -251,7 +254,7 @@ class PlotObject():
                 xaxis_title=f'{time_scale}',
                 yaxis_title=f'{state} [{state_units}]',
                 )
-        self._fig_finishing(fig, pred, is_S_plot=True)
+        self._fig_finishing(fig, pred, plot_name='all-absorbance-spectra')
 
     def _plot_S(self, var):
         """Plot individual S profile
@@ -272,7 +275,7 @@ class PlotObject():
                 xaxis_title=f'{time_scale}',
                 yaxis_title=f'{state} [{state_units}]',
                 )
-        self._fig_finishing(fig, pred)
+        self._fig_finishing(fig, pred, plot_name=f'{var}-absorbance-spectra')
         
     def _plot_step(self, var, extra=None):
     
@@ -286,4 +289,4 @@ class PlotObject():
             xaxis_title=f'{time_scale}',
             yaxis_title=f'[dimensionless]',
             )
-        self._fig_finishing(fig, pred)
+        self._fig_finishing(fig, pred, plot_name=f'{var}-step-profile')
