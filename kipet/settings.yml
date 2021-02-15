@@ -1,0 +1,67 @@
+# Settings for KIPET
+
+# General Settings:
+general:
+    scale_variances: False
+    initialize_pe:  True
+    scale_pe: True
+    scale_parameters: False
+    simulation_times: None
+    no_user_scaling: True
+
+# Collocation Settings
+collocation:
+    method: dae.collocation
+    ncp: 3
+    nfe: 50
+    scheme: LAGRANGE-RADAU
+    
+# Solver Settings
+solver:
+     nlp_scaling_method: gradient-based
+     linear_solver: ma57
+     
+# Simulator Settings
+simulator:
+    solver: ipopt
+    method: dae.collocation
+    tee:  False
+    
+# Variance Estimator Settings
+variance_estimator:
+    solver: ipopt
+    tee: True
+    tolerance: 1e-5
+    max_iter: 15
+    method: originalchenetal
+    freq_subset_lambdas: None
+    secant_point: 1e-11
+    initial_sigmas:  1e-10
+    max_device_variance: False
+    use_delta: False
+    delta: 1e-7
+    individual_species : False
+    fixed_device_variance: None
+    device_range: None
+    best_accuracy: None
+    num_points: None
+    with_plots: False
+
+# Parameter Estimator Settings
+parameter_estimator:
+    solver: ipopt
+    tee: True
+    covariance: False
+    with_d_vars: False
+    symbolic_solver_labels: False
+    estimability: False
+    report_time: False
+    model_variance: True
+    confidence: None
+    sim_init: False
+
+# Default Units
+units:
+    concentration: M
+    time: h
+    volume: L
