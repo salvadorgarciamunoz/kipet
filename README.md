@@ -29,6 +29,19 @@ It has the following functionality:
  - Visualize results
 
 
+Installation
+------------
+
+A packaged version of KIPET can be installed using:
+
+    pip install kipet
+
+Additionally, KIPET may be installed directly from the repository (if you want the latest version, simply install the desired branch (#branch)):
+
+    poetry add git+http://github.com/salvadorgarciamunoz/kipet#master
+
+Naturally you can simply clone or download the repository.
+
 License
 ------------
 
