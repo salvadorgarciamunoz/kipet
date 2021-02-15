@@ -115,9 +115,12 @@ class Settings():
         
         self.collocation = AttrDict(self.cfg['collocation'])
         self.simulator = AttrDict(self.cfg['simulator'])
+        self.simulator.update({'solver_opts': AttrDict()})
         self.general = AttrDict(self.cfg['general'])
         self.variance_estimator = AttrDict(self.cfg['variance_estimator'])
+        self.variance_estimator.update({'solver_opts': AttrDict()})
         self.parameter_estimator = AttrDict(self.cfg['parameter_estimator'])
+        self.parameter_estimator.update({'solver_opts': AttrDict()})
         self.solver = AttrDict(self.cfg['solver'])
         self.units = AttrDict(self.cfg['units'])
         
