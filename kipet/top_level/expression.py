@@ -10,7 +10,7 @@ from pyomo.environ import (
     Objective,
     Var, 
     )
-from pyomo.environ import units as u
+from pyomo.environ import units as pyo_units
 
 # KIPET library imports
 from kipet.common.VisitorClasses import ReplacementVisitor
@@ -88,22 +88,22 @@ class Expression():
     def show_units(self):
         return self.units.to_string()
     
-    def _change_to_unit(self, c_mod, c_mod_new):
-        """Method to remove the fixed parameters from the ConcreteModel
-        TODO: move to a new expression class
-        """
-        var_dict = c_mod_new.var_dict
-        expr_new = self.expression
-        if self.expression_orig is not None:
-            expr_new = self.expression_orig
-        for model_var, var_obj in var_dict.items():
-            old_var = getattr(c_mod, model_var)
-            new_var = getattr(c_mod_new, model_var)         
-            expr_new = _update_expression(expr_new, old_var, new_var)
+    # def _change_to_unit(self, c_mod, c_mod_new):
+    #     """Method to remove the fixed parameters from the ConcreteModel
+    #     TODO: move to a new expression class
+    #     """
+    #     var_dict = c_mod_new.var_dict
+    #     expr_new = self.expression
+    #     if self.expression_orig is not None:
+    #         expr_new = self.expression_orig
+    #     for model_var, var_obj in var_dict.items():
+    #         old_var = getattr(c_mod, model_var)
+    #         new_var = getattr(c_mod_new, model_var)         
+    #         expr_new = _update_expression(expr_new, old_var, new_var)
             
-        return expr_new
+    #     return expr_new
     
-    def _change_to_unit2(self, c_mod, c_mod_new):
+    def _change_to_unit(self, c_mod, c_mod_new):
         """Method to remove the fixed parameters from the ConcreteModel
         TODO: move to a new expression class
         """
@@ -112,10 +112,9 @@ class Expression():
         if self.expression_orig is not None:
             expr_new = self.expression_orig    
         for model_var, var_obj in var_dict.items():
-            old_var = c_mod[model_var]
-            new_var = var_dict[model_var]         
+            old_var = c_mod[model_var][1]
+            new_var = var_dict[model_var]
             expr_new = _update_expression(expr_new, old_var, new_var)
-            
         return expr_new
 
     """
@@ -140,6 +139,28 @@ class Expression():
     """
 
 
+    # def check_units(self, c_mod, c_mod_new):
+    #     """Check the expr units by exchanging the real model with unit model
+    #     components
+        
+    #     Args:
+    #         key (str): component represented in ODE
+            
+    #         expr (Expression): Expression object of ODE
+            
+    #         c_mod (Comp): original Comp object used to declare the expressions
+            
+    #         c_mod_new (Comp_Check): dummy model with unit components
+            
+    #     Returns:
+    #         pint_units (): Returns expression with unit model components
+        
+    #     """
+    #     expr = self._change_to_unit(c_mod, c_mod_new)
+    #     self.units = pyo_units.get_units(expr)
+
+    #     return None
+    
     def check_units(self, c_mod, c_mod_new):
         """Check the expr units by exchanging the real model with unit model
         components
@@ -158,28 +179,7 @@ class Expression():
         
         """
         expr = self._change_to_unit(c_mod, c_mod_new)
-        self.units = u.get_units(expr)
-        return None
-    
-    def check_units2(self, c_mod, c_mod_new):
-        """Check the expr units by exchanging the real model with unit model
-        components
-        
-        Args:
-            key (str): component represented in ODE
-            
-            expr (Expression): Expression object of ODE
-            
-            c_mod (Comp): original Comp object used to declare the expressions
-            
-            c_mod_new (Comp_Check): dummy model with unit components
-            
-        Returns:
-            pint_units (): Returns expression with unit model components
-        
-        """
-        expr = self._change_to_unit2(c_mod, c_mod_new)
-        self.units = u.get_units(expr)
+        self.units = pyo_units.get_units(expr)
         return None
 
     def check_division(self, eps=1e-12):

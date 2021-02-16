@@ -240,6 +240,8 @@ class ReactionModel(WavelengthSelectionMixins):
         """Create a algebraic variable with a localized pyomo var
         
         """
+        raise Warning('This is deprecated and will be removed in a future version')
+        
         return self._add_model_component('algebraic', 
                                         2, 
                                         self.__var.algebraic, 
@@ -1317,7 +1319,7 @@ class ReactionModel(WavelengthSelectionMixins):
         # parameter_dict = self.parameters.as_dict(bounds=True)
         results, reduced_model = rhps_method(self.model, **kwargs)
         
-        results.file_dir = self.settings.general.charts_directory
+#        results.file_dir = self.settings.general.charts_directory
         
         self.reduced_model = reduced_model
         self.using_reduced_model = True
@@ -1433,18 +1435,6 @@ class ReactionModel(WavelengthSelectionMixins):
         
     """MODEL FUNCTION AREA"""
     
-    # def step(self, *args, **kwargs):
-    #     """Wrapper for the step_fun in model_funs module
-        
-    #     """
-    #     return step_fun(*args, **kwargs)
-    
-    # def step_var(self, *args, **kwargs):
-    #     """Wrapper for the step_fun in model_funs module
-        
-    #     """
-    #     return step_fun_var_time(*args, **kwargs)
-    
     def make_reaction_table(self, stoich_coeff, rxns):
         
         df = pd.DataFrame()
@@ -1541,9 +1531,9 @@ class ReactionModel(WavelengthSelectionMixins):
         self.c_units = get_unit_model(element_dict, self._set_up_model)
         
         for key, expr in self.algs_dict.items():
-            expr.check_units2(self.c, self.c_units)
+            expr.check_units(self.c, self.c_units)
         for key, expr in self.odes_dict.items():
-            expr.check_units2(self.c, self.c_units)
+            expr.check_units(self.c, self.c_units)
         
         if display:
             self.ode_obj.display_units()

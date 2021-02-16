@@ -34,7 +34,7 @@ class ModelElement():
 
     def _check_scaling(self):
             
-        print(f'\nConverting {self.name} ################################################')
+        #print(f'\nConverting {self.name} ################################################')
         quantity = 1 * self.units
         quantity.ito_base_units()
         
