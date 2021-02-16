@@ -9,8 +9,10 @@ from pyomo.environ import Param
 
 # Kipet library imports
 from kipet.core_methods.PyomoSimulator import PyomoSimulator
-from kipet.common.VisitorClasses import ScalingVisitor, ReplacementVisitor  
+from kipet.common.VisitorClasses import ScalingVisitor, ReplacementVisitor
+from kipet.top_level.variable_names import VariableNames
 
+__var = VariableNames()
 
 def scale_models(models_input, k_vals, name=None):
     """Takes a model or dict of models and iterates through them to update the
@@ -37,15 +39,15 @@ def _scale_model(model, k_vals):
     """
     scaled_bounds = {}    
 
-    if not hasattr(model, 'K'):
+    if not hasattr(model, __var.model_parameter_scaled):
         add_scaling_parameters(model, k_vals)
         scale_parameters(model)
      
-        for k, v in model.P.items():
+        for k, v in getattr(model, __var.model_parameter).items():
             lb, ub = v.bounds
             
-            lb = lb/model.K[k].value
-            ub = ub/model.K[k].value
+            lb = lb/getattr(model, __var.model_parameter_scaled)[k].value
+            ub = ub/getattr(model, __var.model_parameter_scaled)[k].value
             
             if ub < 1:
                 print('Bounds issue, pushing upper bound higher')
@@ -56,12 +58,13 @@ def _scale_model(model, k_vals):
                 
             scaled_bounds[k] = lb, ub
                 
-            model.P[k].setlb(lb)
-            model.P[k].setub(ub)
-            model.P[k].unfix()
-            model.P[k].set_value(1)
+            model_params = getattr(model, __var.model_parameter)
+            model_params[k].setlb(lb)
+            model_params[k].setub(ub)
+            model_params[k].unfix()
+            model_params[k].set_value(1)
             
-    parameter_dict = {k: (1, scaled_bounds[k]) for k in k_vals.keys() if k in model.P}
+    parameter_dict = {k: (1, scaled_bounds[k]) for k in k_vals.keys() if k in model_params}
             
     return parameter_dict
 
@@ -71,15 +74,15 @@ def add_scaling_parameters(model, k_vals=None):
     
     if k_vals is None:
     
-        model.K = Param(model.parameter_names,                                                                                                                                                            
-                    initialize={k: v for k, v in model.P.items()},
+        setattr(model, __var.model_parameter_scaled, Param(model.parameter_names,                                                                                                                                                            
+                    initialize={k: v for k, v in getattr(model, __var.model_parameter).items()},
                     mutable=True,
-                    default=1)
+                    default=1))
     else:
-        model.K = Param(model.parameter_names,                                                                                                                                                            
-                    initialize={k: v for k, v in k_vals.items() if k in model.P},
+        setattr(model, __var.model_parameter_scaled, Param(model.parameter_names,                                                                                                                                                            
+                    initialize={k: v for k, v in k_vals.items() if k in getattr(model, __var.model_parameter)},
                     mutable=True,
-                    default=1)
+                    default=1))
     
     return None
         
@@ -89,52 +92,46 @@ def scale_parameters(model, k_vals=None):
     
     I am not sure if this is necessary and will look into its importance.
     """
-    if not hasattr(model, 'K'):
+    if not hasattr(model, __var.model_parameter_scaled):
         add_scaling_parameters(model, k_vals=k_vals)
         
     scale = {}
-    for i in model.P:
-        scale[id(model.P[i])] = model.K[i]
 
-    for i in model.Z:
-        scale[id(model.Z[i])] = 1
-        
-    for i in model.dZdt:
-        scale[id(model.dZdt[i])] = 1
-        
-    for i in model.X:
-        scale[id(model.X[i])] = 1
+    for var in __var.model_vars + __var.rate_vars:
+        if hasattr(model, var):
+            for i in getattr(model, var):
+                if var == __var.model_parameter:
+                    scale[id(getattr(model, var)[i])] = getattr(model, __var.model_parameter_scaled)[i]
+                    continue
+                scale[id(getattr(model, var)[i])] = 1
 
-    for i in model.dXdt:
-        scale[id(model.dXdt[i])] = 1
-
-    for k, v in model.odes.items(): 
+    for k, v in getattr(model, __var.ode_constraints).items():
         scaled_expr = _scale_expression(v.body, scale)
-        model.odes[k] = scaled_expr == 0
+        getattr(model, __var.ode_constraints)[k] = scaled_expr == 0
 
 def remove_scaling(model, bounds=None):
     
     """You need to reset the bounds on the parameter too"""
     """EP problem: parameter bounds are not respected"""
     
-    if not hasattr(model, 'K'):
+    if not hasattr(model, __var.model_parameter_scaled):
         raise AttributeError('The model is not scaled')
         
-    for param in model.P.keys():   
-        change_value = model.K[param].value
-        model.P[param].set_value(model.K[param].value)
+    for param in getattr(model, __var.model_parameter).keys():   
+        change_value = getattr(model, __var.model_parameter_scaled)[param].value
+        getattr(model, __var.model_parameter)[param].set_value(getattr(model, __var.model_parameter_scaled)[param].value)
         
         for k, v in model.odes.items():
-            ep_updated_expr = update_expression(v.body, model.K[param], 1)
+            ep_updated_expr = update_expression(v.body, getattr(model, __var.model_parameter_scaled)[param], 1)
             model.odes[k] = ep_updated_expr == 0
         
-        del model.K[param]
+        del getattr(model, __var.model_parameter_scaled)[param]
         
     if bounds is not None:
         for param, bound in bounds.items():
-            if param in model.P:
-                model.P[param].setlb(bound[0])
-                model.P[param].setub(bound[1])
+            if param in getattr(model, __var.model_parameter):
+                getattr(model, __var.model_parameter)[param].setlb(bound[0])
+                getattr(model, __var.model_parameter)[param].setub(bound[1])
         
     return None
         
