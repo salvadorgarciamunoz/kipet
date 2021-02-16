@@ -11,6 +11,7 @@ chemical reaction systems through the use of maximum likelihood principles,
 large-scale nonlinear programming and discretization methods. 
 
 - **Documentation:** - https://kipet.readthedocs.io
+- **Examples and Tutorials** - https://github.com/kwmcbride/kipet_examples
 - **Source code:** - https://github.com/salvadorgarciamunoz/kipet
 - **Bug reports:** - https://github.com/salvadorgarciamunoz/kipet/issues
 
