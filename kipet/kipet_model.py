@@ -5,7 +5,9 @@ Primary means of using KIPET is through the KipetModel class
 """
 # Standard library imports
 import collections
+import os
 import pathlib
+import sys
 
 # Third party imports
 import pandas as pd
@@ -444,11 +446,13 @@ class KipetModel():
         
         """
         _filename = filename
-        if directory is None:
-            _filename = _set_directory(self, filename)
-        else:
-            _filename = pathlib.Path(directory).joinpath(filename)
+        # if directory is None:
+        #     _filename = _set_directory(self, filename)
+        # else:
+        #     _filename = pathlib.Path(directory).joinpath(filename)
         
+        calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
+        _filename = pathlib.Path(calling_file_name).joinpath(_filename)
         read_data = data_tools.read_file(_filename)
         
         return read_data
