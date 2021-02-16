@@ -8,7 +8,7 @@ import sys # Only needed for running the example from the command line
 
 # Kipet library imports
 from kipet import KipetModel
-from kipet.library.core_methods.EstimabilityAnalyzer import EstimabilityAnalyzer
+from kipet.core_methods.EstimabilityAnalyzer import EstimabilityAnalyzer
 
 if __name__ == "__main__":
     with_plots = True

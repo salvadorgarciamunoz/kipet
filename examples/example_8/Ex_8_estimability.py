@@ -9,7 +9,7 @@ KipetModel framework
 
 # Kipet library imports
 from kipet import KipetModel
-from kipet.library.core_methods.EstimabilityAnalyzer import *
+from kipet.core_methods.EstimabilityAnalyzer import *
 
 if __name__ == "__main__":
  

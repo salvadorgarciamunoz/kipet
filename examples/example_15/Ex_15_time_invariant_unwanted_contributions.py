@@ -80,7 +80,7 @@ if __name__ == "__main__":
     """We can now compare the results with the known profiles"""
     
     # Read the true S to compare with results
-    S_true_filename = 'example_data/S_True_for_unwanted_G.csv'
+    S_true_filename = 'data/S_True_for_unwanted_G.csv'
     S_True = kipet_model.read_data_file(S_true_filename)
 
     # In this example, we know the magnitude of unwanted contribution.
