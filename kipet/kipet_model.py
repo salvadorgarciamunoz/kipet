@@ -421,12 +421,14 @@ class KipetModel():
         
         """
         _filename = filename
-        if directory is None:
-            _filename = _set_directory(self, filename)
-        else:
-            _filename = pathlib.Path(directory).joinpath(filename)
-        if not _filename.parent.is_dir():
-            _filename.parent.mkdir(exist_ok=True)
+        # if directory is None:
+        #     _filename = _set_directory(self, filename)
+        # else:
+        #     _filename = pathlib.Path(directory).joinpath(filename)
+        # if not _filename.parent.is_dir():
+        #     _filename.parent.mkdir(exist_ok=True)
+        calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
+        _filename = pathlib.Path(calling_file_name).joinpath(_filename)
         data_tools.write_file(_filename, data)
         
         return None
