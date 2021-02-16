@@ -3,7 +3,9 @@ Plotting class for KIPET
 """
 # Standard library imports
 from pathlib import Path
+import os
 import time
+import sys
 
 # Thirdparty library imports 
 import plotly.graph_objects as go
@@ -83,9 +85,11 @@ class PlotObject():
             date = f'{t.tm_year}-{t.tm_mon:02}-{t.tm_mday:02}-{t.tm_hour:02}:{t.tm_min:02}:{t.tm_sec:02}'
             filename = f'{self.name}-{plot_name}-{date}.html'
             
-        default_dir = Path.cwd().joinpath('charts')
-        default_dir.mkdir(parents=True, exist_ok=True)
-        filename = default_dir.joinpath(filename)
+        calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
+        chart_dir = Path(calling_file_name).joinpath('charts')
+        #default_dir = Path.cwd().joinpath('charts')
+        chart_dir.mkdir(parents=True, exist_ok=True)
+        filename = chart_dir.joinpath(filename)
         print(f'Plot saved as: {filename}')
         plot(fig, filename=filename.as_posix())
     
