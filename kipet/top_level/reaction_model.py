@@ -111,6 +111,7 @@ class ReactionModel(WavelengthSelectionMixins):
         self._var_to_fix_from_trajectory = []
         self._var_to_initialize_from_trajectory = []
         self._default_time_unit = 'seconds'
+        self.unit_base = kwargs.get('unit_base', None)
         
         self._G_data = {'G_contribution': None, 'Z_in': dict(), 'St': dict()}
         self.__var = VariableNames()
@@ -336,6 +337,12 @@ class ReactionModel(WavelengthSelectionMixins):
     def add_data(self, *args, **kwargs):
         
         name = kwargs.get('name', None)
+        time_scale = kwargs.get('time_scale', self.unit_base.TIME_BASE)
+        
+        time_conversion = 1
+        if time_scale != self.unit_base.TIME_BASE:
+            time_conversion = self.ub.ur(time_scale).to(self.unit_base.TIME_BASE).m
+        
         if len(args) > 0:
             name = args[0]
         if name is None:
@@ -354,6 +361,7 @@ class ReactionModel(WavelengthSelectionMixins):
         else:
             raise ValueError('User must provide filename or dataframe')
         
+        dataframe.index = dataframe.index*time_conversion
         
         if category == 'spectral':
             D_data = SpectralData(name, remove_negatives=remove_negatives)    

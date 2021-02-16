@@ -234,13 +234,13 @@ class TemplateBuilder(object):
                             data_block = data_block_dict[comp.data_link]
                             time_span = max(time_span, data_block.time_span[1]*time_conversion_factor)
                             data_frame = data_block.data[comp.name]*comp.conversion_factor
-                            data_frame.index = data_frame.index*time_conversion_factor
+                            # data_frame.index = data_frame.index*time_conversion_factor
                             self._add_state_data(data_frame, data_label, overwrite=False)
 
         # Spectral data is handled differently
         if spectral_data is not None:
             self._add_state_data(spectral_data.data, 'spectral')
-            spectral_data.data.index = spectral_data.data.index*time_conversion_factor
+            # spectral_data.data.index = spectral_data.data.index*time_conversion_factor
             time_span = max(time_span, spectral_data.data.index.max())
                 
         self.time_span_max = time_span

@@ -135,7 +135,7 @@ class KipetModel():
         
         if model is None:
         
-            self.models[name] = ReactionModel(name=name)
+            self.models[name] = ReactionModel(name=name, unit_base=self.ub)
 #            self.models[name].settings.general.data_directory = self.settings.general.data_directory
             
             assign_list = ['components', 'parameters', 'constants', 'algebraics',
@@ -149,7 +149,7 @@ class KipetModel():
             if isinstance(model, ReactionModel):
                 kwargs = {}
                 kwargs['name'] = name
-                self.models[name] = ReactionModel(name=name)
+                self.models[name] = ReactionModel(name=name, unit_base=self.ub)
                 
                 assign_list = ['components', 'parameters', 'constants', 'algebraics',
                              'states', 'ub', 'settings', 'c', 'odes_dict']
@@ -172,8 +172,9 @@ class KipetModel():
     def add_reaction(self, kipet_model_instance):
     
         if isinstance(kipet_model_instance, ReactionModel):
+            kipet_model_instance.unit_base = self.ub
             self.models[kipet_model_instance.name] = kipet_model_instance
-            self.models[kipet_model_instance.name].settings.general.data_directory = self.settings.general.data_directory
+            #self.models[kipet_model_instance.name].settings.general.data_directory = self.settings.general.data_directory
         else:
             raise ValueError('KipetModel can only add ReactionModel instances.')
 
