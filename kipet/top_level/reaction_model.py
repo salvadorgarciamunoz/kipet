@@ -6,8 +6,9 @@ This is a big wrapper class for most of the KIPET methods
 # Standard library imports
 import collections
 import copy
+import os
 import pathlib
-import weakref
+import sys
 
 # Third party imports
 import numpy as np
@@ -347,13 +348,15 @@ class ReactionModel(WavelengthSelectionMixins):
             name = args[0]
         if name is None:
             name = f'ds{len(self.data) + 1}'
+            
         filename = kwargs.get('file', None)
         data = kwargs.pop('data', None)
         category = kwargs.pop('category', None)
         remove_negatives = kwargs.get('remove_negatives', False)
     
         if filename is not None:
-            filename = _set_directory(self, filename)
+            calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
+            filename = pathlib.Path(calling_file_name).joinpath(filename)
             kwargs['file'] = filename
             dataframe = data_tools.read_file(filename)
         elif filename is None and data is not None:
