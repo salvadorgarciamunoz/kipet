@@ -380,7 +380,7 @@ class fe_initialize(object):
             raise Exception("Inconsistent problem; n={}, m={}".format(n, m))
         self.jump = False
 
-        print('INIT of FES finished')
+        #print('INIT of FES finished')
 
     def load_initial_conditions(self, init_cond=None):
         if not isinstance(init_cond, dict):
@@ -420,7 +420,7 @@ class fe_initialize(object):
         Args:
             fe (int): The correspoding finite element.
         """
-        print(f'{fe + 1} / {self.nfe}')
+        #print(f'{fe + 1} / {self.nfe}', end='\t')
         self.adjust_h(fe)
         if self.inputs or self.inputs_sub:
             self.load_input(fe)
@@ -428,13 +428,13 @@ class fe_initialize(object):
         self.ip.options["print_level"] = 1  #: change this on demand
         # self.ip.options["start_with_resto"] = 'no'
         self.ip.options['bound_push'] = 1e-02
-        sol = self.ip.solve(self.model_ref, tee=True, symbolic_solver_labels=True)
+        sol = self.ip.solve(self.model_ref, tee=False, symbolic_solver_labels=True)
 
         # Try to redo it if it fails
         if sol.solver.termination_condition != TerminationCondition.optimal:
             self.ip.options["OF_start_with_resto"] = 'yes'
            
-            sol = self.ip.solve(self.model_ref, tee=True, symbolic_solver_labels=True)
+            sol = self.ip.solve(self.model_ref, tee=False, symbolic_solver_labels=True)
             if sol.solver.termination_condition != TerminationCondition.optimal:
                 
                 self.ip.options["OF_start_with_resto"] = 'no'
@@ -447,8 +447,8 @@ class fe_initialize(object):
                 if sol.solver.termination_condition != TerminationCondition.optimal:
                     raise Exception("The current iteration was unsuccessful. Iteration :{}".format(fe))
 
-        else:
-            print(f'{fe + 1} status: optimal')
+        # else:
+        #     print(f'{fe + 1} status: optimal')
         self.patch(fe)
         self.cycle_ics(fe)
 
@@ -642,10 +642,7 @@ class fe_initialize(object):
         """Runs the sequence of problems fe=0,nfe
 
         """
-        print("*"*5, end='\t')
-        print("Fe Factory: fe_initialize \@2018", end='\t')  # davs: :)
-        print("*" * 5)
-        print("*" * 5 + '\tSolving for {} elements\t'.format(len(self.fe_list)) + "*" * 5 )
+        print(f'Starting FE Factory: Solving for {len(self.fe_list)} elements')
         
         for i in range(0, len(self.fe_list)):
             self.march_forward(i, resto_strategy=resto_strategy)
@@ -756,7 +753,7 @@ def write_nl(d_mod, filename=None):
     d_mod.write(filename, format=ProblemFormat.nl,
                 io_options={"symbolic_solver_labels": True})
     cwd = getcwd()
-    print("nl file {}".format(cwd + "/" + filename))
+    #print("nl file {}".format(cwd + "/" + filename))
     return cwd
 
 
