@@ -1571,7 +1571,7 @@ class ReactionModel(WavelengthSelectionMixins):
         
         from kipet.visuals.plots import PlotObject
         
-        self._plot_object = PlotObject(self, jupyter)
+        self._plot_object = PlotObject(reaction_model=self, jupyter=jupyter)
         
         if var == 'Z':
             self._plot_object._plot_all_Z()

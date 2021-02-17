@@ -36,13 +36,13 @@ class PlotObject():
     
     """This will hold the relevant information needed to make a plot in KIPET"""
     
-    def __init__(self, reaction_model, jupyter):
+    def __init__(self, reaction_model=None, jupyter=False):
         
         self.reaction_model = reaction_model
         self.name = reaction_model.name
         self.color_num = 0
         self.filename = None
-        self.jupyter = False
+        self.jupyter = jupyter
         
     def _make_line_trace(self, fig, x, y, name, color):
         """Make line traces
@@ -86,16 +86,18 @@ class PlotObject():
             date = f'{t.tm_year}-{t.tm_mon:02}-{t.tm_mday:02}-{t.tm_hour:02}:{t.tm_min:02}:{t.tm_sec:02}'
             filename = f'{self.name}-{plot_name}-{date}.html'
             
-        calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
-        chart_dir = Path(calling_file_name).joinpath('charts')
+        if self.jupyter:
+            chart_dir = Path.cwd().joinpath('charts')
+            plot_method = iplot
+        else:
+            calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
+            chart_dir = Path(calling_file_name).joinpath('charts')
+            plot_method = plot
         #default_dir = Path.cwd().joinpath('charts')
         chart_dir.mkdir(parents=True, exist_ok=True)
         filename = chart_dir.joinpath(filename)
         print(f'Plot saved as: {filename}')
-        
-        plot_method = plot
-        if self.jupyter:
-            plot_method = iplot
+
         plot_method(fig, filename=filename.as_posix())
     
         return None
