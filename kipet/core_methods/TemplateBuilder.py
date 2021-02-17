@@ -1051,7 +1051,7 @@ class TemplateBuilder(object):
 
             setattr(model, self.__var.spectra_data, Param(model.meas_times,
                                                           model.meas_lambdas,
-                                                          domain=Any,
+                                                          domain=Reals,
                                                           initialize=s_data_dict))
             
             setattr(model, self.__var.concentration_spectra, Var(model.meas_times,
@@ -1469,12 +1469,15 @@ class TemplateBuilder(object):
         self._state_sigmas = self.template_component_data.var_variances()
         if hasattr(self, 'template_state_data'):
             self._state_sigmas.update(**self.template_state_data.var_variances())
-        if self._state_sigmas is not None:
-            state_sigmas = {k: v for k, v in self._state_sigmas.items() if k in pyomo_model.measured_data}
-            pyomo_model.sigma = Param(pyomo_model.measured_data, initialize=state_sigmas) #, mutable=True)
-        else:
-            pyomo_model.sigma = Param(pyomo_model.measured_data, initialize=1)#, mutable=True)
- 
+        
+        for k, v in self._state_sigmas.items():
+            if v is None:
+                self._state_sigmas[k] = 1
+                print(f'Warning: No variance provided for model component {k}, it is being set to one')
+       
+        state_sigmas = {k: v for k, v in self._state_sigmas.items() if k in pyomo_model.measured_data}
+        pyomo_model.sigma = Param(pyomo_model.measured_data, domain=Reals, initialize=state_sigmas)
+       
         # In case of a second call after known_absorbing has been declared
         if self._huplc_data is not None and self._is_huplc_abs_set:
             self.set_huplc_absorbing_species(pyomo_model, self._huplc_absorbing, self._vol, self._solid_spec, check=False)
