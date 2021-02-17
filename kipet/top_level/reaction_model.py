@@ -242,7 +242,7 @@ class ReactionModel(WavelengthSelectionMixins):
         """Create a algebraic variable with a localized pyomo var
         
         """
-        raise Warning('This is deprecated and will be removed in a future version')
+        print('Warning: This is deprecated and will be removed in a future version')
         
         return self._add_model_component('algebraic', 
                                         2, 
@@ -1088,7 +1088,6 @@ class ReactionModel(WavelengthSelectionMixins):
                 try:
                     comp.variance = self.variances[comp.name]
                 except:
-                    print(f'No variance information for {comp.name} found, setting equal to unity')
                     comp.variance = 1
                 
         # Create ParameterEstimator
@@ -1505,6 +1504,11 @@ class ReactionModel(WavelengthSelectionMixins):
 
 
     def check_component_units(self):
+        """Method to check whether the units provided are consisten with the
+        base units
+        
+        """
+        print('Checking model component units:\n')
         
         element_dict = {
            'parameters': self.parameters,
@@ -1519,11 +1523,16 @@ class ReactionModel(WavelengthSelectionMixins):
                 comp._check_scaling()
         
         self._units_checked = True
+        print('')
         
         return None
 
     def check_model_units(self, display=False):
-
+        """Method to check the expected units of the algebraic and odes
+        
+        """
+        print('Checking expected equation units:\n')
+        
         if not self.__flag_odes_built:
             self._build_odes()
         if not self.__flag_algs_built:
@@ -1549,7 +1558,9 @@ class ReactionModel(WavelengthSelectionMixins):
         if display:
             self.ode_obj.display_units()
             print('')
-            self.alg_obj.display_units()
+            if len(self.alg_obj) > 0:
+                self.alg_obj.display_units()
+                print('')
             
         return None
     
