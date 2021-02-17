@@ -36,12 +36,13 @@ class PlotObject():
     
     """This will hold the relevant information needed to make a plot in KIPET"""
     
-    def __init__(self, reaction_model):
+    def __init__(self, reaction_model, jupyter):
         
         self.reaction_model = reaction_model
         self.name = reaction_model.name
         self.color_num = 0
         self.filename = None
+        self.jupyter = False
         
     def _make_line_trace(self, fig, x, y, name, color):
         """Make line traces
@@ -91,7 +92,11 @@ class PlotObject():
         chart_dir.mkdir(parents=True, exist_ok=True)
         filename = chart_dir.joinpath(filename)
         print(f'Plot saved as: {filename}')
-        plot(fig, filename=filename.as_posix())
+        
+        plot_method = plot
+        if self.jupyter:
+            plot_method = iplot
+        plot_method(fig, filename=filename.as_posix())
     
         return None
 

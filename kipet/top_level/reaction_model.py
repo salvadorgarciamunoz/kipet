@@ -1565,13 +1565,13 @@ class ReactionModel(WavelengthSelectionMixins):
         return None
     
     
-    def plot(self, var=None):
+    def plot(self, var=None, jupyter=False):
         
         """Plot results using the variable or variable class"""
         
         from kipet.visuals.plots import PlotObject
         
-        self._plot_object = PlotObject(self)
+        self._plot_object = PlotObject(self, jupyter)
         
         if var == 'Z':
             self._plot_object._plot_all_Z()
