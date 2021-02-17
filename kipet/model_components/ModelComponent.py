@@ -29,6 +29,7 @@ class ModelElement():
         self.unit_base = unit_base
         self.ur = unit_base.ur
         self.units = 1*self.ur('') if units is None else 1*self.ur(units)
+        self.units_orig = self.units
         self.conversion_factor = 1
         #self._check_scaling()
 
@@ -41,21 +42,27 @@ class ModelElement():
         quantity = self.convert_single_dimension(quantity, self.unit_base.TIME_BASE, power_fixed=False)
         quantity = self.convert_single_dimension(quantity, self.unit_base.VOLUME_BASE, power_fixed=True)
         
-        print(f'Converting {self.name} to base units {quantity.m} {quantity.units}')
-        
-        self.conversion_factor = quantity.m
-        self.units = quantity.units
-        
-        if self.value is not None:
-            self.value = quantity.m*self.value
+        if not self.units.u == quantity.u:
             
-        if hasattr(self, 'bounds') and self.bounds is not None:
-            bounds = list(self.bounds)
-            if bounds[0] is not None:
-                bounds[0] *= self.conversion_factor
-            if bounds[1] is not None:
-                bounds[1] *= self.conversion_factor
-            self.bounds = (bounds) 
+            margin = 8
+            
+            print(f'Converting {self.name}:')
+            print('From'.rjust(margin) + f' : {self.value:e} {self.units.u}')
+            print('To'.rjust(margin) + f' : {self.value*quantity.m:e} {quantity.u}')
+            
+            self.conversion_factor = quantity.m
+            self.units = 1*quantity.units
+            
+            if self.value is not None:
+                self.value = quantity.m*self.value
+                
+            if hasattr(self, 'bounds') and self.bounds is not None:
+                bounds = list(self.bounds)
+                if bounds[0] is not None:
+                    bounds[0] *= self.conversion_factor
+                if bounds[1] is not None:
+                    bounds[1] *= self.conversion_factor
+                self.bounds = (bounds) 
 
     def convert_unit(self, u_orig, u_goal, scalar=1, power=1, both_powers=False):
    
@@ -137,6 +144,14 @@ class ModelElement():
         
         return name
     
+    @property
+    def in_orig_units(self):
+        """Convert the value of the element back into its original unit value
+        
+        """
+        current = self.value*self.units
+        original = current.to(self.units_orig.units)
+        return original.m
     
 class ModelAlgebraic(ModelElement):
     
