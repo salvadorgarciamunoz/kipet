@@ -9,7 +9,7 @@ import sys
 
 # Thirdparty library imports 
 import plotly.graph_objects as go
-from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
+import plotly.io as pio
 
 # Kipet library imports
 """
@@ -88,17 +88,30 @@ class PlotObject():
             
         if self.jupyter:
             chart_dir = Path.cwd().joinpath('charts')
-            plot_method = iplot
+            plot_method = pio.show
+            fig.update_layout(         
+                autosize=False,
+                width=1200,
+                height=800,
+                margin=dict(
+                    l=50,
+                    r=50,
+                    b=50,
+                    t=50,
+                    pad=4
+                    ),
+                )
         else:
             calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
             chart_dir = Path(calling_file_name).joinpath('charts')
-            plot_method = plot
-        #default_dir = Path.cwd().joinpath('charts')
+            plot_method = pio.write_html
+        
         chart_dir.mkdir(parents=True, exist_ok=True)
         filename = chart_dir.joinpath(filename)
-        print(f'Plot saved as: {filename}')
+        if not self.jupyter:
+           print(f'Plot saved as: {filename}')
 
-        plot_method(fig, filename=filename.as_posix())
+        plot_method(fig, file=filename.as_posix(), auto_open=True)
     
         return None
 
