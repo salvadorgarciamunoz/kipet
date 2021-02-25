@@ -83,7 +83,7 @@ class PlotObject():
 
         if self.filename is None:
             t = time.localtime()
-            date = f'{t.tm_year}-{t.tm_mon:02}-{t.tm_mday:02}-{t.tm_hour:02}:{t.tm_min:02}:{t.tm_sec:02}'
+            date = f'{t.tm_year}-{t.tm_mon:02}-{t.tm_mday:02}-{t.tm_hour:02}-{t.tm_min:02}-{t.tm_sec:02}'
             # filename = f'{self.name}-{plot_name}-{date}.html'
             filename = f'{plot_name}.html'
             
