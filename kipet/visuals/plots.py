@@ -84,10 +84,11 @@ class PlotObject():
         if self.filename is None:
             t = time.localtime()
             date = f'{t.tm_year}-{t.tm_mon:02}-{t.tm_mday:02}-{t.tm_hour:02}:{t.tm_min:02}:{t.tm_sec:02}'
-            filename = f'{self.name}-{plot_name}-{date}.html'
+            # filename = f'{self.name}-{plot_name}-{date}.html'
+            filename = f'{plot_name}.html'
             
         if self.jupyter:
-            chart_dir = Path.cwd().joinpath('charts')
+            chart_dir = Path.cwd().joinpath('charts', f'{self.name}-{date}')
             plot_method = pio.show
             fig.update_layout(         
                 autosize=False,
@@ -103,7 +104,7 @@ class PlotObject():
                 )
         else:
             calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
-            chart_dir = Path(calling_file_name).joinpath('charts')
+            chart_dir = Path(calling_file_name).joinpath('charts', f'{self.name}-{date}')
             plot_method = pio.write_html
         
         chart_dir.mkdir(parents=True, exist_ok=True)
@@ -227,7 +228,7 @@ class PlotObject():
         title = f'Model: {self.reaction_model.name} | Variable: {var_data.name} {description}'
         time_scale = f'Time [{self.reaction_model.ub.TIME_BASE}]'
         # state_units = var_data.units
-        state_units = self._get_proper_unit_str(var_data)
+        state_units = self._get_proper_unit_str(var_data, check_expr=True)
         fig.update_layout(
             title=title,
             xaxis_title=f'{time_scale}',
@@ -321,13 +322,16 @@ class PlotObject():
             )
         self._fig_finishing(fig, pred, plot_name=f'{var}-step-profile')
         
-    @staticmethod
-    def _get_proper_unit_str(var_data):
+    
+    def _get_proper_unit_str(self, var_data, check_expr=False):
         
         try:
             str_units = var_data.units.u
         except:
             str_units = var_data.units
+            
+        if check_expr:
+            str_units = str(self.reaction_model.alg_obj.exprs[var_data.name].units)
             
         return str_units
         
