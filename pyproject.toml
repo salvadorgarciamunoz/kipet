@@ -1,7 +1,7 @@
 [tool.poetry]
 
 name = "kipet"
-version = "0.1.53"
+version = "0.1.531"
 description = "An all-in-one tool for fitting kinetic models using spectral and other state data"
 authors = ["Kevin McBride <kevin.w.mcbride.86@gmail.com>",
     "Kuan-Han Lin",
@@ -30,6 +30,7 @@ ipopt = "^0.3.0"
 matplotlib = "^3.3.4"
 PyYAML = "^5.4.1"
 Pyomo = "^5.7.3"
+attrs = "^20.3.0"
 
 [tool.poetry.dev-dependencies]
 
