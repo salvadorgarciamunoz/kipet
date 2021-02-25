@@ -4,7 +4,7 @@ Expression Classes
 # Standad library imports
 
 # Third party imports
-from pyomo.core.expr.numeric_expr import DivisionExpression
+from pyomo.core.expr.numeric_expr import DivisionExpression, ProductExpression
 from pyomo.environ import (
     ConcreteModel,
     Objective,
@@ -15,6 +15,12 @@ from pyomo.environ import units as pyo_units
 # KIPET library imports
 from kipet.common.VisitorClasses import ReplacementVisitor
 from kipet.post_model_build.replacement import _update_expression
+
+from kipet.dev_tools.display import Print
+
+DEBUG = False
+
+_print = Print(verbose=DEBUG)
 
 
 class ExpressionBlock():
@@ -27,6 +33,10 @@ class ExpressionBlock():
         
         self.exprs = exprs
         self._title = 'EXPR'
+
+    def __len__(self):
+        
+        return len(self.exprs)
         
     def display(self):
         
@@ -38,10 +48,12 @@ class ExpressionBlock():
 
     def display_units(self):
 
+        margin = 8
         if self.exprs is not None:
             print(f'{self._title} units:')
             for key, expr in self.exprs.items():
-                print(f'{key}: {expr.units}')
+                #print(f'  {key}: {expr.units}')
+                print(f'{str(key).rjust(margin)} : {expr.units}')
     
 
 class ODEExpressions(ExpressionBlock):
@@ -88,21 +100,6 @@ class Expression():
     def show_units(self):
         return self.units.to_string()
     
-    # def _change_to_unit(self, c_mod, c_mod_new):
-    #     """Method to remove the fixed parameters from the ConcreteModel
-    #     TODO: move to a new expression class
-    #     """
-    #     var_dict = c_mod_new.var_dict
-    #     expr_new = self.expression
-    #     if self.expression_orig is not None:
-    #         expr_new = self.expression_orig
-    #     for model_var, var_obj in var_dict.items():
-    #         old_var = getattr(c_mod, model_var)
-    #         new_var = getattr(c_mod_new, model_var)         
-    #         expr_new = _update_expression(expr_new, old_var, new_var)
-            
-    #     return expr_new
-    
     def _change_to_unit(self, c_mod, c_mod_new):
         """Method to remove the fixed parameters from the ConcreteModel
         TODO: move to a new expression class
@@ -117,51 +114,7 @@ class Expression():
             expr_new = _update_expression(expr_new, old_var, new_var)
         return expr_new
 
-    """
-    def change_time(self, expr_orig, c_mod, new_time, current_model):
-           
-            expr_new_time = expr_orig
-            var_dict = c_mod
-            
-            for model_var, obj_list in var_dict.items():
-                
-                if not isinstance(obj_list[1].index(), int):
-                    old_var = obj_list[1]
-                    new_var = getattr(current_model, obj_list[0])[new_time, model_var]
-            
-                else:
-                    old_var = obj_list[1]
-                    new_var = getattr(current_model, obj_list[0])[model_var]
-            
-                expr_new_time = self._update_expression(expr_new_time, old_var, new_var)
-        
-            return expr_new_time
-    """
-
-
-    # def check_units(self, c_mod, c_mod_new):
-    #     """Check the expr units by exchanging the real model with unit model
-    #     components
-        
-    #     Args:
-    #         key (str): component represented in ODE
-            
-    #         expr (Expression): Expression object of ODE
-            
-    #         c_mod (Comp): original Comp object used to declare the expressions
-            
-    #         c_mod_new (Comp_Check): dummy model with unit components
-            
-    #     Returns:
-    #         pint_units (): Returns expression with unit model components
-        
-    #     """
-    #     expr = self._change_to_unit(c_mod, c_mod_new)
-    #     self.units = pyo_units.get_units(expr)
-
-    #     return None
-    
-    def check_units(self, c_mod, c_mod_new):
+    def check_units(self):#, c_mod, c_mod_new):
         """Check the expr units by exchanging the real model with unit model
         components
         
@@ -178,8 +131,7 @@ class Expression():
             pint_units (): Returns expression with unit model components
         
         """
-        expr = self._change_to_unit(c_mod, c_mod_new)
-        self.units = pyo_units.get_units(expr)
+        self.units = pyo_units.get_units(self.expression)
         return None
 
     def check_division(self, eps=1e-12):
@@ -200,3 +152,64 @@ class Expression():
             self.expression_orig = expr
     
         return None
+    
+    #Consolidate the units per expression - avoid checking the individual units
+    
+    def check_term(self, term, convert_to):
+        
+        unit_term = pyo_units.get_units(term)
+        _print(f'     Units: {unit_term} ==> {convert_to}\n')
+        _changed_flag = False
+        term_orig = term
+        
+        if unit_term is not None:
+            _print('Starting conversion and making the new term\n')
+            term_new = pyo_units.convert(term, to_units=getattr(pyo_units, convert_to))
+            
+            
+        return term_new
+    
+    def check_expression_units(self, convert_to=None, scalar=1):
+        
+        if convert_to is None:
+            raise ValueError('You need to supply a conversion')
+        
+        expr = self.expression
+        expr_new = 0
+        
+        _print(f'The ODE expression being handled is:\n     {expr}\n')
+        _print(f'The type of expression being handled is:\n     {type(expr)}\n')
+    
+        if isinstance(self.expression, (DivisionExpression, ProductExpression)):
+            _print(f'The number of terms in this expression is: 1\n')
+            
+            term = self.check_term(expr, convert_to)
+            expr_new = scalar*term
+        
+        else:
+            _print(f'The number of terms in this expression is: {len(expr.args)}\n')
+            
+            for i, term in enumerate(expr.args):
+                _print(f'({i+1}) The expression term considered here is\n     {term}\n')
+                term = self.check_term(term, convert_to)
+                expr_new += scalar*term
+        
+        _print('The new expression is:\n')
+        _print(f'     {expr_new}')
+            
+        self.expression = expr_new
+        self.units = getattr(pyo_units, convert_to)
+             
+        return None
+        
+            
+            
+    
+    
+    
+    
+    
+    
+    
+    
+    

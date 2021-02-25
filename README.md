@@ -1,9 +1,18 @@
 # <img alt="KIPET" src="branding/kipetlogo_full.svg" height="60">
 
-[![](https://img.shields.io/pypi/v/kipet.svg?style=flat)](https://pypi.org/pypi/kipet/)
 [![](https://img.shields.io/github/license/salvadorgarciamunoz/kipet)](https://github.com/salvadorgarciamunoz/kipet/blob/master/LICENSE)
 [![](https://img.shields.io/github/last-commit/salvadorgarciamunoz/kipet)](https://github.com/salvadorgarciamunoz/kipet/)
 [![](https://img.shields.io/pypi/wheel/kipet)](https://pypi.org/manage/project/kipet/release/0.1.1/)
+<br>
+
+[![](https://img.shields.io/badge/Install%20with-pip-green)]()
+[![](https://img.shields.io/pypi/v/kipet.svg?style=flat)](https://pypi.org/pypi/kipet/)
+<br>
+
+[![](https://anaconda.org/kwmcbride/kipet/badges/installer/conda.svg)]()
+[![Anaconda-Server Badge](https://anaconda.org/kwmcbride/kipet/badges/version.svg)](https://anaconda.org/kwmcbride/kipet)
+[![](https://anaconda.org/kwmcbride/kipet/badges/latest_release_date.svg)]()
+[![](https://anaconda.org/kwmcbride/kipet/badges/platforms.svg)]()
 
 
 KIPET is a Python package designed to simulate, and estimate parameters from 
@@ -36,6 +45,19 @@ Installation
 A packaged version of KIPET can be installed using:
 
     pip install kipet
+
+If you run into errors when installing KIPET using pip, try installing the following packages beforehand:
+
+    pip install Cython numpy six
+    pip install kipet
+
+You may also install KIPET with poetry (this method is recommended):
+
+    poetry add kipet
+
+Finally, if you are using Anaconda, KIPET can be installed using:
+
+    conda install -c kwmcbride kipet
 
 Additionally, KIPET may be installed directly from the repository (if you want the latest version, simply install the desired branch (#branch)):
 

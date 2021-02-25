@@ -233,7 +233,9 @@ class TemplateBuilder(object):
                         if hasattr(comp, 'data_link'):
                             data_block = data_block_dict[comp.data_link]
                             time_span = max(time_span, data_block.time_span[1]*time_conversion_factor)
-                            data_frame = data_block.data[comp.name]*comp.conversion_factor
+                            data_frame = data_block.data[comp.name]
+                            if not comp.use_orig_units:
+                                data_frame *= comp.conversion_factor
                             # data_frame.index = data_frame.index*time_conversion_factor
                             self._add_state_data(data_frame, data_label, overwrite=False)
 
@@ -1051,7 +1053,7 @@ class TemplateBuilder(object):
 
             setattr(model, self.__var.spectra_data, Param(model.meas_times,
                                                           model.meas_lambdas,
-                                                          domain=Any,
+                                                          domain=Reals,
                                                           initialize=s_data_dict))
             
             setattr(model, self.__var.concentration_spectra, Var(model.meas_times,
@@ -1154,6 +1156,9 @@ class TemplateBuilder(object):
                     end_time = self.time_span_max
                 except:
                     raise ValueError('A model requires a start and end time or a dataset')
+        
+        start_time = self.round_time(start_time)
+        end_time = self.round_time(end_time)
         
         list_times = self._meas_times
         m_times = sorted(list_times)
@@ -1273,8 +1278,6 @@ class TemplateBuilder(object):
         the model time bounds
         
         """
-        # print(time_set)
-        # print(start_time, end_time)
         
         if time_set[0] < start_time:
             raise RuntimeError(f'Measurement time {time_set[0]} not within ({start_time}, {end_time})')
@@ -1469,12 +1472,15 @@ class TemplateBuilder(object):
         self._state_sigmas = self.template_component_data.var_variances()
         if hasattr(self, 'template_state_data'):
             self._state_sigmas.update(**self.template_state_data.var_variances())
-        if self._state_sigmas is not None:
-            state_sigmas = {k: v for k, v in self._state_sigmas.items() if k in pyomo_model.measured_data}
-            pyomo_model.sigma = Param(pyomo_model.measured_data, initialize=state_sigmas) #, mutable=True)
-        else:
-            pyomo_model.sigma = Param(pyomo_model.measured_data, initialize=1)#, mutable=True)
- 
+        
+        for k, v in self._state_sigmas.items():
+            if v is None:
+                self._state_sigmas[k] = 1
+                print(f'Warning: No variance provided for model component {k}, it is being set to one')
+       
+        state_sigmas = {k: v for k, v in self._state_sigmas.items() if k in pyomo_model.measured_data}
+        pyomo_model.sigma = Param(pyomo_model.measured_data, domain=Reals, initialize=state_sigmas)
+       
         # In case of a second call after known_absorbing has been declared
         if self._huplc_data is not None and self._is_huplc_abs_set:
             self.set_huplc_absorbing_species(pyomo_model, self._huplc_absorbing, self._vol, self._solid_spec, check=False)

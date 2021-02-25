@@ -55,6 +55,9 @@ class ModelElementBlock():
     def __len__(self):
         return len(getattr(self, self.attr_class_set_name))
     
+    def __contains__(self, key):
+        return key in self._dict
+    
 
     def add_element_list(self, elem_list):
         """Handles lists of parameters or single parameters added to the model

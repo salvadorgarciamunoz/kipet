@@ -25,7 +25,7 @@ from kipet.common.parameter_handling import (
     set_scaled_parameter_bounds,
     )
  
-DEBUG = False
+DEBUG = True
 
 class ReducedHessian(object):
     """Class for handling the reduced hessian calculations in KIPET/NSD"""
@@ -325,6 +325,12 @@ class ReducedHessian(object):
         
             self.add_global_constraints() 
         
+            if self.set_param_bounds:
+                set_scaled_parameter_bounds(self.model_object, 
+                                        parameter_set=self.parameter_set, 
+                                        rho=self.rho, 
+                                        scaled=self.scaled) 
+        
         elif self.param_con_method == 'fixed':
             
             if hasattr(self.model_object, self.global_constraint_name):
@@ -340,19 +346,15 @@ class ReducedHessian(object):
                     v.unfix()
                 else:
                     v.fix()
-                    
-        if self.set_param_bounds:
-            set_scaled_parameter_bounds(self.model_object, 
-                                        parameter_set=self.parameter_set, 
-                                        rho=self.rho, 
-                                        scaled=self.scaled)  
-                    
+        
+            
         ipopt.solve(self.model_object, 
                     symbolic_solver_labels=True, 
                     keepfiles=True, 
-                    tee=False,
+                    tee=True,
                     logfile=tmpfile_i,
                     )
+        #print(self.model_object.P.display())
         
         # Create the file object so that it can be deleted
         self.get_file_info()
@@ -387,6 +389,7 @@ class ReducedHessian(object):
         if self.param_con_method == 'global':
             
             dummy_constraints = [f'{self.global_constraint_name}[{k}]' for k in self.parameter_set]
+            #print(dummy_constraints)
             jac_row_ind = [con_ind_new.index(d) for d in dummy_constraints] 
             #duals_imp = [duals[i] for i in jac_row_ind]
             
@@ -397,6 +400,7 @@ class ReducedHessian(object):
             J_f = row_indexer[col_ind]
             J_f = delete_from_csr(J_f.tocsr(), row_indices=jac_row_ind, col_indices=[])
             J_l = delete_from_csr(J_c.tocsr(), col_indices=col_ind)  
+            #print(J_f, J_l)
     
         elif self.param_con_method == 'fixed':
             
@@ -407,7 +411,8 @@ class ReducedHessian(object):
             row_indexer = SparseRowIndexer(J_c.T)
             J_f = row_indexer[col_ind].T
             #J_f = delete_from_csr(J_f.tocsr(), row_indices=jac_row_ind, col_indices=[]) 
-            J_l = delete_from_csr(J_c.tocsr(), col_indices=col_ind)  
+            J_l = delete_from_csr(J_c.tocsr(), col_indices=col_ind)
+            #print(J_f, J_l)
             
         else:
             None
@@ -599,8 +604,8 @@ class SparseRowIndexer:
              indices.append(matrix.indices[row_start:row_end])
              indptr.append(row_end-row_start) # nnz of the row
 
-        self.data = np.array(data)
-        self.indices = np.array(indices)
+        self.data = np.array(data, dtype=object)
+        self.indices = np.array(indices, dtype=object)
         self.indptr = np.array(indptr)
         self.n_columns = matrix.shape[1]
 
