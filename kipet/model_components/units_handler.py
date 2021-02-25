@@ -8,6 +8,7 @@ from enum import Enum
 
 from kipet.dev_tools.display import Print
 
+
 DEBUG = False
 
 _print = Print(verbose=DEBUG)
@@ -92,7 +93,7 @@ def convert_single_dimension(unit_registry, unit_from, unit_to, power_fixed=Fals
        
         _print(f'\n\tLooking at {unit}:\n')
         
-        dims = dict(ur(unit).dimensionality)
+        dims = dict(unit_registry(unit).dimensionality)
         dims = {k.replace('[', '').replace(']', ''): v for k, v in dims.items()}
 
         try:
@@ -109,7 +110,7 @@ def convert_single_dimension(unit_registry, unit_from, unit_to, power_fixed=Fals
         _print(f'\t{uc_to}\n')
         
         
-        if (ur(uc_from.unit)**uc_from.power).check("[power]"):
+        if (unit_registry(uc_from.unit)**uc_from.power).check("[power]"):
             #print(f'Handling power unit: {(ur(uc_from.unit)**uc_from.power).check("[power]")}')
             continue
         
@@ -120,7 +121,7 @@ def convert_single_dimension(unit_registry, unit_from, unit_to, power_fixed=Fals
         if uc_from.dim == uc_to.dim:
             
             if conversion != ConversionType.volume:
-                is_volume = (ur(uc_from.unit)**uc_from.power).check("[volume]")
+                is_volume = (unit_registry(uc_from.unit)**uc_from.power).check("[volume]")
                 if is_volume:    
                     continue
     
@@ -135,8 +136,8 @@ def convert_single_dimension(unit_registry, unit_from, unit_to, power_fixed=Fals
                 #print(new_unit)
                 
             elif conversion == ConversionType.volume:
-                _print(ur(f'{unit}**{uc_from.power}'))
-                if ur(f'{unit}**{abs(uc_from.power)}').check('[volume]'):
+                _print(unit_registry(f'{unit}**{uc_from.power}'))
+                if unit_registry(f'{unit}**{abs(uc_from.power)}').check('[volume]'):
                     _print('Converting from volume to volume')
                     
                     power = 3 #if uc_from.power > 0 else -3
