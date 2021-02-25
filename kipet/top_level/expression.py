@@ -18,7 +18,7 @@ from kipet.post_model_build.replacement import _update_expression
 
 from kipet.dev_tools.display import Print
 
-DEBUG = True
+DEBUG = False
 
 _print = Print(verbose=DEBUG)
 
