@@ -4,6 +4,9 @@ ModelComponent Classes
 # Third party imports
 import pint
 
+# Kipet library imports
+from kipet.model_components.units_handler import convert_single_dimension 
+
 class ModelElement():
     
     """Abstract Class to handle the modeling components in KIPET"""
@@ -16,7 +19,9 @@ class ModelElement():
                  unit_base=None,
                  description=None,
                  pyomo_var=None,
-                 model_var=None
+                 model_var=None,
+                 units_orig=None,
+                 conversion_factor=1,
                  ): 
         
         self.name = self._check_name(name)
@@ -29,8 +34,9 @@ class ModelElement():
         self.unit_base = unit_base
         self.ur = unit_base.ur
         self.units = 1*self.ur('') if units is None else 1*self.ur(units)
-        self.units_orig = self.units
-        self.conversion_factor = 1
+        self.units_orig = self.ur(units_orig)
+        self.use_orig_units = False
+        self.conversion_factor = conversion_factor
         #self._check_scaling()
 
     def _check_scaling(self):
@@ -39,8 +45,8 @@ class ModelElement():
         quantity = 1 * self.units
         quantity.ito_base_units()
         
-        quantity = self.convert_single_dimension(quantity, self.unit_base.TIME_BASE, power_fixed=False)
-        quantity = self.convert_single_dimension(quantity, self.unit_base.VOLUME_BASE, power_fixed=True)
+        quantity = convert_single_dimension(self.ur, quantity, self.unit_base.TIME_BASE, power_fixed=False)
+        quantity = convert_single_dimension(self.ur, quantity, self.unit_base.VOLUME_BASE, power_fixed=True)
         
         if not self.units.u == quantity.u:
             
@@ -64,58 +70,58 @@ class ModelElement():
                     bounds[1] *= self.conversion_factor
                 self.bounds = (bounds) 
 
-    def convert_unit(self, u_orig, u_goal, scalar=1, power=1, both_powers=False):
+    # def convert_unit(self, u_orig, u_goal, scalar=1, power=1, both_powers=False):
    
-        c1 = 1*self.ur(u_orig)
-        c2 = 1*self.ur(u_goal)
+    #     c1 = 1*self.ur(u_orig)
+    #     c2 = 1*self.ur(u_goal)
         
-        power2 = 1
-        if both_powers:
-            power2 = power
+    #     power2 = 1
+    #     if both_powers:
+    #         power2 = power
             
-        con = (c1**power).to((c2**power2).u)/c2**power2 * (c2**power2).u/(c1**power).u
+    #     con = (c1**power).to((c2**power2).u)/c2**power2 * (c2**power2).u/(c1**power).u
         
-        return scalar * con
+    #     return scalar * con
     
-    def convert_single_dimension(self, unit_to_convert, u_goal, power_fixed=False):
+    # def convert_single_dimension(self, unit_to_convert, u_goal, power_fixed=False):
         
-        u_g = self.ur(u_goal)
-        orig_dim = {k.replace('[', '').replace(']', ''): v for k, v in dict(u_g.dimensionality).items()}
-        units = {k: v for k, v in unit_to_convert._units.items()}
-        dim_to_find = list(orig_dim.keys())[0]
-        power = orig_dim[dim_to_find]
+    #     u_g = self.ur(u_goal)
+    #     orig_dim = {k.replace('[', '').replace(']', ''): v for k, v in dict(u_g.dimensionality).items()}
+    #     units = {k: v for k, v in unit_to_convert._units.items()}
+    #     dim_to_find = list(orig_dim.keys())[0]
+    #     power = orig_dim[dim_to_find]
         
-        # print(f'unit_to_convert: {unit_to_convert}')
-        # print(f'dim_to_find: {dim_to_find}')
-        # print(f'power {power}')
+    #     # print(f'unit_to_convert: {unit_to_convert}')
+    #     # print(f'dim_to_find: {dim_to_find}')
+    #     # print(f'power {power}')
         
-        for dims in units:
+    #     for dims in units:
             
-            s = self.ur(dims)
-            s = list({k.replace('[', '').replace(']', ''): v for k, v in dict(s.dimensionality).items()})[0]
-            # print(f's: {s}')
+    #         s = self.ur(dims)
+    #         s = list({k.replace('[', '').replace(']', ''): v for k, v in dict(s.dimensionality).items()})[0]
+    #         # print(f's: {s}')
             
-            if s == dim_to_find:
-                if power_fixed and abs(units[dims]) == power:                                       
-                    power = units[dims]
-                    u_orig = dims
-                    # print(dims, power)
-                    con = self.convert_unit(u_orig, u_goal, power=abs(power))
-                    # print(con)
-                    con = con ** (power/abs(power))
-                    new_unit = unit_to_convert * con
-                    return new_unit
-                elif not power_fixed:
-                    power = units[dims]
-                    u_orig = dims
-                    # print(dims, power)
-                    con = self.convert_unit(u_orig, u_goal, power=abs(power), both_powers=True)
-                    # print(con)
-                    con = con ** (power/abs(power))
-                    new_unit = unit_to_convert * con
-                    return new_unit
+    #         if s == dim_to_find:
+    #             if power_fixed and abs(units[dims]) == power:                                       
+    #                 power = units[dims]
+    #                 u_orig = dims
+    #                 # print(dims, power)
+    #                 con = self.convert_unit(u_orig, u_goal, power=abs(power))
+    #                 # print(con)
+    #                 con = con ** (power/abs(power))
+    #                 new_unit = unit_to_convert * con
+    #                 return new_unit
+    #             elif not power_fixed:
+    #                 power = units[dims]
+    #                 u_orig = dims
+    #                 # print(dims, power)
+    #                 con = self.convert_unit(u_orig, u_goal, power=abs(power), both_powers=True)
+    #                 # print(con)
+    #                 con = con ** (power/abs(power))
+    #                 new_unit = unit_to_convert * con
+    #                 return new_unit
         
-        return unit_to_convert
+    #     return unit_to_convert
         
     def _check_name(self, name):
         """Check for valid attr names in the given string
@@ -168,9 +174,12 @@ class ModelAlgebraic(ModelElement):
                  step=None,
                  pyomo_var=None,
                  model_var=None,
+                 units_orig=None,
+                 conversion_factor=1,
                  ):
     
-        super().__init__(name, ModelComponent.class_, value, units, unit_base, description, pyomo_var, model_var)
+        super().__init__(name, ModelComponent.class_, value, units,
+                         unit_base, description, pyomo_var, model_var, units_orig, conversion_factor)
    
         self.bounds = bounds
         self.data = data
@@ -221,11 +230,13 @@ class ModelComponent(ModelElement):
                  description=None,
                  absorbing=True,
                  pyomo_var=None,
-                 model_var=None,
+                 model_var=None,   
+                 units_orig=None,
+                 conversion_factor=1,
                  ):
     
-        super().__init__(name, ModelComponent.class_, value, units, unit_base, description, pyomo_var, model_var)
-   
+        super().__init__(name, ModelComponent.class_, value, units,
+                         unit_base, description, pyomo_var, model_var, units_orig, conversion_factor)
         # component attributes
         self.variance = variance
         self.state = 'concentration'
@@ -288,10 +299,12 @@ class ModelState(ModelElement):
                  description=None,
                  pyomo_var=None,
                  model_var=None,
+                 units_orig=None,
+                 conversion_factor=1,
                  ):
     
-        super().__init__(name, ModelComponent.class_, value, units, unit_base, description, pyomo_var, model_var)
-   
+        super().__init__(name, ModelComponent.class_, value, units,
+                         unit_base, description, pyomo_var, model_var, units_orig, conversion_factor)
         # component attributes
         self.variance = variance
         self.state = state
@@ -354,11 +367,12 @@ class ModelParameter(ModelElement):
                  description=None,
                  pyomo_var=None,
                  model_var=None,
+                 units_orig=None,
+                 conversion_factor=1,
                  ):
     
-        super().__init__(name, ModelComponent.class_, value, units, unit_base, description, pyomo_var, model_var)
-        
-        # parameter attributes
+        super().__init__(name, ModelComponent.class_, value, units,
+                         unit_base, description, pyomo_var, model_var, units_orig, conversion_factor)
         self.bounds = bounds
         self.fixed = fixed
         self.variance = variance
@@ -409,9 +423,12 @@ class ModelConstant(ModelElement):
                  description=None,
                  pyomo_var=None,
                  model_var=None,
+                 units_orig=None,
+                 conversion_factor=1,
                  ):
     
-        super().__init__(name, ModelComponent.class_, value, units, unit_base, description, pyomo_var, model_var)
+        super().__init__(name, ModelComponent.class_, value, units,
+                         unit_base, description, pyomo_var, model_var, units_orig, conversion_factor)
         self._class_ = type(self)
     
     def __str__(self):

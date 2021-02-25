@@ -29,7 +29,7 @@ from kipet.core_methods.ParameterEstimator import ParameterEstimator
 from kipet.core_methods.PyomoSimulator import PyomoSimulator
 from kipet.core_methods.TemplateBuilder import TemplateBuilder
 from kipet.core_methods.VarianceEstimator import VarianceEstimator
-from kipet.common.component_expression import get_unit_model
+# from kipet.common.component_expression import get_unit_model
 from kipet.common.model_funs import step_fun
 from kipet.post_model_build.pyomo_model_tools import get_vars
 from kipet.dev_tools.display import Print
@@ -60,6 +60,9 @@ from kipet.top_level.settings import (
     )
 from kipet.top_level.variable_names import VariableNames
 # from kipet.common.VisitorClasses import FindingVisitor
+from pyomo.environ import units as pyo_units
+
+from kipet.model_components.units_handler import convert_single_dimension
 
 __var = VariableNames()
 DEBUG=__var.DEBUG
@@ -175,23 +178,55 @@ class ReactionModel(WavelengthSelectionMixins):
         if not hasattr(self, '_set_up_model'):
             self._make_set_up_model()
         
-        sets = [self._set_up_model.indx]*index
-        m_units = self.ub.ur(units).units
-        if m_units.dimensionless:
-            m_units = str(1)
+        setattr(self._set_up_model, f'{name}_indx', Set(initialize=[0]))
+        sets = [getattr(self._set_up_model, f'{name}_indx')]*index
+
+        if units is None:
+            p_units = str(1)
+            comp_units = 1*self.unit_base.ur('')
+
         else:
-            m_units = getattr(self.ub.ur, str(m_units))
-        
-        setattr(self._set_up_model, name, Var(*sets, initialize=1))#, units=units))
+            con = 1
+            margin = 6
+            print(f'Checking units for {name.rjust(margin)}: \t{units}')
+            comp_units = convert_single_dimension(self.unit_base.ur, units, self.unit_base.TIME_BASE)
+            con *= comp_units.m
+            comp_units = convert_single_dimension(self.unit_base.ur, str(comp_units.units), self.unit_base.VOLUME_BASE)
+            con *= comp_units.m
+            p_units = con*getattr(pyo_units, str(comp_units.units))
+            comp_units = con*comp_units.units
+            if not self.unit_base.ur(units) == comp_units:
+                print(f'    Converted to........: \t{comp_units.units}')
+            
+        setattr(self._set_up_model, name, Var(*sets, initialize=1, units=p_units))
         var = getattr(self._set_up_model, name)
-        return var[tuple([0 for i in range(index)])]
+        return var[tuple([0 for i in range(index)])], comp_units
     
     def _add_model_component(self, name, index, model_var, *args, **kwargs):
         """Generic method for adding modeling components to the ReactionModel
         
         """
-        #print(name, index, model_var, args)
-        par = self.Component(args[0], index, units=kwargs.get('units', None))
+        units = kwargs.get('units', None)
+        value = kwargs.get('value', 1)
+        kwargs['units_orig'] = units
+        
+        par, con = self.Component(args[0], index, units=units)
+        #print(f'#### in the add model: {con}')
+        
+        kwargs['value'] = value*con.m
+        kwargs['units'] = str(con.units)
+        kwargs['conversion_factor'] = con.m
+        
+        if 'bounds' in kwargs:
+        # if hasattr(key_comp, 'bounds') and key_comp.bounds is not None:
+            
+            bounds = list(kwargs.get('bounds', [0, 0]))
+            if bounds[0] is not None:
+                bounds[0] *= con.m
+            if bounds[1] is not None:
+                bounds[1] *= con.m
+            kwargs['bounds'] = (bounds) 
+        
         kwargs['unit_base'] = self.ub
         kwargs['pyomo_var'] = par
         kwargs['model_var'] = model_var
@@ -288,7 +323,7 @@ class ReactionModel(WavelengthSelectionMixins):
         else:
             self._step_list[name].append(kwargs)
             
-        par = self.Component(name, 2, None)
+        par, _ = self.Component(name, 2, None)
         if not hasattr(self, f'{var_name}s'):
             setattr(self, f'{var_name}s', {})
         getattr(self, f'{var_name}s')[name] = [self.__var.step_variable, par]
@@ -1326,6 +1361,8 @@ class ReactionModel(WavelengthSelectionMixins):
         kwargs['ncp'] = self.settings.collocation.ncp
         kwargs['nfe'] = self.settings.collocation.nfe
         
+        print(kwargs)
+        
         # parameter_dict = self.parameters.as_dict(bounds=True)
         results, reduced_model = rhps_method(self.model, **kwargs)
         
@@ -1508,6 +1545,7 @@ class ReactionModel(WavelengthSelectionMixins):
         base units
         
         """
+        
         print('Checking model component units:\n')
         
         element_dict = {
@@ -1518,19 +1556,93 @@ class ReactionModel(WavelengthSelectionMixins):
            'states': self.states,
                 }
         
+        if not hasattr(self, 'c'):
+            self._make_c_dict()
+        
         for elem, obj in element_dict.items():
             for comp in obj:
                 comp._check_scaling()
+                
+                if comp.units != comp.units_orig:
+                    comp.pyomo_var.parent_component()._units = getattr(pyo_units, str(comp.units.u))
         
         self._units_checked = True
         print('')
         
         return None
 
-    def check_model_units(self, display=False):
+
+    def check_component_units_base(self):
+        """Method to check whether the units provided are consisten with the
+        base units
+        
+        """
+        element_dict = {
+           'parameters': self.parameters,
+           'components': self.components,
+           'constants': self.constants,
+           'algebraics': self.algebraics,
+           'states': self.states,
+                }
+        
+        from kipet.model_components.units_handler import convert_single_dimension
+        
+        if not hasattr(self, 'c'):
+            self._make_c_dict()
+        
+        for elem, obj in element_dict.items():
+            if elem in ['components', 'states', 'parameters', 'constants']:
+                for key in obj:
+                    
+                    print(f'Checking units for {key.name}: {key.units}')
+                    
+                    key_comp = key #self.get_state(key)
+                    key_comp_units = key_comp.units
+                    key_comp_units = convert_single_dimension(self.unit_base.ur, key_comp_units, self.unit_base.TIME_BASE, power_fixed=False)
+                    
+                    print(key_comp_units)
+                    print(self.unit_base.VOLUME_BASE)
+                    print(f'Checking units for {key.name}: {key.units}')
+                    key_comp_units = convert_single_dimension(self.unit_base.ur, key_comp_units, self.unit_base.VOLUME_BASE, power_fixed=True)
+                    
+                    print(key_comp_units)
+                    
+                    key_comp.units = key_comp_units.units
+                    key_comp.value *= key_comp_units.m
+                    key_comp.pyomo_var.parent_component()._units = getattr(pyo_units, str(key_comp.units))
+        
+                    # if self.value is not None:
+                    #     self.value = quantity.m*self.value
+                        
+                    key_comp.conversion_factor = key_comp_units.m
+                    # key_comp.units = 1*quantity.units
+                    
+                    if hasattr(key_comp, 'bounds') and key_comp.bounds is not None:
+                        bounds = list(key_comp.bounds)
+                        if bounds[0] is not None:
+                            bounds[0] *= key_comp.conversion_factor
+                        if bounds[1] is not None:
+                            bounds[1] *= key_comp.conversion_factor
+                        key_comp.bounds = (bounds) 
+        
+        # for elem, obj in element_dict.items():
+        #     for comp in obj:
+        #         comp._check_scaling()
+                
+        #         if comp.units != comp.units_orig:
+        #             comp.pyomo_var.parent_component()._units = getattr(pyo_units, str(comp.units.u))
+        
+        self._units_checked = True
+        print('')
+        
+        return None
+    
+    def check_model_units(self, orig_units=False, display=False):
         """Method to check the expected units of the algebraic and odes
         
         """
+        from kipet.model_components.units_handler import convert_single_dimension
+        
         print('Checking expected equation units:\n')
         
         if not self.__flag_odes_built:
@@ -1546,21 +1658,34 @@ class ReactionModel(WavelengthSelectionMixins):
             else:
                 element_dict[element] = {}
                 
-        self._make_c_dict()
+        if not hasattr(self, 'c'):
+            self._make_c_dict()
         
-        self.c_units = get_unit_model(element_dict, self._set_up_model)
-        
-        for key, expr in self.algs_dict.items():
-            expr.check_units(self.c, self.c_units)
         for key, expr in self.odes_dict.items():
-            expr.check_units(self.c, self.c_units)
+            
+            key_comp = self.get_state(key)
+            if orig_units:
+                convert_to = ' / '.join([str(key_comp.units_orig), self.unit_base.TIME_BASE])    
+                key_comp.use_orig_units = True
+            else:
+                convert_to = ' / '.join([str(key_comp.units), self.unit_base.TIME_BASE])
+            
+            expr.check_expression_units(convert_to=str(convert_to), scalar=1)
         
+            
+        for key, expr in self.algs_dict.items():
+            
+            key_comp = pyo_units.get_units(self.alg_obj.exprs[key].expression)
+            expr.units = key_comp
+            
+            
         if display:
             self.ode_obj.display_units()
             print('')
             if len(self.alg_obj) > 0:
                 self.alg_obj.display_units()
                 print('')
+            
             
         return None
     
@@ -1612,6 +1737,17 @@ class ReactionModel(WavelengthSelectionMixins):
     
     def ode(self, ode_var):
         return self.odes_dict[ode_var].expression
+
+    def get_state(self, comp):
+        if comp in self.components:
+            return self.components[comp]
+        elif comp in self.states:
+            return self.states[comp]
+ 
+    def get_alg(self, comp):
+        if comp in self.algebraics:
+            return self.algebraics[comp]
+        
     
     
 def _set_directory(model_object, filename, abs_dir=False):

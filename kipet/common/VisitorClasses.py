@@ -4,6 +4,7 @@ Replacement and Scaling Mixins used in model modification
 from pyomo.core.expr import current as EXPR
 from pyomo.environ import *
 from pyomo.core.expr.numvalue import NumericConstant
+from pyomo.core.base.units_container import _PyomoUnit
 
 class ReplacementVisitor(EXPR.ExpressionReplacementVisitor):
     
@@ -22,6 +23,13 @@ class ReplacementVisitor(EXPR.ExpressionReplacementVisitor):
         #
         # Clone leaf nodes in the expression tree
         #
+        #print(node)
+        #print(type(node))
+        
+        
+        if node.__class__ is _PyomoUnit:
+            return True, node
+        
         if node.__class__ in native_numeric_types:
             return True, node
 
@@ -53,11 +61,14 @@ class ScalingVisitor(EXPR.ExpressionReplacementVisitor):
 
     def visiting_potential_leaf(self, node):
       
+        if node.__class__ is _PyomoUnit:
+            return True, node  
+      
         if node.__class__ in native_numeric_types:
             return True, node
 
         if node.is_variable_type():
-           
+            #print(node)
             return True, self.scale[id(node)]*node
 
         if isinstance(node, EXPR.LinearExpression):

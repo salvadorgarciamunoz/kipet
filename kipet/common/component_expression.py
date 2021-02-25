@@ -118,47 +118,49 @@ class Comp():
         return list(self.var_dict.keys())
     
     
-class Comp_Check():
+# class Comp_Check():
     
-    var = VariableNames()
+#     var = VariableNames()
     
-    def __init__(self, model, param_list):
+#     def __init__(self, model, param_list):
         
-        self._model = model
-        self._param_list = param_list
-        self.var_dict = {}
-        self.assign_params_for_units_check()
+#         self._model = model
+#         self._param_list = param_list
+#         self.var_dict = {}
+#         self.assign_params_for_units_check()
         
-    def assign_params_for_units_check(self):
-        """Digs through and assigns the variables as top-level attributes
+#     def assign_params_for_units_check(self):
+#         """Digs through and assigns the variables as top-level attributes
         
-        """
-        m = self._model
-        for var in self._param_list:
-            if hasattr(m, var):
-                var_obj = getattr(m, var)
-                self.var_dict[var] = var_obj
-                setattr(self, var, var_obj)
+#         """
+#         m = self._model
+#         for var in self._param_list:
+#             if hasattr(m, var):
+#                 var_obj = getattr(m, var)
+#                 self.var_dict[var] = var_obj
+#                 setattr(self, var, var_obj)
                 
-def get_unit_model(element_dict, set_up_model):
-    """Takes a ReactionModel instance and returns a Comp_Check object
-    representing the model's varialbes with units
-    """            
-    unit_model = ConcreteModel()
-    new_params = set()
-    for elem, comp_block in element_dict.items():
-        if len(comp_block) > 0:
-            for comp in comp_block:
+# def get_unit_model(element_dict, set_up_model):
+#     """Takes a ReactionModel instance and returns a Comp_Check object
+#     representing the model's varialbes with units
+#     """            
+#     unit_model = ConcreteModel()
+#     new_params = set()
+#     for elem, comp_block in element_dict.items():
+#         if len(comp_block) > 0:
+#             for comp in comp_block:
                 
-                new_params.add(comp.name)
-                m_units = comp.units
-                if m_units is None:
-                    m_units = str(1)
-                else:
-                    m_units = getattr(u, str(m_units))
+#                 new_params.add(comp.name)
+#                 m_units = comp.units
+#                 if m_units is None:
+#                     m_units = str(1)
+#                 else:
+#                     m_units = getattr(u, str(m_units))
                     
-                setattr(unit_model, comp.name, Var(initialize=1, units=m_units))
+#                 print(m_units)
+#                 print(type(m_units))
+#                 setattr(unit_model, comp.name, Var(initialize=1, units=m_units))
         
-    c_units = Comp_Check(unit_model, list(new_params))
+#     c_units = Comp_Check(unit_model, list(new_params))
     
-    return c_units
+#     return c_units

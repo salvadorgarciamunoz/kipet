@@ -233,7 +233,9 @@ class TemplateBuilder(object):
                         if hasattr(comp, 'data_link'):
                             data_block = data_block_dict[comp.data_link]
                             time_span = max(time_span, data_block.time_span[1]*time_conversion_factor)
-                            data_frame = data_block.data[comp.name]*comp.conversion_factor
+                            data_frame = data_block.data[comp.name]
+                            if not comp.use_orig_units:
+                                data_frame *= comp.conversion_factor
                             # data_frame.index = data_frame.index*time_conversion_factor
                             self._add_state_data(data_frame, data_label, overwrite=False)
 
@@ -1155,6 +1157,9 @@ class TemplateBuilder(object):
                 except:
                     raise ValueError('A model requires a start and end time or a dataset')
         
+        start_time = self.round_time(start_time)
+        end_time = self.round_time(end_time)
+        
         list_times = self._meas_times
         m_times = sorted(list_times)
         list_feedtimes = self._feed_times  # For inclusion of discrete feeds CS
@@ -1273,8 +1278,6 @@ class TemplateBuilder(object):
         the model time bounds
         
         """
-        # print(time_set)
-        # print(start_time, end_time)
         
         if time_set[0] < start_time:
             raise RuntimeError(f'Measurement time {time_set[0]} not within ({start_time}, {end_time})')
