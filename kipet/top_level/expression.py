@@ -4,7 +4,7 @@ Expression Classes
 # Standad library imports
 
 # Third party imports
-from pyomo.core.expr.numeric_expr import DivisionExpression, ProductExpression
+from pyomo.core.expr.numeric_expr import DivisionExpression, ProductExpression, NegationExpression
 from pyomo.environ import (
     ConcreteModel,
     Objective,
@@ -18,7 +18,7 @@ from kipet.post_model_build.replacement import _update_expression
 
 from kipet.dev_tools.display import Print
 
-DEBUG = False
+DEBUG = True
 
 _print = Print(verbose=DEBUG)
 
@@ -160,12 +160,11 @@ class Expression():
         unit_term = pyo_units.get_units(term)
         _print(f'     Units: {unit_term} ==> {convert_to}\n')
         _changed_flag = False
-        term_orig = term
+        term_new = term
         
         if unit_term is not None:
             _print('Starting conversion and making the new term\n')
             term_new = pyo_units.convert(term, to_units=getattr(pyo_units, convert_to))
-            
             
         return term_new
     
@@ -180,11 +179,15 @@ class Expression():
         _print(f'The ODE expression being handled is:\n     {expr}\n')
         _print(f'The type of expression being handled is:\n     {type(expr)}\n')
     
+        if isinstance(expr, NegationExpression):
+            scalar *= -1
+    
         if isinstance(self.expression, (DivisionExpression, ProductExpression)):
             _print(f'The number of terms in this expression is: 1\n')
             
             term = self.check_term(expr, convert_to)
             expr_new = scalar*term
+        
         
         else:
             _print(f'The number of terms in this expression is: {len(expr.args)}\n')

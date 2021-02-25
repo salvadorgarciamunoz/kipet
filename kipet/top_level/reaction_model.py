@@ -1361,8 +1361,6 @@ class ReactionModel(WavelengthSelectionMixins):
         kwargs['ncp'] = self.settings.collocation.ncp
         kwargs['nfe'] = self.settings.collocation.nfe
         
-        print(kwargs)
-        
         # parameter_dict = self.parameters.as_dict(bounds=True)
         results, reduced_model = rhps_method(self.model, **kwargs)
         
@@ -1675,9 +1673,16 @@ class ReactionModel(WavelengthSelectionMixins):
             
         for key, expr in self.algs_dict.items():
             
-            key_comp = pyo_units.get_units(self.alg_obj.exprs[key].expression)
-            expr.units = key_comp
+            expr_obj = self.alg_obj.exprs[key]
             
+            if expr_obj.expression_orig is not None:
+                expr_use = expr_obj.expression_orig
+            else:
+                expr_use = expr_obj.expression
+            
+            print(expr_use)
+            key_comp = pyo_units.get_units(expr_use)
+            expr.units = key_comp
             
         if display:
             self.ode_obj.display_units()
