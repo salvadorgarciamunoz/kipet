@@ -336,13 +336,9 @@ class ReducedHessian(object):
             if hasattr(self.model_object, self.global_constraint_name):
                 self.model_object.del_component(self.global_constraint_name)  
         
-            print(self.model_object.P.display())
             delta = 1e-20  
             for k, v in getattr(self.model_object, self.variable_name).items():
-                print(self.parameter_set)
-                print(k)
                 if k in self.parameter_set:
-                    print('In set')
                     ub = v.value
                     lb = v.value - delta
                     v.setlb(lb)
@@ -351,10 +347,6 @@ class ReducedHessian(object):
                 else:
                     v.fix()
         
-        print(self.model_object.P.display())
-                    
-         
-        print(self.model_object.P.display())
             
         ipopt.solve(self.model_object, 
                     symbolic_solver_labels=True, 
@@ -362,8 +354,7 @@ class ReducedHessian(object):
                     tee=True,
                     logfile=tmpfile_i,
                     )
-        print('Here in the opt')
-        print(self.model_object.P.display())
+        #print(self.model_object.P.display())
         
         # Create the file object so that it can be deleted
         self.get_file_info()
@@ -391,9 +382,6 @@ class ReducedHessian(object):
         var_ind = self.kkt_data['var_ind']
         con_ind_new = self.kkt_data['con_ind']
         duals = self.kkt_data['duals']
-    
-        print(H)
-        print(J)
     
         col_ind = [var_ind.index(f'{self.variable_name}[{v}]') for v in self.parameter_set]
         m, n = J.shape  
