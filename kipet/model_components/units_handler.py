@@ -44,15 +44,8 @@ def convert_unit(unit_registry, u_orig, u_goal, scalar=1, power=1, both_powers=F
     
     return scalar * con
 
-    #%%
 def convert_single_dimension(unit_registry, unit_from, unit_to, power_fixed=False):
     
-    #%%
-    # unit_registry = r1.unit_base.ur
-    # unit_from = 'mol/m**3'
-    # unit_to = 'L'
-    # # unit_registry = r1.unit_base.ur
-    # power_fixed = True
     
     conversion = ConversionType.generic
     
@@ -125,9 +118,6 @@ def convert_single_dimension(unit_registry, unit_from, unit_to, power_fixed=Fals
             break
             
         if uc_from.dim == uc_to.dim:
-            #print('The dimensions match')
-            
-            #print(conversion)
             
             if conversion != ConversionType.volume:
                 is_volume = (ur(uc_from.unit)**uc_from.power).check("[volume]")
@@ -178,167 +168,5 @@ def convert_single_dimension(unit_registry, unit_from, unit_to, power_fixed=Fals
     
     _print('\nFinished checking\nResults:')
     _print(f'\t{new_unit}')
-    #%%
+    
     return new_unit
-    
-    #%%
-    
-import pint
-import pytest
-
-ur = pint.UnitRegistry()
-
-# b = ur('L')
-
-# print(b.check('[volume]'))
-
-
-
-#%%
-    
-def test_time_change():
-    
-    old_unit = 'hr'
-    new_unit = 'min'
-    
-    test_unit = 1*ur(old_unit)
-    
-    converted_test_unit = convert_single_dimension(ur, old_unit, new_unit, power_fixed=False)    
-
-    assert converted_test_unit.units == ur(new_unit)
-    
-def test_reverse_time_change():
-    
-    old_unit = 'min'
-    new_unit = 'hr'
-    
-    test_unit = 1*ur(old_unit)
-    
-    converted_test_unit = convert_single_dimension(ur, old_unit, new_unit, power_fixed=False)    
-
-    assert converted_test_unit.units == ur(f'{new_unit}').units
-    assert converted_test_unit.m == test_unit.m_as(f'{new_unit}')
-    
-def test_inverse_time_change():
-    #%%
-    old_unit = '1/hr'
-    new_unit = 'min'
-    
-    test_unit = 1*ur(old_unit)
-    
-    converted_test_unit = convert_single_dimension(ur, old_unit, new_unit, power_fixed=False)    
-#%%
-    assert converted_test_unit.units == ur(f'1/{new_unit}').units
-    assert converted_test_unit.m == test_unit.m_as(f'1/{new_unit}')
-    
-def test_velocity_time_change():
-    #%%
-    old_unit = 'm/min'
-    new_unit = 'hr'
-    
-    test_unit = 1*ur(old_unit)
-    
-    converted_test_unit = convert_single_dimension(ur, old_unit, new_unit, power_fixed=False)    
-#%%
-    assert converted_test_unit.units == ur(f'm/{new_unit}').units
-    assert converted_test_unit.m == test_unit.m_as(f'm/{new_unit}')
-    
-def test_inverse_velocity_time_change():
-    
-    old_unit = 'm/hr'
-    new_unit = 's'
-    
-    test_unit = 1*ur(old_unit)
-    
-    converted_test_unit = convert_single_dimension(ur, old_unit, new_unit, power_fixed=False)    
-
-    assert converted_test_unit.units == ur(f'm/{new_unit}').units
-    assert converted_test_unit.m == test_unit.m_as(f'm/{new_unit}')
-    
-def test_velocity_length_change():
-    
-    old_unit = 'm/s'
-    new_unit = 'km'
-    
-    test_unit = 1*ur(old_unit)
-    
-    converted_test_unit = convert_single_dimension(ur, old_unit, new_unit, power_fixed=False)    
-
-    assert converted_test_unit.units == ur(f'{new_unit}/s').units
-    assert converted_test_unit.m == test_unit.m_as(f'{new_unit}/s')
-    
-def test_inverse_velocity_length_change():
-    
-    old_unit = 'km/s'
-    new_unit = 'm'
-    
-    test_unit = 1*ur(old_unit)
-    
-    converted_test_unit = convert_single_dimension(ur, old_unit, new_unit, power_fixed=False)    
-
-    assert converted_test_unit.units == ur(f'{new_unit}/s').units
-    assert converted_test_unit.m == test_unit.m_as(f'{new_unit}/s')
-    
-def test_volume_change_l3_to_l3():
-    
-    old_unit = 'm**3'
-    new_unit = 'ft**3'
-    
-    test_unit = 1*ur(old_unit)
-    
-    converted_test_unit = convert_single_dimension(ur, old_unit, new_unit, power_fixed=False)    
-
-    assert converted_test_unit.units == ur(f'{new_unit}').units
-    # assert converted_test_unit.m == 1000
-    
-    
-def test_volume_change_l3_to_l1():
-    
-    old_unit = 'm**3'
-    new_unit = 'ft'
-    
-    test_unit = 1*ur(old_unit)
-    
-    converted_test_unit = convert_single_dimension(ur, old_unit, new_unit, power_fixed=False)  
-    
-    assert converted_test_unit.units == ur('m**3').units
-    assert converted_test_unit.m == test_unit.m_as(old_unit)    
-    
-def test_volume_change_vol_to_l1():
-    
-    old_unit = 'L'
-    new_unit = 'ft'
-    
-    test_unit = 1*ur(old_unit)
-
-    converted_test_unit = convert_single_dimension(ur, old_unit, new_unit, power_fixed=False)  
-    
-    assert converted_test_unit.units == ur('L').units
-    assert converted_test_unit.m == test_unit.m_as(old_unit)
-    
-def test_volume_change_vol_to_l3():
-    
-    old_unit = 'L'
-    new_unit = 'ft**3'
-    
-    test_unit = 1*ur(old_unit)
-    
-    converted_test_unit = convert_single_dimension(ur, old_unit, new_unit, power_fixed=False)    
-
-    assert converted_test_unit.units == ur(f'{new_unit}').units
-    assert converted_test_unit.m == test_unit.m_as(new_unit)
-
-def test_concentration_change():
-    
-    old_unit = 'mol/m**3'
-    new_unit = 'L'
-    
-    test_unit = 1*ur(old_unit)
-    
-    converted_test_unit = convert_single_dimension(ur, old_unit, new_unit, power_fixed=False)    
-
-    assert converted_test_unit.units == ur(f'mol/{new_unit}').units
-    assert converted_test_unit.m == test_unit.m_as(f'mol/{new_unit}')
-    
-    
-    
