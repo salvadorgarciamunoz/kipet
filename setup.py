@@ -12,7 +12,8 @@ except ImportError:
 
 import os.path
 
-Distribution().fetch_build_eggs(['Cython>=0.15.1', 'numpy>=1.10'])
+from setuptools import dist
+dist.Distribution().fetch_build_eggs(['Cython>=0.15.1', 'numpy>=1.10'])
 
 readme = ''
 here = os.path.abspath(os.path.dirname(__file__))
