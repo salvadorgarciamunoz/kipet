@@ -92,7 +92,7 @@ All of the example problems can be easily downloaded from the examples repositor
 
 To validate your installation, you can now run the test script included with the examples:
 
-    cd <example directory>
+    cd <example directory>/kipet_examples
     python run_examples.py
 
 <br>
