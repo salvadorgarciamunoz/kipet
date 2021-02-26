@@ -1,22 +1,14 @@
 [tool.poetry]
 
-name = "kipet"
-version = "0.1.531"
+name = "kipet-test-dev"
+version = "0.0.1"
 description = "An all-in-one tool for fitting kinetic models using spectral and other state data"
-authors = ["Kevin McBride <kevin.w.mcbride.86@gmail.com>",
-    "Kuan-Han Lin",
-    "Christina Schenk",
-    "Michael Short",
-    "Jose Santiago Rodriguez",
-    "David M. Thierry",
-    "Salvador García-Muñoz",
-    "Lorenz T. Biegler"]
+authors = ["Kevin McBride <kevin.w.mcbride.86@gmail.com>"]
 maintainers = ["Kevin McBride <kevin.w.mcbride.86@gmail.com>"]
 readme = "README.md"
-repository = "https://github.com/salvadorgarciamunoz/kipet"
+repository = "https://github.com/kwmcbride/kipet"
 keywords = ["optimization", "scientific", "parameter", "reaction", "spectral"]
 license="GPL-3.0-or-later"
-exclude = ["examples/*"]
 
 [tool.poetry.dependencies]
 
@@ -31,6 +23,9 @@ matplotlib = "^3.3.4"
 PyYAML = "^5.4.1"
 Pyomo = "^5.7.3"
 attrs = "^20.3.0"
+six = "^1.15.0"
+Cython = "^0.29.22"
+
 
 [tool.poetry.dev-dependencies]
 
