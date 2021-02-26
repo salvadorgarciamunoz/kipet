@@ -35,8 +35,6 @@ It has the following functionality:
 
 There are many options for installing KIPET.
 
-<br>
-
 ### PyPi
 [![](https://img.shields.io/badge/Install%20with-pip-green)]()
 [![](https://img.shields.io/pypi/v/kipet.svg?style=flat)](https://pypi.org/pypi/kipet/)
@@ -51,22 +49,17 @@ If you run into errors when installing KIPET using pip, try installing the follo
     pip install Cython numpy six
     pip install kipet
 
-<br>
-
 ### Anaconda 
 [![](https://anaconda.org/kwmcbride/kipet/badges/installer/conda.svg)]()
-[![Anaconda-Server Badge](https://anaconda.org/kwmcbride/kipet/badges/version.svg)](https://anaconda.org/kwmcbride/kipet)
-[![](https://anaconda.org/kwmcbride/kipet/badges/latest_release_date.svg)]()
-[![](https://anaconda.org/kwmcbride/kipet/badges/platforms.svg)]()
+[![Anaconda-Server Badge](https://img.shields.io/conda/vn/kwmcbride/kipet)](https://anaconda.org/kwmcbride/kipet)
+[![](https://img.shields.io/conda/pn/kwmcbride/kipet?color=orange)]()
 
 
-Finally, if you are using Anaconda, KIPET can be installed using:
+If you are using Anaconda, KIPET can be installed using:
 
     conda install -c kwmcbride kipet
 
 The anaconda packages have the benefit of including pynumero ready to go, which is needed for some of the methods included in KIPET. You will need to compile these on your own if you choose to install KIPET using a different method. See the [pynumero readme](https://github.com/Pyomo/pyomo/tree/master/pyomo/contrib/pynumero) for more information. Otherwise, you can also use [k_aug](https://github.com/dthierry/k_aug) for these methods as well. 
-
-<br>
 
 ### Poetry
 
@@ -74,7 +67,6 @@ You may also install KIPET with poetry:
 
     poetry add kipet
 
-<br>
 
 ### GitHub
 
