@@ -126,14 +126,6 @@ class Settings():
         
         return None
     
-    # def reset_block(self, specific_settings=None):
-    #     """Initializes the settings dicts to their default values"""
-        
-    #     self.general = AttrDict(self.cfg['general'])
-    #     self.units = AttrDict(self.cfg['units'])
-    #     self.solver = AttrDict(self.cfg['solver'])
-        
-    #     return None
     
     def update_settings(self, category, item, value):
         

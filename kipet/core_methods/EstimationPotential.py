@@ -94,6 +94,8 @@ class EstimationPotential():
         self.options = {} if options is None else options.copy()
         self._options = options.copy()
         
+        print(self._options)
+        
         self.debug = self._options.pop('debug', False)
         self.verbose = self._options.pop('verbose', False)
         self.nfe = self._options.pop('nfe', 50)
@@ -120,6 +122,7 @@ class EstimationPotential():
             self.orig_bounds = {k: (v.lb, v.ub) for k, v in self.model.P.items()}
         
         self.debug = False
+        self.verbose = True
         
     def __repr__(self):
         
@@ -181,8 +184,9 @@ class EstimationPotential():
         
         reduced_hessian = self._calculate_reduced_hessian(Se)
         
+        print(reduced_hessian)
         if self.debug:
-            #print(reduced_hessian)
+            
             input("Press Enter to continue...")
     
         # Step 4 - Rank the parameters using Gauss-Jordan Elimination
@@ -309,6 +313,7 @@ class EstimationPotential():
             
             # Step 7 - Check the ratios of the parameter std to value
             if self.verbose:
+                print(reduced_hessian)
                 print(step.substitute(number=7))
                 print('Checking the ratios of each parameter in Se')
             
@@ -409,6 +414,7 @@ class EstimationPotential():
                         reduced_hessian = self._calculate_reduced_hessian(Se)
                         
                         if self.debug:
+                            print(reduced_hessian)
                             input("Press Enter to continue...")
                         if self.verbose:
                             # Step 4 - Rank the updated parameters using Gauss-Jordan elimination
@@ -617,8 +623,8 @@ def rhps_method(model, options=None, **kwargs):
     use_bounds = kwargs.get('use_bounds', False)
     use_duals = kwargs.get('use_duals', False)
     calc_method = kwargs.get('calc_method', 'fixed')
-  
-    options = options if options is not None else dict()
+    
+    options = kwargs#options if options is not None else dict()
     orig_bounds = {k: v.bounds for k, v in model.P.items()}
     est_param = EstimationPotential(model,
                                     simulation_data=None,
