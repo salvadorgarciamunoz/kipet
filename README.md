@@ -35,8 +35,6 @@ It has the following functionality:
 
 There are many options for installing KIPET.
 
-<br>
-
 ### PyPi
 [![](https://img.shields.io/badge/Install%20with-pip-green)]()
 [![](https://img.shields.io/pypi/v/kipet.svg?style=flat)](https://pypi.org/pypi/kipet/)
@@ -46,27 +44,22 @@ A packaged version of KIPET can be installed using:
 
     pip install kipet
 
-If you run into errors when installing KIPET using pip, try installing the following packages beforehand:
+If you run into errors when installing KIPET using pip (such as when installing into a clean virtual environment), try installing the following packages beforehand:
 
     pip install Cython numpy six
     pip install kipet
 
-<br>
-
 ### Anaconda 
 [![](https://anaconda.org/kwmcbride/kipet/badges/installer/conda.svg)]()
-[![Anaconda-Server Badge](https://anaconda.org/kwmcbride/kipet/badges/version.svg)](https://anaconda.org/kwmcbride/kipet)
-[![](https://anaconda.org/kwmcbride/kipet/badges/latest_release_date.svg)]()
-[![](https://anaconda.org/kwmcbride/kipet/badges/platforms.svg)]()
+[![Anaconda-Server Badge](https://img.shields.io/conda/vn/kwmcbride/kipet)](https://anaconda.org/kwmcbride/kipet)
+[![](https://img.shields.io/conda/pn/kwmcbride/kipet?color=orange)]()
 
 
-Finally, if you are using Anaconda, KIPET can be installed using:
+If you are using Anaconda, KIPET can be installed using:
 
     conda install -c kwmcbride kipet
 
 The anaconda packages have the benefit of including pynumero ready to go, which is needed for some of the methods included in KIPET. You will need to compile these on your own if you choose to install KIPET using a different method. See the [pynumero readme](https://github.com/Pyomo/pyomo/tree/master/pyomo/contrib/pynumero) for more information. Otherwise, you can also use [k_aug](https://github.com/dthierry/k_aug) for these methods as well. 
-
-<br>
 
 ### Poetry
 
@@ -74,26 +67,42 @@ You may also install KIPET with poetry:
 
     poetry add kipet
 
-<br>
 
 ### GitHub
 
 Additionally, KIPET may be installed directly from the repository (for example, if using poetry, simply install the desired branch (#branch) in the following manner):
 
-    poetry add git+http://github.com/salvadorgarciamunoz/kipet#master
+    poetry add git+https://github.com/salvadorgarciamunoz/kipet#master
 
 Naturally you can simply clone or download the repository if you wish.
 
+    cd <installation directory>
+    git clone https://github.com/salvadorgarciamunoz/kipet.git
+    cd kipet
+    python setup.py install
+
+
+### Examples and Tutorials
+
+All of the example problems can be easily downloaded from the examples repository:
+
+    cd <example directory>
+    git clone https://github.com/kwmcbride/kipet_examples.git
+
+
+To validate your installation, you can now run the test script included with the examples:
+
+    cd <example directory>/kipet_examples
+    python run_examples.py
+
 <br>
 
-License
-------------
+## License
 
 GPL-3
 
 
-Authors
-----------
+## Authors
 
     - Kevin McBride - Carnegie Mellon University
     - Kuan-Han Lin - Carnegie Mellon University
@@ -104,8 +113,9 @@ Authors
     - Salvador García-Muñoz - Eli Lilly
     - Lorenz T. Biegler - Carnegie Mellon University
 
-Please cite
-------------
+## Please cite
+<br>
+
  - C. Schenk, M. Short, J.S. Rodriguez, D. Thierry, L.T. Biegler, S. García-Muñoz, W. Chen (2020)
 Introducing KIPET: A novel open-source software package for kinetic parameter estimation from experimental datasets including spectra, Computers & Chemical Engineering, 134, 106716. https://doi.org/10.1016/j.compchemeng.2019.106716
 
