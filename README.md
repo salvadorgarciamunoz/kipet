@@ -3,16 +3,6 @@
 [![](https://img.shields.io/github/license/salvadorgarciamunoz/kipet)](https://github.com/salvadorgarciamunoz/kipet/blob/master/LICENSE)
 [![](https://img.shields.io/github/last-commit/salvadorgarciamunoz/kipet)](https://github.com/salvadorgarciamunoz/kipet/)
 [![](https://img.shields.io/pypi/wheel/kipet)](https://pypi.org/manage/project/kipet/release/0.1.1/)
-<br>
-
-[![](https://img.shields.io/badge/Install%20with-pip-green)]()
-[![](https://img.shields.io/pypi/v/kipet.svg?style=flat)](https://pypi.org/pypi/kipet/)
-<br>
-
-[![](https://anaconda.org/kwmcbride/kipet/badges/installer/conda.svg)]()
-[![Anaconda-Server Badge](https://anaconda.org/kwmcbride/kipet/badges/version.svg)](https://anaconda.org/kwmcbride/kipet)
-[![](https://anaconda.org/kwmcbride/kipet/badges/latest_release_date.svg)]()
-[![](https://anaconda.org/kwmcbride/kipet/badges/platforms.svg)]()
 
 
 KIPET is a Python package designed to simulate, and estimate parameters from 
@@ -39,8 +29,18 @@ It has the following functionality:
  - Visualize results
 
 
-Installation
-------------
+<br>
+
+## Installation
+
+There are many options for installing KIPET.
+
+<br>
+
+### PyPi
+[![](https://img.shields.io/badge/Install%20with-pip-green)]()
+[![](https://img.shields.io/pypi/v/kipet.svg?style=flat)](https://pypi.org/pypi/kipet/)
+<br>
 
 A packaged version of KIPET can be installed using:
 
@@ -51,19 +51,40 @@ If you run into errors when installing KIPET using pip, try installing the follo
     pip install Cython numpy six
     pip install kipet
 
-You may also install KIPET with poetry (this method is recommended):
+<br>
 
-    poetry add kipet
+### Anaconda 
+[![](https://anaconda.org/kwmcbride/kipet/badges/installer/conda.svg)]()
+[![Anaconda-Server Badge](https://anaconda.org/kwmcbride/kipet/badges/version.svg)](https://anaconda.org/kwmcbride/kipet)
+[![](https://anaconda.org/kwmcbride/kipet/badges/latest_release_date.svg)]()
+[![](https://anaconda.org/kwmcbride/kipet/badges/platforms.svg)]()
+
 
 Finally, if you are using Anaconda, KIPET can be installed using:
 
     conda install -c kwmcbride kipet
 
-Additionally, KIPET may be installed directly from the repository (if you want the latest version, simply install the desired branch (#branch)):
+The anaconda packages have the benefit of including pynumero ready to go, which is needed for some of the methods included in KIPET. You will need to compile these on your own if you choose to install KIPET using a different method. See the [pynumero readme](https://github.com/Pyomo/pyomo/tree/master/pyomo/contrib/pynumero) for more information. Otherwise, you can also use [k_aug](https://github.com/dthierry/k_aug) for these methods as well. 
+
+<br>
+
+### Poetry
+
+You may also install KIPET with poetry:
+
+    poetry add kipet
+
+<br>
+
+### GitHub
+
+Additionally, KIPET may be installed directly from the repository (for example, if using poetry, simply install the desired branch (#branch) in the following manner):
 
     poetry add git+http://github.com/salvadorgarciamunoz/kipet#master
 
-Naturally you can simply clone or download the repository.
+Naturally you can simply clone or download the repository if you wish.
+
+<br>
 
 License
 ------------
