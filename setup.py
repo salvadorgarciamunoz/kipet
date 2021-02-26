@@ -5,11 +5,12 @@
 # https://github.com/dephell/dephell
 
 try:
-    from setuptools import setup
+    from setuptools import setup, Extension
 except ImportError:
     from distutils.core import setup
 
 import os.path
+
 
 readme = ''
 here = os.path.abspath(os.path.dirname(__file__))
@@ -48,4 +49,16 @@ setup(
         'scipy==1.*,>=1.6.0', 'six'
     ],
     extras_require={"dev": ["pytest==5.*,>=5.2.0", "spyder==4.*,>=4.2.2"]},
+    
+    setup_requires=[
+        # Setuptools 18.0 properly handles Cython extensions.
+        'setuptools>=18.0',
+        'cython',
+    ],
+    ext_modules=[
+        Extension('package.cython_code1', sources=['package/cython_code1.pyx']),
+        Extension('package.cython_code2', sources=['package/cython_code2.pyx']),
+    ],
+    include_dirs=[numpy.get_include()],
+
 )
