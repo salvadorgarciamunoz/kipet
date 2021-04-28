@@ -67,10 +67,15 @@ class ResultsObject(object):
         This is used for data with dimensions larger than 2
         """
         #try:
+        if len(var) == 0:
+            return None
+            
         index_sets = get_index_sets(var)
         index_dict = index_set_info(index_sets)
-        # print(var)
-        # print(index_dict)
+        print(var)
+        print(index_dict)
+        
+        
         time_set = index_sets[index_dict['cont_set'][0]].name
         component_indecies = index_dict['other_set']
         component_sets = [index_sets[i].name for i in component_indecies]
