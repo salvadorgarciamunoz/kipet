@@ -1,6 +1,7 @@
 """
 Diagnostic Tools used in Kipet
 """
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy
