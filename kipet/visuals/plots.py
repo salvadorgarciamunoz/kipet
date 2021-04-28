@@ -44,6 +44,10 @@ class PlotObject():
         self.filename = None
         self.jupyter = jupyter
         
+        t = time.localtime()
+        date = f'{t.tm_year}-{t.tm_mon:02}-{t.tm_mday:02}-{t.tm_hour:02}-{t.tm_min:02}-{t.tm_sec:02}'
+        self.timestamp = date
+        
     def _make_line_trace(self, fig, x, y, name, color):
         """Make line traces
         
@@ -82,13 +86,10 @@ class PlotObject():
         fig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor='#4e4e4e')
 
         if self.filename is None:
-            t = time.localtime()
-            date = f'{t.tm_year}-{t.tm_mon:02}-{t.tm_mday:02}-{t.tm_hour:02}-{t.tm_min:02}-{t.tm_sec:02}'
-            # filename = f'{self.name}-{plot_name}-{date}.html'
             filename = f'{plot_name}.html'
             
         if self.jupyter:
-            chart_dir = Path.cwd().joinpath('charts', f'{self.name}-{date}')
+            chart_dir = Path.cwd().joinpath('charts', f'{self.name}-{self.timestamp}')
             plot_method = pio.show
             fig.update_layout(         
                 autosize=False,
@@ -104,7 +105,7 @@ class PlotObject():
                 )
         else:
             calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
-            chart_dir = Path(calling_file_name).joinpath('charts', f'{self.name}-{date}')
+            chart_dir = Path(calling_file_name).joinpath('charts', f'{self.name}-{self.timestamp}')
             plot_method = pio.write_html
         
         chart_dir.mkdir(parents=True, exist_ok=True)
@@ -154,8 +155,11 @@ class PlotObject():
         if hasattr(self.reaction_model.results, 'Cm'):
             exp = getattr(self.reaction_model.results, 'Cm')
         elif hasattr(self.reaction_model.results, 'C'):
-            exp = getattr(self.reaction_model.results, 'C')
-            use_spectral_format = True
+            if self.reaction_model.models['s_model'] and not self.reaction_model.models['v_model'] and not self.reaction_model.models['p_model']:
+                exp = None
+            else:
+                exp = getattr(self.reaction_model.results, 'C')
+                use_spectral_format = True
         else:
             exp = None
         for i, col in enumerate(pred.columns):
