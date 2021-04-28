@@ -5,7 +5,7 @@ from kipet.top_level.variable_names import VariableNames
 
 __var = VariableNames()
 
-def step_fun(model, time_var, num='0', coeff=1, time=1e-3, fixed=True, switch=False, M=1, eta=1e-2, constant=0.5):
+def step_fun(model, time_var, num='0', coeff=1, time=1e-3, fixed=True, switch=False, M=1, eta=1e-2, constant=0.5, bounds=None):
     """This formulates the step functions for KIPET using a sigmoidal function
     
     Args:
