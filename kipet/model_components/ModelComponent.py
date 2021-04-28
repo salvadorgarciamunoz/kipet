@@ -176,15 +176,18 @@ class ModelAlgebraic(ModelElement):
                  model_var=None,
                  units_orig=None,
                  conversion_factor=1,
+                 is_reaction=False,
                  ):
     
         super().__init__(name, ModelComponent.class_, value, units,
-                         unit_base, description, pyomo_var, model_var, units_orig, conversion_factor)
+                         unit_base, description, pyomo_var, model_var, units_orig, conversion_factor,
+                         )
    
         self.bounds = bounds
         self.data = data
         self.step = step
-   
+        self.is_reaction = is_reaction
+    
     def __str__(self):
         
         
@@ -233,16 +236,21 @@ class ModelComponent(ModelElement):
                  model_var=None,   
                  units_orig=None,
                  conversion_factor=1,
+                 inert=False,
+                 S=None
                  ):
     
         super().__init__(name, ModelComponent.class_, value, units,
-                         unit_base, description, pyomo_var, model_var, units_orig, conversion_factor)
+                         unit_base, description, pyomo_var, model_var,
+                         units_orig, conversion_factor)
         # component attributes
         self.variance = variance
         self.state = 'concentration'
         self.known = known
         self.bounds = bounds
         self.absorbing = absorbing
+        self.inert = inert
+        self.S = S
         
         #self._check_units()
         
