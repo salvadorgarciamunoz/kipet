@@ -379,3 +379,26 @@ class SpectralData():
         if in_place:
             self.data = new_D
         return new_D
+    
+    
+    def decrease_times(self, A_set=2, in_place=True):
+        '''
+        Takes in the original, full dataset and removes specific wavelengths, or only keeps every
+        multiple of A_set. Returns a new, smaller dataset that should be easier to solve
+        
+        Args:
+            original_dataset (DataFrame):   the data to be processed
+            A_set (float, optional):  optional user-provided multiple of wavelengths to keep. i.e. if
+                                        3, every third value is kept. Default is 2.
+            specific_subset (list or dict, optional): If the user already knows which wavelengths they would like to
+                                        remove, then a list containing these can be included.
+            
+        Returns:
+            DataFrame with the smaller dataset
+        
+        '''
+        original_dataset = self.data
+        new_D = original_dataset[original_dataset.columns[::A_set]] 
+        if in_place:
+            self.data = new_D
+        return new_D
