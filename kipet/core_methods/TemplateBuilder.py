@@ -120,6 +120,7 @@ class TemplateBuilder(object):
         self._scale_parameters = False # Should be True for EstimationPotential (automatic)
         self._times = None
         self._all_state_data = list()
+        self._init_absorption_data = None
         
         # bounds and init for unwanted contributions KH.L
         self._G_contribution = None
@@ -390,6 +391,22 @@ class TemplateBuilder(object):
         self._add_state_data(data,
                              data_type='smoothparam',
                              overwrite=overwrite)
+
+    def add_init_absorption_data(self, data):
+        """Add absorption data initialized from simulation
+
+        Args:
+            data (DataFrame): DataFrame with wavelengths as
+                              indices and muxture components as columns.
+
+        Returns:
+            None
+
+        """
+        if isinstance(data, pd.DataFrame):
+            self._init_absorption_data = data
+        else:
+            raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
 
 
     def add_absorption_data(self, data, overwrite=True):
@@ -834,6 +851,8 @@ class TemplateBuilder(object):
                 if value is None:
                     if p_info[param].bounds[0] is not None and p_info[param].bounds[1] is not None:
                         p_values[param] = sum(p_info[param].bounds)/2
+                else:
+                    p_values[param] = value
                         
             if self._scale_parameters:
                 setattr(model, self.__var.model_parameter, Var(model.parameter_names,
@@ -968,7 +987,6 @@ class TemplateBuilder(object):
     def _add_model_odes(self, model):
         """Adds the ODE system to the model, if any"""
         
-        # if hasattr(self, 'reaction_dict'):
         if isinstance(self._odes, dict):
             
             def rule_odes(m, t, k):
@@ -1021,6 +1039,9 @@ class TemplateBuilder(object):
         """Adds the custom objectives, if any and uses the model variable
         UD for the data. This is where the custom data is stored.
         
+        TODO: at the moment this only works for one additional custom obj -
+              make it work for multiple
+        
         """
         def custom_obj(m, t, y):
             exprs = getattr(m, self.__var.user_defined)[t, y] - getattr(m, self.__var.algebraic)[t, y]
@@ -1039,7 +1060,7 @@ class TemplateBuilder(object):
        
         return None
 
-    def _add_spectral_variables(self, model):
+    def _add_spectral_variables(self, model, is_simulation):
         """Add D and C variables for the spectral data"""
         
         if self._spectral_data is not None:
@@ -1051,12 +1072,17 @@ class TemplateBuilder(object):
                     else:
                         s_data_dict[t, l] = float('nan')
 
+            
+
             setattr(model, self.__var.spectra_data, Param(model.meas_times,
                                                           model.meas_lambdas,
                                                           domain=Reals,
                                                           initialize=s_data_dict))
             
-            setattr(model, self.__var.concentration_spectra, Var(model.meas_times,
+            print(f'Here is the sim check: {is_simulation}')            
+            if not is_simulation:
+            
+                setattr(model, self.__var.concentration_spectra, Var(model.meas_times,
                                                                  model.mixture_components,
                                                                  bounds=(0, None),
                                                                  initialize=1))
@@ -1066,13 +1092,24 @@ class TemplateBuilder(object):
     def _check_absorbing_species(self, model):
         """Set up the appropriate S depending on absorbing species"""
         
+        print('You are here')
+        
         if self._absorption_data is not None:
             s_dict = dict()
             for k in self._absorption_data.columns:
                 for l in self._absorption_data.index:
                     s_dict[l, k] = float(self._absorption_data[k][l])
+        
+        elif self._init_absorption_data is not None:
+            s_dict = dict()
+            for k in self._init_absorption_data.columns:
+                for l in self._init_absorption_data.index:
+                    s_dict[l, k] = float(self._init_absorption_data[k][l])
+                    
         else:
-            s_dict = 1.0
+            s_dict = 0.0
+        
+        print(s_dict)
         
         if self._is_D_deriv == True:
             s_bounds = (None, None)
@@ -1081,12 +1118,17 @@ class TemplateBuilder(object):
         
         if self.has_spectral_data():    
         
+            print(f'This is the has_spectral_data: {self.has_spectral_data}')    
+        
             if self._is_non_abs_set:
+                
+                
+                
                 self.set_non_absorbing_species(model, self._non_absorbing, check=False)
                 setattr(model, self.__var.spectra_species, Var(model.meas_lambdas,
                                                                model.abs_components,
                                                                bounds=s_bounds,
-                                                               initialize=s_dict))
+                                                               initialize=0.0))
             else:
                 setattr(model, self.__var.spectra_species, Var(model.meas_lambdas,
                                                                model.mixture_components,
@@ -1142,7 +1184,7 @@ class TemplateBuilder(object):
 
         return None
 
-    def _set_up_times(self, model, start_time, end_time):
+    def _set_up_times(self, model, start_time, end_time, is_simulation=False):
         
         if self._times is not None:
             if start_time is None:
@@ -1168,82 +1210,84 @@ class TemplateBuilder(object):
         m_alltimes = m_times
         conc_times = list()
 
-        if self._spectral_data is not None and self._huplc_data is None:
-            list_times = list_times.union(set(self._spectral_data.index))
-            list_lambdas = list(self._spectral_data.columns)
-            m_times = sorted(list_times)
-            m_lambdas = sorted(list_lambdas)
-            m_alltimes=m_times
-
-        if self._absorption_data is not None:
-            if not self._meas_times:
-                raise RuntimeError('Need to add measurement times')
-            list_times = list(self._meas_times)
-            list_lambdas = list(self._absorption_data.index)
-            m_times = sorted(list_times)
-            m_lambdas = sorted(list_lambdas)
-
-        if self._concentration_data is not None:
-            list_times = list_times.union(set(self._concentration_data.index))
-            list_concs = list(self._concentration_data.columns)
-            m_times = sorted(list_times)
-            conc_times = sorted(list_times)
-            m_alltimes = sorted(list_times)#has to be changed for including huplc data with conc data!
-            m_concs = sorted(list_concs)
-
-        if self._complementary_states_data is not None:
-            list_times = list_times.union(set(self._complementary_states_data.index))
-            list_comps = list(self._complementary_states_data.columns)
-            m_times = sorted(list_times)
-            m_alltimes = sorted(list_times)
-            m_comps = sorted(list_comps)
-            
-        if self._custom_data is not None:
-            list_times = list_times.union(set(self._custom_data.index))
-            list_custom = list(self._custom_data.columns)
-            m_times = sorted(list_times)
-            m_alltimes = sorted(list_times)
-            m_custom = sorted(list_custom)
-
-        #For inclusion of h/uplc data:
-        if self._huplc_data is not None and self._spectral_data is None: #added for additional H/UPLC data (CS)
-            list_huplctimes = self._huplcmeas_times
-            list_huplctimes = list_huplctimes.union(set(self._huplc_data.index))
-            list_conDhats = list(self._huplc_data.columns)
-            m_huplctimes = sorted(list_huplctimes)
-
-        if self._huplc_data is not None and self._spectral_data is not None:
-            list_times = list_times.union(set(self._spectral_data.index))
-            list_lambdas = list(self._spectral_data.columns)
-            m_times = sorted(list_times)
-            m_lambdas = sorted(list_lambdas)
-            list_huplctimes = self._huplcmeas_times
-            list_huplctimes = list_huplctimes.union(set(self._huplc_data.index))
-            list_conDhats = list(self._huplc_data.columns)
-            m_huplctimes = sorted(list_huplctimes)
-            list_alltimes = list_times.union(list_huplctimes)
-            m_alltimes = sorted(list_alltimes)
-
-        #added for optional smoothing CS:
-        if self._smoothparam_data is not None:
+        if not is_simulation:
+    
+            if self._spectral_data is not None and self._huplc_data is None:
+                list_times = list_times.union(set(self._spectral_data.index))
+                list_lambdas = list(self._spectral_data.columns)
+                m_times = sorted(list_times)
+                m_lambdas = sorted(list_lambdas)
+                m_alltimes=m_times
+    
+            if self._absorption_data is not None:
+                if not self._meas_times:
+                    raise RuntimeError('Need to add measurement times')
+                list_times = list(self._meas_times)
+                list_lambdas = list(self._absorption_data.index)
+                m_times = sorted(list_times)
+                m_lambdas = sorted(list_lambdas)
+    
+            if self._concentration_data is not None:
+                list_times = list_times.union(set(self._concentration_data.index))
+                list_concs = list(self._concentration_data.columns)
+                m_times = sorted(list_times)
+                conc_times = sorted(list_times)
+                m_alltimes = sorted(list_times)#has to be changed for including huplc data with conc data!
+                m_concs = sorted(list_concs)
+    
+            if self._complementary_states_data is not None:
+                list_times = list_times.union(set(self._complementary_states_data.index))
+                list_comps = list(self._complementary_states_data.columns)
+                m_times = sorted(list_times)
+                m_alltimes = sorted(list_times)
+                m_comps = sorted(list_comps)
+                
+            if self._custom_data is not None:
+                list_times = list_times.union(set(self._custom_data.index))
+                list_custom = list(self._custom_data.columns)
+                m_times = sorted(list_times)
+                m_alltimes = sorted(list_times)
+                m_custom = sorted(list_custom)
+    
+            #For inclusion of h/uplc data:
+            if self._huplc_data is not None and self._spectral_data is None: #added for additional H/UPLC data (CS)
+                list_huplctimes = self._huplcmeas_times
+                list_huplctimes = list_huplctimes.union(set(self._huplc_data.index))
+                list_conDhats = list(self._huplc_data.columns)
+                m_huplctimes = sorted(list_huplctimes)
+    
             if self._huplc_data is not None and self._spectral_data is not None:
+                list_times = list_times.union(set(self._spectral_data.index))
+                list_lambdas = list(self._spectral_data.columns)
+                m_times = sorted(list_times)
+                m_lambdas = sorted(list_lambdas)
+                list_huplctimes = self._huplcmeas_times
+                list_huplctimes = list_huplctimes.union(set(self._huplc_data.index))
+                list_conDhats = list(self._huplc_data.columns)
+                m_huplctimes = sorted(list_huplctimes)
                 list_alltimes = list_times.union(list_huplctimes)
                 m_alltimes = sorted(list_alltimes)
-                list_alltimessmooth = list_alltimes.union(set(self._smoothparam_data.index))
-                m_allsmoothtimes = sorted(list_alltimessmooth)
-            else:
-                list_timessmooth = list_times.union(set(self._smoothparam_data.index))
-                m_alltimes = m_times
-                m_allsmoothtimes = sorted(list_timessmooth)
-
-        if self._huplc_data is not None:
-            if m_huplctimes:
-                self._check_time_inputs(m_huplctimes, start_time, end_time)
-                
-        if self._smoothparam_data is not None:
-            if m_allsmoothtimes:
-                self._check_time_inputs(m_allsmoothtimes, start_time, end_time)
-            model.allsmooth_times = Set(initialize=m_allsmoothtimes, ordered=True)
+    
+            #added for optional smoothing CS:
+            if self._smoothparam_data is not None:
+                if self._huplc_data is not None and self._spectral_data is not None:
+                    list_alltimes = list_times.union(list_huplctimes)
+                    m_alltimes = sorted(list_alltimes)
+                    list_alltimessmooth = list_alltimes.union(set(self._smoothparam_data.index))
+                    m_allsmoothtimes = sorted(list_alltimessmooth)
+                else:
+                    list_timessmooth = list_times.union(set(self._smoothparam_data.index))
+                    m_alltimes = m_times
+                    m_allsmoothtimes = sorted(list_timessmooth)
+    
+            if self._huplc_data is not None:
+                if m_huplctimes:
+                    self._check_time_inputs(m_huplctimes, start_time, end_time)
+                    
+            if self._smoothparam_data is not None:
+                if m_allsmoothtimes:
+                    self._check_time_inputs(m_allsmoothtimes, start_time, end_time)
+                model.allsmooth_times = Set(initialize=m_allsmoothtimes, ordered=True)
 
         if m_alltimes:
             self._check_time_inputs(m_alltimes, start_time, end_time)
@@ -1325,20 +1369,26 @@ class TemplateBuilder(object):
                 num_of_steps = len(step_info)
                 step_index = list(range(num_of_steps))
                 
+                
             tsc_index = []
             tsc_init = {}
+            tsc_bounds = {}
         
             for k, v in self._step_data.items():
                 for i, step_dict in enumerate(v):
                     tsc_init[f'{k}_{i}'] = step_dict['time']
+                    tsc_bounds[f'{k}_{i}'] = step_dict.get('bounds', (model.start_time, model.end_time))
                     tsc_index.append(f'{k}_{i}')
             
             setattr(model, self.__var.time_step_change, Var(tsc_index,
                                                            # step_index,
-                    bounds=(model.start_time, model.end_time), 
                     initialize=tsc_init,
                     ))
                    
+            # Set the bounds
+            for k, v in getattr(model, self.__var.time_step_change).items():
+                v.setlb(tsc_bounds[k][0])
+                v.setlb(tsc_bounds[k][1])
             
             setattr(model, self.__var.step_variable, Var(model.alltime,
                                                          steps,
@@ -1383,7 +1433,7 @@ class TemplateBuilder(object):
                    
         return None
             
-    def create_pyomo_model(self, start_time=None, end_time=None):
+    def create_pyomo_model(self, start_time=None, end_time=None, is_simulation=False):
         """Create a pyomo model.
 
         This method is the core method for further simulation or optimization studies
@@ -1397,6 +1447,9 @@ class TemplateBuilder(object):
             Pyomo ConcreteModel
 
         """
+        #is_simulation = False
+        print(start_time, end_time, is_simulation)
+        
         if self._spectral_data is not None and self._absorption_data is not None:
             raise RuntimeError('Either add absorption data or spectral data but not both')
         
@@ -1420,8 +1473,9 @@ class TemplateBuilder(object):
         pyomo_model.states = pyomo_model.mixture_components | pyomo_model.complementary_states
         pyomo_model.measured_data = Set(initialize=self._all_state_data)
         
+        
         # Set up the model time sets and parameters
-        self._set_up_times(pyomo_model, start_time, end_time)
+        self._set_up_times(pyomo_model, start_time, end_time, is_simulation)
         
         # Set up the model by calling the following methods:
         self._add_model_variables(pyomo_model)
@@ -1436,7 +1490,7 @@ class TemplateBuilder(object):
         self._add_algebraic_var(pyomo_model)
         self._add_model_constants(pyomo_model)
         self._add_initial_conditions(pyomo_model)
-        self._add_spectral_variables(pyomo_model)
+        self._add_spectral_variables(pyomo_model, is_simulation)
         self._add_model_smoothing_parameters(pyomo_model)
         
         # If unwanted contributions are being handled:
