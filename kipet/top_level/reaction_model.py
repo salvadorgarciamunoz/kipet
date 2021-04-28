@@ -30,12 +30,14 @@ from kipet.core_methods.PyomoSimulator import PyomoSimulator
 from kipet.core_methods.TemplateBuilder import TemplateBuilder
 from kipet.core_methods.VarianceEstimator import VarianceEstimator
 # from kipet.common.component_expression import get_unit_model
+from kipet.common.interpolation import interpolate_trajectory
 from kipet.common.model_funs import step_fun
 from kipet.post_model_build.pyomo_model_tools import get_vars
 from kipet.dev_tools.display import Print
 from kipet.post_model_build.scaling import scale_models
 from kipet.post_model_build.replacement import ParameterReplacer
 from kipet.mixins.TopLevelMixins import WavelengthSelectionMixins
+
 
 from kipet.top_level.data_component import (
     DataBlock, 
@@ -65,7 +67,7 @@ from pyomo.environ import units as pyo_units
 from kipet.model_components.units_handler import convert_single_dimension
 
 __var = VariableNames()
-DEBUG=__var.DEBUG
+DEBUG=True #__var.DEBUG
 _print = Print(verbose=DEBUG)
 model_components = ['parameters', 'components', 'states', 'algebraics', 'constants', 'steps']
 
@@ -85,6 +87,7 @@ class ReactionModel(WavelengthSelectionMixins):
         
         self.name = kwargs.get('name', 'Model-1')
         self.model = None
+        self.s_model = None
         self.builder = TemplateBuilder()
         self.components = ComponentBlock()   
         self.parameters = ParameterBlock()
@@ -177,6 +180,9 @@ class ReactionModel(WavelengthSelectionMixins):
         """
         if not hasattr(self, '_set_up_model'):
             self._make_set_up_model()
+
+        if hasattr(self._set_up_model, name):        
+            raise ValueError('A component with this name has already been defiffffned')
         
         setattr(self._set_up_model, f'{name}_indx', Set(initialize=[0]))
         sets = [getattr(self._set_up_model, f'{name}_indx')]*index
@@ -210,6 +216,10 @@ class ReactionModel(WavelengthSelectionMixins):
         value = kwargs.get('value', 1)
         kwargs['units_orig'] = units
         
+        comp_name = args[0]
+        print(comp_name)
+        if comp_name in getattr(self, f'{name}s'):
+            print('repeat')
         par, con = self.Component(args[0], index, units=units)
         #print(f'#### in the add model: {con}')
         
@@ -490,6 +500,14 @@ class ReactionModel(WavelengthSelectionMixins):
     
     """ Expressions """
     
+    def add_reaction(self, name, expr, *args, **kwargs):
+        """Wrapper to add reactions without needing the kwargs, simplifies
+        the API somewhat. The default option for algebraics is False!
+        """
+        kwargs['is_reaction'] = True
+        return self.add_expression(name, expr, *args, **kwargs)
+        
+    
     def add_expression(self, name, expr, *args, **kwargs):
         """Add expressions (prev. algebraics) to the reaction model
         
@@ -752,25 +770,33 @@ class ReactionModel(WavelengthSelectionMixins):
 
         """
         if hasattr(self, 'model'):
-            del self.model
-            
+            del self.model 
+           
         skip_non_abs = kwargs.pop('skip_non_abs', False)
             
         start_time, end_time = self.populate_template(*args, **kwargs)
         self._make_c_dict()
         setattr(self.builder, 'c_mod', self.c)
         
-        self.model = self.builder.create_pyomo_model(start_time, end_time)
+        kwargs['is_simulation'] = kwargs.get('is_simulation', False)
         
-        non_abs_comp = self.components.get_match('absorbing', False)
+        print(f'Is this a sim? {kwargs["is_simulation"]}')
         
-        if not skip_non_abs and len(non_abs_comp) > 0:
-            self.builder.set_non_absorbing_species(self.model, non_abs_comp, check=True)    
+        if not kwargs['is_simulation']:
+            self.model = self.builder.create_pyomo_model(start_time, end_time, kwargs['is_simulation'])
         
-        if hasattr(self,'fixed_params') and len(self.fixed_params) > 0:
-            for param in self.fixed_params:
-                self.model.P[param].fix()
+            non_abs_comp = self.components.get_match('absorbing', False)
+        
+            if not skip_non_abs and len(non_abs_comp) > 0:
+                self.builder.set_non_absorbing_species(self.model, non_abs_comp, check=True)    
             
+            if hasattr(self,'fixed_params') and len(self.fixed_params) > 0:
+                for param in self.fixed_params:
+                    self.model.P[param].fix()
+        
+        else:
+            self.s_model = self.builder.create_pyomo_model(start_time, end_time, kwargs['is_simulation'])
+                
         return None
     
     def _add_feed_times(self):
@@ -825,8 +851,12 @@ class ReactionModel(WavelengthSelectionMixins):
         return None
     
     def create_simulator(self):
-        """This should try to handle all of the simulation cases"""
+        """This should try to handle all of the simulation cases
         
+        It should not use the base reaction model! - allows for different
+        discretizations that do not depend on the data
+        
+        """
         _print('Setting up simulator:')
         sim_set_up_options = copy.copy(self.settings.simulator)
         _print(sim_set_up_options)
@@ -842,11 +872,15 @@ class ReactionModel(WavelengthSelectionMixins):
         else:
             simulation_class = PyomoSimulator
         
-        if self.model is None:
+        if self.s_model is None:
+            print('YOU NEED A MODEL')
             # with_data her
-            self.create_pyomo_model(*self.settings.general.simulation_times)
-        
-        self.s_model = self.model.clone()
+            start_time = self.settings.general.simulation_times[0]
+            end_time = self.settings.general.simulation_times[1]
+            is_sim = True
+            print(start_time, end_time, is_sim)
+            
+            self.create_pyomo_model(start_time=start_time, end_time=end_time, is_simulation=is_sim)
         
         if hasattr(self.s_model, self.__var.model_parameter):
             for param in getattr(self.s_model, self.__var.model_parameter).values():
@@ -874,7 +908,8 @@ class ReactionModel(WavelengthSelectionMixins):
         print('Finished creating simulator')
         
         return None
-        
+    
+    
     def run_simulation(self):
         """Runs the simulations, may be combined with the above at a later date
         
@@ -884,24 +919,18 @@ class ReactionModel(WavelengthSelectionMixins):
         
         simulator_options = self.settings.simulator
         simulator_options.pop('method', None)
-        self.results = self.simulator.run_sim(**simulator_options)
-#        self.results.file_dir = self.settings.general.charts_directory
-    
+        results = self.simulator.run_sim(**simulator_options)
+        self.results_dict['simulator'] = results 
+        self.results = results    
         return None
     
-    # def reduce_spectra_data_set(self, dropout=4):
-    #     """To reduce the computational burden, this can be used to reduce 
-    #     the amount of spectral data used
-        
-    #     """
-    #     A_set = [l for i, l in enumerate(self.model.meas_lambdas) if (i % dropout == 0)]
-    #     return A_set
     
     def bound_profile(self, var, bounds):
         """Wrapper for TemplateBuilder bound_profile method"""
         
         self.builder.bound_profile(var=var, bounds=bounds)
         return None
+    
     
     """Estimators"""
     
@@ -930,8 +959,139 @@ class ReactionModel(WavelengthSelectionMixins):
         self.create_estimator(estimator='p_estimator', **kwargs)
         self._from_trajectories('p_estimator')
         return None
+    
+    def _calculate_S_from_Z_data(self):
+        """Calculates the indivdual S profiles from simulated results
+        """
+        
+        C_orig = self.results_dict['simulator'].Z
+        D = self.spectra.data
+    
+        C = interpolate_trajectory(list(D.index), C_orig)
+    
+        non_abs_species = self.components.get_match('absorbing', False)
+        C = C.drop(columns=non_abs_species)
+    
+        indx_list = list(D.index)
+        for i, ind in enumerate(indx_list):
+            indx_list[i] = round(ind, 6)
+        
+        D.index = indx_list
+        
+        assert C.shape[0] == D.values.shape[0]
+        
+        M1 = np.linalg.inv(C.T @ C)
+        M2 = C.T @ D.values
+        S = (M1 @ M2).T
+        S.columns = C.columns
+        S = S.set_index(D.columns)
+        
+        for comp in non_abs_species:
+            S[comp] = 0
+        
+        return S
+    
+    def _check_S_singularity(self, threshold=1e-5):
+        """This is still in development and may not actually be too useful
+        """
+        
+        C_orig = self.results_dict['simulator'].Z
+        D = self.spectra.data
+    
+        C = interpolate_trajectory(list(D.index), C_orig)
+    
+        indx_list = list(D.index)
+        for i, ind in enumerate(indx_list):
+            indx_list[i] = round(ind, 6)
+        
+        D.index = indx_list
+        
+        M = C.T @ C
+        print('This is the determinant of C.T @ C')
+        print(np.linalg.det(M))
+        
+        eigs, U = np.linalg.eigh(M)
+        
+        print('The singular values are:')
+        print(eigs)
+        d = eigs
+        d = np.where(d > 1e-16, d, 1e-16)
+        d = 1/d
+        d = np.where(d > threshold, 0, d)
+        
+        print(d)
+        M1 = np.diag(d)
+        
+        M2 = C.T @ D.values
+        
+        S = (M1 @ M2).T
+        S.columns = C.columns
+        S = S.set_index(D.columns)
+        
+        num_comp = sum(np.where(d > 0, 1, 0))
+
+        return S, num_comp
+        
+    def initialize_S_from_simulation(self):
+        """This method takes simulated concentration profiles and the given
+        spectra data to recreate the single species absorbance profiles to be
+        used as initial values in the variance estimation
+        
+        This directly sets the S values in the TemplateBuilder instance. If
+        the S profile is provided, it is fixed in the model.
+        """
+        
+        S = self._calculate_S_from_Z_data()
+        
+        print('Adding this S to the self.model')
+        
+        if not hasattr(self, 'model') or self.model is None:
+            self.create_pyomo_model()
+            
+        for k in S.columns:
+            if self.components[k].absorbing:
+                if self.components[k].S is None:
+                    # Absorbance is taken from simulated values
+                    for l in S.index:        
+                        getattr(self.model, 'S')[l, k].set_value(float(S[k][l]))
+                else:
+                    # The single species absorbance is provided - fit to the collocation points
+                    for l in S.index:        
+                        S_comp = interpolate_trajectory(list(S.index), self.components[k].S)
+                        S_comp = S_comp.set_index(S.index)
+                        print(S_comp)
+                        getattr(self.model, 'S')[l, k].set_value(float(S_comp[k][l]))
+                        getattr(self.model, 'S')[l, k].fix()
+            else:
+                # Species does not absorb - set to zero
+                for l in S.index:        
+                    getattr(self.model, 'S')[l, k].set_value(0)
+
+        print('Finished initializing the S profiles')        
+        return None
         
     def initialize_from_simulation(self, estimator='p_estimator'):
+        
+        if not hasattr(self, 's_model'):
+            _print('Starting simulation for initialization')
+            self.simulate()
+            _print('Finished simulation, updating variables...')
+
+        _print(f'The model has the following variables:\n{get_vars(self.s_model)}')
+        vars_to_init = get_vars(self.s_model)
+        
+        _print(f'The vars_to_init: {vars_to_init}')
+        for var in vars_to_init:
+            if hasattr(self.results, var) and var != 'S':
+                print(var == 'S')
+                _print(f'Updating variable: {var}')
+                getattr(self, estimator).initialize_from_trajectory(var, getattr(self.results, var))
+            else:
+                continue
+        
+        return None
+    
+    def initialize_from_reduced_spectral_data(self, estimator='p_estimator'):
         
         if not hasattr(self, 's_model'):
             _print('Starting simulation for initialization')
@@ -972,6 +1132,9 @@ class ReactionModel(WavelengthSelectionMixins):
         else:
             raise ValueError('Keyword argument estimator must be p_estimator or v_estimator.')  
         
+        if self.model is None:    
+            self.create_pyomo_model()  
+        
         model_to_clone = self.model
         
         setattr(self, f'{estimator[0]}_model', model_to_clone.clone())
@@ -984,6 +1147,10 @@ class ReactionModel(WavelengthSelectionMixins):
         self._from_trajectories(estimator)
         
         _print('Starting sim init')
+        
+        if self.settings.parameter_estimator.sim_init and estimator == 'v_estimator':
+            self.initialize_S_from_simulation()
+        
         if self.settings.parameter_estimator.sim_init and estimator == 'p_estimator':
             self.initialize_from_simulation(estimator=estimator)
         
@@ -1077,7 +1244,7 @@ class ReactionModel(WavelengthSelectionMixins):
         _print('Starting the RunOpt method')
         
         # Make the model if not present
-        if self.model is None:    
+        if not hasattr(self, 'model') or self.model is None:    
             self.create_pyomo_model()  
             _print('Generating model')
         
@@ -1113,6 +1280,7 @@ class ReactionModel(WavelengthSelectionMixins):
             #     variances_with_delta = self.solve_variance_given_delta()
 
             else:
+                print('Starting the variance estimator')
                 self.run_ve_opt()
                 
                 #print('Finished VE Opt - moving to PE opt')
@@ -1165,6 +1333,7 @@ class ReactionModel(WavelengthSelectionMixins):
         self.settings.parameter_estimator.variances = self.variances
         
         # Run the PE
+        print('Starting the parameter estimator')
         self.run_pe_opt()
         
         # Save results in the results_dict
@@ -1417,6 +1586,10 @@ class ReactionModel(WavelengthSelectionMixins):
     def unwanted_contribution(self, variant, **kwargs):
         
         self._G_contribution = variant
+        
+        if 'St' not in kwargs:
+            kwargs['St'] = self.build_stoich_matrix(as_dict=True)
+        
         self._G_data = {'G_contribution': variant,
                         'Z_in': kwargs.get('Z_in', dict()),
                         'St': kwargs.get('St', dict()),
@@ -1480,6 +1653,148 @@ class ReactionModel(WavelengthSelectionMixins):
         
     """MODEL FUNCTION AREA"""
     
+    @staticmethod
+    def _set_up_stoich_mat(rm, St, reaction, component, value):
+    
+        if component in rm.components.names and reaction in rm.algs_dict:
+            St[reaction][rm.components.names.index(component)] = value
+        else:
+            pass
+        
+    
+    def _create_stoich_dataframe(self):
+        """Builds the dataframe used to hold the stoichiometric matrix
+        """
+            
+        if self.algebraics.get_match('is_reaction', True) is None:
+            raise ValueError('You need to declare reaction expressions')
+        
+        odes = self.odes_dict
+        reaction_exprs = self.algebraics.get_match('is_reaction', True)
+        dr = pd.DataFrame(np.zeros((len(self.components), len(reaction_exprs))), columns=reaction_exprs, index=self.components.names)    
+           
+        return dr
+    
+    
+    def _build_rxn_odes_from_stoich_matrix(self, St):
+        """The user can provide a stoichiometric matrix and have the reaction
+        ODEs generated from it
+        
+        How should St be input? As a dict with lists? Yes for now
+        """
+        dr = self._create_stoich_dataframe()
+        comps = self.components.names
+        
+        for rxn, s_list in St.items():
+            dr.loc[:, rxn] = s_list
+
+        # Now we have the dr dataframe, put together the reactions
+        for comp in comps:
+            ode = 0
+            for rxn in dr.columns:
+                ode += dr.loc[comp, rxn]*self.algs_dict[rxn].expression
+                
+            self.add_ode(comp, ode)
+
+        return None
+
+    def build_stoich_matrix(self, as_dict=False):
+        """Generate a dictionary or dataframe representing the stoichiometric
+        reaction matrix given the reaction expressions and the ODES are
+        defined
+        """
+        from pyomo.core.expr.numeric_expr import DivisionExpression, ProductExpression, NegationExpression, SumExpression
+      
+        if self.odes_dict is None or len(self.odes_dict) == 0:
+            raise ValueError('You need to input the reaction ODEs')
+          
+        dr = self._create_stoich_dataframe()
+        all_rxns = {key: self.algs_dict[key].expression for key in self.algebraics.get_match('is_reaction', True)}
+        
+        def check_expr_type(expr):
+        
+            if isinstance(expr, NegationExpression):
+                expr_use = expr.args[0]
+                scalar = -1       
+                return expr_use, -1
+            else:
+                return expr, 1
+    
+        for comp, ode in self.odes_dict.items():
+    
+        
+            expr = ode.expression
+            #print('')
+            #print(f'Looking at {comp} and {expr}')
+            #print(comp, expr)
+            #expr_new = 0
+            
+            #print(f'The ODE expression being handled is:\n     {expr}\n')
+            #print(f'The type of expression being handled is:\n     {type(expr)}\n')
+        
+            #print(type(expr))
+        
+            expr_use = expr
+        
+            scalar = 1
+        
+            if isinstance(expr, NegationExpression):
+                expr_use = expr.args[0]
+                scalar = -1        
+                
+            if isinstance(ode.expression, (DivisionExpression, ProductExpression)):
+            #    _print(f'The number of terms in this expression is: 1\n')
+                expr_use = expr 
+            
+            if isinstance(ode.expression, SumExpression):
+                expr_use = expr.args
+                
+            #    term = self.check_term(expr, convert_to)
+            #    expr_new = scalar*term
+            coeff = 1
+            
+            #else:
+            #print(f'The number of terms in this expression is: {len(expr.args)}\n')
+                
+            expr_use = [expr_use]
+ 
+ #           print('\nStarting For LOOP')
+            for i, term in enumerate(expr_use):
+  #              print(i, term)
+   #             print('')
+    #            print(type(term))
+                
+                if not isinstance(term, list):
+                    term = [term]
+                for t in term:
+     #               print(t)
+                    t, scalar_update = check_expr_type(t)
+                    
+                    for name, rxn in all_rxns.items():
+      #                  print(name, rxn)
+                        if t is rxn:
+       #                     print(f'{name}: {t} == {rxn}')
+                            dr.loc[comp, name] = scalar*scalar_update
+                        #print(f'Equal to {name}: {term == rxn}')
+                
+            #term = self.check_term(term, convert_to)
+            #expr_new += scalar*term
+        
+        #_print('The new expression is:\n')
+        #_print(f'     {expr_new}')
+            
+        #self.expression = expr_new
+        #self.units = getattr(pyo_units, convert_to)
+        self.St = dr
+        
+        if as_dict:
+            _dict = dict(dr)
+            St = {k: list(v.values) for k, v in _dict.items()}
+            return St
+            
+        else:
+            return dr
+        
     def make_reaction_table(self, stoich_coeff, rxns):
         
         df = pd.DataFrame()
