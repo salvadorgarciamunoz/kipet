@@ -15,7 +15,7 @@ import pandas as pd
 # Kipet library imports
 import kipet.core_methods.data_tools as data_tools
 from kipet.core_methods.MEE import MultipleExperimentsEstimator
-from kipet.nsd_funs.NSD_KIPET import NSD
+#from kipet.nsd_funs.NSD_KIPET import NSD
 from kipet.top_level.reaction_model import (
     ReactionModel,
     _set_directory,
@@ -302,9 +302,9 @@ class KipetModel():
                 self._calculate_parameters()
                 self._create_multiple_experiments_estimator(*args, **kwargs)
                 self.run_full_model()
-            elif method == 'nsd':
-                self._calculate_parameters()
-                self.mee_nsd(strategy='ipopt')
+            # elif method == 'nsd':
+            #     self._calculate_parameters()
+            #     self.mee_nsd(strategy='ipopt')
             else:
                 raise ValueError('Not a valid method for optimization')
             
@@ -369,40 +369,40 @@ class KipetModel():
             
         return results
     
-    def mee_nsd(self, strategy='ipopt'):
-        """Performs the NSD on the multiple datasets
+    # def mee_nsd(self, strategy='ipopt'):
+    #     """Performs the NSD on the multiple datasets
         
-        Args:
-            strategy (str): Method used to control the outer problem
-                ipopt, trust-region, newton-step
+    #     Args:
+    #         strategy (str): Method used to control the outer problem
+    #             ipopt, trust-region, newton-step
                 
-        Returns:
-            results
+    #     Returns:
+    #         results
         
-        """        
-        kwargs = {'kipet': True,
-                  'objective_multiplier': 1
-                  }
+    #     """        
+    #     kwargs = {'kipet': True,
+    #               'objective_multiplier': 1
+    #               }
         
-        if self.global_parameters is not None:
-            global_parameters = self.global_parameters
-        else:
-            global_parameters = self.all_params
+    #     if self.global_parameters is not None:
+    #         global_parameters = self.global_parameters
+    #     else:
+    #         global_parameters = self.all_params
         
-        self.nsd = NSD(self.models,
-                       strategy=strategy,
-                       global_parameters=global_parameters, 
-                       kwargs=kwargs)
+    #     self.nsd = NSD(self.models,
+    #                    strategy=strategy,
+    #                    global_parameters=global_parameters, 
+    #                    kwargs=kwargs)
         
-        print(self.nsd.d_init)
+    #     print(self.nsd.d_init)
         
-        results = self.nsd.run_opt()
+    #     results = self.nsd.run_opt()
         
-        self.results = results
-        for key, results_obj in self.results.items():
-            results_obj.file_dir = self.settings.general.charts_directory
+    #     self.results = results
+    #     for key, results_obj in self.results.items():
+    #         results_obj.file_dir = self.settings.general.charts_directory
             
-        return results
+    #     return results
     
     def write_data_file(self, filename, data, directory=None, filetype='csv'):
         """Method to write data to a file using KipetModel
