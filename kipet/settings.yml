@@ -23,12 +23,13 @@ parameter_estimator:
   tee: true
   with_d_vars: false
 simulator:
-  method: dae.collocation
+  method: fe
   solver: ipopt
   tee: false
 solver:
   linear_solver: ma57
   nlp_scaling_method: gradient-based
+  max_iter: 15000
 units:
   concentration: M
   time: hr
