@@ -794,6 +794,7 @@ class TemplateBuilder(object):
                 else:
                     c_bounds = (0.0, None)
                 
+                print(data)
                 if data is not None:
                     
                     for i, row in data.iterrows():
@@ -1311,6 +1312,7 @@ class TemplateBuilder(object):
         model.alltime = ContinuousSet(initialize=model.allmeas_times,
                                       bounds=(start_time, end_time)) #add for new data structure CS
         
+        print(start_time, end_time)
         model.start_time = Param(initialize=start_time, domain=Reals)
         model.end_time = Param(initialize=end_time, domain=Reals)
         
@@ -1388,7 +1390,7 @@ class TemplateBuilder(object):
             # Set the bounds
             for k, v in getattr(model, self.__var.time_step_change).items():
                 v.setlb(tsc_bounds[k][0])
-                v.setlb(tsc_bounds[k][1])
+                v.setub(tsc_bounds[k][1])
             
             setattr(model, self.__var.step_variable, Var(model.alltime,
                                                          steps,
