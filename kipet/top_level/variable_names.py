@@ -39,10 +39,24 @@ class VariableNames(object):
         # Debug options
         
         self.model_constant = 'Const'
+        self.concentration_init = 'Pinit'
         
         self.DEBUG = False
         
         
+    @property
+    def optimization_variables(self):
+        """These are the independent variables that need to be fixed in 
+        simulations
+        """
+        
+        model_vars = [self.model_parameter,
+                      self.time_step_change,
+                      self.concentration_init
+                      ]
+        
+        return model_vars
+    
     @property
     def time_dependent_variables(self):
         

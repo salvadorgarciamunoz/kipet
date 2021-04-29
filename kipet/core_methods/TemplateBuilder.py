@@ -702,8 +702,8 @@ class TemplateBuilder(object):
         
         if len(unknown_init) > 0:
             model._unknown_init_set = Set(initialize=list(unknown_init.keys()))
-            model.Pinit = Var(model._unknown_init_set,
-                              initialize=unknown_init)
+            setattr(model, self.__var.concentration_init, Var(model._unknown_init_set,
+                                                             initialize=unknown_init))
             
             model.del_component('P_all')    
             model.P_all = Set(initialize=model.parameter_names | model._unknown_init_set,
@@ -718,13 +718,14 @@ class TemplateBuilder(object):
         model.init_conditions_c = \
             Constraint(model.states, rule=rule_init_conditions)
             
-        if hasattr(model, 'Pinit'):
+        if hasattr(model, self.__var.concentration_init):
             
+            # What is this doing?
             def rule_Pinit_conditions(m, k):
                 if k in m.mixture_components:
-                    return m.Pinit[k] - m.init_conditions[k] == 0
+                    return getattr(m, self.__var.concentration_init)[k] - m.init_conditions[k] == 0
                 else:
-                    return m.Pinit[k] - m.init_conditions[k] == 0
+                    return getattr(m, self.__var.concentration_init)[k] - m.init_conditions[k] == 0
     
             model.Pinit_conditions_c = \
                 Constraint(model._unknown_init_set, rule=rule_Pinit_conditions)
@@ -794,7 +795,6 @@ class TemplateBuilder(object):
                 else:
                     c_bounds = (0.0, None)
                 
-                print(data)
                 if data is not None:
                     
                     for i, row in data.iterrows():
@@ -1080,9 +1080,7 @@ class TemplateBuilder(object):
                                                           domain=Reals,
                                                           initialize=s_data_dict))
             
-            print(f'Here is the sim check: {is_simulation}')            
             if not is_simulation:
-            
                 setattr(model, self.__var.concentration_spectra, Var(model.meas_times,
                                                                  model.mixture_components,
                                                                  bounds=(0, None),
@@ -1092,8 +1090,6 @@ class TemplateBuilder(object):
 
     def _check_absorbing_species(self, model):
         """Set up the appropriate S depending on absorbing species"""
-        
-        print('You are here')
         
         if self._absorption_data is not None:
             s_dict = dict()
@@ -1110,21 +1106,13 @@ class TemplateBuilder(object):
         else:
             s_dict = 0.0
         
-        print(s_dict)
-        
         if self._is_D_deriv == True:
             s_bounds = (None, None)
         else:
             s_bounds = (0.0, None)
         
         if self.has_spectral_data():    
-        
-            print(f'This is the has_spectral_data: {self.has_spectral_data}')    
-        
             if self._is_non_abs_set:
-                
-                
-                
                 self.set_non_absorbing_species(model, self._non_absorbing, check=False)
                 setattr(model, self.__var.spectra_species, Var(model.meas_lambdas,
                                                                model.abs_components,
@@ -1312,7 +1300,6 @@ class TemplateBuilder(object):
         model.alltime = ContinuousSet(initialize=model.allmeas_times,
                                       bounds=(start_time, end_time)) #add for new data structure CS
         
-        print(start_time, end_time)
         model.start_time = Param(initialize=start_time, domain=Reals)
         model.end_time = Param(initialize=end_time, domain=Reals)
         
@@ -1449,9 +1436,6 @@ class TemplateBuilder(object):
             Pyomo ConcreteModel
 
         """
-        #is_simulation = False
-        print(start_time, end_time, is_simulation)
-        
         if self._spectral_data is not None and self._absorption_data is not None:
             raise RuntimeError('Either add absorption data or spectral data but not both')
         
@@ -1532,7 +1516,7 @@ class TemplateBuilder(object):
         for k, v in self._state_sigmas.items():
             if v is None:
                 self._state_sigmas[k] = 1
-                print(f'Warning: No variance provided for model component {k}, it is being set to one')
+                #print(f'Warning: No variance provided for model component {k}, it is being set to one')
        
         state_sigmas = {k: v for k, v in self._state_sigmas.items() if k in pyomo_model.measured_data}
         pyomo_model.sigma = Param(pyomo_model.measured_data, domain=Reals, initialize=state_sigmas)

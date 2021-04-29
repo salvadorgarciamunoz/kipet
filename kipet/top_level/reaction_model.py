@@ -70,6 +70,7 @@ __var = VariableNames()
 DEBUG=True #__var.DEBUG
 _print = Print(verbose=DEBUG)
 model_components = ['parameters', 'components', 'states', 'algebraics', 'constants', 'steps']
+version_number = '0.2.2'
 
 class ReactionModel(WavelengthSelectionMixins):
     
@@ -89,6 +90,7 @@ class ReactionModel(WavelengthSelectionMixins):
         self.model = None
         self.s_model = None
         self.builder = TemplateBuilder()
+        self._template_populated = False
         self.components = ComponentBlock()   
         self.parameters = ParameterBlock()
         self.constants = ConstantBlock()
@@ -119,6 +121,7 @@ class ReactionModel(WavelengthSelectionMixins):
         self._var_to_initialize_from_trajectory = []
         self._default_time_unit = 'seconds'
         self.unit_base = kwargs.get('unit_base', None)
+        self.allow_optimization = False
         
         self._G_data = {'G_contribution': None, 'Z_in': dict(), 'St': dict()}
         self.__var = VariableNames()
@@ -217,9 +220,8 @@ class ReactionModel(WavelengthSelectionMixins):
         kwargs['units_orig'] = units
         
         comp_name = args[0]
-        print(comp_name)
-        if comp_name in getattr(self, f'{name}s'):
-            print('repeat')
+        # if comp_name in getattr(self, f'{name}s'):
+        #     print('repeat')
         par, con = self.Component(args[0], index, units=units)
         #print(f'#### in the add model: {con}')
         
@@ -660,85 +662,94 @@ class ReactionModel(WavelengthSelectionMixins):
         """Method handling all of the preparation for the TB
         
         """
-        with_data = kwargs.get('with_data', True)
         
-        # for model_component, obj in self.component_map.items():
+        if not self._template_populated:
+        
+            with_data = kwargs.get('with_data', True)
             
-        #     if len(obj) > 0:
-        #         self.builder.add_model_element(obj)
+            # for model_component, obj in self.component_map.items():
                 
-        if len(self.states) > 0:
-            self.builder.add_model_element(self.states)
-        
-        if len(self.algebraics) > 0:
-            self.builder.add_model_element(self.algebraics)
-        
-        if len(self.components) > 0:
-            self.builder.add_model_element(self.components)
-        else:
-            raise ValueError('The model has no components')
+            #     if len(obj) > 0:
+            #         self.builder.add_model_element(obj)
+                    
+            if len(self.states) > 0:
+                self.builder.add_model_element(self.states)
             
-        if len(self.parameters) > 0:
-            self.builder.add_model_element(self.parameters)
-        else:
-            self.allow_optimization = False   
-        
-        if len(self.constants) > 0:
-            self.builder.add_model_element(self.constants)
-        
-        if with_data:
-            if len(self.datasets) > 0 or self.spectra is not None:
-                self.builder.input_data(self.datasets, self.spectra)
-                self.allow_optimization = True
-            elif len(self.datasets) == 0 and self.spectra is None:
-                self.allow_optimization = False
+            if len(self.algebraics) > 0:
+                self.builder.add_model_element(self.algebraics)
+            
+            if len(self.components) > 0:
+                self.builder.add_model_element(self.components)
             else:
+                raise ValueError('The model has no components')
+                
+            if len(self.parameters) > 0:
+                self.builder.add_model_element(self.parameters)
+            else:
+                self.allow_optimization = False   
+            
+            if len(self.constants) > 0:
+                self.builder.add_model_element(self.constants)
+            
+            if with_data:
+                if len(self.datasets) > 0 or self.spectra is not None:
+                    self.builder.input_data(self.datasets, self.spectra)
+                    self.allow_optimization = True
+                elif len(self.datasets) == 0 and self.spectra is None:
+                    self.allow_optimization = False
+                else:
+                    pass
+                
+            # Add the ODEs
+            if len(self.odes_dict) != 0:
+                self._build_odes()
+                self.builder.set_odes_rule(self.odes)
+            elif 'odes_bypass' in kwargs and kwargs['odes_bypass']:
                 pass
-            
-        # Add the ODEs
-        if len(self.odes_dict) != 0:
-            self._build_odes()
-            self.builder.set_odes_rule(self.odes)
-        elif 'odes_bypass' in kwargs and kwargs['odes_bypass']:
-            pass
-        else:
-            raise ValueError('The model requires a set of ODEs')
-            
-        if len(self.algs_dict) != 0:
-            self._build_algs()
-            if isinstance(self.algs, dict):
-                self.builder.set_algebraics_rule(self.algs, asdict=True)
             else:
-                self.builder.set_algebraics_rule(self.algs)
+                raise ValueError('The model requires a set of ODEs')
+                
+            if len(self.algs_dict) != 0:
+                self._build_algs()
+                if isinstance(self.algs, dict):
+                    self.builder.set_algebraics_rule(self.algs, asdict=True)
+                else:
+                    self.builder.set_algebraics_rule(self.algs)
+                
+            if hasattr(self, 'custom_objective') and self.custom_objective is not None:
+                self.builder.set_objective_rule(self.custom_objective)
             
-        if hasattr(self, 'custom_objective') and self.custom_objective is not None:
-            self.builder.set_objective_rule(self.custom_objective)
-        
-        self.builder.set_parameter_scaling(self.settings.general.scale_parameters)
-        self.builder.add_state_variance(self.components.variances)
-        
-        # if self._has_step_or_dosing:
-        #     self.builder.add_dosing_var(self._number_of_steps)
-        
-        if self._has_dosing_points:
-            self._add_feed_times()
+            self.builder.set_parameter_scaling(self.settings.general.scale_parameters)
+            self.builder.add_state_variance(self.components.variances)
             
-        if hasattr(self, '_step_list') and len(self._step_list) > 0:
-            self.builder.add_step_vars(self._step_list)
+            # if self._has_step_or_dosing:
+            #     self.builder.add_dosing_var(self._number_of_steps)
             
-        # It seems this is repetitive - refactor
-        if hasattr(self, '_G_contribution') and self._G_contribution is not None:
-        #if self.settings.parameter_estimator.G_contribution is not None:
-            self._unwanted_G_initialization()
-            self.builder._G_contribution = self._G_contribution
+            if self._has_dosing_points:
+                self._add_feed_times()
+                
+            if hasattr(self, '_step_list') and len(self._step_list) > 0:
+                self.builder.add_step_vars(self._step_list)
+                
+            # It seems this is repetitive - refactor
+            if hasattr(self, '_G_contribution') and self._G_contribution is not None:
+            #if self.settings.parameter_estimator.G_contribution is not None:
+                self._unwanted_G_initialization()
+                self.builder._G_contribution = self._G_contribution
+            else:
+                self.builder._G_contribution = None
+            
+            self._template_populated = True
+        
         else:
-            self.builder._G_contribution = None
-        
+            print('Template already populated')
+           
         start_time, end_time = None, None
         if self.settings.general.simulation_times is not None:
             #print(f'times are: {type(self.settings.general.simulation_times)}')
             start_time, end_time = self.settings.general.simulation_times
-       
+            
+           
         return start_time, end_time
     
     def _make_c_dict(self):
@@ -750,8 +761,6 @@ class ReactionModel(WavelengthSelectionMixins):
             for mc in model_components: 
                 if hasattr(self, f'{mc}') and len(getattr(self, f'{mc}')) > 0:
                     for comp in getattr(self, f'{mc}'):
-                        #print(comp)
-                        #print(comp.model_var, comp.pyomo_var)
                         self.c.update({comp.name: [comp.model_var, comp.pyomo_var]})
     
             if hasattr(self, 'steps'):
@@ -763,41 +772,29 @@ class ReactionModel(WavelengthSelectionMixins):
         and there is nothing returned.
 
         Args:
-            None
+            is_simulation (bool): Default False, tells the builder if a
+            simulation or optimization models is being built
 
         Returns:
-            None
+            pyomo_model (ConcreteModel): The resulting Pyomo model
 
         """
-        if hasattr(self, 'model'):
-            del self.model 
-           
+        kwargs['is_simulation'] = kwargs.get('is_simulation', False)
         skip_non_abs = kwargs.pop('skip_non_abs', False)
-            
         start_time, end_time = self.populate_template(*args, **kwargs)
         self._make_c_dict()
         setattr(self.builder, 'c_mod', self.c)
-        
-        kwargs['is_simulation'] = kwargs.get('is_simulation', False)
-        
-        print(f'Is this a sim? {kwargs["is_simulation"]}')
+        pyomo_model = self.builder.create_pyomo_model(start_time, end_time, kwargs['is_simulation'])
         
         if not kwargs['is_simulation']:
-            self.model = self.builder.create_pyomo_model(start_time, end_time, kwargs['is_simulation'])
-        
             non_abs_comp = self.components.get_match('absorbing', False)
-        
             if not skip_non_abs and len(non_abs_comp) > 0:
-                self.builder.set_non_absorbing_species(self.model, non_abs_comp, check=True)    
-            
+                self.builder.set_non_absorbing_species(pyomo_model, non_abs_comp, check=True)    
             if hasattr(self,'fixed_params') and len(self.fixed_params) > 0:
                 for param in self.fixed_params:
-                    self.model.P[param].fix()
+                    getattr(pyomo_model, self.__var.model_parameter)[param].fix()
         
-        else:
-            self.s_model = self.builder.create_pyomo_model(start_time, end_time, kwargs['is_simulation'])
-                
-        return None
+        return pyomo_model
     
     def _add_feed_times(self):
         
@@ -839,13 +836,10 @@ class ReactionModel(WavelengthSelectionMixins):
         """This should try to handle all of the simulation cases"""
     
         # Create the simulator object
-        _print('Making simulator')
         self.create_simulator()
         # Add any previous trajectories, if given
-        _print('Adding traj')
         self._from_trajectories('simulator')
         # Run the simulation
-        _print('Running sim')
         self.run_simulation()
         
         return None
@@ -857,53 +851,47 @@ class ReactionModel(WavelengthSelectionMixins):
         discretizations that do not depend on the data
         
         """
-        _print('Setting up simulator:')
+        print('Setting up simulation model')
         sim_set_up_options = copy.copy(self.settings.simulator)
-        _print(sim_set_up_options)
-        dis_method = sim_set_up_options.pop('method', 'dae.collocation')
         
+        # Initialization is now defaulted to FESimulator (settings file)
+        dis_method = sim_set_up_options.pop('method', 'fe')
+        
+        # Override the chosen method to fe if dosing or steps are included
         if self._has_step_or_dosing:
             dis_method = 'fe'
         
-        _print(dis_method)
-        
+        # Choose the proper simulator object
+        simulation_class = PyomoSimulator
         if dis_method == 'fe':
             simulation_class = FESimulator
-        else:
-            simulation_class = PyomoSimulator
         
-        if self.s_model is None:
-            print('YOU NEED A MODEL')
-            # with_data her
-            start_time = self.settings.general.simulation_times[0]
-            end_time = self.settings.general.simulation_times[1]
-            is_sim = True
-            print(start_time, end_time, is_sim)
-            
-            self.create_pyomo_model(start_time=start_time, end_time=end_time, is_simulation=is_sim)
+        self.s_model = self.create_pyomo_model(is_simulation=True)
         
-        if hasattr(self.s_model, self.__var.model_parameter):
-            for param in getattr(self.s_model, self.__var.model_parameter).values():
-                param.fix()
+        # Fix the optimization variables
+        opt_vars = self.__var.optimization_variables
+        for var in opt_vars:
         
-        _print(simulation_class)
+            if hasattr(self.s_model, var):
+                for param in getattr(self.s_model, var).values():
+                    param.fix()
         
+        # Initialize the simulator instance
         simulator = simulation_class(self.s_model)
-        _print('After class made')
+
+        # Discretize the model
         simulator.apply_discretization(self.settings.collocation.method,
                                        ncp=self.settings.collocation.ncp,
                                        nfe=self.settings.collocation.nfe,
                                        scheme=self.settings.collocation.scheme)
         
-        _print('After disc')
-        
+        # Add the dosing points to the model
         if self._has_step_or_dosing:
             for time in simulator.model.alltime.data():
                 getattr(simulator.model, self.__var.dosing_variable)[time, self.__var.dosing_component].set_value(time)
                 getattr(simulator.model, self.__var.dosing_variable)[time, self.__var.dosing_component].fix()
         
-            #getattr(simulator.model, 'time_step_change')[0].fix()
-        
+        # Add this simulator to the class attributes
         self.simulator = simulator
         print('Finished creating simulator')
         
@@ -914,7 +902,7 @@ class ReactionModel(WavelengthSelectionMixins):
         """Runs the simulations, may be combined with the above at a later date
         
         """
-        if self._has_dosing_points or isinstance(self.simulator, FESimulator):
+        if isinstance(self.simulator, FESimulator):
             self.call_fe_factory()
         
         simulator_options = self.settings.simulator
@@ -1032,7 +1020,7 @@ class ReactionModel(WavelengthSelectionMixins):
 
         return S, num_comp
         
-    def initialize_S_from_simulation(self):
+    def initialize_S_from_simulation(self, model):
         """This method takes simulated concentration profiles and the given
         spectra data to recreate the single species absorbance profiles to be
         used as initial values in the variance estimation
@@ -1045,71 +1033,68 @@ class ReactionModel(WavelengthSelectionMixins):
         
         print('Adding this S to the self.model')
         
-        if not hasattr(self, 'model') or self.model is None:
-            self.create_pyomo_model()
-            
         for k in S.columns:
             if self.components[k].absorbing:
                 if self.components[k].S is None:
                     # Absorbance is taken from simulated values
                     for l in S.index:        
-                        getattr(self.model, 'S')[l, k].set_value(float(S[k][l]))
+                        getattr(model, 'S')[l, k].set_value(float(S[k][l]))
                 else:
                     # The single species absorbance is provided - fit to the collocation points
                     for l in S.index:        
                         S_comp = interpolate_trajectory(list(S.index), self.components[k].S)
                         S_comp = S_comp.set_index(S.index)
                         print(S_comp)
-                        getattr(self.model, 'S')[l, k].set_value(float(S_comp[k][l]))
-                        getattr(self.model, 'S')[l, k].fix()
+                        getattr(model, 'S')[l, k].set_value(float(S_comp[k][l]))
+                        getattr(model, 'S')[l, k].fix()
             else:
                 # Species does not absorb - set to zero
                 for l in S.index:        
-                    getattr(self.model, 'S')[l, k].set_value(0)
+                    getattr(model, 'S')[l, k].set_value(0)
 
         print('Finished initializing the S profiles')        
         return None
         
     def initialize_from_simulation(self, estimator='p_estimator'):
+        """This method initializes the model using simulated data
         
-        if not hasattr(self, 's_model'):
-            _print('Starting simulation for initialization')
+        """
+        if not hasattr(self, 's_model') or self.s_model is None:
             self.simulate()
-            _print('Finished simulation, updating variables...')
 
-        _print(f'The model has the following variables:\n{get_vars(self.s_model)}')
         vars_to_init = get_vars(self.s_model)
         
-        _print(f'The vars_to_init: {vars_to_init}')
+        #_print(f'The vars_to_init: {vars_to_init}')
         for var in vars_to_init:
             if hasattr(self.results, var) and var != 'S':
-                print(var == 'S')
-                _print(f'Updating variable: {var}')
+                #_print(f'Updating variable: {var}')
+                getattr(self, estimator).initialize_from_trajectory(var, getattr(self.results, var))
+            elif var == 'S' and hasattr(self.results, 'S'):
                 getattr(self, estimator).initialize_from_trajectory(var, getattr(self.results, var))
             else:
                 continue
         
         return None
     
-    def initialize_from_reduced_spectral_data(self, estimator='p_estimator'):
+    # def initialize_from_reduced_spectral_data(self, estimator='p_estimator'):
         
-        if not hasattr(self, 's_model'):
-            _print('Starting simulation for initialization')
-            self.simulate()
-            _print('Finished simulation, updating variables...')
+    #     if not hasattr(self, 's_model'):
+    #         _print('Starting simulation for initialization')
+    #         self.simulate()
+    #         _print('Finished simulation, updating variables...')
 
-        _print(f'The model has the following variables:\n{get_vars(self.s_model)}')
-        vars_to_init = get_vars(self.s_model)
+    #     _print(f'The model has the following variables:\n{get_vars(self.s_model)}')
+    #     vars_to_init = get_vars(self.s_model)
         
-        _print(f'The vars_to_init: {vars_to_init}')
-        for var in vars_to_init:
-            if hasattr(self.results, var):    
-                _print(f'Updating variable: {var}')
-                getattr(self, estimator).initialize_from_trajectory(var, getattr(self.results, var))
-            else:
-                continue
+    #     _print(f'The vars_to_init: {vars_to_init}')
+    #     for var in vars_to_init:
+    #         if hasattr(self.results, var):    
+    #             _print(f'Updating variable: {var}')
+    #             getattr(self, estimator).initialize_from_trajectory(var, getattr(self.results, var))
+    #         else:
+    #             continue
         
-        return None
+    #     return None
     
     def create_estimator(self, estimator=None):
         """This function handles creating the Estimator object
@@ -1132,10 +1117,7 @@ class ReactionModel(WavelengthSelectionMixins):
         else:
             raise ValueError('Keyword argument estimator must be p_estimator or v_estimator.')  
         
-        if self.model is None:    
-            self.create_pyomo_model()  
-        
-        model_to_clone = self.model
+        model_to_clone = self.create_pyomo_model()
         
         setattr(self, f'{estimator[0]}_model', model_to_clone.clone())
         setattr(self, estimator, Estimator(getattr(self, f'{estimator[0]}_model')))
@@ -1143,13 +1125,12 @@ class ReactionModel(WavelengthSelectionMixins):
                                                       ncp=self.settings.collocation.ncp,
                                                       nfe=self.settings.collocation.nfe,
                                                       scheme=self.settings.collocation.scheme)
-        _print('Starting from_traj')
+     
         self._from_trajectories(estimator)
-        
-        _print('Starting sim init')
+        self.settings.parameter_estimator.sim_init = True
         
         if self.settings.parameter_estimator.sim_init and estimator == 'v_estimator':
-            self.initialize_S_from_simulation()
+            self.initialize_S_from_simulation(getattr(self, f'{estimator[0]}_model'))
         
         if self.settings.parameter_estimator.sim_init and estimator == 'p_estimator':
             self.initialize_from_simulation(estimator=estimator)
@@ -1241,17 +1222,17 @@ class ReactionModel(WavelengthSelectionMixins):
         remove the VarianceEstimator being required to be implemented by the user
         
         """
-        _print('Starting the RunOpt method')
+        print(f'*** KIPET version {version_number}')
+        print(f'*** Starting the parameter estimation procedure')
         
-        # Make the model if not present
-        if not hasattr(self, 'model') or self.model is None:    
-            self.create_pyomo_model()  
-            _print('Generating model')
+        print(f'\n*** Simulating the model with initial values')
+        self.simulate()
+        print(f'*** Simulation completed succesfully')
         
         # Check if all needed data for optimization available
         if not self.allow_optimization:
             raise ValueError('The model is incomplete for parameter optimization')
-            
+        
         # Some settings are required together, this method checks this
         self._update_related_settings()
         
@@ -1270,6 +1251,7 @@ class ReactionModel(WavelengthSelectionMixins):
             """If the data is spectral and not all variances are provided, VE needs to be run"""
             
             # Create the VE
+            print('*** Generating VarianceEsitmator Instance')
             self.create_estimator(estimator='v_estimator')
             self.settings.variance_estimator.solver_opts = self.settings.solver
             # Optional max device variance
@@ -1280,7 +1262,7 @@ class ReactionModel(WavelengthSelectionMixins):
             #     variances_with_delta = self.solve_variance_given_delta()
 
             else:
-                print('Starting the variance estimator')
+                print('*** Starting the variance estimator')
                 self.run_ve_opt()
                 
                 #print('Finished VE Opt - moving to PE opt')
@@ -1294,7 +1276,7 @@ class ReactionModel(WavelengthSelectionMixins):
                     comp.variance = 1
                 
         # Create ParameterEstimator
-        _print('Making PEstimator')
+        print('*** Generating ParameterEsitmator Instance')
         self.create_estimator(estimator='p_estimator')
         
         variances = self.components.variances
@@ -1333,7 +1315,7 @@ class ReactionModel(WavelengthSelectionMixins):
         self.settings.parameter_estimator.variances = self.variances
         
         # Run the PE
-        print('Starting the parameter estimator')
+        print('*** Solving the parameter fitting problem...\n')
         self.run_pe_opt()
         
         # Save results in the results_dict
@@ -1401,6 +1383,8 @@ class ReactionModel(WavelengthSelectionMixins):
         
         estimator = getattr(self, obj)
         method = getattr(estimator, f'{category}_from_trajectory')
+        
+        print(variable)
         
         if variable is None:
             vars_to_init = get_vars(estimator.model)
@@ -1702,6 +1686,8 @@ class ReactionModel(WavelengthSelectionMixins):
         """Generate a dictionary or dataframe representing the stoichiometric
         reaction matrix given the reaction expressions and the ODES are
         defined
+        
+        Debugging code still left here because this may still lead to errors
         """
         from pyomo.core.expr.numeric_expr import DivisionExpression, ProductExpression, NegationExpression, SumExpression
       
@@ -2053,18 +2039,22 @@ class ReactionModel(WavelengthSelectionMixins):
         
 
     def ae(self, alg_var):
+        """Quick method to get the algebraic expression for alg_var"""
         return self.algs_dict[alg_var].expression
     
     def ode(self, ode_var):
+        """Quick method to get the algebraic expression for ode_var"""
         return self.odes_dict[ode_var].expression
 
     def get_state(self, comp):
+        """Quick method to get the component or state variable"""
         if comp in self.components:
             return self.components[comp]
         elif comp in self.states:
             return self.states[comp]
  
     def get_alg(self, comp):
+        """Quick method to get the algebraic variable"""
         if comp in self.algebraics:
             return self.algebraics[comp]
         
