@@ -642,7 +642,7 @@ class fe_initialize(object):
         """Runs the sequence of problems fe=0,nfe
 
         """
-        print(f'Starting FE Factory: Solving for {len(self.fe_list)} elements')
+        #print(f'Starting FE Factory: Solving for {len(self.fe_list)} elements')
         
         for i in range(0, len(self.fe_list)):
             self.march_forward(i, resto_strategy=resto_strategy)
