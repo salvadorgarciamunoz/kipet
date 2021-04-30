@@ -666,11 +666,6 @@ class ReactionModel(WavelengthSelectionMixins):
         if not self._template_populated:
         
             with_data = kwargs.get('with_data', True)
-            
-            # for model_component, obj in self.component_map.items():
-                
-            #     if len(obj) > 0:
-            #         self.builder.add_model_element(obj)
                     
             if len(self.states) > 0:
                 self.builder.add_model_element(self.states)
@@ -743,13 +738,17 @@ class ReactionModel(WavelengthSelectionMixins):
         
         else:
             print('Template already populated')
+            
+        return None
            
+            
+    def _get_model_times(self):
+        
         start_time, end_time = None, None
         if self.settings.general.simulation_times is not None:
             #print(f'times are: {type(self.settings.general.simulation_times)}')
             start_time, end_time = self.settings.general.simulation_times
-            
-           
+
         return start_time, end_time
     
     def _make_c_dict(self):
@@ -781,7 +780,8 @@ class ReactionModel(WavelengthSelectionMixins):
         """
         kwargs['is_simulation'] = kwargs.get('is_simulation', False)
         skip_non_abs = kwargs.pop('skip_non_abs', False)
-        start_time, end_time = self.populate_template(*args, **kwargs)
+        start_time, end_time = self._get_model_times() 
+        self.populate_template(*args, **kwargs)
         self._make_c_dict()
         setattr(self.builder, 'c_mod', self.c)
         pyomo_model = self.builder.create_pyomo_model(start_time, end_time, kwargs['is_simulation'])
@@ -881,7 +881,7 @@ class ReactionModel(WavelengthSelectionMixins):
 
         # Discretize the model
         simulator.apply_discretization(self.settings.collocation.method,
-                                       ncp=self.settings.collocation.ncp,
+                                       ncp=max(2, self.settings.collocation.ncp),
                                        nfe=self.settings.collocation.nfe,
                                        scheme=self.settings.collocation.scheme)
         
@@ -1031,7 +1031,7 @@ class ReactionModel(WavelengthSelectionMixins):
         
         S = self._calculate_S_from_Z_data()
         
-        print('Adding this S to the self.model')
+        print('Adding initialized S to the model')
         
         for k in S.columns:
             if self.components[k].absorbing:
@@ -1051,8 +1051,13 @@ class ReactionModel(WavelengthSelectionMixins):
                 # Species does not absorb - set to zero
                 for l in S.index:        
                     getattr(model, 'S')[l, k].set_value(0)
-
+                    
         print('Finished initializing the S profiles')        
+        
+        print('Initializing both the C and Z profiles using simulated Z profiles')
+        getattr(self, 'v_estimator').initialize_from_trajectory('C', self.results_dict['simulator'].Z)
+        getattr(self, 'v_estimator').initialize_from_trajectory('Z', self.results_dict['simulator'].Z)
+        
         return None
         
     def initialize_from_simulation(self, estimator='p_estimator'):
@@ -1064,10 +1069,10 @@ class ReactionModel(WavelengthSelectionMixins):
 
         vars_to_init = get_vars(self.s_model)
         
-        #_print(f'The vars_to_init: {vars_to_init}')
+        _print(f'The vars_to_init: {vars_to_init}')
         for var in vars_to_init:
             if hasattr(self.results, var) and var != 'S':
-                #_print(f'Updating variable: {var}')
+                _print(f'Updating variable: {var}')
                 getattr(self, estimator).initialize_from_trajectory(var, getattr(self.results, var))
             elif var == 'S' and hasattr(self.results, 'S'):
                 getattr(self, estimator).initialize_from_trajectory(var, getattr(self.results, var))
@@ -1502,7 +1507,7 @@ class ReactionModel(WavelengthSelectionMixins):
         
         """
         if self.model is None:
-            self.create_pyomo_model()
+            self.model = self.create_pyomo_model()
             
         kwargs = {}
         kwargs['solver_opts'] = self.settings.solver
