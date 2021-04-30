@@ -20,7 +20,7 @@ if os.path.exists(readme_path):
 setup(
     long_description=readme,
     name='kipet',
-    version='0.1.6',
+    version='0.2.2',
     description='An all-in-one tool for fitting kinetic models using spectral and other state data',
     python_requires='==3.*,>=3.8.0',
     project_urls={
@@ -32,7 +32,7 @@ setup(
     keywords='optimization scientific parameter reaction spectral',
     packages=[
         'kipet', 'kipet.common', 'kipet.core_methods', 'kipet.dev_tools',
-        'kipet.mixins', 'kipet.model_components', 'kipet.nsd_funs',
+        'kipet.mixins', 'kipet.model_components',
         'kipet.post_model_build', 'kipet.top_level', 'kipet.variance_methods',
         'kipet.visuals'
     ],
