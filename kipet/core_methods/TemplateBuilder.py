@@ -938,7 +938,7 @@ class TemplateBuilder(object):
         
         return None
 
-    # @staticmethod
+    
     def change_time(self, expr_orig, c_mod, new_time, current_model):
         """Method to remove the fixed parameters from the ConcreteModel
         TODO: move to a new expression class
@@ -1499,7 +1499,7 @@ class TemplateBuilder(object):
         self._add_model_odes(pyomo_model)
         self._add_algebraic_constraints(pyomo_model)
         
-        if self._custom_objective:
+        if self._custom_objective and not is_simulation:
             self._add_objective_custom(pyomo_model)
         
         # Check the absorbing species sets
