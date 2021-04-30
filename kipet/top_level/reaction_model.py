@@ -1044,7 +1044,7 @@ class ReactionModel(WavelengthSelectionMixins):
                     for l in S.index:        
                         S_comp = interpolate_trajectory(list(S.index), self.components[k].S)
                         S_comp = S_comp.set_index(S.index)
-                        print(S_comp)
+                        #print(S_comp)
                         getattr(model, 'S')[l, k].set_value(float(S_comp[k][l]))
                         getattr(model, 'S')[l, k].fix()
             else:
@@ -1069,10 +1069,10 @@ class ReactionModel(WavelengthSelectionMixins):
 
         vars_to_init = get_vars(self.s_model)
         
-        _print(f'The vars_to_init: {vars_to_init}')
+        #_print(f'The vars_to_init: {vars_to_init}')
         for var in vars_to_init:
             if hasattr(self.results, var) and var != 'S':
-                _print(f'Updating variable: {var}')
+                #_print(f'Updating variable: {var}')
                 getattr(self, estimator).initialize_from_trajectory(var, getattr(self.results, var))
             elif var == 'S' and hasattr(self.results, 'S'):
                 getattr(self, estimator).initialize_from_trajectory(var, getattr(self.results, var))
@@ -1834,7 +1834,7 @@ class ReactionModel(WavelengthSelectionMixins):
                 output += f'{model} False\n'
                 output_dict[model] = False
             
-        print(output)
+        #print(output)
         return output_dict
     
     @property
