@@ -865,10 +865,11 @@ class ReactionModel(WavelengthSelectionMixins):
         if self._has_step_or_dosing:
             dis_method = 'fe'
         
+        
         # Choose the proper simulator object
         simulation_class = PyomoSimulator
-        if dis_method == 'fe':
-            simulation_class = FESimulator
+        # if dis_method == 'fe':
+        #     simulation_class = FESimulator
         
         self.s_model = self.create_pyomo_model(is_simulation=True)
         
@@ -1034,6 +1035,7 @@ class ReactionModel(WavelengthSelectionMixins):
         """
         
         S = self._calculate_S_from_Z_data()
+        S[S < 0] = 1e-8
         
         print('Adding initialized S to the model')
         
@@ -1136,13 +1138,18 @@ class ReactionModel(WavelengthSelectionMixins):
                                                       scheme=self.settings.collocation.scheme)
      
         self._from_trajectories(estimator)
-        self.settings.parameter_estimator.sim_init = True
         
         if self.settings.parameter_estimator.sim_init and estimator == 'v_estimator':
-            self.initialize_S_from_simulation(getattr(self, f'{estimator[0]}_model'))
-        
-        if self.settings.parameter_estimator.sim_init and estimator == 'p_estimator':
             self.initialize_from_simulation(estimator=estimator)
+            # This really doesn't seem to help as much - use the simpler implementation above
+            #self.initialize_S_from_simulation(getattr(self, 'v_model'))
+            
+        # What is S between VE and PE?
+        if self.settings.parameter_estimator.sim_init and estimator == 'p_estimator':
+            if hasattr(self, 'v_estimator'):
+                self.initialize_from_variance_trajectory()
+            else:
+                self.initialize_from_simulation(estimator=estimator)
         
         if self._has_step_or_dosing:
             for time in getattr(self, estimator).model.alltime.data():
@@ -1669,7 +1676,7 @@ class ReactionModel(WavelengthSelectionMixins):
         return dr
     
     
-    def _build_rxn_odes_from_stoich_matrix(self, St):
+    def build_from_reaction_matrix(self, St):
         """The user can provide a stoichiometric matrix and have the reaction
         ODEs generated from it
         
