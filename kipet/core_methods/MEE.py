@@ -65,7 +65,15 @@ class MultipleExperimentsEstimator(PEMixins, object):
         self.parameter_means = False
         
         self.__var = VariableNames()
+        #self._add_basic_models()
   
+    def _add_basic_models(self):
+        
+        for name, model in self.reaction_models.items():
+            print(f'Checking for basic model in {name}')
+            if model.model is None:
+                model.model = model.create_pyomo_model
+            print('Finished creating model')
     
     def make_sublist(self):
 
@@ -85,13 +93,13 @@ class MultipleExperimentsEstimator(PEMixins, object):
         model_obj = self.model.experiment
 
         for i in self.experiments:
-            if hasattr(self.reaction_models[i].model, 'C'):
+            if hasattr(self.reaction_models[i].p_model, 'C'):
             #if self._spectra_given:
                 if hasattr(self, 'model_variance') and self.model_variance or not hasattr(self, 'model_variance'):
                     count_vars = self._set_up_reduced_hessian(model_obj[i], self.model.experiment[i].meas_times, self._sublist_components[i], 'C', count_vars)
         
         for i in self.experiments:
-            if hasattr(self.reaction_models[i].model, 'S'):
+            if hasattr(self.reaction_models[i].p_model, 'S'):
             #if self._spectra_given:
                 if hasattr(self, 'model_variance') and self.model_variance or not hasattr(self, 'model_variance'):       
                     count_vars = self._set_up_reduced_hessian(model_obj[i], self.model.experiment[i].meas_lambdas, self._sublist_components[i], 'S', count_vars)
@@ -659,7 +667,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
     def all_wavelengths(self):
         set_of_all_wavelengths = set()
         for name, model in self.reaction_models.items():
-            set_of_all_wavelengths = set_of_all_wavelengths.union(list(model.model.meas_lambdas))
+            set_of_all_wavelengths = set_of_all_wavelengths.union(list(model.p_model.meas_lambdas))
         return set_of_all_wavelengths
     
     @property
