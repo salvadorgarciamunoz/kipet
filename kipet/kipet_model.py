@@ -154,7 +154,7 @@ class KipetModel():
                 self.models[name] = ReactionModel(name=name, unit_base=self.ub)
                 
                 assign_list = ['components', 'parameters', 'constants', 'algebraics',
-                             'states', 'ub', 'settings', 'c', 'odes_dict']
+                             'states', 'ub', 'settings', 'c', 'odes_dict', 'algs_dict']
         
               #  copy_list = []#'c', 'odes_dict']# 'set_up_model']
                 for item in assign_list:
@@ -296,6 +296,8 @@ class KipetModel():
         """Solve a single model or solve multiple models using the MEE
         """
         method = kwargs.get('method', 'mee')
+        if hasattr(self, 'mee'):
+            del self.mee
         
         if len(self.models) > 1:
             if method == 'mee':
