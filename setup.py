@@ -41,7 +41,7 @@ setup(
         "kipet": ["*.yml"],
     },
     install_requires=[
-        'attrs==20.*,>=20.3.0', 'ipopt==0.*,>=0.3.0', 'matplotlib==3.*,>=3.3.4',
+        'attrs==20.*,>=20.3.0', 'matplotlib==3.*,>=3.3.4',
         'numpy==1.*,>=1.20.1', 'pandas==1.*,>=1.2.2', 'pint==0.*,>=0.16.1',
         'plotly==4.*,>=4.14.3', 'pyomo==5.*,>=5.7.3', 'pyyaml==5.*,>=5.4.1',
         'scipy==1.*,>=1.6.0'
