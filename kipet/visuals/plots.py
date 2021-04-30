@@ -335,7 +335,11 @@ class PlotObject():
             str_units = var_data.units
             
         if check_expr:
-            str_units = str(self.reaction_model.alg_obj.exprs[var_data.name].units)
+            if var_data.name in self.reaction_model.alg_obj.exprs:
+                str_units = str(self.reaction_model.alg_obj.exprs[var_data.name].units)
+            else:
+                if var_data.name in self.reaction_model.algebraics.names:
+                    str_units = str(self.reaction_model.algebraics[var_data.name].units)
             
         return str_units
         
