@@ -780,10 +780,14 @@ class ReactionModel(WavelengthSelectionMixins):
         """
         kwargs['is_simulation'] = kwargs.get('is_simulation', False)
         skip_non_abs = kwargs.pop('skip_non_abs', False)
-        start_time, end_time = self._get_model_times() 
+         
         self.populate_template(*args, **kwargs)
         self._make_c_dict()
         setattr(self.builder, 'c_mod', self.c)
+        
+        start_time, end_time = self._get_model_times()
+        if self.model is None:
+            self.model = self.builder.create_pyomo_model(start_time, end_time, False)
         pyomo_model = self.builder.create_pyomo_model(start_time, end_time, kwargs['is_simulation'])
         
         if not kwargs['is_simulation']:
