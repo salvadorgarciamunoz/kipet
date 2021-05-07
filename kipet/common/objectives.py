@@ -5,9 +5,8 @@ This file contains the object functions used throughout Kipet modules in one
 place.
 
 """
-from pyomo.environ import (
-    Objective,
-    )
+from pyomo.environ import Objective
+
 
 def get_objective(model, *args, **kwargs):
     

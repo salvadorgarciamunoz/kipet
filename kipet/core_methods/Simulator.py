@@ -3,10 +3,11 @@ import math
 
 import numpy as np
 import scipy
-
 from pyomo.dae import *
 from pyomo.environ import *
+
 from kipet.core_methods.ResultsObject import *
+
 
 def interpolate_trajectory(t, tr):
     

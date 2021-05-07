@@ -4,19 +4,16 @@ Expression Classes
 # Standad library imports
 
 # Third party imports
-from pyomo.core.expr.numeric_expr import DivisionExpression, ProductExpression, NegationExpression
-from pyomo.environ import (
-    ConcreteModel,
-    Objective,
-    Var, 
-    )
+from pyomo.core.expr.numeric_expr import (DivisionExpression,
+                                          NegationExpression,
+                                          ProductExpression)
+from pyomo.environ import ConcreteModel, Objective, Var
 from pyomo.environ import units as pyo_units
 
 # KIPET library imports
 from kipet.common.VisitorClasses import ReplacementVisitor
-from kipet.post_model_build.replacement import _update_expression
-
 from kipet.dev_tools.display import Print
+from kipet.post_model_build.replacement import _update_expression
 
 DEBUG = False
 

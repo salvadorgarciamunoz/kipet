@@ -1,33 +1,28 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function
+
 import copy
 import os
 import re
-import scipy.stats as st
 import time
 
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.stats as st
 from pyomo import *
 from pyomo.dae import *
 from pyomo.environ import *
-from pyomo.opt import (
-    ProblemFormat,
-    SolverFactory, 
-    TerminationCondition,
-)
+from pyomo.opt import ProblemFormat, SolverFactory, TerminationCondition
 
+from kipet.common.objectives import (absorption_objective, comp_objective,
+                                     conc_objective)
+from kipet.common.read_hessian import *
 from kipet.core_methods.Optimizer import *
 from kipet.core_methods.TemplateBuilder import *
-from kipet.common.read_hessian import *
-from kipet.common.objectives import (
-    conc_objective, 
-    comp_objective,
-    absorption_objective,
-    )
-from kipet.mixins.PEMixins import PEMixins 
+from kipet.mixins.PEMixins import PEMixins
 from kipet.top_level.variable_names import VariableNames
+
 
 class ParameterEstimator(PEMixins, Optimizer):
     """Optimizer for parameter estimation.
@@ -443,6 +438,9 @@ class ParameterEstimator(PEMixins, Optimizer):
 
             expr *= weights[0]
             second_term = 0.0
+            print('These are the variances')
+            print(sigma_sq)
+            
             for t in m.meas_times:
                 second_term += sum((model.C[t, k] - model.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components)
                 

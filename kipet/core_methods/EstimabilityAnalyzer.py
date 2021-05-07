@@ -1,19 +1,21 @@
 # -*- coding: utf-8 -*-
 
-from __future__ import print_function
-from __future__ import division
-from pyomo.environ import *
-from pyomo.dae import *
-from kipet.core_methods.ParameterEstimator import *
-from pyomo import *
-from scipy.optimize import least_squares
+from __future__ import division, print_function
+
+import copy
+import os
+import re
+
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy
 import six
-import copy
-import re
-import os
+from pyomo import *
+from pyomo.dae import *
+from pyomo.environ import *
+from scipy.optimize import least_squares
+
+from kipet.core_methods.ParameterEstimator import *
 
 __author__ = 'Michael Short'  #: November 2018
 

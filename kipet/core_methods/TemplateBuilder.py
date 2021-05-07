@@ -6,24 +6,24 @@ import inspect
 import itertools
 import logging
 import numbers
-import six
 import sys
 import warnings
 
 # Third party imports
 import numpy as np
 import pandas as pd
-from pyomo.environ import *
+import six
 from pyomo.dae import *
+from pyomo.environ import *
 from pyomo.environ import units as u
 
+from kipet.common.component_expression import Comp
+from kipet.common.VisitorClasses import ReplacementVisitor
+from kipet.core_methods.PyomoSimulator import PyomoSimulator
+from kipet.post_model_build.pyomo_model_tools import get_index_sets
 # KIPET library imports
 from kipet.post_model_build.scaling import scale_parameters
-from kipet.core_methods.PyomoSimulator import PyomoSimulator
 from kipet.top_level.variable_names import VariableNames
-from kipet.post_model_build.pyomo_model_tools import get_index_sets
-from kipet.common.VisitorClasses import ReplacementVisitor
-from kipet.common.component_expression import Comp
 
 logger = logging.getLogger('ModelBuilderLogger')
 
@@ -1329,7 +1329,7 @@ class TemplateBuilder(object):
     def _add_time_steps(self, model):
         
         from kipet.common.model_funs import step_fun
-    
+
         # Add dosing var
         setattr(model, self.__var.dosing_variable, Var(model.alltime,
                                                       [self.__var.dosing_component],

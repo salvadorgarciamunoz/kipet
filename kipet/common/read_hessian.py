@@ -8,6 +8,7 @@ import os
 # Thirs 
 import numpy as np
 
+
 def supress_stdout(func):
     def wrapper(*a, **ka):
         with open(os.devnull, 'w') as devnull:

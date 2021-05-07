@@ -6,7 +6,8 @@ from pyomo.dae import *
 from pyomo.environ import *
 
 from kipet.mixins.VisitorMixins import ReplacementVisitor
-    
+
+
 def set_up_jumps(self, kwargs):
 
     var_dic = kwargs.pop("jump_states", None)

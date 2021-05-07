@@ -7,9 +7,9 @@ import copy
 # Third party imports
 from pyomo.environ import Param
 
+from kipet.common.VisitorClasses import ReplacementVisitor, ScalingVisitor
 # Kipet library imports
 from kipet.core_methods.PyomoSimulator import PyomoSimulator
-from kipet.common.VisitorClasses import ScalingVisitor, ReplacementVisitor
 from kipet.top_level.variable_names import VariableNames
 
 __var = VariableNames()

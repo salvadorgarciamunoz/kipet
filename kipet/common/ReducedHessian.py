@@ -4,27 +4,18 @@ Reduced Hessian Generation
 This module creates the reduced Hessian for use in various KIPET modules
 """
 import os
-from pathlib import Path
 import time
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from pyomo.contrib.pynumero.interfaces.pyomo_nlp import PyomoNLP
-from pyomo.environ import (
-    Constraint,
-    Param,
-    Set,
-    SolverFactory,
-    Suffix,
-    )
-from scipy.sparse import coo_matrix, triu
-from scipy.sparse import csr_matrix, csc_matrix
+from pyomo.environ import Constraint, Param, Set, SolverFactory, Suffix
+from scipy.sparse import coo_matrix, csc_matrix, csr_matrix, triu
 from scipy.sparse.linalg import spsolve
-    
-from kipet.common.parameter_handling import (
-    set_scaled_parameter_bounds,
-    )
- 
+
+from kipet.common.parameter_handling import set_scaled_parameter_bounds
+
 DEBUG = True
 
 class ReducedHessian(object):

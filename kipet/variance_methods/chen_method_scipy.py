@@ -9,6 +9,7 @@ from scipy.optimize import least_squares
 from scipy.sparse import coo_matrix
 
 from kipet.core_methods.data_tools import stdout_redirector
+
 try:
     from StringIO import StringIO
 except ImportError:

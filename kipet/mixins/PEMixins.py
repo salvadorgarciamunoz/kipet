@@ -2,11 +2,10 @@
 Common functions between PE and MEE
 """
 import numpy as np
-from pyomo.environ import (
-    Suffix,
-    )
+from pyomo.environ import Suffix
 
 from kipet.common.read_hessian import *
+
 
 class PEMixins(object):
 

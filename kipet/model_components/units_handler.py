@@ -3,11 +3,11 @@ Unit conversion helper functions
 
 @author: kevin
 """
-import attr
 from enum import Enum
 
-from kipet.dev_tools.display import Print
+import attr
 
+from kipet.dev_tools.display import Print
 
 DEBUG = False
 

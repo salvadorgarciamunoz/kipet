@@ -1,13 +1,13 @@
 """
 Model tools
 """
+from pyomo.core.base.param import Param
+from pyomo.core.base.set import BoundsInitializer, SetProduct
 # Third party imports
 from pyomo.core.base.var import Var
-from pyomo.core.base.param import Param
-from pyomo.core.base.set import BoundsInitializer
-from pyomo.core.base.set import SetProduct
 from pyomo.dae.contset import ContinuousSet
 from pyomo.dae.diffvar import DerivativeVar
+
 
 def get_vars(model):
     """Extract the variable information from the Pyomo model

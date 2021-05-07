@@ -7,6 +7,7 @@ from pyomo.environ import *
 
 from kipet.common.VisitorClasses import ReplacementVisitor
 
+
 class JumpsMixin():
         
     def set_up_jumps(self, kwargs):

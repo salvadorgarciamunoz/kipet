@@ -3,12 +3,9 @@ Module to hold the method developed by Chen et al. 2016
 """
 import numpy as np
 import scipy
+from pyomo.environ import Objective, SolverFactory
 from scipy.optimize import least_squares
 
-from pyomo.environ import (
-    Objective,
-    SolverFactory,
-    )
 
 def solve_C(var_est_object, solver, **kwds):
      """Solves formulation 23 from Weifengs procedure with ipopt

@@ -3,10 +3,7 @@ Initialization for method from Chen et al. 2016
 """
 import os
 
-from pyomo.environ import (
-    Objective,
-    SolverFactory,
-    )
+from pyomo.environ import Objective, SolverFactory
 
 from kipet.core_methods.ResultsObject import *
 from kipet.variance_methods.chen_method_pyomo import *

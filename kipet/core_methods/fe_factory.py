@@ -1,35 +1,24 @@
 # Standard library imports
 import math
-from os import getcwd, remove
 import sys
+from os import getcwd, remove
 
 # Third party imports
 import numpy as np
 import pandas as pd
-
 from pyomo import *
+# Pyomo version check
+from pyomo.core.base.set import SetProduct
 from pyomo.core.expr.numvalue import NumericConstant
 from pyomo.dae import *
 from pyomo.environ import *
-from pyomo.opt import (
-    ProblemFormat,
-    SolverFactory,
-    TerminationCondition,
-    )
+from pyomo.opt import ProblemFormat, SolverFactory, TerminationCondition
 
-# KIPET library imports
-from kipet.post_model_build.pyomo_model_tools import (
-    change_continuous_set,
-    get_index_sets,
-    )
 from kipet.common.VisitorClasses import ReplacementVisitor
+# KIPET library imports
+from kipet.post_model_build.pyomo_model_tools import (change_continuous_set,
+                                                      get_index_sets)
 from kipet.top_level.variable_names import VariableNames
-
-# Pyomo version check
-from pyomo.core.base.set import SetProduct
-
-    
-   
 
 __author__ = 'David M Thierry, Kevin McBride'  #: April 2018 - January 2021
 

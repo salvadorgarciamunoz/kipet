@@ -1,17 +1,11 @@
 """
 Holds the alternate method used in VarianceEstimator
 """
-from pyomo.core import (
-    log,
-    value,
-    )
-from pyomo.environ import (
-    Objective,
-    SolverFactory,
-    Param,
-    )
+from pyomo.core import log, value
+from pyomo.environ import Objective, Param, SolverFactory
 
 from kipet.core_methods.ResultsObject import ResultsObject
+
 
 def run_alternate_method(var_est_object, solver, run_opt_kwargs):
     """Calls the alternative method - Short et al 2020"""

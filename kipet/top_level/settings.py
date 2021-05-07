@@ -5,10 +5,10 @@ Settings for KIPET
 import ast
 import os
 from pathlib import Path
-import yaml
 
 # Third party imports
 import numpy as np
+import yaml
 
 # Kipet library imports
 from kipet.top_level.helper import AttrDict

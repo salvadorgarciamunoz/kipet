@@ -4,6 +4,7 @@ ModelElement Blocks
 import kipet.model_components.ModelComponent as model_components
 from kipet.top_level.variable_names import VariableNames
 
+
 class ModelElementBlock():
     
     """Data abstraction for multiple ModelElement instances"""

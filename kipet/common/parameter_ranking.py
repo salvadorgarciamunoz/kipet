@@ -4,6 +4,7 @@ Parameter selection and update methods
 import numpy as np
 import pandas as pd
 
+
 def parameter_ratios(model_object, reduced_hessian, Se, epsilon=1e-16):
     """This is Eq. 26 from Chen and Biegler 2020 where the ratio of the 
     standard deviation for each parameter is calculated.

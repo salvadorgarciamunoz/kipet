@@ -1,28 +1,25 @@
 """
 Results from the various KIPET models are stored here
 """
-# Standard library imports
-import itertools
-from pathlib import Path
-import time
-
 # Thirdparty library imports
 import datetime
+# Standard library imports
+import itertools
+import time
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 from pyomo.core import *
 from pyomo.core.base.PyomoModel import ConcreteModel
 from pyomo.environ import *
 
-# Kipet library imports
-from kipet.post_model_build.pyomo_model_tools import (
-    get_vars, 
-    get_vars_block, 
-    get_result_vars,
-    get_index_sets,
-    index_set_info,
-    )         
 from kipet.common.read_write_tools import df_from_pyomo_data
+# Kipet library imports
+from kipet.post_model_build.pyomo_model_tools import (get_index_sets,
+                                                      get_result_vars,
+                                                      get_vars, get_vars_block,
+                                                      index_set_info)
 
 # This needs deletion
 result_vars = ['Z', 'C', 'Cm', 'K', 'S', 'X', 'dZdt', 'dXdt', 'P', 'Pinit', 'sigma_sq', 'estimable_parameters', 'Y', 'UD', 'step']

@@ -1,8 +1,3 @@
-"""
-ReactionModel class
-
-This is a big wrapper class for most of the KIPET methods
-"""
 # Standard library imports
 import collections
 import copy
@@ -13,58 +8,39 @@ import sys
 # Third party imports
 import numpy as np
 import pandas as pd
-from pyomo.environ import ConcreteModel, Set, Var
 from pyomo.core.base.var import IndexedVar
 from pyomo.dae.diffvar import DerivativeVar
+from pyomo.environ import ConcreteModel, Set, Var
+from pyomo.environ import units as pyo_units
 
 # Kipet library imports
 import kipet.core_methods.data_tools as data_tools
-from kipet.core_methods.EstimationPotential import (
-    replace_non_estimable_parameters,
-    rhps_method,
-    )
+from kipet.common.interpolation import interpolate_trajectory
+from kipet.common.model_funs import step_fun
 from kipet.core_methods.EstimabilityAnalyzer import EstimabilityAnalyzer
+from kipet.core_methods.EstimationPotential import (
+    replace_non_estimable_parameters, rhps_method)
 from kipet.core_methods.FESimulator import FESimulator
 from kipet.core_methods.ParameterEstimator import ParameterEstimator
 from kipet.core_methods.PyomoSimulator import PyomoSimulator
 from kipet.core_methods.TemplateBuilder import TemplateBuilder
 from kipet.core_methods.VarianceEstimator import VarianceEstimator
-# from kipet.common.component_expression import get_unit_model
-from kipet.common.interpolation import interpolate_trajectory
-from kipet.common.model_funs import step_fun
-from kipet.post_model_build.pyomo_model_tools import get_vars
 from kipet.dev_tools.display import Print
-from kipet.post_model_build.scaling import scale_models
-from kipet.post_model_build.replacement import ParameterReplacer
 from kipet.mixins.TopLevelMixins import WavelengthSelectionMixins
-
-
-from kipet.top_level.data_component import (
-    DataBlock, 
-    DataSet,
-    )
-from kipet.top_level.spectral_handler import SpectralData
-from kipet.top_level.element_blocks import (
-    AlgebraicBlock,
-    ComponentBlock,
-    ConstantBlock, 
-    ParameterBlock, 
-    StateBlock,
-    )
-from kipet.top_level.expression import (
-    AEExpressions,
-    Expression,
-    ODEExpressions,
-    )
-from kipet.top_level.helper import DosingPoint
-from kipet.top_level.settings import (
-    Settings, 
-    )
-from kipet.top_level.variable_names import VariableNames
-# from kipet.common.VisitorClasses import FindingVisitor
-from pyomo.environ import units as pyo_units
-
 from kipet.model_components.units_handler import convert_single_dimension
+from kipet.post_model_build.pyomo_model_tools import get_vars
+from kipet.post_model_build.replacement import ParameterReplacer
+from kipet.post_model_build.scaling import scale_models
+from kipet.top_level.data_component import DataBlock, DataSet
+from kipet.top_level.element_blocks import (AlgebraicBlock, ComponentBlock,
+                                            ConstantBlock, ParameterBlock,
+                                            StateBlock)
+from kipet.top_level.expression import (AEExpressions, Expression,
+                                        ODEExpressions)
+from kipet.top_level.helper import DosingPoint
+from kipet.top_level.settings import Settings
+from kipet.top_level.spectral_handler import SpectralData
+from kipet.top_level.variable_names import VariableNames
 
 __var = VariableNames()
 DEBUG=True #__var.DEBUG
@@ -72,66 +48,139 @@ _print = Print(verbose=DEBUG)
 model_components = ['parameters', 'components', 'states', 'algebraics', 'constants', 'steps']
 version_number = '0.2.2'
 
+# This should be removed - no mixins!
 class ReactionModel(WavelengthSelectionMixins):
     
-    """This should consolidate all of the Kipet classes into a single class to
-    enable a simpler framework for using the software. 
+    """This is the primary class used to organize the KIPET package
+
+        KipetModel is the top-level obejct invoked when using KIPET. It contains an array
+        of ReactionModels as well as several functions generally useful at the global level.
+        
+    
+    User defined attributes
+    
+    :var name: The name given to the ReactionModel
+    :var unit_base: The base units used in the model (provided by KipetModel)
+    
+    Public attributes
+    
+    :var spectra: SpectraData object if available, otherwise None
+    :var components: ComponentBlock object
+    :var parameters: ParameterBlock object
+    :var constants: ConstantBlock object
+    :var algebraics: AlgebraicBlock object
+    :var states: StateBlock object
+    :var datasets: DataBlock object
+    :var results_dict: dictionary of ResultsObject instances for simulation, variance, parameter estimation models
+    :var settings: Settings instance
+    :var variances: dicitonary of component variances
+    :var odes: ODEExpressions object
+    :var algs: AEExpressions object
+    :var odes_dict: dictionary of odes
+    :var algs_dict: dictionary of algebraic equations
+    
+    Private attributes
+    
+    :var _model: The base Pyomo model to be created
+    :var _s_model: The Pyomo model used in simulation
+    :var _builder: TemplateBuilder instance
+    :var _template_populated: Bool designating whether the builder object is built
+    :var __flag_odes_built: Bool indicating whether the odes are built
+    :var __flag_algs_built: Bool indicating whether the daes are built
+    :var _custom_objective: Algebraic variable to use in the custom objective term
+    :var _optimized: Bool indicating whether the ReactionModel has been optimized
+    :var _dosing_points: Dictionary with optional dosing points 
+    :var _has_dosing_points: Bool indicating if dosing points are used
+    :var _has_step_or_dosing: Bool indicating if dosing or step variables are used
+    :var _has_non_absorbing_species: Bool indicating if non-absorbing species are present
+    :var _var_to_fix_from_trajectory: List of variables with fixed trajectories
+    :var _var_to_initialize_from_trajectory: List of variables to initialize from trajectories
+    :var _default_time_unit: Default unit of time
+    :var _allow_optimization: Bool indicating if prerequisite data meets requirements for parameter fitting
+    :var _G_data: Dictionary containing unwanted contribution data
+    :var __var: VariableNames object containing global parameter and variable names in the Pyomo models
+      
+    :Methods:
+    
+    - :func:`add_reaction`
+    - :func:`add_reaction_list`
+    - :func:`remove_reaction`
+    - :func:`new_reaction`
+    - :func:`run_opt`
+    - :func:`read_data_file`
+    - :func:`write_data_file`
+    - :func:`add_noise_to_data`
+    
+    :Properties:
+    
+    - :func:`all_params`
+    
+    :Example:
+        >>> import kipet
+        >>> kipet_model = kipet.KipetModel()
     
     """
+
+    
     __var = VariableNames()
     
-    def __init__(self, *args, **kwargs):
+    def __init__(self, name=None, unit_base=None):
         
+        """
+        Initialization of ReactionModel instance.
         
-        # self.Parameter = Parameter
-        # self.Component = Component
+        This is the most important object in describing, building, and solving
+        a reaction model in KIPET. This object contains the information describing
+        the species, the initial conditions, the ODEs and DAEs, as well as any 
+        spectral data preprocessing.
         
-        self.name = kwargs.get('name', 'Model-1')
-        self.model = None
-        self.s_model = None
-        self.builder = TemplateBuilder()
-        self._template_populated = False
+        :var name: The name given to the ReactionModel
+        :var unit_base: The base units used in the model (provided by KipetModel)
+        
+        """
+        
+        # Variables initialized by user or KipetModel
+        self.name = name if name is not None else 'Model-1'
+        self.unit_base = unit_base
+        
+        # This is used directly by the user for modifying spectral data
+        self.spectra = None
+        
+        # These are left as public attributes but not initialized by user
         self.components = ComponentBlock()   
         self.parameters = ParameterBlock()
         self.constants = ConstantBlock()
         self.algebraics = AlgebraicBlock()
         self.states = StateBlock()
         self.datasets = DataBlock()
-        self.data = {}
-        self.spectra = None
-        
         self.results_dict = {}
         self.settings = Settings(category='model')
-        self.algebraic_variables = []
         self.variances = {}
         self.odes = ODEExpressions()
         self.algs = AEExpressions()
         self.odes_dict = {}
         self.algs_dict = {}
+        
+        # Private attributes (may be changed later)
+        self._model = None
+        self._s_model = None
+        self._builder = TemplateBuilder()
+        self._template_populated = False
         self.__flag_odes_built = False
         self.__flag_algs_built = False
-        self.custom_objective = None
-        self.optimized = False
-        self.dosing_var = None
-        self.dosing_points = None
+        self._custom_objective = None
+        self._optimized = False
+        self._dosing_points = None
         self._has_dosing_points = False
         self._has_step_or_dosing = False
         self._has_non_absorbing_species = False
         self._var_to_fix_from_trajectory = []
         self._var_to_initialize_from_trajectory = []
         self._default_time_unit = 'seconds'
-        self.unit_base = kwargs.get('unit_base', None)
-        self.allow_optimization = False
-        
+        self._allow_optimization = False
         self._G_data = {'G_contribution': None, 'Z_in': dict(), 'St': dict()}
         self.__var = VariableNames()
 
-        # self.components_used = set()
-        self.component_map = {k: getattr(self, k) for k in ['components',
-                                                            'states',
-                                                            'parameters',
-                                                            'algebraics',
-                                                            'constants']}
         
     def __repr__(self):
         
@@ -149,6 +198,7 @@ class ReactionModel(WavelengthSelectionMixins):
         # kipet_str += f'{self.datasets}\n'
         
         return f'KipetModel {self.name}'#kipet_str
+    
     
     def __str__(self):
         
@@ -177,9 +227,16 @@ class ReactionModel(WavelengthSelectionMixins):
         self._set_up_model.indx = Set(initialize=[0])
         return None
     
-    def Component(self, name, index, units):
+    
+    def _component(self, name, index, units):
         """Creates the initial pyomo variables for model building
         
+        :param str name: The name of the component
+        :param int index: The number of indicies (ex. constant=1, time-series=2, ...)
+        :param str units: The component units
+        
+        :return: The Pyomo variable representing the component and it\'s units
+        :rtype: Tuple with two components (pyomo.core.base.var._GeneralVarData, pint.quantity.build_quantity_class.<locals>.Quantity)
         """
         if not hasattr(self, '_set_up_model'):
             self._make_set_up_model()
@@ -211,26 +268,29 @@ class ReactionModel(WavelengthSelectionMixins):
         var = getattr(self._set_up_model, name)
         return var[tuple([0 for i in range(index)])], comp_units
     
-    def _add_model_component(self, name, index, model_var, *args, **kwargs):
+    
+    def _add_model_component(self, comp_name, index, model_var, name, **kwargs):
         """Generic method for adding modeling components to the ReactionModel
         
+        :param str name: The name of the component
+        :param int index: The number of indicies tied to the component
+        :param str model_var: The name of the variable used in the Pyomo models
+        :param dict kwargs: The dictionary of keyword arguments (different components have differing args)
+            
+        :return: The representative Pyomo variable that can be used in expression building
+        :rtype: pyomo.core.base.var._GeneralVarData
         """
         units = kwargs.get('units', None)
         value = kwargs.get('value', 1)
         kwargs['units_orig'] = units
         
-        comp_name = args[0]
-        # if comp_name in getattr(self, f'{name}s'):
-        #     print('repeat')
-        par, con = self.Component(args[0], index, units=units)
-        #print(f'#### in the add model: {con}')
+        par, con = self._component(name, index, units=units)
         
         kwargs['value'] = value*con.m
         kwargs['units'] = str(con.units)
         kwargs['conversion_factor'] = con.m
         
         if 'bounds' in kwargs:
-        # if hasattr(key_comp, 'bounds') and key_comp.bounds is not None:
             
             bounds = list(kwargs.get('bounds', [0, 0]))
             if bounds[0] is not None:
@@ -242,70 +302,136 @@ class ReactionModel(WavelengthSelectionMixins):
         kwargs['unit_base'] = self.ub
         kwargs['pyomo_var'] = par
         kwargs['model_var'] = model_var
-        getattr(self, f'{name}s').add_element(*args, **kwargs)
+        getattr(self, f'{comp_name}s').add_element(name, **kwargs)
+        
         return par
     
-    def parameter(self, *args, **kwargs):
+    
+    def parameter(self, name, **kwargs):
         """Create a parameter with a localized pyomo var
         
+        Parameters are defined as those values to be fit in the kinetic models.
+        
+        :param str name: The name of the parameter
+        
+        **Keyword Arguments**
+        
+        :param float value: Initial value of the parameter
+        :param str units: (Optional) Sets the parameter units
+        :param tuple(float) bounds: (Optional) Provide parameter bounds
+        :param bool fixed: (Optional) Indicates a fixed parameter or not
+        :param float variance: (Optional) Provide the parameter's variance
+        :param str description: (Optional) Detailed description of the parameter
+        
+        :return: A representative Pyomo variable that can be used in expression building
+        :rtype: pyomo.core.base.var._GeneralVarData
         """
         return self._add_model_component('parameter',
                                         1, 
                                         self.__var.model_parameter, 
-                                        *args, 
+                                        name,
                                         **kwargs)
-        
-    def component(self, *args, **kwargs):
+    
+    
+    def component(self, name, **kwargs):
         """Create a component with a localized pyomo var
         
+        KIPET considers components to be explicitly those species that can be 
+        defined by concentration. Note that this can only be used for components
+        that are defined by two indicies (component and time, usually).
+        
+        :param str name: The name of the component
+        
+        **Keyword Arguments**
+        
+        :param float value: Initial value of the parameter
+        :param str units: (Optional) Sets the parameter units
+        :param tuple(float) bounds: (Optional) Provide parameter bounds
+        :param float variance: (Optional) Provide the parameter's variance
+        :param str description: (Optional) Detailed description of the parameter
+        :param bool known: Indicates whether the initial value is known
+        :param bool absorbing: Indicates whether the component absorbs
+        :param bool inert: Indicates whether the species reacts
+        :param S: Pure component absorption spectra, if available
+        :type S: pandas.DataFrame
+        
+        :return: A representative Pyomo variable that can be used in expression building
+        :rtype: pyomo.core.base.var._GeneralVarData
         """
         return self._add_model_component('component', 
                                         2, 
                                         self.__var.concentration_model, 
-                                        *args, 
+                                        name,
                                         **kwargs)
     
-    def state(self, *args, **kwargs):
+    
+    def state(self, name, **kwargs):
         """Create a state with a localized pyomo var
         
+        KIPET considers states to be complementary states that are not 
+        defined by concentration. Note that this can only be used for states
+        that are defined by two indicies (state and time, usually).
+        
+        :param str name: The name of the state
+        
+        **Keyword Arguments**
+        
+        :param float value: Initial value of the parameter
+        :param str units: (Optional) Sets the parameter units
+        :param tuple(float) bounds: (Optional) Provide parameter bounds
+        :param float variance: (Optional) Provide the parameter's variance
+        :param str description: (Optional) Detailed description of the parameter
+        :param bool known: Indicates whether the initial value is known
+        
+        :return: A representative Pyomo variable that can be used in expression building
+        :rtype: pyomo.core.base.var._GeneralVarData
         """
         return self._add_model_component('state', 
                                         2, 
                                         self.__var.state_model, 
-                                        *args, 
+                                        name,
                                         **kwargs)
     
-    def constant(self, *args, **kwargs):
-        """Create a constant with a localized pyomo var
+    
+    def constant(self, name, **kwargs):
+        """Create a model constant with a localized pyomo var
         
+        This allows the user to use model constants that have units. This helps
+        ensure that the models have consistent units.
+        
+        :param str name: The name of the constant
+        
+        **Keyword Arguments**
+        
+        :param float value: Initial value of the parameter
+        :param str units: (Optional) Sets the parameter units
+        :param str description: (Optional) Detailed description of the parameter
+        
+        :return: A representative Pyomo variable that can be used in expression building
+        :rtype: pyomo.core.base.var._GeneralVarData
         """
         return self._add_model_component('constant', 
                                         1, 
                                         self.__var.model_constant, 
-                                        *args, 
+                                        name,
                                         **kwargs)
         
-    def algebraic(self, *args, **kwargs):
-        """Create a algebraic variable with a localized pyomo var
+    # def algebraic(self, name, **kwargs):
+       
+    #     """Create a algebraic variable for fixed states
         
-        """
-        print('Warning: This is deprecated and will be removed in a future version')
+    #     :param dict kwargs: The dictionary of keyword arguments for algebraic variables representing
+    #       fixed states (note: takes only those with two indicies)
+    #       see ModelComponents for more information. 
         
-        return self._add_model_component('algebraic', 
-                                        2, 
-                                        self.__var.algebraic, 
-                                        *args, 
-                                        **kwargs)
-    
-    def fixed_state(self, *args, **kwargs):
-        """Create a algebraic variable for fixed states
-        
-        """
-        return self._add_model_component('algebraic', 
-                                        2, 
-                                        self.__var.algebraic, 
-                                        *args, 
-                                        **kwargs)
+    #     :return: The representative Pyomo variable that can be used in expression building
+    #     :rtype: pyomo.core.base.var._GeneralVarData 
+    #     """
+    #     return self._add_model_component('algebraic', 
+    #                                     2, 
+    #                                     self.__var.algebraic, 
+    #                                     name,
+    #                                     **kwargs)
         
     
     # def variable(self, *args, **kwargs):
@@ -321,9 +447,27 @@ class ReactionModel(WavelengthSelectionMixins):
     #                                     *args, 
     #                                     **kwargs)
     
-    def step(self, name, *args, **kwargs):
+    def step(self, name, **kwargs):
         """Create a step variable with a localized pyomo var
         
+        This is used for modeling additions, reaction starts, and any other feature
+        that may require a step function to model the behavior.
+        
+        :param str name: The name used for the step variable
+        
+        **Keyword Arguments**
+        
+        :param float coeff: Coefficient for the step size (leave at default of 1)
+        :param float time: The time for the step change (init if not fixed)
+        :param bool fixed: Choose if the time is known and fixed or variable
+        :param bool switch: True if turning on, False if turning off, optionally as string ('on', 'off') args too
+        :param float M: Sigmoidal tuning parameter
+        :param float eta: Tuning parameter
+        :param float constant: Constant added to bring step function to certain value
+        :param tuple(float) bounds: Optional bounds for the timing of the step     
+        
+        :return: The representative Pyomo variable that can be used in expression building
+        :rtype: pyomo.core.base.var._GeneralVarData
         """
         self._has_step_or_dosing = True
         if not hasattr(self, '_step_list'):
@@ -335,7 +479,7 @@ class ReactionModel(WavelengthSelectionMixins):
         else:
             self._step_list[name].append(kwargs)
             
-        par, _ = self.Component(name, 2, None)
+        par, _ = self._component(name, 2, None)
         if not hasattr(self, f'{var_name}s'):
             setattr(self, f'{var_name}s', {})
         getattr(self, f'{var_name}s')[name] = [self.__var.step_variable, par]
@@ -344,7 +488,13 @@ class ReactionModel(WavelengthSelectionMixins):
     """Dosing profiles"""
     
     def add_dosing_point(self, component, time, step):
-        """Add a dosing point or several (check template for how this is handled)
+        """Add a dosing point for a component at a specific time with a given amount.
+        
+        :param str component: The name of the component being dosed
+        :param float time: The time when the dosing occurs
+        :param float step: The amount of the component added
+        
+        :return: None
         
         """
         conversion_dict = {'state': self.__var.state_model, 
@@ -354,36 +504,64 @@ class ReactionModel(WavelengthSelectionMixins):
             raise ValueError('Invalid component name')
         dosing_point = DosingPoint(component, time, step)
         model_var = conversion_dict[self.components[component].state]
-        if self.dosing_points is None:
-            self.dosing_points = {}
-        if model_var not in self.dosing_points.keys():
-            self.dosing_points[model_var] = [dosing_point]
+        if self._dosing_points is None:
+            self._dosing_points = {}
+        if model_var not in self._dosing_points.keys():
+            self._dosing_points[model_var] = [dosing_point]
         else:
-            self.dosing_points[model_var].append(dosing_point)
+            self._dosing_points[model_var].append(dosing_point)
         self._has_dosing_points = True
         self._has_step_or_dosing = True
         
-    def add_dosing(self, n_steps=1):
-        """At the moment, this is needed to set up the dosing variable
-        """
-        self._has_step_or_dosing = True
-        self._number_of_steps = n_steps
-    
         return None
+        
+    # def add_dosing(self, n_steps=1):
+    #     """At the moment, this is needed to set up the dosing variable
+    #     """
+    #     self._has_step_or_dosing = True
+    #     self._number_of_steps = n_steps
     
-    def call_fe_factory(self):
-        """Somewhat of a wrapper for this simulator method, but better"""
+    #     return None
+    
+    
+    def _call_fe_factory(self):
+        """A wrapper for this simulator method, but better"""
 
         self.simulator.call_fe_factory({
             self.__var.dosing_variable: [self.__var.dosing_component]},
-            self.dosing_points)
+            self._dosing_points)
 
         return None
     
     """Model data"""
     
     def add_data(self, *args, **kwargs):
+        """This method allows the user to add experimental data to the ReactionModel
         
+        .. note::
+          The data needs to be in the proper format before being used. See the examples for
+          more information. KIPET will automatically identify the column names and match
+          the data with the corresponding component, state, or trajectory. This does not
+          need to be done by the user.
+          
+        Data is stored under the datasets attribute. Spectral data is handled separately under
+        the spectra attribute, which is a SpectraHandler object that has various preprocessing
+        methods.
+          
+        :param str name: The name of the model component
+        
+        **Keyword Arguments**
+        
+        :param str time_scale: The units of time of the measured data
+        :param str file: The file name of the data - if given, KIPET handles data automatically
+        :param data: The dataframe of the data, if not using the file directly
+        :type data: pandas.DataFrame
+        :param str category: Description of the data (only needed for spectral data at the moment)
+        :param bool remove_negatives: Set all negative data values to zero
+        
+        :return: None
+    
+        """        
         name = kwargs.get('name', None)
         time_scale = kwargs.get('time_scale', self.unit_base.TIME_BASE)
         
@@ -394,7 +572,7 @@ class ReactionModel(WavelengthSelectionMixins):
         if len(args) > 0:
             name = args[0]
         if name is None:
-            name = f'ds{len(self.data) + 1}'
+            name = f'ds-{len(self.datasets) + 1}'
             
         filename = kwargs.get('file', None)
         data = kwargs.pop('data', None)
@@ -420,7 +598,6 @@ class ReactionModel(WavelengthSelectionMixins):
             return None
                     
         else:
-            self.data[name] = dataframe
             dataset = DataSet(name,
                               category=category,
                               data = dataframe,
@@ -436,22 +613,21 @@ class ReactionModel(WavelengthSelectionMixins):
             
         return None
     
-    # Check for duplicates ==> DataBlock
+    
     def _check_data_matches(self, name, name_is_from_model=False):
-        """Easy data mapping to ElementBlocks"""
-        # Reassignment
+        """Easy data mapping to ElementBlocks
         
-        # for name, dataset in self.data.items():
-        #     print(name)
-        #     for col in dataset.columns:
-        #         print(col)
-        #         for block in blocks:
-        #             comp_set = getattr(self, block).names
-        #             for comp in comp_set:
-        #                 if col in comp_set:
-        #                     print(block)
-        #                     getattr(self, block)[col].data = dataset[col]
-            
+        This method looks through the provided data sets and matches the columns
+        to their respective components. This works in two ways, either before or
+        after components have been defined.
+        
+        :param str name: the component name
+        :param bool name_is_from_model: Bool to indicate whether the component has already
+          been added to the model or not. Determines method for linking the data.
+          
+        :return: None
+    
+        """
         blocks = ['components', 'states', 'algebraics']
         
         if not name_is_from_model:
@@ -468,7 +644,6 @@ class ReactionModel(WavelengthSelectionMixins):
                             setattr(getattr(self, block)[col], 'data_link', dataset.name)
                             #matched_data_vars.add(col)
         
-            #unmatched_vars = all_data_vars.difference(matched_data_vars)
 
         else:
             for block in blocks:
@@ -483,7 +658,20 @@ class ReactionModel(WavelengthSelectionMixins):
     """Template building"""
 
     def set_times(self, start_time=None, end_time=None):
-        """Add times to model for simulation (overrides data-based times)"""
+        """Add times to model for simulation
+        
+        If performing simulations, the start and end times need to be provided.
+        Naturally the start time should be zero and this will be hard-coded in the future.
+        
+        If you have provided data, the times will be determined automatically from the datasets.
+        If the times are set using this methods, they will be used instead.
+        
+        :param float start_time: The initial time for the simulation (should be zero)
+        :param float end_time: The desire time to terminate the simuation.
+        
+        :return: None
+        
+        """
         
         if start_time is None or end_time is None:
             raise ValueError('Time needs to be a number')
@@ -491,75 +679,76 @@ class ReactionModel(WavelengthSelectionMixins):
         self.settings.general.simulation_times = (start_time, end_time)
         return None
     
+    
     def _unwanted_G_initialization(self, *args, **kwargs):
         """Prepare the ParameterEstimator model for unwanted G contributions
         
         """
-        self.builder.add_qr_bounds_init(bounds=(0,None),init=1.1)
-        self.builder.add_g_bounds_init(bounds=(0,None))
+        self._builder.add_qr_bounds_init(bounds=(0,None),init=1.1)
+        self._builder.add_g_bounds_init(bounds=(0,None))
         
         return None
     
     """ Expressions """
     
-    def add_reaction(self, name, expr, *args, **kwargs):
-        """Wrapper to add reactions without needing the kwargs, simplifies
-        the API somewhat. The default option for algebraics is False!
+    def add_reaction(self, name, expr, description=None):
+        """Wrapper to add reactions explicitly without using is_reaction
+        
+        This adds an expression to the model that is identified as being a 
+        reaction (an expression used to describe changes in the components over
+        time). This was done to simplify the API.
+        
+        :param str name: The name used to identify the reaction
+        :param expr: The expression representing the reaction
+        :type expr: Pyomo expression
+        :param str description: An optional description of the expression
+        
+        :return: Returns a Pyomo variable representing the expression such that it can be used in model building
+        :rtype: Pyomo Expression
         """
-        kwargs['is_reaction'] = True
-        return self.add_expression(name, expr, *args, **kwargs)
+        return self.add_expression(name, expr, description=description, is_reaction=True)
         
     
-    def add_expression(self, name, expr, *args, **kwargs):
-        """Add expressions (prev. algebraics) to the reaction model
+    def add_expression(self, name, expr, **kwargs):
+        """Adds an expression to the model (DAE, custtom objectives, fixed trajectories)
         
+        All of the auxilliary functions such as DAEs, custom objectives, fixed trajectories, additions, etc. are
+        added to the ReactionModel instance here.
+        
+        :param str name: The name used to identify the reaction
+        :param expr: The expression representing the reaction
+        :type expr: Pyomo expression
+        
+        **Keyword arguments**
+        
+        :param str description: An optional description of the expression
+        :param bool is_reaction: Indicates whehter the expression is a reaction (see :func:`add_reaction`)
+        
+        :return: Returns a Pyomo variable representing the expression such that it can be used in model building
+        :rtype: Pyomo Expression
         """        
-        args_ = list(args)
-        args_.insert(0, name)
-        args = tuple(args_)
-        
         # Adds algebraics anyways, for comparison purposes
         self._add_model_component('algebraic', 
                                   2, 
                                   self.__var.algebraic, 
-                                  *args, 
+                                  name, 
                                   **kwargs)
         
         expr_ = Expression(name, expr)
         expr_.check_division()
         self.algs_dict.update(**{name: expr_})
+        
         return expr
         
-    def expression(self, label, expr):
-        """
-        Parameters
-        ----------
-        label : TYPE
-            DESCRIPTION.
-        expr : TYPE
-            DESCRIPTION.
-
-        Returns
-        -------
-        None.
-
-        """
-        expr = Expression(label, expr)
-        if not hasattr(self, 'expr_dict'):
-            self.expr_dict = {}
-        self.expr_dict.update(**{label: expr})
-        return None
     
     def add_ode(self, ode_var, expr):
         """Method to add an ode expression to the ReactionModel
         
-        Args:
-            ode_var (str): state variable
-            
-            expr (Expression): expression for rate equation as Pyomo Expression
-            
-        Returns:
-            None
+        :param str ode_var: Component or state variable
+        :param expr: Expression for rate equation as a Pyomo expression
+        :type expr: Pyomo expression    
+        
+        :return: None
         
         """
         expr = Expression(ode_var, expr)
@@ -567,20 +756,31 @@ class ReactionModel(WavelengthSelectionMixins):
         
         return None
     
+    
     def add_odes(self, ode_fun):
         """Takes in a dict of ODE expressions and sends them to add_ode
         
-        Args:
-            ode_fun (dict): dict of ode expressions
+        Use this if you compose your ODEs as a dictionary before adding them
+        to the model.
+        
+        :param dict ode_fun: Dictionay of ODE expressions
+
+        :Example:
+             >>> rates = {}
+             >>> rates['A'] = -k1 * A
+             >>> rates['B'] = k1 * A - k2 * B
+             >>> rates['C'] = k2 * B
+             >>> r1.add_odes(rates)
+        
+        :return: None
             
-        Returns:
-            None
         """
         if isinstance(ode_fun, dict):
             for key, value in ode_fun.items():
                 self.add_ode(key, value)
         
         return None
+
 
     def _build_odes(self):
         """Builds the ODEs by passing them to the ODEExpressions class
@@ -593,40 +793,6 @@ class ReactionModel(WavelengthSelectionMixins):
         
         return None
         
-    def add_algebraic(self, alg_var, expr):
-        """Method to add an algebraic expression to the ReactionModel
-        
-        Args:
-            alg_var (str): state variable
-            
-            expr (Expression): expression for algebraic equation as Pyomo
-                Expression
-            
-        Returns:
-            None
-        
-        """
-        expr = Expression(alg_var, expr)
-        expr.check_division()
-        self.algs_dict.update(**{alg_var: expr})
-    
-        return None
-    
-    def add_algebraics(self, alg_fun):
-        """Takes in a dict of algebraic expressions and sends them to
-        add_algebraic
-        
-        Args:
-            algebraics (dict): dict of algebraic expressions
-            
-        Returns:
-            None
-        """
-        if isinstance(alg_fun, dict):
-            for key, value in alg_fun.items():
-                self.add_algebraic(key, value)
-        
-        return None
     
     def _build_algs(self):
         """Builds the algebraics by passing them to the AEExpressions class
@@ -643,23 +809,26 @@ class ReactionModel(WavelengthSelectionMixins):
     def add_objective_from_algebraic(self, algebraic_var):
         """Declare an algebraic variable that is to be used in the objective
         
-        TODO: add multiple alg vars for obj
+        ..note:: 
+            This only handles a single custom objective!
         
-        Args:
-            algebraic_var (str): Variable representing the formula to be added
-                to the objective
+        :param str algebraic_var: Variable representing the expression to be added
+                to the objective (see Example 17 to see how this is used)
                 
-        Returns:
-            None
+        :return: None
             
         """
         self._check_data_matches(algebraic_var, name_is_from_model=True)
-        self.custom_objective = algebraic_var
+        self._custom_objective = algebraic_var
         
         return None
     
-    def populate_template(self, *args, **kwargs):
+    
+    def _populate_template(self, *args, **kwargs):
         """Method handling all of the preparation for the TB
+        
+        This collects all of the options and data needed to generate the model
+        and passes them in the correct manner to the TemplateBuilder
         
         """
         
@@ -668,37 +837,37 @@ class ReactionModel(WavelengthSelectionMixins):
             with_data = kwargs.get('with_data', True)
                     
             if len(self.states) > 0:
-                self.builder.add_model_element(self.states)
+                self._builder.add_model_element(self.states)
             
             if len(self.algebraics) > 0:
-                self.builder.add_model_element(self.algebraics)
+                self._builder.add_model_element(self.algebraics)
             
             if len(self.components) > 0:
-                self.builder.add_model_element(self.components)
+                self._builder.add_model_element(self.components)
             else:
                 raise ValueError('The model has no components')
                 
             if len(self.parameters) > 0:
-                self.builder.add_model_element(self.parameters)
+                self._builder.add_model_element(self.parameters)
             else:
-                self.allow_optimization = False   
+                self._allow_optimization = False   
             
             if len(self.constants) > 0:
-                self.builder.add_model_element(self.constants)
+                self._builder.add_model_element(self.constants)
             
             if with_data:
                 if len(self.datasets) > 0 or self.spectra is not None:
-                    self.builder.input_data(self.datasets, self.spectra)
-                    self.allow_optimization = True
+                    self._builder.input_data(self.datasets, self.spectra)
+                    self._allow_optimization = True
                 elif len(self.datasets) == 0 and self.spectra is None:
-                    self.allow_optimization = False
+                    self._allow_optimization = False
                 else:
                     pass
                 
             # Add the ODEs
             if len(self.odes_dict) != 0:
                 self._build_odes()
-                self.builder.set_odes_rule(self.odes)
+                self._builder.set_odes_rule(self.odes)
             elif 'odes_bypass' in kwargs and kwargs['odes_bypass']:
                 pass
             else:
@@ -707,32 +876,32 @@ class ReactionModel(WavelengthSelectionMixins):
             if len(self.algs_dict) != 0:
                 self._build_algs()
                 if isinstance(self.algs, dict):
-                    self.builder.set_algebraics_rule(self.algs, asdict=True)
+                    self._builder.set_algebraics_rule(self.algs, asdict=True)
                 else:
-                    self.builder.set_algebraics_rule(self.algs)
+                    self._builder.set_algebraics_rule(self.algs)
                 
-            if hasattr(self, 'custom_objective') and self.custom_objective is not None:
-                self.builder.set_objective_rule(self.custom_objective)
+            if hasattr(self, '_custom_objective') and self._custom_objective is not None:
+                self._builder.set_objective_rule(self._custom_objective)
             
-            self.builder.set_parameter_scaling(self.settings.general.scale_parameters)
-            self.builder.add_state_variance(self.components.variances)
+            self._builder.set_parameter_scaling(self.settings.general.scale_parameters)
+            self._builder.add_state_variance(self.components.variances)
             
             # if self._has_step_or_dosing:
-            #     self.builder.add_dosing_var(self._number_of_steps)
+            #     self._builder.add_dosing_var(self._number_of_steps)
             
             if self._has_dosing_points:
                 self._add_feed_times()
                 
             if hasattr(self, '_step_list') and len(self._step_list) > 0:
-                self.builder.add_step_vars(self._step_list)
+                self._builder.add_step_vars(self._step_list)
                 
             # It seems this is repetitive - refactor
             if hasattr(self, '_G_contribution') and self._G_contribution is not None:
             #if self.settings.parameter_estimator.G_contribution is not None:
                 self._unwanted_G_initialization()
-                self.builder._G_contribution = self._G_contribution
+                self._builder._G_contribution = self._G_contribution
             else:
-                self.builder._G_contribution = None
+                self._builder._G_contribution = None
             
             self._template_populated = True
         
@@ -743,16 +912,26 @@ class ReactionModel(WavelengthSelectionMixins):
            
             
     def _get_model_times(self):
+        """Gathers the model start and end times
         
+        If the start and end time are not provivded, this will take the times
+        from the settings object.
+        
+        ..warning::
+            This may not be necessary and may be removed in a future version.
+        
+        """
         start_time, end_time = None, None
         if self.settings.general.simulation_times is not None:
-            #print(f'times are: {type(self.settings.general.simulation_times)}')
             start_time, end_time = self.settings.general.simulation_times
 
         return start_time, end_time
     
+    
     def _make_c_dict(self):
-        
+        """This makes the dummy model using the components of the model for 
+        units testing
+        """
         model_components = ['parameters', 'components', 'states', 'algebraics', 'constants']
         
         if not hasattr(self, 'c'):
@@ -765,51 +944,50 @@ class ReactionModel(WavelengthSelectionMixins):
             if hasattr(self, 'steps'):
                 self.c.update(getattr(self, 'steps'))
     
-    def create_pyomo_model(self, *args, **kwargs):
+    
+    def _create_pyomo_model(self, *args, **kwargs):
         """Adds the component, parameter, data, and odes to the TemplateBuilder
-        instance and creates the model. The model is stored under self.model
-        and there is nothing returned.
-
-        Args:
-            is_simulation (bool): Default False, tells the builder if a
-            simulation or optimization models is being built
-
-        Returns:
-            pyomo_model (ConcreteModel): The resulting Pyomo model
+        instance and creates the specified model.
+        
+        :returns: The finished Pyomo model
 
         """
         kwargs['is_simulation'] = kwargs.get('is_simulation', False)
         skip_non_abs = kwargs.pop('skip_non_abs', False)
          
-        self.populate_template(*args, **kwargs)
+        self._populate_template(*args, **kwargs)
         self._make_c_dict()
-        setattr(self.builder, 'c_mod', self.c)
+        setattr(self._builder, 'c_mod', self.c)
         
         start_time, end_time = self._get_model_times()
-        if self.model is None:
-            self.model = self.builder.create_pyomo_model(start_time, end_time, False)
-        pyomo_model = self.builder.create_pyomo_model(start_time, end_time, kwargs['is_simulation'])
+        if self._model is None:
+            self._model = self._builder.create_pyomo_model(start_time, end_time, False)
+        pyomo_model = self._builder.create_pyomo_model(start_time, end_time, kwargs['is_simulation'])
         
         if not kwargs['is_simulation']:
             non_abs_comp = self.components.get_match('absorbing', False)
             if not skip_non_abs and len(non_abs_comp) > 0:
-                self.builder.set_non_absorbing_species(pyomo_model, non_abs_comp, check=True)    
+                self._builder.set_non_absorbing_species(pyomo_model, non_abs_comp, check=True)    
             if hasattr(self,'fixed_params') and len(self.fixed_params) > 0:
                 for param in self.fixed_params:
                     getattr(pyomo_model, self.__var.model_parameter)[param].fix()
         
         return pyomo_model
     
+    
     def _add_feed_times(self):
-        
+        """If there are specific feed times for dosed components, these are 
+        added to the builder using this wrapper method
+        """
         feed_times = set()
         
-        for model_var, dp in self.dosing_points.items():
+        for model_var, dp in self._dosing_points.items():
             for point in dp:
                 feed_times.add(point.time)
         
-        self.builder.add_feed_times(list(feed_times))
+        self._builder.add_feed_times(list(feed_times))
         return None
+    
     
     def _from_trajectories(self, estimator):
         """This handles all of the fixing, initializing, and scaling from 
@@ -837,23 +1015,32 @@ class ReactionModel(WavelengthSelectionMixins):
     """Simulation"""
     
     def simulate(self):
-        """This should try to handle all of the simulation cases"""
-    
+        """This method will simulate the model using the given initial values
+        and times
+        
+        This will create the simulation model, perform the simulation, and 
+        generate the ResultsObject. This can be accessed using the 
+        results_dict[\'simulator\'] attribute.
+        
+        :returns: None
+        
+        """
         # Create the simulator object
-        self.create_simulator()
+        self._create_simulator()
         # Add any previous trajectories, if given
         self._from_trajectories('simulator')
         # Run the simulation
-        self.run_simulation()
+        self._run_simulation()
         
         return None
     
-    def create_simulator(self):
-        """This should try to handle all of the simulation cases
-        
-        It should not use the base reaction model! - allows for different
-        discretizations that do not depend on the data
-        
+    
+    def _create_simulator(self):
+        """This starts with creating the simualtor object, of which there are
+        two. The default is the more robust FESimulator, which is required for
+        any model using dosing or steps. This is also used every time a parameter
+        fitting problem is run for initialization.
+       
         """
         print('Setting up simulation model')
         sim_set_up_options = copy.copy(self.settings.simulator)
@@ -871,18 +1058,18 @@ class ReactionModel(WavelengthSelectionMixins):
         # if dis_method == 'fe':
         #     simulation_class = FESimulator
         
-        self.s_model = self.create_pyomo_model(is_simulation=True)
+        self._s_model = self._create_pyomo_model(is_simulation=True)
         
         # Fix the optimization variables
         opt_vars = self.__var.optimization_variables
         for var in opt_vars:
         
-            if hasattr(self.s_model, var):
-                for param in getattr(self.s_model, var).values():
+            if hasattr(self._s_model, var):
+                for param in getattr(self._s_model, var).values():
                     param.fix()
         
         # Initialize the simulator instance
-        simulator = simulation_class(self.s_model)
+        simulator = simulation_class(self._s_model)
 
         # Discretize the model
         simulator.apply_discretization(self.settings.collocation.method,
@@ -903,12 +1090,12 @@ class ReactionModel(WavelengthSelectionMixins):
         return None
     
     
-    def run_simulation(self):
+    def _run_simulation(self):
         """Runs the simulations, may be combined with the above at a later date
         
         """
         if isinstance(self.simulator, FESimulator):
-            self.call_fe_factory()
+            self._call_fe_factory()
         
         simulator_options = self.settings.simulator
         simulator_options.pop('method', None)
@@ -919,44 +1106,57 @@ class ReactionModel(WavelengthSelectionMixins):
     
     
     def bound_profile(self, var, bounds):
-        """Wrapper for TemplateBuilder bound_profile method"""
+        """Wrapper for TemplateBuilder bound_profile method
         
-        self.builder.bound_profile(var=var, bounds=bounds)
+        The user can define a variable and its bounds using this method.
+        
+        :param str var: The model variable to be constrained
+        :param tuple bounds: The lower and upper bounds of the variable
+        
+        :return: None
+        
+        """
+        
+        self._builder.bound_profile(var=var, bounds=bounds)
         return None
     
     
     """Estimators"""
     
-    def create_variance_estimator(self, **kwargs):
-        """This is a wrapper for creating the VarianceEstimator"""
+    # def create_variance_estimator(self, **kwargs):
+    #     """This is a wrapper for creating the VarianceEstimator"""
         
-        if len(kwargs) == 0:
-            kwargs = self.settings.collocation
+    #     if len(kwargs) == 0:
+    #         kwargs = self.settings.collocation
         
-        if self.model is None:    
-            self.create_pyomo_model()  
+    #     if self._model is None:    
+    #         self._create_pyomo_model()  
         
-        self.create_estimator(estimator='v_estimator', **kwargs)
-        self._from_trajectories('v_estimator')
-        return None
+    #     self._create_estimator(estimator='v_estimator', **kwargs)
+    #     self._from_trajectories('v_estimator')
+    #     return None
         
-    def create_parameter_estimator(self, **kwargs):
-        """This is a wrapper for creating the ParameterEstiamtor"""
+    # def create_parameter_estimator(self, **kwargs):
+    #     """This is a wrapper for creating the ParameterEstiamtor"""
         
-        if len(kwargs) == 0:
-            kwargs = self.settings.collocation
+    #     if len(kwargs) == 0:
+    #         kwargs = self.settings.collocation
             
-        if self.model is None:    
-            self.create_pyomo_model()  
+    #     if self._model is None:    
+    #         self._create_pyomo_model()  
             
-        self.create_estimator(estimator='p_estimator', **kwargs)
-        self._from_trajectories('p_estimator')
-        return None
+    #     self._create_estimator(estimator='p_estimator', **kwargs)
+    #     self._from_trajectories('p_estimator')
+    #     return None
+    
     
     def _calculate_S_from_Z_data(self):
         """Calculates the indivdual S profiles from simulated results
-        """
         
+        :return: The predicted S profiles
+        :rtype: pandas.DataFrame
+        
+        """
         C_orig = self.results_dict['simulator'].Z
         D = self.spectra.data
     
@@ -984,96 +1184,101 @@ class ReactionModel(WavelengthSelectionMixins):
         
         return S
     
-    def _check_S_singularity(self, threshold=1e-5):
-        """This is still in development and may not actually be too useful
-        """
-        
-        C_orig = self.results_dict['simulator'].Z
-        D = self.spectra.data
     
-        C = interpolate_trajectory(list(D.index), C_orig)
+    # def _check_S_singularity(self, threshold=1e-5):
+    #     """This is still in development and may not actually be too useful
+    #     """
+    #     C_orig = self.results_dict['simulator'].Z
+    #     D = self.spectra.data
     
-        indx_list = list(D.index)
-        for i, ind in enumerate(indx_list):
-            indx_list[i] = round(ind, 6)
+    #     C = interpolate_trajectory(list(D.index), C_orig)
+    
+    #     indx_list = list(D.index)
+    #     for i, ind in enumerate(indx_list):
+    #         indx_list[i] = round(ind, 6)
         
-        D.index = indx_list
+    #     D.index = indx_list
         
-        M = C.T @ C
-        print('This is the determinant of C.T @ C')
-        print(np.linalg.det(M))
+    #     M = C.T @ C
+    #     print('This is the determinant of C.T @ C')
+    #     print(np.linalg.det(M))
         
-        eigs, U = np.linalg.eigh(M)
+    #     eigs, U = np.linalg.eigh(M)
         
-        print('The singular values are:')
-        print(eigs)
-        d = eigs
-        d = np.where(d > 1e-16, d, 1e-16)
-        d = 1/d
-        d = np.where(d > threshold, 0, d)
+    #     print('The singular values are:')
+    #     print(eigs)
+    #     d = eigs
+    #     d = np.where(d > 1e-16, d, 1e-16)
+    #     d = 1/d
+    #     d = np.where(d > threshold, 0, d)
         
-        print(d)
-        M1 = np.diag(d)
+    #     print(d)
+    #     M1 = np.diag(d)
         
-        M2 = C.T @ D.values
+    #     M2 = C.T @ D.values
         
-        S = (M1 @ M2).T
-        S.columns = C.columns
-        S = S.set_index(D.columns)
+    #     S = (M1 @ M2).T
+    #     S.columns = C.columns
+    #     S = S.set_index(D.columns)
         
-        num_comp = sum(np.where(d > 0, 1, 0))
+    #     num_comp = sum(np.where(d > 0, 1, 0))
 
-        return S, num_comp
+    #     return S, num_comp
         
-    def initialize_S_from_simulation(self, model):
-        """This method takes simulated concentration profiles and the given
-        spectra data to recreate the single species absorbance profiles to be
-        used as initial values in the variance estimation
+    # def _initialize_S_from_simulation(self, model):
+    #     """This method takes simulated concentration profiles and the given
+    #     spectra data to recreate the single species absorbance profiles to be
+    #     used as initial values in the variance estimation
         
-        This directly sets the S values in the TemplateBuilder instance. If
-        the S profile is provided, it is fixed in the model.
-        """
+    #     This directly sets the S values in the TemplateBuilder instance. If
+    #     the S profile is provided, it is fixed in the model.
+    #     """
         
-        S = self._calculate_S_from_Z_data()
-        S[S < 0] = 1e-8
+    #     S = self._calculate_S_from_Z_data()
+    #     S[S < 0] = 1e-8
         
-        print('Adding initialized S to the model')
+    #     print('Adding initialized S to the model')
         
-        for k in S.columns:
-            if self.components[k].absorbing:
-                if self.components[k].S is None:
-                    # Absorbance is taken from simulated values
-                    for l in S.index:        
-                        getattr(model, 'S')[l, k].set_value(float(S[k][l]))
-                else:
-                    # The single species absorbance is provided - fit to the collocation points
-                    for l in S.index:        
-                        S_comp = interpolate_trajectory(list(S.index), self.components[k].S)
-                        S_comp = S_comp.set_index(S.index)
-                        #print(S_comp)
-                        getattr(model, 'S')[l, k].set_value(float(S_comp[k][l]))
-                        getattr(model, 'S')[l, k].fix()
-            else:
-                # Species does not absorb - set to zero
-                for l in S.index:        
-                    getattr(model, 'S')[l, k].set_value(0)
+    #     for k in S.columns:
+    #         if self.components[k].absorbing:
+    #             if self.components[k].S is None:
+    #                 # Absorbance is taken from simulated values
+    #                 for l in S.index:        
+    #                     getattr(model, 'S')[l, k].set_value(float(S[k][l]))
+    #             else:
+    #                 # The single species absorbance is provided - fit to the collocation points
+    #                 for l in S.index:        
+    #                     S_comp = interpolate_trajectory(list(S.index), self.components[k].S)
+    #                     S_comp = S_comp.set_index(S.index)
+    #                     #print(S_comp)
+    #                     getattr(model, 'S')[l, k].set_value(float(S_comp[k][l]))
+    #                     getattr(model, 'S')[l, k].fix()
+    #         else:
+    #             # Species does not absorb - set to zero
+    #             for l in S.index:        
+    #                 getattr(model, 'S')[l, k].set_value(0)
                     
-        print('Finished initializing the S profiles')        
+    #     print('Finished initializing the S profiles')        
         
-        print('Initializing both the C and Z profiles using simulated Z profiles')
-        getattr(self, 'v_estimator').initialize_from_trajectory('C', self.results_dict['simulator'].Z)
-        getattr(self, 'v_estimator').initialize_from_trajectory('Z', self.results_dict['simulator'].Z)
+    #     print('Initializing both the C and Z profiles using simulated Z profiles')
+    #     getattr(self, 'v_estimator').initialize_from_trajectory('C', self.results_dict['simulator'].Z)
+    #     getattr(self, 'v_estimator').initialize_from_trajectory('Z', self.results_dict['simulator'].Z)
         
-        return None
+    #     return None
         
-    def initialize_from_simulation(self, estimator='p_estimator'):
+    
+    def _initialize_from_simulation(self, estimator='p_estimator'):
         """This method initializes the model using simulated data
         
+        :param str estimator: The name of the estimator to be initialized (v_estimator or p_estimator)
+        
+        :return: None
+        
         """
-        if not hasattr(self, 's_model') or self.s_model is None:
+        if not hasattr(self, 's_model') or self._s_model is None:
             self.simulate()
 
-        vars_to_init = get_vars(self.s_model)
+        vars_to_init = get_vars(self._s_model)
         
         #_print(f'The vars_to_init: {vars_to_init}')
         for var in vars_to_init:
@@ -1094,8 +1299,8 @@ class ReactionModel(WavelengthSelectionMixins):
     #         self.simulate()
     #         _print('Finished simulation, updating variables...')
 
-    #     _print(f'The model has the following variables:\n{get_vars(self.s_model)}')
-    #     vars_to_init = get_vars(self.s_model)
+    #     _print(f'The model has the following variables:\n{get_vars(self._s_model)}')
+    #     vars_to_init = get_vars(self._s_model)
         
     #     _print(f'The vars_to_init: {vars_to_init}')
     #     for var in vars_to_init:
@@ -1107,14 +1312,13 @@ class ReactionModel(WavelengthSelectionMixins):
         
     #     return None
     
-    def create_estimator(self, estimator=None):
+    
+    def _create_estimator(self, estimator=None):
         """This function handles creating the Estimator object
         
-        Args:
-            estimator (str): p_estimator or v_estimator for the PE or VE
+        :param str estimator: p_estimator or v_estimator for the PE or VE
             
-        Returns:
-            None
+        :returns: None
             
         """        
         if estimator == 'v_estimator':
@@ -1128,7 +1332,7 @@ class ReactionModel(WavelengthSelectionMixins):
         else:
             raise ValueError('Keyword argument estimator must be p_estimator or v_estimator.')  
         
-        model_to_clone = self.create_pyomo_model()
+        model_to_clone = self._create_pyomo_model()
         
         setattr(self, f'{estimator[0]}_model', model_to_clone.clone())
         setattr(self, estimator, Estimator(getattr(self, f'{estimator[0]}_model')))
@@ -1140,16 +1344,16 @@ class ReactionModel(WavelengthSelectionMixins):
         self._from_trajectories(estimator)
         
         if self.settings.parameter_estimator.sim_init and estimator == 'v_estimator':
-            self.initialize_from_simulation(estimator=estimator)
+            self._initialize_from_simulation(estimator=estimator)
             # This really doesn't seem to help as much - use the simpler implementation above
             #self.initialize_S_from_simulation(getattr(self, 'v_model'))
             
         # What is S between VE and PE?
         if self.settings.parameter_estimator.sim_init and estimator == 'p_estimator':
             if hasattr(self, 'v_estimator'):
-                self.initialize_from_variance_trajectory()
+                self._initialize_from_variance_trajectory()
             else:
-                self.initialize_from_simulation(estimator=estimator)
+                self._initialize_from_simulation(estimator=estimator)
         
         if self._has_step_or_dosing:
             for time in getattr(self, estimator).model.alltime.data():
@@ -1164,7 +1368,7 @@ class ReactionModel(WavelengthSelectionMixins):
     #     variances = self.v_estimator.solve_sigma_given_delta(**self.settings.variance_estimator)
     #     return variances
         
-    def run_ve_opt(self):
+    def _run_ve_opt(self):
         """Wrapper for run_opt method in VarianceEstimator"""
         
         if self.settings.variance_estimator.method == 'direct_sigmas':
@@ -1175,7 +1379,8 @@ class ReactionModel(WavelengthSelectionMixins):
         
         return None
     
-    def run_pe_opt(self):
+    
+    def _run_pe_opt(self):
         """Wrapper for run_opt method in ParameterEstimator"""
         if hasattr(self, '_G_data') and self._G_data is not None:
             pe_settings = {**self.settings.parameter_estimator, **self._G_data}
@@ -1185,6 +1390,7 @@ class ReactionModel(WavelengthSelectionMixins):
         self._run_opt('p_estimator', **pe_settings)
         
         return None
+    
     
     def _update_related_settings(self):
         """Checks if conflicting options are present and fixes them accordingly
@@ -1213,14 +1419,13 @@ class ReactionModel(WavelengthSelectionMixins):
     
         return None
     
+    
     def fix_parameter(self, param_to_fix):
         """Fixes parameter passed in as a list
         
-        Args:
-            param_to_fix (list): List of parameter names to fix
+        :param list param_to_fix: List of parameter names to fix
         
-        Returns:
-            None
+        :returns: None
         
         """
         if not hasattr(self, 'fixed_params'):
@@ -1233,9 +1438,17 @@ class ReactionModel(WavelengthSelectionMixins):
         
         return None
     
+    
     def run_opt(self):
-        """Run ParameterEstimator but checking for variances - this should
-        remove the VarianceEstimator being required to be implemented by the user
+        """This runs the parameter fitting optimization problem. It will automatically
+        perform the variance estimation step performed by the VarianceEstimator. The user
+        can define the options for this using the settings attribute.
+        
+        This method adds the results of the optimization as a ResultsObject to the attribute results.
+        This is also conveniently returned from this method as well.
+        
+        :return: The results of the optimization
+        :rtype: ResultsObject
         
         """
         print(f'*** KIPET version {version_number}')
@@ -1246,7 +1459,7 @@ class ReactionModel(WavelengthSelectionMixins):
         print(f'*** Simulation completed succesfully')
         
         # Check if all needed data for optimization available
-        if not self.allow_optimization:
+        if not self._allow_optimization:
             raise ValueError('The model is incomplete for parameter optimization')
         
         # Some settings are required together, this method checks this
@@ -1268,7 +1481,7 @@ class ReactionModel(WavelengthSelectionMixins):
             
             # Create the VE
             print('*** Generating VarianceEsitmator Instance')
-            self.create_estimator(estimator='v_estimator')
+            self._create_estimator(estimator='v_estimator')
             self.settings.variance_estimator.solver_opts = self.settings.solver
             # Optional max device variance
             if self.settings.variance_estimator.max_device_variance:
@@ -1279,7 +1492,7 @@ class ReactionModel(WavelengthSelectionMixins):
 
             else:
                 print('*** Starting the variance estimator')
-                self.run_ve_opt()
+                self._run_ve_opt()
                 
                 #print('Finished VE Opt - moving to PE opt')
         # If not a spectral problem and not all variances are provided, they
@@ -1293,7 +1506,7 @@ class ReactionModel(WavelengthSelectionMixins):
                 
         # Create ParameterEstimator
         print('*** Generating ParameterEsitmator Instance')
-        self.create_estimator(estimator='p_estimator')
+        self._create_estimator(estimator='p_estimator')
         
         variances = self.components.variances
         self.variances = variances
@@ -1302,13 +1515,13 @@ class ReactionModel(WavelengthSelectionMixins):
         if 'v_estimator' in self.results_dict:
             if self.settings.general.initialize_pe:
                 # Update PE using VE results
-                self.initialize_from_variance_trajectory()
+                self._initialize_from_variance_trajectory()
                 # No initialization from simulation is needed
                 self.settings.parameter_estimator.sim_init = False
  
             if self.settings.general.scale_pe:
                 # Scale variables from VE results
-                self.scale_variables_from_variance_trajectory()
+                self._scale_variables_from_variance_trajectory()
             
             # Extract vairances
             self.variances = self.results_dict['v_estimator'].sigma_sq
@@ -1332,34 +1545,47 @@ class ReactionModel(WavelengthSelectionMixins):
         
         # Run the PE
         print('*** Solving the parameter fitting problem...\n')
-        self.run_pe_opt()
+        self._run_pe_opt()
         
         # Save results in the results_dict
         self.results = self.results_dict['p_estimator']
         self.results.file_dir = pathlib.Path.cwd() #self.settings.general.charts_directory
         
         # Tells MEE that the individual model is already solved
-        self.optimized = True
+        self._optimized = True
         
         return self.results
     
+    
     @staticmethod
     def _scale_variances(variances):
+        """If the option to scale variances is True, this will scale the variances
         
+        :return: scaled variances
+        :rtype: dict
+        
+        """        
         max_var = max(variances.values())
         scaled_vars = {comp: var/max_var for comp, var in variances.items()}
         return scaled_vars
 
+
     def _run_opt(self, estimator, *args, **kwargs):
-        """Runs the respective optimization for the estimator"""
+        """Runs the respective optimization for the given estimator while
+        passing all of the arguments along
         
+        :return: The results of the respective estimator problem
+        :rtype: ResultsObject
+        
+        """
         if not hasattr(self, estimator):
             raise AttributeError(f'ReactionModel has no attribute {estimator}')
             
         self.results_dict[estimator] = getattr(self, estimator).run_opt(*args, **kwargs)
         return self.results_dict[estimator]
     
-    def initialize_from_variance_trajectory(self, variable=None, obj='p_estimator'):
+    
+    def _initialize_from_variance_trajectory(self, variable=None, obj='p_estimator'):
         """Wrapper for the initialize_from_trajectory method in
         ParameterEstimator
         
@@ -1368,39 +1594,69 @@ class ReactionModel(WavelengthSelectionMixins):
         self._from_trajectory('initialize', variable, source, obj)
         return None
     
+    
     def initialize_from_trajectory(self, variable_name=None, source=None):
         """Wrapper for the initialize_from_trajectory method in
         ParameterEstimator or PyomoSimulator
+        
+        This take a component or state variable already defined and initializes it
+        using data already entered into the model. The dataset containing this data is the 
+        source argument. See Example 4 to see this in use.
+        
+        :param str variable_name: The name of the component or state to be initialized
+        :param str source: The name of the dataset where the trajectory data is found
+        
+        :return: None
         
         """
         self._var_to_initialize_from_trajectory.append([variable_name, source])
         return None
     
-    def scale_variables_from_variance_trajectory(self, variable=None, obj='p_estimator'):
+    
+    def _scale_variables_from_variance_trajectory(self, variable=None):
         """Wrapper for the scale_varialbes_from_trajectory method in
         ParameterEstimator
         
+        :param str variable: The name of the variable to initialize
+        
+        :return: None
+        
         """
         source = self.results_dict['v_estimator']
-        self._from_trajectory('scale_variables', variable, source, obj)
+        self._from_trajectory('scale_variables', variable, source, 'p_estimator')
         return None
         
+    
     @staticmethod
     def _get_source_data(source, var):
-        """Get the correct data from a ResultsObject or a DataFrame"""
+        """Get the correct data from a ResultsObject or a DataFrame
         
+        :param source: The dataframe or the ResultsObject with the data
+        :type source: pandas.DataFrame/ResultsObject
+        
+        :return: The source data
+        :rtype: pandas.DataFrame
+        
+        """
         if isinstance(source, pd.DataFrame):
             return source
         else:
             return getattr(source, var)
     
+    
     def _from_trajectory(self, category, variable, source, obj):
-        """Generic initialization/scaling function"""
+        """Generic initialization/scaling function
         
+        :param str category: The estimator to be initialized from
+        :param str variable: The variable to be initialized
+        :param str source: The dataset name containing the trajectory
+        :param str obj: The attribute name of the estimator
+        
+        :return: None
+        
+        """
         estimator = getattr(self, obj)
         method = getattr(estimator, f'{category}_from_trajectory')
-        
-        print(variable)
         
         if variable is None:
             vars_to_init = get_vars(estimator.model)
@@ -1413,88 +1669,95 @@ class ReactionModel(WavelengthSelectionMixins):
         else:
             method(variable, self._get_source_data(source, variable))
         return None
-                                               
+                   
+                            
     def set_known_absorbing_species(self, *args, **kwargs):
         """Wrapper for set_known_absorbing_species in TemplateBuilder
         
+        .. note::
+            This may be removed. It is not clear if this is still needed.
+        
+        :return: None
+        
         """
-        self.builder.set_known_absorbing_species(*args, **kwargs)    
+        self._builder.set_known_absorbing_species(*args, **kwargs)    
         return None
     
-    def scale(self):
-        """Scale the model"""
-        
-        parameter_dict = self.parameters.as_dict(bounds=False)    
-        scaled_parameter_dict, scaled_models_dict = scale_models(self.model,
-                                                                 parameter_dict,
-                                                                 name=self.name,
-                                                                 )         
-        return scaled_parameter_dict, scaled_models_dict
     
-    def clone(self, *args, **kwargs):
-        """Makes a copy of the ReactionModel and removes the data. This is done
-        to reuse the model, components, and parameters in an easier manner
+    # def scale(self):
+    #     """Scale the model"""
         
-        """
-        new_kipet_model = copy.deepcopy(self)
+    #     parameter_dict = self.parameters.as_dict(bounds=False)    
+    #     scaled_parameter_dict, scaled_models_dict = scale_models(self._model,
+    #                                                              parameter_dict,
+    #                                                              name=self.name,
+    #                                                              )         
+    #     return scaled_parameter_dict, scaled_models_dict
+    
+    # def clone(self, *args, **kwargs):
+    #     """Makes a copy of the ReactionModel and removes the data. This is done
+    #     to reuse the model, components, and parameters in an easier manner
         
-        name = kwargs.get('name', self.name + '_copy')
-        copy_model = kwargs.get('model', True)
-        copy_builder = kwargs.get('builder', True)
-        copy_components = kwargs.get('components', True)   
-        copy_parameters = kwargs.get('parameters', True)
-        copy_datasets = kwargs.get('datasets', True)
-        copy_constants = kwargs.get('constants', True)
-        copy_settings = kwargs.get('settings', True)
-        copy_algebraic_variables = kwargs.get('alg_vars', True)
-        copy_odes = kwargs.get('odes', True)
-        copy_algs = kwargs.get('algs', True)
+    #     """
+    #     new_kipet_model = copy.deepcopy(self)
         
-        # Reset the datasets
+    #     name = kwargs.get('name', self.name + '_copy')
+    #     copy_model = kwargs.get('model', True)
+    #     copy_builder = kwargs.get('builder', True)
+    #     copy_components = kwargs.get('components', True)   
+    #     copy_parameters = kwargs.get('parameters', True)
+    #     copy_datasets = kwargs.get('datasets', True)
+    #     copy_constants = kwargs.get('constants', True)
+    #     copy_settings = kwargs.get('settings', True)
+    #     copy_algebraic_variables = kwargs.get('alg_vars', True)
+    #     copy_odes = kwargs.get('odes', True)
+    #     copy_algs = kwargs.get('algs', True)
         
-        new_kipet_model.name = name
+    #     # Reset the datasets
         
-        if not copy_model:
-            new_kipet_model.model = None
+    #     new_kipet_model.name = name
         
-        if not copy_builder:
-            new_kipet_model.builder = TemplateBuilder()
+    #     if not copy_model:
+    #         new_kipet_model.model = None
+        
+    #     if not copy_builder:
+    #         new_kipet_model.builder = TemplateBuilder()
             
-        if not copy_components:
-            new_kipet_model.components = ComponentBlock()
+    #     if not copy_components:
+    #         new_kipet_model.components = ComponentBlock()
         
-        if not copy_parameters:
-            new_kipet_model.parameters = ParameterBlock()
+    #     if not copy_parameters:
+    #         new_kipet_model.parameters = ParameterBlock()
             
-        if not copy_datasets:
-            del new_kipet_model.datasets
-            new_kipet_model.datasets = DataBlock()
+    #     if not copy_datasets:
+    #         del new_kipet_model.datasets
+    #         new_kipet_model.datasets = DataBlock()
             
-        if not copy_constants:
-            new_kipet_model.constants = None
+    #     if not copy_constants:
+    #         new_kipet_model.constants = None
             
-        if not copy_algebraic_variables:
-            new_kipet_model.algebraic_variables = []
+    #     if not copy_algebraic_variables:
+    #         new_kipet_model.algebraic_variables = []
             
-        if not copy_settings:
-            new_kipet_model.settings = Settings()
+    #     if not copy_settings:
+    #         new_kipet_model.settings = Settings()
             
-        if not copy_odes:
-            new_kipet_model.odes = None
+    #     if not copy_odes:
+    #         new_kipet_model.odes = None
             
-        if not copy_algs:
-            new_kipet_model.algs = None
+    #     if not copy_algs:
+    #         new_kipet_model.algs = None
         
-        list_of_attr_to_delete = ['p_model', 'v_model', 'p_estimator',
-                                  'v_estimator', 'simulator']
+    #     list_of_attr_to_delete = ['p_model', 'v_model', 'p_estimator',
+    #                               'v_estimator', 'simulator']
         
-        for attr in list_of_attr_to_delete:
-            if hasattr(new_kipet_model, attr):
-                setattr(new_kipet_model, attr, None)
+    #     for attr in list_of_attr_to_delete:
+    #         if hasattr(new_kipet_model, attr):
+    #             setattr(new_kipet_model, attr, None)
         
-        new_kipet_model.results_dict = {}
+    #     new_kipet_model.results_dict = {}
             
-        return new_kipet_model
+    #     return new_kipet_model
     
     def rhps_method(self,
                      method='k_aug',
@@ -1504,21 +1767,22 @@ class ReactionModel(WavelengthSelectionMixins):
         module to reduce the model based on the reduced hessian parameter
         selection method.
         
-        Args:
-            kwargs:
-                replace (bool): defaults to True, option to replace the
-                    parameters deemed unestimable from the model with constants
-                no_scaling (bool): defaults to True, removes the scaling
-                    constants from the model and restores the parameter values
-                    and their bounds.
-                    
-        Returns:
-            results (ResultsObject): A standard results object with the reduced
-                model results
+        This calls the EstimationPotential class and performs the reduced 
+        Hessian parameter selection method outlined
+        in Chen and Biegler, 2020, AIChE. 
+        
+        This function returns None, but the resulting reduced model is stored
+        under the red_model attribute.
+        
+        :param str method: The method to be used in calculating the reduced Hessian from the KKT matrix: k_aug or pynumero
+        :param str calc_method: The method used to determine the sensitivity of the parameters (global or fixed)
+        :param bool scaled: Indicates whether the parameters are scaled
+        
+        :return: None
         
         """
-        if self.model is None:
-            self.model = self.create_pyomo_model()
+        if self._model is None:
+            self._model = self._create_pyomo_model()
             
         kwargs = {}
         kwargs['solver_opts'] = self.settings.solver
@@ -1531,7 +1795,7 @@ class ReactionModel(WavelengthSelectionMixins):
         kwargs['nfe'] = self.settings.collocation.nfe
         
         # parameter_dict = self.parameters.as_dict(bounds=True)
-        results, reduced_model = rhps_method(self.model, **kwargs)
+        results, reduced_model = rhps_method(self._model, **kwargs)
         
 #        results.file_dir = self.settings.general.charts_directory
         
@@ -1566,34 +1830,57 @@ class ReactionModel(WavelengthSelectionMixins):
         
         # return reduced_kipet_model
     
+    
     def set_non_absorbing_species(self, non_abs_list):
-        """Wrapper for set_non_absorbing_species in TemplateBuilder"""
+        """Wrapper for set_non_absorbing_species in TemplateBuilder
+        
+        :param list non_abs_list: The list of components that do not absorb
+        
+        :return: None
+        """
         
         self._has_non_absorbing_species = True
         self.non_abs_list = non_abs_list
         return None
         
-    def add_noise_to_data(self, var, noise, overwrite=False):
-        """Wrapper for adding noise to data after data has been added to
-        the specific ReactionModel
+    # def add_noise_to_data(self, var, noise, overwrite=False):
+    #     """Wrapper for adding noise to data after data has been added to
+    #     the specific ReactionModel
         
-        """
-        dataframe = self.datasets[var].data
-        if overwrite:
-            self.datasets[var].data = dataframe
-        return data_tools.add_noise_to_signal(dataframe, noise)    
+    #     """
+    #     dataframe = self.datasets[var].data
+    #     if overwrite:
+    #         self.datasets[var].data = dataframe
+    #     return data_tools.add_noise_to_signal(dataframe, noise)    
     
-    def unwanted_contribution(self, variant, **kwargs):
+    
+    def unwanted_contribution(self, variant, St=None, Z_in=None):
+        """This method lets the user define whether the system has unwanted
+        contributions in the spectral data.
         
+        This is based on the work in () paper goes here
+        
+        :param str variant: The type of unwanted contribution\: time_variant or time_invariant
+        :param dict St: The stoichiometric matrix of the reaction network
+        :param dict Z_in: The dosing points, if any
+        
+        :return: None
+            
+        """
         self._G_contribution = variant
         
-        if 'St' not in kwargs:
-            kwargs['St'] = self.build_stoich_matrix(as_dict=True)
+        if St is None:
+            St = self.build_stoich_matrix(as_dict=True)
+        
+        if Z_in is None:
+            Z_in = {}
         
         self._G_data = {'G_contribution': variant,
-                        'Z_in': kwargs.get('Z_in', dict()),
-                        'St': kwargs.get('St', dict()),
+                        'Z_in': Z_in,
+                        'St': St,
                         }
+        return None
+    
     
     def analyze_parameters(self, 
                         method=None,
@@ -1602,10 +1889,19 @@ class ReactionModel(WavelengthSelectionMixins):
                         sigmas=None,
                         ):
         
-        """This is a wrapper for the EstimabilityAnalyzer 
+        """This is a wrapper for the EstimabilityAnalyzer
+        
+        :param str method: The estimability method to be used (yao)
+        :param dict parameter_uncertainties: The uncertainty in the parameters {parameter: uncertainty}
+        :param float meas_uncertainty: Measurement scaling
+        :param dict sigmas: The variances of the components {component: variance}
+        
+        :return: The list of parameters to fit and the list to fix
+        :rtype: tuple(list, list)
+        
         """
         # Here we use the estimability analysis tools
-        self.e_analyzer = EstimabilityAnalyzer(self.model)
+        self.e_analyzer = EstimabilityAnalyzer(self._model)
         # Problem needs to be discretized first
         self.e_analyzer.apply_discretization('dae.collocation',
                                              nfe=60,
@@ -1639,33 +1935,45 @@ class ReactionModel(WavelengthSelectionMixins):
         
         return params_to_select, params_to_fix 
     
-    def fix_and_remove_parameters(self, model_name, parameters=None):
+    # def fix_and_remove_parameters(self, model_name, parameters=None):
         
-        if model_name not in ['s_model', 'v_model', 'p_model']:
-            raise ValueError(f'ReactionModel does not have model type {model_name}')
         
-        model = getattr(self, model_name)
-        param_replacer = ParameterReplacer([model], fix_parameters=parameters)
-        param_replacer.remove_fixed_vars()
+        
+    #     if model_name not in ['s_model', 'v_model', 'p_model']:
+    #         raise ValueError(f'ReactionModel does not have model type {model_name}')
+        
+    #     model = getattr(self, model_name)
+    #     param_replacer = ParameterReplacer([model], fix_parameters=parameters)
+    #     param_replacer.remove_fixed_vars()
     
-        return None
+    #     return None
 
         
     """MODEL FUNCTION AREA"""
     
-    @staticmethod
-    def _set_up_stoich_mat(rm, St, reaction, component, value):
-    
-        if component in rm.components.names and reaction in rm.algs_dict:
-            St[reaction][rm.components.names.index(component)] = value
-        else:
-            pass
+    # @staticmethod
+    # def _set_up_stoich_mat(rm, St, reaction, component, value):
+    #     """This method generates the stoichiometric matrix based on the provided
+    #     ODEs.
+        
+    #     :param ReactionModel rm: The ReactionModel object
+    #     :param dict St: The stoichiometric matrix
+        
+        
+    #     """
+    #     if component in rm.components.names and reaction in rm.algs_dict:
+    #         St[reaction][rm.components.names.index(component)] = value
+    #     else:
+    #         pass
         
     
     def _create_stoich_dataframe(self):
         """Builds the dataframe used to hold the stoichiometric matrix
+        
+        :return: The empty dataframe for the stoichiometric matrix
+        :rtype: pandas.DataFrame
+        
         """
-            
         if self.algebraics.get_match('is_reaction', True) is None:
             raise ValueError('You need to declare reaction expressions')
         
@@ -1676,11 +1984,20 @@ class ReactionModel(WavelengthSelectionMixins):
         return dr
     
     
-    def build_from_reaction_matrix(self, St):
+    def reactions_from_stoich(self, St):
         """The user can provide a stoichiometric matrix and have the reaction
         ODEs generated from it
         
-        How should St be input? As a dict with lists? Yes for now
+        :param dict St: A dictionary with lists of stoichiometric coefficients
+        
+        :Example:
+            >>> rA = r1.add_reaction('rA', k1*A, description='Reaction A')
+            >>> rB = r1.add_reaction('rB', k2*B, description='Reaction B')
+            >>> stoich_data = {'rA': [-1, 1, 0], 'rB': [0, -1, 1]}
+            >>> reaction_model.reactions_from_stoich(stoich_data)
+            
+        :return: None
+        
         """
         dr = self._create_stoich_dataframe()
         comps = self.components.names
@@ -1698,14 +2015,25 @@ class ReactionModel(WavelengthSelectionMixins):
 
         return None
 
-    def build_stoich_matrix(self, as_dict=False):
+    def stoich_from_reactions(self, as_dict=False):
         """Generate a dictionary or dataframe representing the stoichiometric
         reaction matrix given the reaction expressions and the ODES are
         defined
         
-        Debugging code still left here because this may still lead to errors
+        .. note::
+          Debugging code still left here because this may still lead to errors
+        
+        :param bool as_dict: Indicates whether a dictionary (True) or dataframe
+          should be returned
+          
+        :return: The dictionary or dataframe of the stoichiometic matrix
+        :rtype: dictionary or dataframe
+        
         """
-        from pyomo.core.expr.numeric_expr import DivisionExpression, ProductExpression, NegationExpression, SumExpression
+        from pyomo.core.expr.numeric_expr import (DivisionExpression,
+                                                  NegationExpression,
+                                                  ProductExpression,
+                                                  SumExpression)
       
         if self.odes_dict is None or len(self.odes_dict) == 0:
             raise ValueError('You need to input the reaction ODEs')
@@ -1797,42 +2125,51 @@ class ReactionModel(WavelengthSelectionMixins):
         else:
             return dr
         
-    def make_reaction_table(self, stoich_coeff, rxns):
+    # def make_reaction_table(self, stoich_coeff, rxns):
         
-        df = pd.DataFrame()
-        for k, v in stoich_coeff.items():
-            df[k] = v
+    #     df = pd.DataFrame()
+    #     for k, v in stoich_coeff.items():
+    #         df[k] = v
         
-        df.index = rxns
-        self.reaction_table = df
+    #     df.index = rxns
+    #     self.reaction_table = df
     
-    def reaction_block(self, stoich_coeff, rxns):
-        # make a reactions_dict in __init__ and update here
-        """Method to allow for simple construction of a reaction system
+    # def reaction_block(self, stoich_coeff, rxns):
+    #     # make a reactions_dict in __init__ and update here
+    #     """Method to allow for simple construction of a reaction system
         
-        Args:
-            stoich_coeff (dict): dict with components as keys and stoichiometric
-                coeffs is lists as values:
-                    example: stoich_coeff['A'] = [-1, 0 , 1] etc
+    #     Args:
+    #         stoich_coeff (dict): dict with components as keys and stoichiometric
+    #             coeffs is lists as values:
+    #                 example: stoich_coeff['A'] = [-1, 0 , 1] etc
                 
-            rxns (list): list of algebraics that represent reactions
+    #         rxns (list): list of algebraics that represent reactions
             
-        Returns:
-            r_dict (dict): dict of completed reaction expressions
+    #     Returns:
+    #         r_dict (dict): dict of completed reaction expressions
             
-        """
-        self.make_reaction_table(stoich_coeff, rxns)
+    #     """
+    #     self.make_reaction_table(stoich_coeff, rxns)
         
-        r_dict = {}
+    #     r_dict = {}
         
-        for com in self.components.names: 
-            r_dict[com] = sum(stoich_coeff[com][i] * self.ae(r) for i, r in enumerate(rxns)) 
+    #     for com in self.components.names: 
+    #         r_dict[com] = sum(stoich_coeff[com][i] * self.ae(r) for i, r in enumerate(rxns)) 
     
-        return r_dict
+    #     return r_dict
     
     @property
     def models(self):
+        """Returns a list showing which models have been created for the ReactionModel
+        instance. This is more of a debugging method.
         
+        .. note::
+            This is slated for removal.
+        
+        :return: Dictionary containing the models as keys and bools indicating their existence
+        :rtype: dict
+
+        """
         output = 'ReactionModel has the following:\n'
         output_dict = {}
         
@@ -1850,113 +2187,132 @@ class ReactionModel(WavelengthSelectionMixins):
     
     @property
     def has_objective(self):
-        """Check if p_model has an objective"""
+        """Check if p_model has an objective
         
+        .. note::
+            This is slated for removal.
+        
+        :return: Boolean showing if the parameter estimator has an objective
+        
+        """
         return hasattr(self.p_model, 'objective')
 
 
-    def check_component_units(self):
-        """Method to check whether the units provided are consisten with the
-        base units
+    # def check_component_units(self):
+    #     """Method to check whether the units provided are consistent with the
+    #     base units.
         
-        """
+    #     """
         
-        print('Checking model component units:\n')
+    #     print('Checking model component units:\n')
         
-        element_dict = {
-           'parameters': self.parameters,
-           'components': self.components,
-           'constants': self.constants,
-           'algebraics': self.algebraics,
-           'states': self.states,
-                }
+    #     element_dict = {
+    #        'parameters': self.parameters,
+    #        'components': self.components,
+    #        'constants': self.constants,
+    #        'algebraics': self.algebraics,
+    #        'states': self.states,
+    #             }
         
-        if not hasattr(self, 'c'):
-            self._make_c_dict()
+    #     if not hasattr(self, 'c'):
+    #         self._make_c_dict()
         
-        for elem, obj in element_dict.items():
-            for comp in obj:
-                comp._check_scaling()
+    #     for elem, obj in element_dict.items():
+    #         for comp in obj:
+    #             comp._check_scaling()
                 
-                if comp.units != comp.units_orig:
-                    comp.pyomo_var.parent_component()._units = getattr(pyo_units, str(comp.units.u))
+    #             if comp.units != comp.units_orig:
+    #                 comp.pyomo_var.parent_component()._units = getattr(pyo_units, str(comp.units.u))
         
-        self._units_checked = True
-        print('')
+    #     self._units_checked = True
+    #     print('')
         
-        return None
+    #     return None
 
 
-    def check_component_units_base(self):
-        """Method to check whether the units provided are consisten with the
-        base units
+    # def check_component_units_base(self):
+    #     """Method to check whether the units provided are consistent with the
+    #     base units
         
-        """
-        element_dict = {
-           'parameters': self.parameters,
-           'components': self.components,
-           'constants': self.constants,
-           'algebraics': self.algebraics,
-           'states': self.states,
-                }
+    #     """
+    #     element_dict = {
+    #        'parameters': self.parameters,
+    #        'components': self.components,
+    #        'constants': self.constants,
+    #        'algebraics': self.algebraics,
+    #        'states': self.states,
+    #             }
         
-        from kipet.model_components.units_handler import convert_single_dimension
+    #     from kipet.model_components.units_handler import \
+    #         convert_single_dimension
         
-        if not hasattr(self, 'c'):
-            self._make_c_dict()
+    #     if not hasattr(self, 'c'):
+    #         self._make_c_dict()
         
-        for elem, obj in element_dict.items():
-            if elem in ['components', 'states', 'parameters', 'constants']:
-                for key in obj:
+    #     for elem, obj in element_dict.items():
+    #         if elem in ['components', 'states', 'parameters', 'constants']:
+    #             for key in obj:
                     
-                    print(f'Checking units for {key.name}: {key.units}')
+    #                 print(f'Checking units for {key.name}: {key.units}')
                     
-                    key_comp = key #self.get_state(key)
-                    key_comp_units = key_comp.units
-                    key_comp_units = convert_single_dimension(self.unit_base.ur, key_comp_units, self.unit_base.TIME_BASE, power_fixed=False)
+    #                 key_comp = key #self.get_state(key)
+    #                 key_comp_units = key_comp.units
+    #                 key_comp_units = convert_single_dimension(self.unit_base.ur, key_comp_units, self.unit_base.TIME_BASE, power_fixed=False)
                     
-                    print(key_comp_units)
-                    print(self.unit_base.VOLUME_BASE)
-                    print(f'Checking units for {key.name}: {key.units}')
-                    key_comp_units = convert_single_dimension(self.unit_base.ur, key_comp_units, self.unit_base.VOLUME_BASE, power_fixed=True)
+    #                 print(key_comp_units)
+    #                 print(self.unit_base.VOLUME_BASE)
+    #                 print(f'Checking units for {key.name}: {key.units}')
+    #                 key_comp_units = convert_single_dimension(self.unit_base.ur, key_comp_units, self.unit_base.VOLUME_BASE, power_fixed=True)
                     
-                    print(key_comp_units)
+    #                 print(key_comp_units)
                     
-                    key_comp.units = key_comp_units.units
-                    key_comp.value *= key_comp_units.m
-                    key_comp.pyomo_var.parent_component()._units = getattr(pyo_units, str(key_comp.units))
+    #                 key_comp.units = key_comp_units.units
+    #                 key_comp.value *= key_comp_units.m
+    #                 key_comp.pyomo_var.parent_component()._units = getattr(pyo_units, str(key_comp.units))
         
-                    # if self.value is not None:
-                    #     self.value = quantity.m*self.value
+    #                 # if self.value is not None:
+    #                 #     self.value = quantity.m*self.value
                         
-                    key_comp.conversion_factor = key_comp_units.m
-                    # key_comp.units = 1*quantity.units
+    #                 key_comp.conversion_factor = key_comp_units.m
+    #                 # key_comp.units = 1*quantity.units
                     
-                    if hasattr(key_comp, 'bounds') and key_comp.bounds is not None:
-                        bounds = list(key_comp.bounds)
-                        if bounds[0] is not None:
-                            bounds[0] *= key_comp.conversion_factor
-                        if bounds[1] is not None:
-                            bounds[1] *= key_comp.conversion_factor
-                        key_comp.bounds = (bounds) 
+    #                 if hasattr(key_comp, 'bounds') and key_comp.bounds is not None:
+    #                     bounds = list(key_comp.bounds)
+    #                     if bounds[0] is not None:
+    #                         bounds[0] *= key_comp.conversion_factor
+    #                     if bounds[1] is not None:
+    #                         bounds[1] *= key_comp.conversion_factor
+    #                     key_comp.bounds = (bounds) 
         
-        # for elem, obj in element_dict.items():
-        #     for comp in obj:
-        #         comp._check_scaling()
+    #     # for elem, obj in element_dict.items():
+    #     #     for comp in obj:
+    #     #         comp._check_scaling()
                 
-        #         if comp.units != comp.units_orig:
-        #             comp.pyomo_var.parent_component()._units = getattr(pyo_units, str(comp.units.u))
+    #     #         if comp.units != comp.units_orig:
+    #     #             comp.pyomo_var.parent_component()._units = getattr(pyo_units, str(comp.units.u))
         
-        self._units_checked = True
-        print('')
+    #     self._units_checked = True
+    #     print('')
         
-        return None
+    #     return None
     
     def check_model_units(self, orig_units=False, display=False):
-        """Method to check the expected units of the algebraic and odes
+        """Method to check the expected units of the algebraic expressions and the odes
+        based on the given components and states.
+        
+        This method goes through the ODEs and algebraics term by term and checks whether the
+        provided units (constants, etc.) match with the expected ODE given the base units.
+        
+        This is shown in Example 16 where one of the constants does not match.
+        
+        :param bool orig_units: Option to use the original units
+        :param bool display: Show the original units
+        
+        :return: None
         
         """
-        from kipet.model_components.units_handler import convert_single_dimension
+        from kipet.model_components.units_handler import \
+            convert_single_dimension
         
         print('Checking expected equation units:\n')
         
@@ -1997,7 +2353,6 @@ class ReactionModel(WavelengthSelectionMixins):
             else:
                 expr_use = expr_obj.expression
             
-            print(expr_use)
             key_comp = pyo_units.get_units(expr_use)
             expr.units = key_comp
             
@@ -2012,13 +2367,31 @@ class ReactionModel(WavelengthSelectionMixins):
         return None
     
     
-    def plot(self, var=None, jupyter=False):
+    def plot(self, var=None, jupyter=False, filename=None):
+        """Plotting method for the ReactionModel results.
         
-        """Plot results using the variable or variable class"""
+        This provides a simple platform for generating figures using Plotly to
+        show the results of the simulation or parameter fitting. The plots are
+        given a name and timestamp automatically and stored in the charts 
+        directory within the working directory.
         
+        You can plot individual components as var. If you pass 'Z' as var, all
+        components are plotted together. If you pass 'S' as var, all individual
+        species absorption profiles are shown. Each state must be individually
+        plotted owing to their different scales. Algebraics are also plotted in
+        this manner. If var is None, all plots associated with the model will
+        be plotted.
+        
+        :param str var: The variable to be plotted
+        :param bool jupyter: Option for accessing plots using Jupyter Notebooks
+        :param str filename: The optional filename for the plots
+        
+        :return: None
+        
+        """
         from kipet.visuals.plots import PlotObject
         
-        self._plot_object = PlotObject(reaction_model=self, jupyter=jupyter)
+        self._plot_object = PlotObject(reaction_model=self, jupyter=jupyter, filename=filename)
         
         if var == 'Z':
             self._plot_object._plot_all_Z()
@@ -2055,39 +2428,73 @@ class ReactionModel(WavelengthSelectionMixins):
         
 
     def ae(self, alg_var):
-        """Quick method to get the algebraic expression for alg_var"""
+        """Quick method to return an algebraic expression
+        
+        This is useful in some cases where more complex expressions need
+        to be constructed.
+        
+        :param str alg_var: The name of the expression
+        
+        :return: The Pyomo expression designated by alg_var
+        :rtype: Pyomo expression
+        
+        """
         return self.algs_dict[alg_var].expression
     
+
     def ode(self, ode_var):
-        """Quick method to get the algebraic expression for ode_var"""
+        """Quick method to return an ODE expression
+        
+        This is useful in some cases where more complex expressions need
+        to be constructed.
+        
+        :param str ode_var: The name of the expression
+        
+        :return: The Pyomo expression designated by ode_var
+        :rtype: Pyomo expression
+        
+        """
         return self.odes_dict[ode_var].expression
 
     def get_state(self, comp):
-        """Quick method to get the component or state variable"""
+        """Generic method to get the component or state variable object
+        
+        :param str comp: The component or state variable name
+        
+        :return: The component object
+        :rtype: ModelComponent
+        
+        """
         if comp in self.components:
             return self.components[comp]
         elif comp in self.states:
             return self.states[comp]
  
     def get_alg(self, comp):
-        """Quick method to get the algebraic variable"""
+        """Quick method to get the algebraic variable object
+        
+        :param str comp: The name of the algebraic variable
+        
+        :return: The algebraic variable object
+        :rtype: ModelAlgebraic
+        
+        """
         if comp in self.algebraics:
             return self.algebraics[comp]
         
     
+# def _set_directory(model_object, filename, abs_dir=False):
+#     """Wrapper for the set_directory method. This replaces the awkward way
+#     of ensuring the correct directory for the data is used.
     
-def _set_directory(model_object, filename, abs_dir=False):
-    """Wrapper for the set_directory method. This replaces the awkward way
-    of ensuring the correct directory for the data is used.
-    
-    Args:
-        filename (str): the file name to be formatted
+#     Args:
+#         filename (str): the file name to be formatted
         
-    Returns:
-        file_path (pathlib Path): The absolute path of the given file
-    """
-    #directory = model_object.settings.general.data_directory
-    directory = pathlib.Path.cwd()
-    file_path = pathlib.Path(directory).joinpath(filename)
+#     Returns:
+#         file_path (pathlib Path): The absolute path of the given file
+#     """
+#     #directory = model_object.settings.general.data_directory
+#     directory = pathlib.Path.cwd()
+#     file_path = pathlib.Path(directory).joinpath(filename)
     
-    return file_path
+#     return file_path

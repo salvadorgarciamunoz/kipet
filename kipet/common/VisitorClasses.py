@@ -1,10 +1,11 @@
 """
 Replacement and Scaling Mixins used in model modification
 """
-from pyomo.core.expr import current as EXPR
-from pyomo.environ import *
-from pyomo.core.expr.numvalue import NumericConstant
 from pyomo.core.base.units_container import _PyomoUnit
+from pyomo.core.expr import current as EXPR
+from pyomo.core.expr.numvalue import NumericConstant
+from pyomo.environ import *
+
 
 class ReplacementVisitor(EXPR.ExpressionReplacementVisitor):
     

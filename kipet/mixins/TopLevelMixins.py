@@ -4,10 +4,11 @@ KipetModel Mixins
 # Standard library imports
 import copy
 
-# Third party imports
-
 # Kipet library imports
 from kipet.core_methods.ParameterEstimator import wavelength_subset_selection
+
+# Third party imports
+
 
 
 class WavelengthSelectionMixins():

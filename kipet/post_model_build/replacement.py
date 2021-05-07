@@ -6,14 +6,15 @@ values followed by deletion of the parameters from the model.
 """
 # Standard library imports
 import copy
+
 import numpy as np
 import pandas as pd
-
 # Third party imports
 from pyomo.environ import *
 
 # KIPET library imports
-from kipet.common.VisitorClasses import ReplacementVisitor 
+from kipet.common.VisitorClasses import ReplacementVisitor
+
 #from kipet.top_level.variable_names import VariableNames
 
 class ParameterReplacer():

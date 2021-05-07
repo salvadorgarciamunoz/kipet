@@ -3,9 +3,9 @@ FESimulator
 """
 # Standard library imports
 
+from pyomo.dae import *
 # Third party imports
 from pyomo.environ import *
-from pyomo.dae import *
 
 # KIPET library imports
 from kipet.core_methods.fe_factory import fe_initialize

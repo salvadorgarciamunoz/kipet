@@ -1,20 +1,17 @@
-from functools import reduce
 import sys
 import warnings
+from functools import reduce
 
 import pandas as pd
 from pyomo.dae import *
 from pyomo.environ import *
 
+from kipet.common.VisitorClasses import ScalingVisitor
 from kipet.core_methods.ResultsObject import *
 from kipet.core_methods.Simulator import *
-from kipet.post_model_build.pyomo_model_tools import (
-    index_set_info,
-    get_index_sets,
-    )
-from kipet.common.VisitorClasses import ScalingVisitor
 from kipet.dev_tools.display import Print
-
+from kipet.post_model_build.pyomo_model_tools import (get_index_sets,
+                                                      index_set_info)
 from kipet.top_level.variable_names import VariableNames
 
 __var = VariableNames()

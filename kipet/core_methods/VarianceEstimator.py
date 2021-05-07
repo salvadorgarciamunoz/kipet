@@ -199,12 +199,14 @@ class VarianceEstimator(Optimizer):
             results = run_method(self, solver, run_opt_kwargs)
             
         elif method == 'alternate':
-            from kipet.variance_methods.alternate_method import run_alternate_method
+            from kipet.variance_methods.alternate_method import \
+                run_alternate_method
             solver = 'ipopt'
             results = run_alternate_method(self, solver, run_opt_kwargs)
         
         elif method == 'direct_sigmas':
-            from kipet.variance_methods.alternate_method import run_direct_sigmas_method
+            from kipet.variance_methods.alternate_method import \
+                run_direct_sigmas_method
             results = run_direct_sigmas_method(self, solver, run_opt_kwargs)
             
         # Report time
@@ -352,7 +354,8 @@ class VarianceEstimator(Optimizer):
         Returns:
             all_variances (dict): dictionary containg all sigmas, including the device/delta
         """   
-        from kipet.variance_methods.alternate_method import _solve_sigma_given_delta
+        from kipet.variance_methods.alternate_method import \
+            _solve_sigma_given_delta
         
         solver_opts = kwds.pop('solver_opts', dict())
         tee = kwds.pop('tee', True)

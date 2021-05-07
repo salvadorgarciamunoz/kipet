@@ -4,28 +4,28 @@
 import copy
 import math
 import os
-import scipy.stats as st
 
 # Third party imports
 import numpy as np
 import pandas as pd
+import scipy.stats as st
 from pyomo import *
 from pyomo.dae import *
 from pyomo.environ import *
 from scipy.sparse import coo_matrix
 
+from kipet.common.objectives import (absorption_objective, comp_objective,
+                                     conc_objective)
 # KIPET library imports
 from kipet.common.parameter_handling import initialize_parameters
-from kipet.common.objectives import conc_objective, comp_objective, absorption_objective
 from kipet.common.read_hessian import split_sipopt_string
-from kipet.mixins.PEMixins import PEMixins
 from kipet.core_methods.fe_factory import *
 from kipet.core_methods.FESimulator import *
 from kipet.core_methods.Optimizer import *
 from kipet.core_methods.ParameterEstimator import *
 from kipet.core_methods.PyomoSimulator import *
 from kipet.core_methods.VarianceEstimator import *
-
+from kipet.mixins.PEMixins import PEMixins
 from kipet.top_level.variable_names import VariableNames
 
 __author__ = 'Michael Short, Kevin McBride'  #: February 2019 - October 2020

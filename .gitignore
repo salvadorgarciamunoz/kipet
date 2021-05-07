@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+# Docs
+sphinx/
+
 # Distribution / packaging
 .Python
 env/

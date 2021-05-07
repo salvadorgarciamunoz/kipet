@@ -3,7 +3,8 @@ Problem Generation tools for Kipet
 """
 import numpy as np
 import pandas as pd
-  
+
+
 def gaussian_single_peak(wl,alpha,beta,gamma):
     """
     helper function to generate absorption data based on 

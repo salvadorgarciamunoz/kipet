@@ -1,12 +1,12 @@
 """
 Read/Write functions used for data in Kipet
 """
-from contextlib import contextmanager, redirect_stdout
 import inspect
 import os
-from pathlib import Path
 import re
 import sys
+from contextlib import contextmanager, redirect_stdout
+from pathlib import Path
 
 import numpy as np
 import pandas as pd

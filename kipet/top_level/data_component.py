@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objs as go
 from plotly import __version__
-from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
+from plotly.offline import download_plotlyjs, init_notebook_mode, iplot, plot
 
 from kipet.core_methods.data_tools import *
 from kipet.visuals.plots import colors

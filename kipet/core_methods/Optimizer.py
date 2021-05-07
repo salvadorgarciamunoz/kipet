@@ -2,18 +2,12 @@
 Base Optimizer Class
 """
 import numpy as np
-from scipy.sparse import coo_matrix
-from scipy.sparse.linalg import (
-    lsqr,
-    spsolve,
-    ) 
-from scipy.optimize import least_squares
-
 from pyomo.dae import *
 from pyomo.environ import *
-from pyomo.environ import (
-    Suffix,
-    )
+from pyomo.environ import Suffix
+from scipy.optimize import least_squares
+from scipy.sparse import coo_matrix
+from scipy.sparse.linalg import lsqr, spsolve
 
 from kipet.core_methods.PyomoSimulator import *
 from kipet.core_methods.ResultsObject import *

@@ -1,11 +1,11 @@
 """
 Plotting class for KIPET
 """
+import os
+import sys
+import time
 # Standard library imports
 from pathlib import Path
-import os
-import time
-import sys
 
 # Thirdparty library imports 
 import plotly.graph_objects as go
@@ -36,12 +36,12 @@ class PlotObject():
     
     """This will hold the relevant information needed to make a plot in KIPET"""
     
-    def __init__(self, reaction_model=None, jupyter=False):
+    def __init__(self, reaction_model=None, jupyter=False, filename=None):
         
         self.reaction_model = reaction_model
         self.name = reaction_model.name
         self.color_num = 0
-        self.filename = None
+        self.filename = filename
         self.jupyter = jupyter
         
         t = time.localtime()
@@ -84,12 +84,17 @@ class PlotObject():
         fig.update_xaxes(range=[float(x_data[0])-x_axis_mod, float(x_data[-1])+x_axis_mod])
         fig.update_xaxes(zeroline=True, zerolinewidth=2, zerolinecolor='#4e4e4e')
         fig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor='#4e4e4e')
+        use_timestamp = True
 
-        if self.filename is None:
-            filename = f'{plot_name}.html'
+        filename = f'{plot_name}.html'
+        # Change the folder directory
+        folder_name = self.timestamp
+        if self.filename is not None:
+            use_timestamp = False
+            folder_name = self.filename
             
         if self.jupyter:
-            chart_dir = Path.cwd().joinpath('charts', f'{self.name}-{self.timestamp}')
+            chart_dir = Path.cwd().joinpath('charts', f'{self.name}-{folder_name}')
             plot_method = pio.show
             fig.update_layout(         
                 autosize=False,
@@ -104,8 +109,9 @@ class PlotObject():
                     ),
                 )
         else:
+        
             calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
-            chart_dir = Path(calling_file_name).joinpath('charts', f'{self.name}-{self.timestamp}')
+            chart_dir = Path(calling_file_name).joinpath('charts', f'{self.name}-{folder_name}')
             plot_method = pio.write_html
         
         chart_dir.mkdir(parents=True, exist_ok=True)

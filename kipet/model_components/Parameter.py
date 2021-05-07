@@ -6,6 +6,7 @@ This should be updated to a more robust framework, eventually
 from pint import UnitRegistry
 from pyomo.environ import ConcreteModel, Set, Var
 
+
 class Component():
     """A generic pyomo variable to use in model building"""
 
