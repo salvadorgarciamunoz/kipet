@@ -237,12 +237,16 @@ class ReactionModel(WavelengthSelectionMixins):
         
         :return: The Pyomo variable representing the component and it\'s units
         :rtype: Tuple with two components (pyomo.core.base.var._GeneralVarData, pint.quantity.build_quantity_class.<locals>.Quantity)
+        
+        Raises:
+            ValueError('A component with this name has already been defined')
+        
         """
         if not hasattr(self, '_set_up_model'):
             self._make_set_up_model()
 
         if hasattr(self._set_up_model, name):        
-            raise ValueError('A component with this name has already been defiffffned')
+            raise ValueError('A component with this name has already been defined')
         
         setattr(self._set_up_model, f'{name}_indx', Set(initialize=[0]))
         sets = [getattr(self._set_up_model, f'{name}_indx')]*index
@@ -279,6 +283,7 @@ class ReactionModel(WavelengthSelectionMixins):
             
         :return: The representative Pyomo variable that can be used in expression building
         :rtype: pyomo.core.base.var._GeneralVarData
+        
         """
         units = kwargs.get('units', None)
         value = kwargs.get('value', 1)
@@ -325,6 +330,7 @@ class ReactionModel(WavelengthSelectionMixins):
         
         :return: A representative Pyomo variable that can be used in expression building
         :rtype: pyomo.core.base.var._GeneralVarData
+        
         """
         return self._add_model_component('parameter',
                                         1, 
@@ -357,6 +363,7 @@ class ReactionModel(WavelengthSelectionMixins):
         
         :return: A representative Pyomo variable that can be used in expression building
         :rtype: pyomo.core.base.var._GeneralVarData
+        
         """
         return self._add_model_component('component', 
                                         2, 
@@ -385,6 +392,7 @@ class ReactionModel(WavelengthSelectionMixins):
         
         :return: A representative Pyomo variable that can be used in expression building
         :rtype: pyomo.core.base.var._GeneralVarData
+        
         """
         return self._add_model_component('state', 
                                         2, 
@@ -409,12 +417,46 @@ class ReactionModel(WavelengthSelectionMixins):
         
         :return: A representative Pyomo variable that can be used in expression building
         :rtype: pyomo.core.base.var._GeneralVarData
+        
         """
         return self._add_model_component('constant', 
                                         1, 
                                         self.__var.model_constant, 
                                         name,
                                         **kwargs)
+    
+    
+    def fixed_state(self, name, **kwargs):
+        """Create a algebraic variable for fixed states
+        
+        This allows for certain states to be fixed during simulation or
+        parameter fitting.
+        
+        .. note::
+            This requires the data keyword argument!
+        
+        :param str name: The name of the fixed state
+        :param float value: Initial value of the parameter
+        :param str units: (Optional) Sets the parameter units
+        :param str description: (Optional) Detailed description of the parameter        
+        :param data: The data used to fix the state
+        :type data: pandas.DataFrame
+
+        :return: A representative Pyomo variable that can be used in expression building
+        :rtype: pyomo.core.base.var._GeneralVarData
+        
+        Raises:
+            ValueError: A fixed state requires data in order to fix a trajectory
+        
+        """
+        if 'data' not in kwargs:
+            raise ValueError('A fixed state requires data in order to fix a trajectory')
+        else:
+            return self._add_model_component('algebraic', 
+                                             2, 
+                                             self.__var.algebraic, 
+                                             name, 
+                                             **kwargs)
         
     # def algebraic(self, name, **kwargs):
        

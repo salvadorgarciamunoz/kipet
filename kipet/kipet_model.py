@@ -265,7 +265,7 @@ class KipetModel:
 
         """
         for name, model in self.reaction_models.items():
-            if not model.optimized:
+            if not model._optimized:
                 model.run_opt()
             else:
                 print(f"Model {name} has already been optimized")
@@ -397,3 +397,37 @@ class KipetModel:
             )
 
         return set_of_all_model_params
+
+
+    @property
+    def data_types(self):
+        """Returns a set of all data types represented in the contained ReactionModels
+        
+        :return: A set of data_types as strings
+        :rtype: set
+        
+        """
+        data_types = set()
+        for name, kipet_model in self.reaction_models.items():
+            for dataset_name, dataset in kipet_model.datasets.datasets.items():
+                data_types.add(dataset.category)
+                
+        return data_types
+    
+    
+    @property
+    def show_parameters(self):
+        """Shows the resulting parameters for each of the ReactionModel instances.
+        Naturally, global parameters will have the same values in each model.
+         
+        :return: DataFrame of the parameters in each reaction
+        :rtype: pandas.DataFrame
+
+        """
+        df_param = pd.DataFrame(data=None, index=self.all_params, columns=self.models.keys())
+            
+        for reaction, model in self.reaction_models.items():
+            for param in model.parameters.names:
+                df_param.loc[param, reaction] = model.results.P[param]
+            
+        return df_param
