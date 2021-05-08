@@ -46,6 +46,7 @@ setup(
         'plotly==4.*,>=4.14.3', 'pyomo==5.*,>=5.7.3', 'pyyaml==5.*,>=5.4.1',
         'scipy==1.*,>=1.6.0'
     ],
-    extras_require={"dev": ["pytest==5.*,>=5.2.0", "spyder==4.*,>=4.2.2"]},
+    extras_require={"dev": ["pytest==5.*,>=5.2.0", "spyder==4.*,>=4.2.2",
+                            "isort==5.*,>=5.8.0", "mypy>=0.812", "sphinx-rtd-theme==0.5.2"]},
 
 )
