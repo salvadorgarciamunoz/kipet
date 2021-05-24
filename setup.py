@@ -20,7 +20,7 @@ if os.path.exists(readme_path):
 setup(
     long_description=readme,
     name='kipet',
-    version='0.2.2',
+    version='0.2.3',
     description='An all-in-one tool for fitting kinetic models using spectral and other state data',
     python_requires='==3.*,>=3.8.0',
     project_urls={
