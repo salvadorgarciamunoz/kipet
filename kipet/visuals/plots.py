@@ -32,6 +32,18 @@ colors += ['#4285F4', '#DB4437', '#F4B400', '#0F9D58',
                      '#185ABC', '#B31412', '#EA8600', '#137333',
                      '#d2e3fc', '#ceead6']
 
+plot_options = {
+    'label_font': dict(
+            size=32,
+        ),
+    'title_font': dict(
+            size=32,
+        ),
+    'tick_font': dict(
+            size=24,
+        ),
+    }
+
 class PlotObject():
     
     """This will hold the relevant information needed to make a plot in KIPET"""
@@ -82,8 +94,13 @@ class PlotObject():
         x_data = [t for t in pred.index]
         x_axis_mod = 0.025*(float(x_data[-1]) - float(x_data[0]))
         fig.update_xaxes(range=[float(x_data[0])-x_axis_mod, float(x_data[-1])+x_axis_mod])
-        fig.update_xaxes(zeroline=True, zerolinewidth=2, zerolinecolor='#4e4e4e')
-        fig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor='#4e4e4e')
+        
+        fig.update_xaxes(zeroline=True, zerolinewidth=2, zerolinecolor='#4e4e4e', titlefont=plot_options['label_font'], tickfont=plot_options['tick_font'])
+        fig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor='#4e4e4e', titlefont=plot_options['label_font'], tickfont=plot_options['tick_font'])
+        
+        fig.update_layout(title_font=plot_options['title_font'])
+        fig.update_layout(legend_font=plot_options['label_font'])
+        
         use_timestamp = True
 
         filename = f'{plot_name}.html'
@@ -118,6 +135,10 @@ class PlotObject():
         filename = chart_dir.joinpath(filename)
         if not self.jupyter:
            print(f'Plot saved as: {filename}')
+           
+        self.save_static_image = True
+        if self.save_static_image:
+            fig.write_image(f'{filename}.svg', width=1400, height=900)
 
         plot_method(fig, file=filename.as_posix(), auto_open=True)
     
@@ -175,7 +196,7 @@ class PlotObject():
         var_data = self.reaction_model.components[col]
         state = f'{self.reaction_model.components[col].state}'.capitalize()
         title = f'Model: {self.reaction_model.name} | Concentration Profiles'
-        time_scale = f'Time [{self.reaction_model.ub.TIME_BASE}]'
+        time_scale = f'Time [{self.reaction_model.unit_base.time}]'
 
         state_units = self._get_proper_unit_str(var_data)
         # state_units = var_data.units.u
@@ -209,7 +230,7 @@ class PlotObject():
         state = f'{self.reaction_model.components[var].state}'.capitalize()
         description = f'| Description: {var_data.description}' if var_data.description is not None else ''
         title = f'Model: {self.reaction_model.name} | Variable: {var_data.name} {description}'
-        time_scale = f'Time [{self.reaction_model.ub.TIME_BASE}]'
+        time_scale = f'Time [{self.reaction_model.unit_base.time}]'
         # state_units = var_data.units.u
         state_units = self._get_proper_unit_str(var_data)
         fig.update_layout(
@@ -236,7 +257,7 @@ class PlotObject():
         var_data = self.reaction_model.algebraics[var]
         description = f'| Description: {var_data.description}' if var_data.description is not None else ''
         title = f'Model: {self.reaction_model.name} | Variable: {var_data.name} {description}'
-        time_scale = f'Time [{self.reaction_model.ub.TIME_BASE}]'
+        time_scale = f'Time [{self.reaction_model.unit_base.time}]'
         # state_units = var_data.units
         state_units = self._get_proper_unit_str(var_data, check_expr=True)
         fig.update_layout(
@@ -263,7 +284,7 @@ class PlotObject():
         var_data = self.reaction_model.states[var]
         description = f'| Description: {var_data.description}' if var_data.description is not None else ''
         title = f'Model: {self.reaction_model.name} | Variable: {var_data.name} {description}'
-        time_scale = f'Time [{self.reaction_model.ub.TIME_BASE}]'
+        time_scale = f'Time [{self.reaction_model.unit_base.time}]'
         state = f'{var_data.description}'.capitalize() if var_data.description is not None else 'State' 
         # state_units = var_data.units
         state_units = self._get_proper_unit_str(var_data)
@@ -324,7 +345,7 @@ class PlotObject():
         pred = self.reaction_model.results.step
         self._state_plot(fig, var, pred, None)
         title = f'Model: {self.reaction_model.name} | Variable: {var} | Step Function'
-        time_scale = f'Time [{self.reaction_model.ub.TIME_BASE}]'
+        time_scale = f'Time [{self.reaction_model.unit_base.time}]'
         fig.update_layout(
             title=title,
             xaxis_title=f'{time_scale}',
