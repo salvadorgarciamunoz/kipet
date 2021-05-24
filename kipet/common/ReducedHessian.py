@@ -145,24 +145,26 @@ class ReducedHessian(object):
         elif self.kkt_method == 'k_aug':
         
             kaug = SolverFactory('k_aug')
+            kaug_files = 'kaug_debug/'
             
             kaug.options["deb_kkt"] = ""  
+            kaug.options["print_kkt"] = ""
             kaug.solve(self.model_object, tee=False)
             
-            hess = pd.read_csv('hess_debug.in', delim_whitespace=True, header=None, skipinitialspace=True)
+            hess = pd.read_csv(f'{kaug_files}hess_debug.in', delim_whitespace=True, header=None, skipinitialspace=True)
             hess.columns = ['irow', 'jcol', 'vals']
             hess.irow -= 1
             hess.jcol -= 1
-            os.unlink('hess_debug.in')
+            os.unlink(f'{kaug_files}hess_debug.in')
             
-            jac = pd.read_csv('jacobi_debug.in', delim_whitespace=True, header=None, skipinitialspace=True)
+            jac = pd.read_csv(f'{kaug_files}jacobi_debug.in', delim_whitespace=True, header=None, skipinitialspace=True)
             m = jac.iloc[0,0]
             n = jac.iloc[0,1]
             jac.drop(index=[0], inplace=True)
             jac.columns = ['irow', 'jcol', 'vals']
             jac.irow -= 1
             jac.jcol -= 1
-            os.unlink('jacobi_debug.in')
+            os.unlink(f'{kaug_files}jacobi_debug.in')
             
             #try:
             #    duals = read_duals(stub + '.sol')
