@@ -30,6 +30,32 @@ logger = logging.getLogger('ModelBuilderLogger')
 
 class TemplateBuilder(object):
     """Helper class for creation of models.
+    
+    This class takes the arguments, settings, and data from the ReactionModel
+    and uses it to generate the Pyomo model used in simulation or parameter
+    estimation. The TemplateBuilder object is not meant to be accessed directly
+    by the user.
+    
+    Private attributes
+    
+    :var _model: The base Pyomo model to be created
+    :var _s_model: The Pyomo model used in simulation
+    :var _builder: TemplateBuilder instance
+    :var _template_populated: Bool designating whether the builder object is built
+    :var __flag_odes_built: Bool indicating whether the odes are built
+    :var __flag_algs_built: Bool indicating whether the daes are built
+    :var _custom_objective: Algebraic variable to use in the custom objective term
+    :var _optimized: Bool indicating whether the ReactionModel has been optimized
+    :var _dosing_points: Dictionary with optional dosing points 
+    :var _has_dosing_points: Bool indicating if dosing points are used
+    :var _has_step_or_dosing: Bool indicating if dosing or step variables are used
+    :var _has_non_absorbing_species: Bool indicating if non-absorbing species are present
+    :var _var_to_fix_from_trajectory: List of variables with fixed trajectories
+    :var _var_to_initialize_from_trajectory: List of variables to initialize from trajectories
+    :var _default_time_unit: Default unit of time
+    :var _allow_optimization: Bool indicating if prerequisite data meets requirements for parameter fitting
+    :var _G_data: Dictionary containing unwanted contribution data
+    :var __var: VariableNames object containing global parameter and variable names in the Pyomo models
 
     Attributes:
         _component_names (set): container with names of components.
@@ -949,7 +975,6 @@ class TemplateBuilder(object):
         var_dict = c_mod
         
         for model_var, obj_list in var_dict.items():
-            
             if not isinstance(obj_list[1].index(), int):
                 old_var = obj_list[1]
                 new_var = getattr(current_model, obj_list[0])[new_time, model_var]
@@ -1303,6 +1328,9 @@ class TemplateBuilder(object):
         model.start_time = Param(initialize=start_time, domain=Reals)
         model.end_time = Param(initialize=end_time, domain=Reals)
         
+        self.start_time = start_time
+        self.end_time = end_time
+        
         return None
     
     @staticmethod
@@ -1503,10 +1531,12 @@ class TemplateBuilder(object):
             self._add_objective_custom(pyomo_model)
         
         # Check the absorbing species sets
-        self._check_absorbing_species(pyomo_model)
+        if not is_simulation:
+            self._check_absorbing_species(pyomo_model)
         
         # Add bounds, is specified
-        self._apply_bounds_to_variables(pyomo_model)
+        if not is_simulation:
+            self._apply_bounds_to_variables(pyomo_model)
        
         # Add given state standard deviations to the pyomo model
         self._state_sigmas = self.template_component_data.var_variances()

@@ -38,37 +38,37 @@ class Settings():
         settings = 'Settings\n\n'
         
         if hasattr(self, 'general'):
-            settings += 'General Settings:\n'
+            settings += 'General Settings (general):\n'
             for k, v in self.general.items():
                 settings += f'{str(k).rjust(m)} : {v}\n'
         
         if hasattr(self, 'units'):
-            settings += '\nUnit Settings:\n'
+            settings += '\nUnit Settings (units):\n'
             for k, v in self.units.items():
                 settings += f'{str(k).rjust(m)} : {v}\n'
         
         if hasattr(self, 'collocation'):
-            settings += '\nCollocation Settings:\n'
+            settings += '\nCollocation Settings (collocation):\n'
             for k, v in self.collocation.items():
                 settings += f'{str(k).rjust(m)} : {v}\n'
             
         if hasattr(self, 'simulator'):
-            settings += '\nSimulation Settings:\n'
+            settings += '\nSimulation Settings (simulator):\n'
             for k, v in self.simulator.items():
                 settings += f'{str(k).rjust(m)} : {v}\n'
             
         if hasattr(self, 'variance_estimator'):
-            settings += '\nVarianceEstimator Settings:\n'
+            settings += '\nVarianceEstimator Settings (variance_estimator):\n'
             for k, v in self.variance_estimator.items():
                 settings += f'{str(k).rjust(m)} : {v}\n'
     
         if hasattr(self, 'parameter_estimator'):
-            settings += '\nParameterEstimator Settings:\n'
+            settings += '\nParameterEstimator Settings (parameter_estimator):\n'
             for k, v in self.parameter_estimator.items():
                 settings += f'{str(k).rjust(m)} : {v}\n'
         
         if hasattr(self, 'solver'):
-            settings += '\nSolver Settings:\n'
+            settings += '\nSolver Settings (solver):\n'
             for k, v in self.solver.items():
                 settings += f'{str(k).rjust(m)} : {v}\n'
         

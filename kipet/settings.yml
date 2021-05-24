@@ -11,6 +11,7 @@ general:
   scale_pe: true
   scale_variances: false
   simulation_times: null
+  add_volume_terms: true
 parameter_estimator:
   confidence: null
   covariance: false

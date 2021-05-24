@@ -49,7 +49,7 @@ class fe_initialize(object):
                   inputs=None,
                   inputs_sub=None,
                   jump_times=None,
-                  jump_states=None
+                  jump_states=None,
                   ):
         """
         The `the paran name` might be a list of strings or a single string
@@ -113,6 +113,10 @@ class fe_initialize(object):
         
         self.model_orig = model_orig
         self.model_ref = src_mod.clone()
+        
+        self.volume_name = self.__var.volume_name
+        if self.volume_name is None:
+            raise ValueError('A volume name must exist')
 
         time_index = None
         for i in self.model_ref.component_objects(ContinuousSet):
@@ -325,10 +329,7 @@ class fe_initialize(object):
         # inputs_sub['some_var'] = ['index0', 'index1', ('index2a', 'index2b')]
  
         self.inputs_sub = inputs_sub
-        #print(times.name)
         #print([i.name for i in get_index_sets(getattr(self.model_ref, 'Dose'))])
-        
-        #print(times.display())
         
         if self.inputs_sub is not None:
             for key in self.inputs_sub.keys():
@@ -362,6 +363,27 @@ class fe_initialize(object):
         if hasattr(self.model_ref, self.__var.model_constant):
             for param, obj in getattr(self.model_ref, self.__var.model_constant).items():
                 obj.fix()
+                
+        # if hasattr(self.model_ref, self.__var.algebraic):
+        #     model_var_obj = getattr(self.model_ref, self.__var.algebraic)
+        #     for k in ['f']:
+        #         if isinstance(k, str) or isinstance(k, int) or isinstance(k, tuple):
+        #             k = (k,) if not isinstance(k, tuple) else k
+        #         else:
+        #             raise RuntimeError("{} is not a valid index".format(k))
+        #         for t in times:
+        #             print(model_var_obj.display())
+        #             model_var_obj[(t,) + k].fix()
+            
+            
+            # for param, obj in getattr(self.model_ref, self.__var.algebraic).items():
+            #     print(param)
+            #     print(obj)
+            #     if param[1] == 'f' or param[1] == 'Csat':
+            #         for t in times:
+            #             print(t, param[1])
+            #             obj[(t,) + (param[1],)].fix()
+
 
         # : Check n vars and m equations
         (n, m) = reconcile_nvars_mequations(self.model_ref)
@@ -369,6 +391,8 @@ class fe_initialize(object):
             raise Exception("Inconsistent problem; n={}, m={}".format(n, m))
         self.jump = False
 
+ 
+        self.con_num = 0
         #print('INIT of FES finished')
 
     def load_initial_conditions(self, init_cond=None):
@@ -493,7 +517,7 @@ class fe_initialize(object):
         """
         time_set_ref = getattr(self.model_ref, self.time_set)
         time_set_orig = getattr(self.model_orig, self.time_set)
-       
+        
         for model_ref_var in self.model_ref.component_objects(Var, active=True):
             model_orig_var = getattr(self.model_orig, model_ref_var.name)
             if model_ref_var.name in self.weird_vars:
@@ -545,73 +569,148 @@ class fe_initialize(object):
             points. It creates the constraint and replaces the variable in the
             original ode equations.
             """
-            num = 0
             vs = ReplacementVisitor()
             for model_var, dosing_point_list in self.dosing_points.items():
-                for dosing_point in dosing_point_list:   
-                    self.jump_fe, self.jump_cp = fe_cp(time_set_orig, dosing_point.time)
+                
+                for dosing_point in dosing_point_list:
                     
+                    num = self.con_num
+                    #print(f'Num is {num}')
+                    #print(dosing_point)
+                    self.jump_fe, self.jump_cp = fe_cp(time_set_orig, dosing_point.time)
+                    comp_dict = self.make_comp_list() 
+                
                     if fe == self.jump_fe+1:
-                        con_name = f'd{model_var}dt_disc_eq'
-                        varname = f'{model_var}_dummy_{num}'
                         
-                        # This is the constraint you want to change (add dummy for the model_var)
-                        model_con_obj = getattr(self.model_orig, con_name)
+                        for comp_tuple in comp_dict:
+                            model_var = comp_tuple[0]
+                            comp = comp_tuple[1]
+                            #print(f'Num in loop: {self.con_num}')
+                            #print(f'Updating component: {comp}')
+                            con_name = f'd{model_var}dt_disc_eq'
+                            varname = f'{model_var}_dummy_{self.con_num}'
+                            conc_delta = self.concentration_calc(dosing_point)
+                            
+                            # This is the constraint you want to change (add dummy for the model_var)
+                            model_con_obj = getattr(self.model_orig, con_name)
+                            
+                            # Adding some kind of constraint to the list
+                            self.model_orig.add_component(f'{model_var}_dummy_eq_{self.con_num}_{comp}', ConstraintList())
+                            model_con_objlist = getattr(self.model_orig, f'{model_var}_dummy_eq_{self.con_num}_{comp}')
+                            
+                            # Adding a variable (no set) with dummy name to model
+                            self.model_orig.add_component(varname, Var([0]))
+                            
+                            # vdummy is the var_obj of the Var you just made
+                            vdummy = getattr(self.model_orig, varname)
+                            
+                            # this is the variable that will replace the other
+                            vs.change_replacement(vdummy[0])
+                            
+                            # adding a parameter that is the jump at dosing_point.step (the size or change in the var)
+                            self.model_orig.add_component(f'{model_var}_jumpdelta{self.con_num}_{comp}', Param(initialize=conc_delta[comp]))
+                            
+                            # This is the param you just made
+                            jump_param  = getattr(self.model_orig, f'{model_var}_jumpdelta{self.con_num}_{comp}')
+                            
+                            # This is where the new concentrations need to be calculated - start with A
+                            # jump_param is what needs to be modified
+                            #print(f'{model_var}_jumpdelta{self.con_num}_{comp}')
+                            
+                            # Constraint setting the variable equal to the step size
+                            exprjump = vdummy[0] - getattr(self.model_orig, model_var)[(dosing_point.time,) + (comp,)] == jump_param
+                            #print(f'this is the new expr: {exprjump.to_string()}')
+                            
+                            # Add the new constraint to the original model
+                            self.model_orig.add_component(f'jumpdelta_expr{self.con_num}_{comp}', Constraint(expr=exprjump))
+                            
+                            for kcp in range(1, self.ncp + 1):
+                                curr_time = t_ij(time_set_orig,self.jump_fe + 1, kcp)
+                                idx = (curr_time,) + (comp,)
+                                
+                                model_con_obj[idx].deactivate()
+                                var_expr = model_con_obj[idx].expr
+                                
+                                #print(var_expr.to_string())
+                                
+                                suspect_var = var_expr.args[0].args[1].args[0].args[0].args[1]
+                                
+                                #print(f'sus var: {suspect_var}')
+                                
+                                vs.change_suspect(id(suspect_var))  #: who to replace
+                                e_new = vs.dfs_postorder_stack(var_expr)  #: replace
+                                
+                                #print(e_new.to_string())
+                                
+                                model_con_obj[idx].set_value(e_new)
+                                
+                                #print('This is the model_con_obj:')
+                                #print(model_con_obj[idx].expr.to_string())
+                                
+                                model_con_objlist.add(model_con_obj[idx].expr)
                         
-                        # Adding some kind of constraint to the list
-                        self.model_orig.add_component(f'{model_var}_dummy_eq_{num}', ConstraintList())
-                        model_con_objlist = getattr(self.model_orig, f'{model_var}_dummy_eq_{num}')
-                        
-                        # Adding a variable (no set) with dummy name to model
-                        self.model_orig.add_component(varname, Var([0]))
-                        
-                        # vdummy is the var_obj of the Var you just made
-                        vdummy = getattr(self.model_orig, varname)
-                        
-                        # this is the variable that will replace the other
-                        vs.change_replacement(vdummy[0])
-                        
-                        # adding a parameter that is the jump at dosing_point.step (the size or change in the var)
-                        self.model_orig.add_component(f'{model_var}_jumpdelta{num}', Param(initialize=dosing_point.step))
-                        
-                        # This is the param you just made
-                        jump_param  = getattr(self.model_orig, f'{model_var}_jumpdelta{num}')
-                        
-                        # Constraint setting the variable equal to the step size
-                        exprjump = vdummy[0] - getattr(self.model_orig, model_var)[(dosing_point.time,) + (dosing_point.component,)] == jump_param
-                        #print(f'this is the new expr: {exprjump.to_string()}')
-                        
-                        # Add the new constraint to the original model
-                        self.model_orig.add_component(f'jumpdelta_expr{num}', Constraint(expr=exprjump))
-                        
-                        for kcp in range(1, self.ncp + 1):
-                            curr_time = t_ij(time_set_orig,self.jump_fe + 1, kcp)
-                            idx = (curr_time,) + (dosing_point.component,)
+                            self.con_num += 1
+                         
+    
+    def make_comp_list(self):
+        """Creates a list of tuples to pair model variables with component
+        and volume variables
+        
+        :return list comp_dict: A list of tuples
+        
+        """
+        comp_dict = []
+        for comp in self.model_orig.mixture_components.keys():
+            comp_dict.append((self.__var.concentration_model, comp))
+        comp_dict.append((self.__var.state_model, self.volume_name))
+        return comp_dict
                             
-                            #print(model_con_obj[idx])
-                            
-                            model_con_obj[idx].deactivate()
-                            var_expr = model_con_obj[idx].expr
-                            
-                            #print(var_expr.to_string())
-                            
-                            suspect_var = var_expr.args[0].args[1].args[0].args[0].args[1]
-                            
-                            #print(f'sus var: {suspect_var}')
-                            
-                            vs.change_suspect(id(suspect_var))  #: who to replace
-                            e_new = vs.dfs_postorder_stack(var_expr)  #: replace
-                            
-                            #print(e_new.to_string())
-                            
-                            model_con_obj[idx].set_value(e_new)
-                            
-                            #print('This is the model_con_obj:')
-                            #print(model_con_obj[idx].expr.to_string())
-                            
-                            model_con_objlist.add(model_con_obj[idx].expr)
-                    num += 1
-                            
+    
+    def concentration_calc(self, dosing_point):
+        """This method calculates the changes in the concentration when 
+        adding a volume of substance with specified concentrations of species
+        
+        :param DosingPoint dosing_point: Takes a dosing point object
+        
+        :return dict delta_conc: A dict of tuples with the component and 
+          step change in concentration. This includes the volume step too.
+        
+        .. note::
+            
+            This only takes a single species at the moment. Use multiple dosing
+            points if you need to add mixtures at the same point.
+            
+        """
+        time_set_orig = getattr(self.model_orig, self.time_set)
+        
+        # Get the current time point
+        curr_time = t_ij(time_set_orig, self.jump_fe + 1, 1)
+        
+        # Get the current volume
+        vol = getattr(self.model_orig, self.__var.state_model)[(curr_time,) + (self.volume_name,)].value
+        
+        # Get the current concentrations
+        conc = {}
+        for comp in list(self.model_orig.mixture_components.keys()):
+            conc[comp] = getattr(self.model_orig, self.__var.concentration_model)[(curr_time,) + (comp,)].value
+
+        # Calculate the moles of each substance at the current point
+        moles = {}
+        for comp in conc:
+            moles[comp] = vol * conc[comp]
+
+        conc_change = dosing_point.conc[0]
+        vol_change = dosing_point.vol[0]
+        
+        # Add the dosing point to the moles
+        moles[dosing_point.component] += conc_change * vol_change
+        vol += vol_change
+        delta_conc = {k: v/vol - conc[k] for k, v in moles.items()}
+        delta_conc[self.volume_name] = vol_change
+        
+        return delta_conc
+        
+                    
     def adjust_h(self, fe):
         # type: (int) -> None
         """Adjust the h_i parameter of the initializing model.

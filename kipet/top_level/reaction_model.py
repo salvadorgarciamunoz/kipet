@@ -1,5 +1,5 @@
 # Standard library imports
-import collections
+#import collections
 import copy
 import os
 import pathlib
@@ -8,15 +8,15 @@ import sys
 # Third party imports
 import numpy as np
 import pandas as pd
-from pyomo.core.base.var import IndexedVar
-from pyomo.dae.diffvar import DerivativeVar
+#from pyomo.core.base.var import IndexedVar
+#from pyomo.dae.diffvar import DerivativeVar
 from pyomo.environ import ConcreteModel, Set, Var
 from pyomo.environ import units as pyo_units
 
 # Kipet library imports
-import kipet.core_methods.data_tools as data_tools
+import kipet.kipet_io as io
 from kipet.common.interpolation import interpolate_trajectory
-from kipet.common.model_funs import step_fun
+#from kipet.common.model_funs import step_fun
 from kipet.core_methods.EstimabilityAnalyzer import EstimabilityAnalyzer
 from kipet.core_methods.EstimationPotential import (
     replace_non_estimable_parameters, rhps_method)
@@ -47,6 +47,7 @@ DEBUG=True #__var.DEBUG
 _print = Print(verbose=DEBUG)
 model_components = ['parameters', 'components', 'states', 'algebraics', 'constants', 'steps']
 version_number = '0.2.2'
+
 
 # This should be removed - no mixins!
 class ReactionModel(WavelengthSelectionMixins):
@@ -120,11 +121,10 @@ class ReactionModel(WavelengthSelectionMixins):
         >>> kipet_model = kipet.KipetModel()
     
     """
-
-    
     __var = VariableNames()
     
-    def __init__(self, name=None, unit_base=None):
+    
+    def __init__(self, name=None, unit_base=None, model=None):
         
         """
         Initialization of ReactionModel instance.
@@ -141,8 +141,13 @@ class ReactionModel(WavelengthSelectionMixins):
         
         # Variables initialized by user or KipetModel
         self.name = name if name is not None else 'Model-1'
-        self.unit_base = unit_base
         
+        if unit_base is not None:
+            self.unit_base = unit_base
+        else:
+            from kipet.top_level.unit_base import UnitBase
+            self.unit_base = UnitBase()
+            
         # This is used directly by the user for modifying spectral data
         self.spectra = None
         
@@ -179,7 +184,13 @@ class ReactionModel(WavelengthSelectionMixins):
         self._default_time_unit = 'seconds'
         self._allow_optimization = False
         self._G_data = {'G_contribution': None, 'Z_in': dict(), 'St': dict()}
+        self._step_list = dict()
+        self.__custom_volume_state = False
+        self.__volume_terms_added = False
         self.__var = VariableNames()
+        
+        if model is not None:
+            self._copy_from_model(model)
 
         
     def __repr__(self):
@@ -217,6 +228,39 @@ class ReactionModel(WavelengthSelectionMixins):
     
         return kipet_str
     
+    def _copy_from_model(self, model):
+        """This method copies various components from an existing Reaction
+        Model and sets the current model's attributes equal to these.
+        
+        :param ReactionModel model: The existing model from which to initialize
+        
+        :return: None
+        
+        """
+        if isinstance(model, ReactionModel):
+        
+            assign_list = [
+                "components",
+                "parameters",
+                "constants",
+                "algebraics",
+                "states",
+                "unit_base",
+                "settings",
+                "c",
+                "odes_dict",
+                "algs_dict",
+            ]
+
+            for item in assign_list:
+                if hasattr(model, item):
+                    setattr(self, item, getattr(model, item))
+
+        else:
+            raise ValueError("KipetModel can only add ReactionModel instances.")
+
+        return None
+    
     """Model Components"""
     
     def _make_set_up_model(self):
@@ -245,7 +289,7 @@ class ReactionModel(WavelengthSelectionMixins):
         if not hasattr(self, '_set_up_model'):
             self._make_set_up_model()
 
-        if hasattr(self._set_up_model, name):        
+        if hasattr(self._set_up_model, name) and name not in self._step_list:        
             raise ValueError('A component with this name has already been defined')
         
         setattr(self._set_up_model, f'{name}_indx', Set(initialize=[0]))
@@ -258,10 +302,10 @@ class ReactionModel(WavelengthSelectionMixins):
         else:
             con = 1
             margin = 6
-            print(f'Checking units for {name.rjust(margin)}: \t{units}')
-            comp_units = convert_single_dimension(self.unit_base.ur, units, self.unit_base.TIME_BASE)
+            # print(f'Checking units for {name.rjust(margin)}: \t{units}')
+            comp_units = convert_single_dimension(self.unit_base.ur, units, self.unit_base.time)
             con *= comp_units.m
-            comp_units = convert_single_dimension(self.unit_base.ur, str(comp_units.units), self.unit_base.VOLUME_BASE)
+            comp_units = convert_single_dimension(self.unit_base.ur, str(comp_units.units), self.unit_base.volume)
             con *= comp_units.m
             p_units = con*getattr(pyo_units, str(comp_units.units))
             comp_units = con*comp_units.units
@@ -304,7 +348,7 @@ class ReactionModel(WavelengthSelectionMixins):
                 bounds[1] *= con.m
             kwargs['bounds'] = (bounds) 
         
-        kwargs['unit_base'] = self.ub
+        kwargs['unit_base'] = self.unit_base
         kwargs['pyomo_var'] = par
         kwargs['model_var'] = model_var
         getattr(self, f'{comp_name}s').add_element(name, **kwargs)
@@ -332,6 +376,9 @@ class ReactionModel(WavelengthSelectionMixins):
         :rtype: pyomo.core.base.var._GeneralVarData
         
         """
+        if name == self.__var.volume_name:
+            raise AttributeError(f'{self.__volume_name} is a protected state name')
+            
         return self._add_model_component('parameter',
                                         1, 
                                         self.__var.model_parameter, 
@@ -365,6 +412,10 @@ class ReactionModel(WavelengthSelectionMixins):
         :rtype: pyomo.core.base.var._GeneralVarData
         
         """
+        if name == self.__var.volume_name:
+            raise AttributeError(f'{self.__volume_name} is a protected state name')
+            
+        self.add_ode(name, 0)
         return self._add_model_component('component', 
                                         2, 
                                         self.__var.concentration_model, 
@@ -379,6 +430,11 @@ class ReactionModel(WavelengthSelectionMixins):
         defined by concentration. Note that this can only be used for states
         that are defined by two indicies (state and time, usually).
         
+        .. note::
+            
+            If you are attempting to enter in a custom volume state, see the
+            volume method for a more convenient method.
+        
         :param str name: The name of the state
         
         **Keyword Arguments**
@@ -389,11 +445,64 @@ class ReactionModel(WavelengthSelectionMixins):
         :param float variance: (Optional) Provide the parameter's variance
         :param str description: (Optional) Detailed description of the parameter
         :param bool known: Indicates whether the initial value is known
+        :param bool is_volume: Indicates if this state is the volume state
         
         :return: A representative Pyomo variable that can be used in expression building
         :rtype: pyomo.core.base.var._GeneralVarData
         
         """
+        is_volume = kwargs.pop('is_volume', False)
+        if is_volume:
+            if name != self.__var.volume_name:
+                print(f'Changing name of volume state from {name} to {self.__var.volume_name}')
+                name = self.__var.volume_name
+            self.__custom_volume_state = True
+            
+        if name == self.__var.volume_name and not is_volume:
+            raise AttributeError('V is a protected state name - change the \
+                                 VariableNames class if another name is needed')
+            
+        self.add_ode(name, 0)
+        return self._add_model_component('state', 
+                                        2, 
+                                        self.__var.state_model, 
+                                        name,
+                                        **kwargs)
+    
+    def volume(self, **kwargs):
+        """Create a volume state with a localized pyomo var
+        
+        This is a convenience method to change the default volume settings.
+        
+        KIPET considers states to be complementary states that are not 
+        defined by concentration. Note that this can only be used for states
+        that are defined by two indicies (state and time, usually).
+        
+        The name is the default volume name, usually V.
+        
+        **Keyword Arguments**
+        
+        :param float value: Initial value of the parameter
+        :param str units: (Optional) Sets the parameter units
+        :param tuple(float) bounds: (Optional) Provide parameter bounds
+        :param float variance: (Optional) Provide the parameter's variance
+        :param str description: (Optional) Detailed description of the parameter
+        :param bool known: Indicates whether the initial value is known
+        :param bool is_volume: Indicates if this state is the volume state
+        
+        :return: A representative Pyomo variable that can be used in expression building
+        :rtype: pyomo.core.base.var._GeneralVarData
+        
+        .. note::
+            
+            A volume state with name 'V' will be generated automatically. If
+            you want to use your own naming conventions, pass the is_volume
+            argument as True for your volume state.
+        
+        """
+        self.__custom_volume_state = True
+        name = self.__var.volume_name
+        self.add_ode(name, 0)
         return self._add_model_component('state', 
                                         2, 
                                         self.__var.state_model, 
@@ -419,6 +528,9 @@ class ReactionModel(WavelengthSelectionMixins):
         :rtype: pyomo.core.base.var._GeneralVarData
         
         """
+        if name == self.__var.volume_name:
+            raise AttributeError(f'{self.__volume_name} is a protected state name')
+            
         return self._add_model_component('constant', 
                                         1, 
                                         self.__var.model_constant, 
@@ -449,6 +561,9 @@ class ReactionModel(WavelengthSelectionMixins):
             ValueError: A fixed state requires data in order to fix a trajectory
         
         """
+        if name == self.__var.volume_name:
+            raise AttributeError(f'{self.__volume_name} is a protected state name')
+            
         if 'data' not in kwargs:
             raise ValueError('A fixed state requires data in order to fix a trajectory')
         else:
@@ -458,22 +573,26 @@ class ReactionModel(WavelengthSelectionMixins):
                                              name, 
                                              **kwargs)
         
-    # def algebraic(self, name, **kwargs):
+        
+    def algebraic(self, name, **kwargs):
        
-    #     """Create a algebraic variable for fixed states
+        """Create a algebraic variable for fixed states
         
-    #     :param dict kwargs: The dictionary of keyword arguments for algebraic variables representing
-    #       fixed states (note: takes only those with two indicies)
-    #       see ModelComponents for more information. 
+        :param dict kwargs: The dictionary of keyword arguments for algebraic variables representing
+          fixed states (note: takes only those with two indicies)
+          see ModelComponents for more information. 
         
-    #     :return: The representative Pyomo variable that can be used in expression building
-    #     :rtype: pyomo.core.base.var._GeneralVarData 
-    #     """
-    #     return self._add_model_component('algebraic', 
-    #                                     2, 
-    #                                     self.__var.algebraic, 
-    #                                     name,
-    #                                     **kwargs)
+        :return: The representative Pyomo variable that can be used in expression building
+        :rtype: pyomo.core.base.var._GeneralVarData 
+        """
+        if name == self.__var.volume_name:
+            raise AttributeError(f'{self.__volume_name} is a protected state name')
+            
+        return self._add_model_component('algebraic', 
+                                        2, 
+                                        self.__var.algebraic, 
+                                        name,
+                                        **kwargs)
         
     
     # def variable(self, *args, **kwargs):
@@ -511,6 +630,9 @@ class ReactionModel(WavelengthSelectionMixins):
         :return: The representative Pyomo variable that can be used in expression building
         :rtype: pyomo.core.base.var._GeneralVarData
         """
+        if name == self.__var.volume_name:
+            raise AttributeError(f'{self.__volume_name} is a protected state name')
+            
         self._has_step_or_dosing = True
         if not hasattr(self, '_step_list'):
             self._step_list = {}
@@ -529,12 +651,13 @@ class ReactionModel(WavelengthSelectionMixins):
     
     """Dosing profiles"""
     
-    def add_dosing_point(self, component, time, step):
+    def add_dosing_point(self, component, time, conc, vol):
         """Add a dosing point for a component at a specific time with a given amount.
         
         :param str component: The name of the component being dosed
         :param float time: The time when the dosing occurs
-        :param float step: The amount of the component added
+        :param float relative: The strength (density, concentration)
+        :param str absolute: The amount (g, vol)
         
         :return: None
         
@@ -544,7 +667,19 @@ class ReactionModel(WavelengthSelectionMixins):
                            }
         if component not in self.components.names:
             raise ValueError('Invalid component name')
-        dosing_point = DosingPoint(component, time, step)
+            
+        # Unit changes here:
+        c1 = conc[0]*self.unit_base.ur(conc[1])
+        c2 = 1*self.unit_base.ur(self.unit_base.concentration)
+        v1 = vol[0]*self.unit_base.ur(vol[1])
+        v2 = 1*self.unit_base.ur(self.unit_base.volume)
+
+        conc_converted = c1.to(c2)
+        conc_ = (conc_converted.m, str(conc_converted.u))
+        vol_converted = v1.to(v2)
+        vol_ = (vol_converted.m, str(vol_converted.u))
+        
+        dosing_point = DosingPoint(component, time, conc_, vol_)
         model_var = conversion_dict[self.components[component].state]
         if self._dosing_points is None:
             self._dosing_points = {}
@@ -556,22 +691,16 @@ class ReactionModel(WavelengthSelectionMixins):
         self._has_step_or_dosing = True
         
         return None
-        
-    # def add_dosing(self, n_steps=1):
-    #     """At the moment, this is needed to set up the dosing variable
-    #     """
-    #     self._has_step_or_dosing = True
-    #     self._number_of_steps = n_steps
-    
-    #     return None
-    
     
     def _call_fe_factory(self):
         """A wrapper for this simulator method, but better"""
 
-        self.simulator.call_fe_factory({
-            self.__var.dosing_variable: [self.__var.dosing_component]},
-            self._dosing_points)
+        self.simulator.call_fe_factory(
+            {
+                self.__var.dosing_variable: [self.__var.dosing_component],
+            },
+            self._dosing_points
+        )
 
         return None
     
@@ -605,11 +734,11 @@ class ReactionModel(WavelengthSelectionMixins):
     
         """        
         name = kwargs.get('name', None)
-        time_scale = kwargs.get('time_scale', self.unit_base.TIME_BASE)
+        time_scale = kwargs.get('time_scale', self.unit_base.time)
         
         time_conversion = 1
-        if time_scale != self.unit_base.TIME_BASE:
-            time_conversion = self.ub.ur(time_scale).to(self.unit_base.TIME_BASE).m
+        if time_scale != self.unit_base.time:
+            time_conversion = self.unit_base.ur(time_scale).to(self.unit_base.time).m
         
         if len(args) > 0:
             name = args[0]
@@ -625,7 +754,7 @@ class ReactionModel(WavelengthSelectionMixins):
             calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
             filename = pathlib.Path(calling_file_name).joinpath(filename)
             kwargs['file'] = filename
-            dataframe = data_tools.read_file(filename)
+            dataframe = io.read_file(filename)
         elif filename is None and data is not None:
             dataframe = data
         else:
@@ -699,7 +828,7 @@ class ReactionModel(WavelengthSelectionMixins):
 
     """Template building"""
 
-    def set_times(self, start_time=None, end_time=None):
+    def set_time(self, time_span=None):
         """Add times to model for simulation
         
         If performing simulations, the start and end times need to be provided.
@@ -714,11 +843,10 @@ class ReactionModel(WavelengthSelectionMixins):
         :return: None
         
         """
+        if time_span is None:
+            raise ValueError('Time span needs to be a number')
         
-        if start_time is None or end_time is None:
-            raise ValueError('Time needs to be a number')
-        
-        self.settings.general.simulation_times = (start_time, end_time)
+        self.settings.general.simulation_times = (0, time_span)
         return None
     
     
@@ -796,7 +924,7 @@ class ReactionModel(WavelengthSelectionMixins):
         expr = Expression(ode_var, expr)
         self.odes_dict.update(**{ode_var: expr})
         
-        return None
+        return expr.expression
     
     
     def add_odes(self, ode_fun):
@@ -828,6 +956,7 @@ class ReactionModel(WavelengthSelectionMixins):
         """Builds the ODEs by passing them to the ODEExpressions class
         
         """
+        # Add ODEs to be built
         odes = ODEExpressions(self.odes_dict)
         setattr(self, 'ode_obj', odes)
         self.odes = odes.exprs
@@ -847,6 +976,41 @@ class ReactionModel(WavelengthSelectionMixins):
 
         return None
     
+    def add_algebraic(self, alg_var, expr):
+        """Method to add an algebraic expression to the ReactionModel
+        
+        Args:
+            alg_var (str): state variable
+            
+            expr (Expression): expression for algebraic equation as Pyomo
+                Expression
+            
+        Returns:
+            None
+        
+        """
+        expr = Expression(alg_var, expr)
+        expr.check_division()
+        self.algs_dict.update(**{alg_var: expr})
+    
+        return None
+    
+    def add_algebraics(self, alg_fun):
+        """Takes in a dict of algebraic expressions and sends them to
+        add_algebraic
+        
+        Args:
+            algebraics (dict): dict of algebraic expressions
+             
+        Returns:
+            None
+        """
+        if isinstance(alg_fun, dict):
+            for key, value in alg_fun.items():
+                self.add_algebraic(key, value)
+        
+        return None
+
       
     def add_objective_from_algebraic(self, algebraic_var):
         """Declare an algebraic variable that is to be used in the objective
@@ -866,6 +1030,26 @@ class ReactionModel(WavelengthSelectionMixins):
         return None
     
     
+    def make_model(self):
+        """Method to generate the base model for estimability analysis.
+        
+        This creates a base model from the ReactionModel object.
+        
+        .. warning::
+            This is currently a fix to make some of the estimability methods work.
+            They are outdated and have not been updated to the new format completely.
+            Thus, this method is not meant to be used normally.
+            
+        :return: A base Pyomo model
+        :rtype: ConcreteModel
+        
+        """
+        if not hasattr(self, '_model') or self._model is None:
+            model_instance = self._create_pyomo_model()
+            
+        return model_instance
+    
+    
     def _populate_template(self, *args, **kwargs):
         """Method handling all of the preparation for the TB
         
@@ -877,7 +1061,16 @@ class ReactionModel(WavelengthSelectionMixins):
         if not self._template_populated:
         
             with_data = kwargs.get('with_data', True)
-                    
+    
+            # Add a volume state if not already done so
+            if not self.__custom_volume_state:
+                self.volume(value=1, units=self.unit_base.volume)
+            
+            # Check if adding volume terms to ODEs is True
+            if self.settings.general.add_volume_terms:
+                if not self.__flag_odes_built:
+                    self.add_volume_terms()
+                                
             if len(self.states) > 0:
                 self._builder.add_model_element(self.states)
             
@@ -1094,11 +1287,10 @@ class ReactionModel(WavelengthSelectionMixins):
         if self._has_step_or_dosing:
             dis_method = 'fe'
         
-        
         # Choose the proper simulator object
         simulation_class = PyomoSimulator
-        # if dis_method == 'fe':
-        #     simulation_class = FESimulator
+        if dis_method == 'fe':
+             simulation_class = FESimulator
         
         self._s_model = self._create_pyomo_model(is_simulation=True)
         
@@ -1111,7 +1303,11 @@ class ReactionModel(WavelengthSelectionMixins):
                     param.fix()
         
         # Initialize the simulator instance
-        simulator = simulation_class(self._s_model)
+        if dis_method == 'fe':
+            simulator = simulation_class(self._s_model)
+
+        else:
+            simulator = simulation_class(self._s_model)
 
         # Discretize the model
         simulator.apply_discretization(self.settings.collocation.method,
@@ -1702,11 +1898,8 @@ class ReactionModel(WavelengthSelectionMixins):
         
         if variable is None:
             vars_to_init = get_vars(estimator.model)
-        
-            _print(f'The vars_to_init: {vars_to_init}')
             for var in vars_to_init:
-                if hasattr(source, var):    
-                    _print(f'Updating variable: {var}')
+                if hasattr(source, var):
                     method(var, self._get_source_data(source, var))   
         else:
             method(variable, self._get_source_data(source, variable))
@@ -1912,7 +2105,7 @@ class ReactionModel(WavelengthSelectionMixins):
         self._G_contribution = variant
         
         if St is None:
-            St = self.build_stoich_matrix(as_dict=True)
+            St = self.stoich_from_reactions(as_dict=True)
         
         if Z_in is None:
             Z_in = {}
@@ -1942,6 +2135,9 @@ class ReactionModel(WavelengthSelectionMixins):
         :rtype: tuple(list, list)
         
         """
+        if not hasattr(self, '_model') or self._model is None:
+            self._create_pyomo_model()
+        
         # Here we use the estimability analysis tools
         self.e_analyzer = EstimabilityAnalyzer(self._model)
         # Problem needs to be discretized first
@@ -2008,6 +2204,39 @@ class ReactionModel(WavelengthSelectionMixins):
     #     else:
     #         pass
         
+
+    def make_reaction_table(self, stoich_coeff, rxns):
+        
+        df = pd.DataFrame()
+        for k, v in stoich_coeff.items():
+            df[k] = v
+        
+        df.index = rxns
+        self.reaction_table = df
+    
+    def reaction_block(self, stoich_coeff, rxns):
+        # make a reactions_dict in __init__ and update here
+        """Method to allow for simple construction of a reaction system
+        
+        Args:
+            stoich_coeff (dict): dict with components as keys and stoichiometric
+                coeffs is lists as values:
+                    example: stoich_coeff['A'] = [-1, 0 , 1] etc
+                
+            rxns (list): list of algebraics that represent reactions
+            
+        Returns:
+            r_dict (dict): dict of completed reaction expressions
+            
+        """
+        self.make_reaction_table(stoich_coeff, rxns)
+        
+        r_dict = {}
+        
+        for com in self.components.names: 
+            r_dict[com] = sum(stoich_coeff[com][i] * self.ae(r) for i, r in enumerate(rxns)) 
+    
+        return r_dict
     
     def _create_stoich_dataframe(self):
         """Builds the dataframe used to hold the stoichiometric matrix
@@ -2026,36 +2255,68 @@ class ReactionModel(WavelengthSelectionMixins):
         return dr
     
     
-    def reactions_from_stoich(self, St):
+    def reactions_from_stoich(self, St, add_odes=True):
         """The user can provide a stoichiometric matrix and have the reaction
         ODEs generated from it
         
         :param dict St: A dictionary with lists of stoichiometric coefficients
+        :param bool add_odes: Indicates if the ODEs can be added to the ReactionModel,
+          if not, they will be returned in a dictionary.
         
+        .. note::
+            If you need to add something else to the ODEs, such as feeds or step
+            functions, then the ODEs need to be returned as a dict, modified, and
+            added to ReactionModel using the add_odes method.
+            
         :Example:
             >>> rA = r1.add_reaction('rA', k1*A, description='Reaction A')
             >>> rB = r1.add_reaction('rB', k2*B, description='Reaction B')
             >>> stoich_data = {'rA': [-1, 1, 0], 'rB': [0, -1, 1]}
-            >>> reaction_model.reactions_from_stoich(stoich_data)
+            >>> reaction_model.reactions_from_stoich(stoich_data, 'reaction')
             
-        :return: None
+        :return: dict of reaction expressions (for further additions)
+        :rtype: dict
         
         """
         dr = self._create_stoich_dataframe()
         comps = self.components.names
         
-        for rxn, s_list in St.items():
-            dr.loc[:, rxn] = s_list
+        # Check the input
+        _is_comp = True
+        _is_reaction = True
+        
+        for key in St.keys():
+            if not key in self.components.names:
+                _is_comp = False
+                break
+        for key in St.keys():
+            if not key in self.algebraics.get_match('is_reaction', True):
+                _is_reaction = False
+                break
+        
+        if not _is_comp and not _is_reaction:
+            raise ValueError('There is something wrong with the stoichiometric matrix provided')
+        
+        if _is_reaction:
+            for rxn, s_list in St.items():
+                dr.loc[:, rxn] = s_list
+
+        else:
+            for comp, s_list in St.items():
+                dr.loc[comp, :] = s_list
 
         # Now we have the dr dataframe, put together the reactions
+        odes_dict = {}
         for comp in comps:
             ode = 0
             for rxn in dr.columns:
                 ode += dr.loc[comp, rxn]*self.algs_dict[rxn].expression
                 
-            self.add_ode(comp, ode)
+            odes_dict[comp] = ode
+            if add_odes:
+                self.add_ode(comp, ode)
 
-        return None
+        return odes_dict if not add_odes else None
 
     def stoich_from_reactions(self, as_dict=False):
         """Generate a dictionary or dataframe representing the stoichiometric
@@ -2167,38 +2428,47 @@ class ReactionModel(WavelengthSelectionMixins):
         else:
             return dr
         
-    # def make_reaction_table(self, stoich_coeff, rxns):
         
-    #     df = pd.DataFrame()
-    #     for k, v in stoich_coeff.items():
-    #         df[k] = v
+    def add_volume_terms(self):
+        """This method will automatically update all component ODEs with 
+        terms that account for volume changes (i.e. batch reactors with
+        component feeds)
         
-    #     df.index = rxns
-    #     self.reaction_table = df
-    
-    # def reaction_block(self, stoich_coeff, rxns):
-    #     # make a reactions_dict in __init__ and update here
-    #     """Method to allow for simple construction of a reaction system
+        This method will check if the provided volume_state is found within
+        the state block of the ReactionModel. If not, an error will be raised.
         
-    #     Args:
-    #         stoich_coeff (dict): dict with components as keys and stoichiometric
-    #             coeffs is lists as values:
-    #                 example: stoich_coeff['A'] = [-1, 0 , 1] etc
-                
-    #         rxns (list): list of algebraics that represent reactions
+        If the state is found, the state and its ODE will be used to develop
+        terms to take the volume changes into account. For example:
+        ::
             
-    #     Returns:
-    #         r_dict (dict): dict of completed reaction expressions
+            dVdt/V * C
             
-    #     """
-    #     self.make_reaction_table(stoich_coeff, rxns)
+        where dVdt is the volume ODE, V is the current volume state, and C is
+        the component concentration.
         
-    #     r_dict = {}
+        :param str volume_state: The name of the volume state
         
-    #     for com in self.components.names: 
-    #         r_dict[com] = sum(stoich_coeff[com][i] * self.ae(r) for i, r in enumerate(rxns)) 
+        :return: None
+        """
+        volume_state = self.__var.volume_name
+        
+        if volume_state not in self.states.names:
+            raise AttributeError(f"State {volume_state} not found in the model.")
+            
+        if volume_state not in self.odes_dict:
+            raise ValueError(f'The state {volume_state} does not have an ODE.')
+        
+        dVdt = self.odes_dict[volume_state].expression
+        V = self.states[volume_state].pyomo_var
+        
+        # Add the volume change to each component ODE
+        for com in self.components.names:
+            self.odes_dict[com].expression -= dVdt/V*self.components[com].pyomo_var
+        
+        self.__volume_terms_added = True
+        
+        return None
     
-    #     return r_dict
     
     @property
     def models(self):
@@ -2378,10 +2648,10 @@ class ReactionModel(WavelengthSelectionMixins):
             
             key_comp = self.get_state(key)
             if orig_units:
-                convert_to = ' / '.join([str(key_comp.units_orig), self.unit_base.TIME_BASE])    
+                convert_to = ' / '.join([str(key_comp.units_orig), self.unit_base.time])    
                 key_comp.use_orig_units = True
             else:
-                convert_to = ' / '.join([str(key_comp.units), self.unit_base.TIME_BASE])
+                convert_to = ' / '.join([str(key_comp.units), self.unit_base.time])
             
             expr.check_expression_units(convert_to=str(convert_to), scalar=1)
         
@@ -2498,6 +2768,22 @@ class ReactionModel(WavelengthSelectionMixins):
         """
         return self.odes_dict[ode_var].expression
 
+    def odes_expr(self):
+        """This method returns a dict of the reactions such that they can be
+        augmented or otherwise edited
+        
+        :return: dictionary of odes expressions
+        :rtype: dict
+        
+        """
+        ode_dict = {}
+        
+        for key, value in self.odes_dict.items():
+            ode_dict[key] = value.expression
+            
+        return ode_dict
+
+
     def get_state(self, comp):
         """Generic method to get the component or state variable object
         
@@ -2524,19 +2810,22 @@ class ReactionModel(WavelengthSelectionMixins):
         if comp in self.algebraics:
             return self.algebraics[comp]
         
-    
-# def _set_directory(model_object, filename, abs_dir=False):
-#     """Wrapper for the set_directory method. This replaces the awkward way
-#     of ensuring the correct directory for the data is used.
-    
-#     Args:
-#         filename (str): the file name to be formatted
+    def diagnostics(self, model):
+        """Tool to show the variables and constraints in a specific model
         
-#     Returns:
-#         file_path (pathlib Path): The absolute path of the given file
-#     """
-#     #directory = model_object.settings.general.data_directory
-#     directory = pathlib.Path.cwd()
-#     file_path = pathlib.Path(directory).joinpath(filename)
+        :param str model: The ReactionModel model
+        
+        :return: None
+        
+        """
+        from pyomo.environ import Var, Constraint
+        print('Model Variables:')
+        for element in getattr(self, model).component_objects(Var):
+            print(f'{element}: {len(element)}')
+            
+        print('\nModel Constraints:')
+        for element in getattr(self, model).component_objects(Constraint):
+            print(f'{element}: {len(element)}')
     
-#     return file_path
+        return None
+    

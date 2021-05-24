@@ -1,12 +1,18 @@
-import bisect
-import math
+"""
+Simulator class
 
+"""
+# Standard library imports
+import bisect
+
+# Third party imports
 import numpy as np
-import scipy
+import pandas as pd
 from pyomo.dae import *
 from pyomo.environ import *
 
-from kipet.core_methods.ResultsObject import *
+# Kipet library imports
+#from kipet.core_methods.ResultsObject import ResultsObject
 
 
 def interpolate_trajectory(t, tr):

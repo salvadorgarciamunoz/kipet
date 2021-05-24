@@ -187,6 +187,9 @@ class Expression():
         
         
         else:
+            if isinstance(expr, (int, float)):
+                return None
+
             _print(f'The number of terms in this expression is: {len(expr.args)}\n')
             
             for i, term in enumerate(expr.args):

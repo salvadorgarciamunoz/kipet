@@ -16,10 +16,12 @@ __author__ = 'Michael Short, Kevin McBride'  #: July 2018 - January 2021
 
 class FESimulator(PyomoSimulator):
     
-    """This class is just an interface that allows the user of Kipet to easily
+    """This class is just an interface that allows Kipet to easily
     implement the more general fe_factory class designed by David M. Thierry 
     without having to re-write the model to fit those arguments.
+    
     """
+    
     def __init__(self, model):
         """It takes in a standard Kipet/Pyomo model, rewrites it and calls 
         fe_factory. More information on fe_factory is included in that class
@@ -37,8 +39,7 @@ class FESimulator(PyomoSimulator):
         self.p_sim = PyomoSimulator(model)
         self.model = self.p_sim.model
         self.param_dict = {}
-        self.param_name = self.__var.model_parameter
-        
+        self.param_name = self.__var.model_parameter        
         # setattr(self.model, 'test_var', Var(self.model.alltime,
         #                                       [0],
         #                                       initialize=1.0))
@@ -47,14 +48,15 @@ class FESimulator(PyomoSimulator):
         self.c_sim = self.model.clone()
         
         # Check all parameters are fixed before simulating
-        for param_obj in getattr(self.model, self.__var.model_parameter).values():
-            if not param_obj.fixed:
-                param_obj.fixed = True
-        # Build the parameter dictionary in the format that fe_factory uses    
-        model_var = self.__var.model_parameter
-        
-        for k, v in getattr(self.model, model_var).items():
-            self.param_dict[model_var, k] = v.value
+        if hasattr(self.model, self.__var.model_parameter):
+            for param_obj in getattr(self.model, self.__var.model_parameter).values():
+                if not param_obj.fixed:
+                    param_obj.fixed = True
+            # Build the parameter dictionary in the format that fe_factory uses    
+            model_var = self.__var.model_parameter
+            
+            for k, v in getattr(self.model, model_var).items():
+                self.param_dict[model_var, k] = v.value
 
         #Build the initial condition dictionary in the format that fe_factory uses
         vars_to_init = [self.__var.concentration_model,
@@ -106,7 +108,8 @@ class FESimulator(PyomoSimulator):
                              init_con="init_conditions_c",
                              param_name=self.param_name,
                              param_values=self.param_dict,
-                             inputs_sub=self.inputs_sub)
+                             inputs_sub=self.inputs_sub,
+                             )
     
         init.load_initial_conditions(init_cond=self.ics_)
 

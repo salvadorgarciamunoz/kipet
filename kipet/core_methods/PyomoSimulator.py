@@ -179,8 +179,8 @@ class PyomoSimulator(Simulator):
     def fix_from_trajectory(self, variable_name, variable_index, trajectories, verbose=False):
 
         if variable_name in  self.__var.modeled_states:
-            
-            raise NotImplementedError("Fixing state variables is not allowd. Only algebraics can be fixed")
+            pass
+            # raise NotImplementedError("Fixing state variables is not allowd. Only algebraics can be fixed")
 
         single_traj = trajectories[variable_index]
         sim_alltimes = sorted(self._alltimes)

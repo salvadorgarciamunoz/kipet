@@ -1,40 +1,31 @@
 """
-Results from the various KIPET models are stored here
+Convenience class to hold the results from the Pyomo models after simulation
+and parameter fitting.
+
 """
-# Thirdparty library imports
-import datetime
 # Standard library imports
-import itertools
-import time
-from pathlib import Path
 
+# Third party imports
 import numpy as np
-import pandas as pd
-from pyomo.core import *
-from pyomo.core.base.PyomoModel import ConcreteModel
-from pyomo.environ import *
 
-from kipet.common.read_write_tools import df_from_pyomo_data
 # Kipet library imports
-from kipet.post_model_build.pyomo_model_tools import (get_index_sets,
-                                                      get_result_vars,
-                                                      get_vars, get_vars_block,
-                                                      index_set_info)
+from kipet.post_model_build.pyomo_model_tools import convert, get_vars
 
-# This needs deletion
+# This needs deletion at some point!
 result_vars = ['Z', 'C', 'Cm', 'K', 'S', 'X', 'dZdt', 'dXdt', 'P', 'Pinit', 'sigma_sq', 'estimable_parameters', 'Y', 'UD', 'step']
 
 class ResultsObject(object):
-    """Container for all of the results. Includes plotting functions"""
+    """Container for all of the results from the Pyomo model"""
     
     def __init__(self):
         """
         A class to store simulation and optimization results.
+        
+        The ResultsObject instance takes no initial parameters. This will most
+        likely change in the near future.
+        
         """
-        # Data series
-        self.generated_datetime = datetime.datetime
-        self.results_name = None
-        self.solver_statistics = {}
+        pass
 
     def __str__(self):
         string = "\nRESULTS\n"
@@ -54,83 +45,61 @@ class ResultsObject(object):
         return self.__str__()
 
     def compute_var_norm(self, variable_name, norm_type=np.inf):
-        var = getattr(self,variable_name)
+        var = getattr(self, variable_name)
         var_array = np.array(var)
         return np.linalg.norm(var_array,norm_type)
-    
-    @staticmethod
-    def prepare_data_for_init(model, var):
-        """Convert results dict into df for initialization
-        This is used for data with dimensions larger than 2
+
+    def load_from_pyomo_model(self, model, to_load=None):
+        """Load variables from the pyomo model into various formats.
+        
+        This will set the attribute of all the model variables in a specific 
+        format depending on the dimensionality of the variable into the 
+        ResultsObject.
+        
+        :param ConcreteModel model: Model of the reaction system
+        
+        :return: None
+        
         """
-        #try:
-        if len(var) == 0:
-            return None
-            
-        index_sets = get_index_sets(var)
-        index_dict = index_set_info(index_sets)
-        print(var)
-        print(index_dict)
-        
-        
-        time_set = index_sets[index_dict['cont_set'][0]].name
-        component_indecies = index_dict['other_set']
-        component_sets = [index_sets[i].name for i in component_indecies]
-        index = getattr(model, time_set).value_list
-        columns = list(itertools.product(*[getattr(model, comp_list).value_list for comp_list in component_sets]))
-        df = pd.DataFrame(data=None, index=index, columns=columns)
-
-        for i in index:
-            for j in columns:
-                jl = list(j)
-                jl.insert(index_dict['cont_set'][0], i)
-                df.loc[i,j] = var[tuple(jl)].value
-                
-        return df
-        #except:
-         #   return None
-
-    def load_from_pyomo_model(self, instance, to_load=None):
-        """Load variables from the pyomo model into various formats"""
-        
-        variables_to_load = get_vars(instance)
+        variables_to_load = get_vars(model)
     
         for name in variables_to_load:
     
             if name == 'init_conditions':
                 continue
             
-            var = getattr(instance, name)
-            if var.dim()==0:
-                setattr(self, name, var.value)
-            elif var.dim()==1:
-                setattr(self, name, pd.Series(var.get_values()))
-            elif var.dim()==2:
-                d = var.get_values()
-                keys = d.keys()
-                if keys:
-                    data_frame = df_from_pyomo_data(var)
-                else:
-                    data_frame = pd.DataFrame(data=[],
-                                              columns = [],
-                                              index=[])
-                setattr(self, name, data_frame)        
-            else:
-                data_df = self.prepare_data_for_init(instance, var)
-                setattr(self, name, data_df)
+            var = getattr(model, name)
+            var_data = convert(var)
+            setattr(self, name, var_data)
                 
     @property
     def parameters(self):
+        """Returns the parameter dictionary
+        
+        :return: The parameter values from the model
+        :rtype: dict
+        
+        """
         return self.P
             
     @property
     def show_parameters(self):
+        """Displays the parameter values in a conveninent manner
+        
+        :return: None
+        
+        """
         print('\nThe estimated parameters are:')
         for k, v in self.P.items():
             print(k, v)
             
     @property
     def variances(self):
+        """Displays the variances of the parameters in a conveninent manner
+        
+        :return: None
+        
+        """
         print('\nThe estimated variances are:')
         for k, v in self.sigma_sq.items():
             print(k, v)

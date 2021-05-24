@@ -13,7 +13,7 @@ import pandas as pd
 
 #from kipet.top_level.settings import USER_DEFINED_SETTINGS
 
-DEFAULT_DIR = Path.cwd()
+# DEFAULT_DIR = Path.cwd()
 
 # def set_directory(filename, data_dir=DEFAULT_DIR, abs_dir=False):
 #     """Sets the current working directory plus the given subdirectory as the
@@ -39,120 +39,120 @@ DEFAULT_DIR = Path.cwd()
 #         # It uses the absolute path provided
 #         return Path(filename)
 
-def read_file(filename, directory=DEFAULT_DIR):       
-    """ Reads data from a csv or txt file and converts it to a DataFrame
+# def read_file(filename, directory=DEFAULT_DIR):       
+#     """ Reads data from a csv or txt file and converts it to a DataFrame
     
-        Args:
-            filename (str): name of input file (abs path)
+#         Args:
+#             filename (str): name of input file (abs path)
           
-        Returns:
-            DataFrame
+#         Returns:
+#             DataFrame
 
-    """
+#     """
     
-    filename = Path(filename)
-    data_dict = {}
+#     filename = Path(filename)
+#     data_dict = {}
     
-    if filename.suffix == '.txt':
-        with open(filename, 'r') as f:
-            for line in f:
-                if line not in ['','\n','\t','\t\n']:
-                    l = line.split()
-                    if is_float_re(l[1]):
-                        l[1] = float(l[1])
-                    data_dict[float(l[0]), l[1]] = float(l[2])
+#     if filename.suffix == '.txt':
+#         with open(filename, 'r') as f:
+#             for line in f:
+#                 if line not in ['','\n','\t','\t\n']:
+#                     l = line.split()
+#                     if is_float_re(l[1]):
+#                         l[1] = float(l[1])
+#                     data_dict[float(l[0]), l[1]] = float(l[2])
         
-        df_data = dict_to_df(data_dict)
-        df_data.sort_index(ascending=True, inplace=True)
+#         df_data = dict_to_df(data_dict)
+#         df_data.sort_index(ascending=True, inplace=True)
 
-    elif filename.suffix == '.csv':
-        df_data = pd.read_csv(filename, index_col=0)   
+#     elif filename.suffix == '.csv':
+#         df_data = pd.read_csv(filename, index_col=0)   
 
-    else:
-        raise ValueError(f'The file extension {filename.suffix} is currently not supported')
-        return None
+#     else:
+#         raise ValueError(f'The file extension {filename.suffix} is currently not supported')
+#         return None
 
-    return df_data
+#     return df_data
     
 
-def write_file(filename, dataframe, filetype='csv'):
-    """ Write data to file.
+# def write_file(filename, dataframe, filetype='csv'):
+#     """ Write data to file.
     
-        Args:
-            filename (str): name of output file (abs_path)
+#         Args:
+#             filename (str): name of output file (abs_path)
           
-            dataframe (DataFrame): pandas DataFrame
+#             dataframe (DataFrame): pandas DataFrame
         
-            filetype (str): choice of output (csv, txt)
+#             filetype (str): choice of output (csv, txt)
         
-        Returns:
-            None
+#         Returns:
+#             None
 
-    """
-    # How can you write a general settings file/class/object?
-    print(f'Here is the filename: {filename}')
+#     """
+#     # How can you write a general settings file/class/object?
+#     print(f'Here is the filename: {filename}')
     
-    if filetype not in ['csv', 'txt']:
-        print('Savings as CSV - invalid file extension given')
-        filetype = 'csv'
+#     if filetype not in ['csv', 'txt']:
+#         print('Savings as CSV - invalid file extension given')
+#         filetype = 'csv'
     
-    suffix = '.' + filetype
+#     suffix = '.' + filetype
     
-    filename = Path(filename)
+#     filename = Path(filename)
                    
-    if filename.suffix == '':
-        filename = filename.with_suffix(suffix)
-    else:
-        suffix = filename.suffix
-        if suffix not in ['.txt', '.csv']:
-            print('Savings as CSV - invalid file extension given')
-            filename = Path(filename.stem).with_suffix('.csv')
+#     if filename.suffix == '':
+#         filename = filename.with_suffix(suffix)
+#     else:
+#         suffix = filename.suffix
+#         if suffix not in ['.txt', '.csv']:
+#             print('Savings as CSV - invalid file extension given')
+#             filename = Path(filename.stem).with_suffix('.csv')
     
-    print(f'In write method: {filename.absolute()}')
-    if filename.suffix == '.csv':
-        dataframe.to_csv(filename)
+#     print(f'In write method: {filename.absolute()}')
+#     if filename.suffix == '.csv':
+#         dataframe.to_csv(filename)
 
-    elif filename.suffix == '.txt':    
-        with open(filename, 'w') as f:
-            for i in dataframe.index:
-                for j in dataframe.columns:
-                    if not np.isnan(dataframe[j][i]):
-                        f.write("{0} {1} {2}\n".format(i,j,dataframe[j][i]))
+#     elif filename.suffix == '.txt':    
+#         with open(filename, 'w') as f:
+#             for i in dataframe.index:
+#                 for j in dataframe.columns:
+#                     if not np.isnan(dataframe[j][i]):
+#                         f.write("{0} {1} {2}\n".format(i,j,dataframe[j][i]))
                         
-    print(f'Data saved     : {filename}')
-    return None
+#     print(f'Data saved     : {filename}')
+#     return None
 
-def read_spectral_data_from_csv(filename, instrument = False, negatives_to_zero = False):
-    """ Reads csv with spectral data
+# def read_spectral_data_from_csv(filename, instrument = False, negatives_to_zero = False):
+#     """ Reads csv with spectral data
     
-        Args:
-            filename (str): name of input file
-            instrument (bool): if data is direct from instrument
-            negatives_to_zero (bool): if data contains negatives and baseline shift is not
-                                        done then this forces negative values to zero.
+#         Args:
+#             filename (str): name of input file
+#             instrument (bool): if data is direct from instrument
+#             negatives_to_zero (bool): if data contains negatives and baseline shift is not
+#                                         done then this forces negative values to zero.
 
-        Returns:
-            DataFrame
+#         Returns:
+#             DataFrame
 
-    """
-    data = pd.read_csv(filename, index_col=0)
-    if instrument:
-        #this means we probably have a date/timestamp on the columns
-        data = pd.read_csv(filename,index_col=0, parse_dates = True)
-        data = data.T
-        for n in data.index:
-            h,m,s = n.split(':')
-            sec = (float(h)*60+float(m))*60+float(s)
-            data.rename(index={n:sec}, inplace=True)
-        data.index = [float(n) for n in data.index]
-    else:
-        data.columns = [float(n) for n in data.columns]
+#     """
+#     data = pd.read_csv(filename, index_col=0)
+#     if instrument:
+#         #this means we probably have a date/timestamp on the columns
+#         data = pd.read_csv(filename,index_col=0, parse_dates = True)
+#         data = data.T
+#         for n in data.index:
+#             h,m,s = n.split(':')
+#             sec = (float(h)*60+float(m))*60+float(s)
+#             data.rename(index={n:sec}, inplace=True)
+#         data.index = [float(n) for n in data.index]
+#     else:
+#         data.columns = [float(n) for n in data.columns]
 
-    #If we have negative values then this makes them equal to zero
-    if negatives_to_zero:
-        data[data < 0] = 0
+#     #If we have negative values then this makes them equal to zero
+#     if negatives_to_zero:
+#         data[data < 0] = 0
 
-    return data
+#     return data
 
 # Legacy functions
 
@@ -328,37 +328,37 @@ def stdout_redirector(stream):
     
 # Data conversion tools
 
-def dict_to_df(data_dict):
+# def dict_to_df(data_dict):
 
-    """Takes a dictionary of typical pyomo data and converts it to a dataframe
+#     """Takes a dictionary of typical pyomo data and converts it to a dataframe
     
-    """    
-    dfs_stacked = pd.Series(index=data_dict.keys(), data=list(data_dict.values()))
-    dfs = dfs_stacked.unstack()
-    return dfs
+#     """    
+#     dfs_stacked = pd.Series(index=data_dict.keys(), data=list(data_dict.values()))
+#     dfs = dfs_stacked.unstack()
+#     return dfs
 
-def is_float_re(str):
-    """Checks if a value is a float or not"""
-    _float_regexp = re.compile(r"^[-+]?(?:\b[0-9]+(?:\.[0-9]*)?|\.[0-9]+\b)(?:[eE][-+]?[0-9]+\b)?$").match
-    return True if _float_regexp(str) else False
+# def is_float_re(str):
+#     """Checks if a value is a float or not"""
+#     _float_regexp = re.compile(r"^[-+]?(?:\b[0-9]+(?:\.[0-9]*)?|\.[0-9]+\b)(?:[eE][-+]?[0-9]+\b)?$").match
+#     return True if _float_regexp(str) else False
 
-def df_from_pyomo_data(varobject):
+# def df_from_pyomo_data(varobject):
 
-    val = []
-    ix = []
-    for index in varobject:
-        ix.append(index)
-        val_raw = varobject[index].value
-        if val_raw is None:
-            val_raw = 0
-        val.append(val_raw)
+#     val = []
+#     ix = []
+#     for index in varobject:
+#         ix.append(index)
+#         val_raw = varobject[index].value
+#         if val_raw is None:
+#             val_raw = 0
+#         val.append(val_raw)
     
-    a = pd.Series(index=ix, data=val)
-    dfs = pd.DataFrame(a)
-    index = pd.MultiIndex.from_tuples(dfs.index)
+#     a = pd.Series(index=ix, data=val)
+#     dfs = pd.DataFrame(a)
+#     index = pd.MultiIndex.from_tuples(dfs.index)
    
-    dfs = dfs.reindex(index)
-    dfs = dfs.unstack()
-    dfs.columns = [v[1] for v in dfs.columns]
+#     dfs = dfs.reindex(index)
+#     dfs = dfs.unstack()
+#     dfs.columns = [v[1] for v in dfs.columns]
 
-    return dfs
+#     return dfs

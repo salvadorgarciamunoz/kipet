@@ -3,12 +3,17 @@ KipetModel Mixins
 """
 # Standard library imports
 import copy
+import os
+import pathlib
+import sys
+import time
 
 # Kipet library imports
 from kipet.core_methods.ParameterEstimator import wavelength_subset_selection
 
-# Third party imports
-
+# Thirdparty library imports 
+import plotly.graph_objects as go
+import plotly.io as pio
 
 
 class WavelengthSelectionMixins():
@@ -22,20 +27,92 @@ class WavelengthSelectionMixins():
         return lof
         
     def wavelength_correlation(self, corr_plot=False):
-        """Wrapper for wavelength_correlation method in ParameterEstimator"""
+        """Wrapper for wavelength_correlation method in ParameterEstimator
         
+        :param bool corr_plot: Option to plot the correlation vs wavelength plot
+        
+        :return pandas.DataFrame correlations: The correlation data
+        
+        """
         correlations = self.p_estimator.wavelength_correlation()
     
         if corr_plot:
-            import matplotlib.pyplot as plt
             
+            plot_options = {
+                'label_font': dict(
+                        size=32,
+                    ),
+                'title_font': dict(
+                        size=32,
+                    ),
+                'tick_font': dict(
+                        size=24,
+                    ),
+                }
+            
+            filename = "wavelength-correlations.html"
+            fig = go.Figure()
             lists1 = sorted(correlations.items())
             x1, y1 = zip(*lists1)
-            plt.plot(x1,y1)   
-            plt.xlabel("Wavelength (cm)")
-            plt.ylabel("Correlation between species and wavelength")
-            plt.title("Correlation of species and wavelength")
-            plt.show()   
+            
+            line = dict(width=4)
+            fig.add_trace(
+                go.Scatter(x=x1,
+                           y=y1,
+                           line=line,
+                   )
+                )
+            
+            fig.update_layout(
+                title="Wavelength Correlations",
+                xaxis_title="Wavelength (cm)",
+                yaxis_title="Correlation",
+                )
+            plot_method = pio.write_html 
+            
+            t = time.localtime()
+            date = f'{t.tm_year}-{t.tm_mon:02}-{t.tm_mday:02}-{t.tm_hour:02}-{t.tm_min:02}-{t.tm_sec:02}'
+            
+            fig.update_xaxes(zeroline=True, zerolinewidth=2, zerolinecolor='#4e4e4e', titlefont=plot_options['label_font'], tickfont=plot_options['tick_font'])
+            fig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor='#4e4e4e', titlefont=plot_options['label_font'], tickfont=plot_options['tick_font'])
+            
+            fig.update_layout(title_font=plot_options['title_font'])
+            fig.update_layout(legend_font=plot_options['label_font'])
+            
+            # if self.jupyter:
+            #     chart_dir = Path.cwd().joinpath('charts', f'{self.name}-{folder_name}')
+            #     plot_method = pio.show
+            #     fig.update_layout(         
+            #         autosize=False,
+            #         width=1200,
+            #         height=800,
+            #         margin=dict(
+            #             l=50,
+            #             r=50,
+            #             b=50,
+            #             t=50,
+            #             pad=4
+            #         ),
+            #     )
+            # else:
+            #     calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
+            #     chart_dir = Path(calling_file_name).joinpath('charts', f'{self.name}-{folder_name}')
+            #     plot_method = pio.write_html
+            
+            
+            calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
+            chart_dir = pathlib.Path(calling_file_name).joinpath('charts', f'{self.name}-{date}')
+            
+            chart_dir.mkdir(parents=True, exist_ok=True)
+            filename = chart_dir.joinpath(filename)
+            print(f'Plot saved as: {filename}')
+            
+            self.save_static_image = True
+            if self.save_static_image:
+                fig.write_image(f'{filename}.svg', width=1400, height=900)
+
+            plot_method(fig, file=filename.as_posix(), auto_open=True)
+    
     
         self.wavelength_correlations = correlations
         return correlations
@@ -43,10 +120,10 @@ class WavelengthSelectionMixins():
     def run_lof_analysis(self, **kwargs):
         """Wrapper for run_lof_analysis method in ParameterEstimator"""
         
-        builder_before_data = copy.copy(self.builder)
+        builder_before_data = copy.copy(self._builder)
         builder_before_data.clear_data()
         
-        end_time = self.settings.general.simulation_times[1]
+        end_time = self._builder.end_time
         
         correlations = self.wavelength_correlation(corr_plot=False)
         lof = self.lack_of_fit()
@@ -77,7 +154,7 @@ class WavelengthSelectionMixins():
         
         solver = kwargs.pop('solver', 'k_aug')    
     
-        builder_before_data = copy.copy(self.builder)
+        builder_before_data = copy.copy(self._builder)
         builder_before_data.clear_data()
         
         #end_time = self.settings.general.simulation_times[1]

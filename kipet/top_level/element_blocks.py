@@ -70,9 +70,8 @@ class ModelElementBlock():
         return None
     
     def add_element(self, *args, **kwargs):
-        
-        """
-            
+        """General method to add model components to the model
+          
         """
         name = args[0]
         element = self.element_object(name,
@@ -198,6 +197,8 @@ class ComponentBlock(ModelElementBlock):
     
 class StateBlock(ModelElementBlock):
     
+    __var = VariableNames()
+    
     def __init__(self, *args, **kwargs):
         super().__init__(class_name='model_state')
     
@@ -248,6 +249,16 @@ class StateBlock(ModelElementBlock):
             if not all_component_variances:
                 break
         return all_component_variances
+    
+    @property
+    def fixed(self):
+        
+        fix_from_traj = []
+        for state in self.states.values():
+            if state.data is not None:
+                fix_from_traj.append([self.__var.state_model, state.name, state.data])
+        
+        return fix_from_traj
     
     
 class ParameterBlock(ModelElementBlock):

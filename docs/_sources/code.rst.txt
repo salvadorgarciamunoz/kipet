@@ -3,8 +3,8 @@ Code Documentation
 
 All of the public classes and methods used in KIPET are listed on these pages.
 
-KipetModel
-==========
+ReactionLab
+===========
 
 .. automodule:: kipet.kipet_model
     :members:
@@ -16,3 +16,14 @@ ReactionModel
 .. automodule:: kipet.top_level.reaction_model
     :members:
 
+Input/Output
+============
+
+.. automodule:: kipet.kipet_io
+   :members:
+
+Pyomo Tools
+=============
+
+.. automodule:: kipet.post_model_build.pyomo_model_tools
+    :members:

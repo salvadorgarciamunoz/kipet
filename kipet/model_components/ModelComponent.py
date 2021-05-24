@@ -1,9 +1,6 @@
 """
 ModelComponent Classes
 """
-# Third party imports
-import pint
-
 # Kipet library imports
 from kipet.model_components.units_handler import convert_single_dimension
 
@@ -181,7 +178,8 @@ class ModelAlgebraic(ModelElement):
                  ):
     
         super().__init__(name, ModelComponent.class_, value, units,
-                         unit_base, description, pyomo_var, model_var, units_orig, conversion_factor,
+                         unit_base, description, pyomo_var, model_var, 
+                         units_orig, conversion_factor,
                          )
    
         self.bounds = bounds
@@ -190,7 +188,6 @@ class ModelAlgebraic(ModelElement):
         self.is_reaction = is_reaction
     
     def __str__(self):
-        
         
         margin = 25
         settings = f'ModelAlgebraic\n'
@@ -304,6 +301,7 @@ class ModelState(ModelElement):
                  units=None,
                  unit_base=None,
                  known=True,
+                 data=None,
                  bounds=(None, None),
                  description=None,
                  pyomo_var=None,
@@ -313,12 +311,14 @@ class ModelState(ModelElement):
                  ):
     
         super().__init__(name, ModelComponent.class_, value, units,
-                         unit_base, description, pyomo_var, model_var, units_orig, conversion_factor)
+                         unit_base, description, pyomo_var, model_var, 
+                         units_orig, conversion_factor)
         # component attributes
         self.variance = variance
         self.state = state
         self.known = known
         self.bounds = bounds
+        self.data = data
         
         #self._check_units()
         
@@ -381,7 +381,8 @@ class ModelParameter(ModelElement):
                  ):
     
         super().__init__(name, ModelComponent.class_, value, units,
-                         unit_base, description, pyomo_var, model_var, units_orig, conversion_factor)
+                         unit_base, description, pyomo_var, model_var, 
+                         units_orig, conversion_factor)
         self.bounds = bounds
         self.fixed = fixed
         self.variance = variance
@@ -437,7 +438,8 @@ class ModelConstant(ModelElement):
                  ):
     
         super().__init__(name, ModelComponent.class_, value, units,
-                         unit_base, description, pyomo_var, model_var, units_orig, conversion_factor)
+                         unit_base, description, pyomo_var, model_var, 
+                         units_orig, conversion_factor)
         self._class_ = type(self)
     
     def __str__(self):

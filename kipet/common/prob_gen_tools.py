@@ -5,24 +5,49 @@ import numpy as np
 import pandas as pd
 
 
-def gaussian_single_peak(wl,alpha,beta,gamma):
+def gaussian_single_peak(wl, alpha, beta, gamma):
     """
-    helper function to generate absorption data based on 
-    lorentzian parameters
+    Helper function to generate absorption data based on 
+    Lorentzian parameters
+    
+    :param float wl: Wavelength
+    :param float beta: Beta
+    :param float alpha: Alpha
+    :param float gamma: gamma
+    
+    :return: The single peak
+    :rtype: float
+
     """
     return alpha*np.exp(-(wl-beta)**2/gamma)
 
-def absorbance(wl,alphas,betas,gammas):
+def absorbance(wl, alphas, betas, gammas):
     """
-    helper function to generate absorption data based on 
-    lorentzian parameters
+    Helper function to generate absorption data based on 
+    Lorentzian parameters
+    
+    :param float wl: Wavelength
+    :param array-like betas: Beta
+    :param array-like alphas: Alpha
+    :param array-like gammas: gamma
+    
+    :return: The sum of single peaks
+    :rtype: float
+
     """
     return sum(gaussian_single_peak(wl,alphas[i],betas[i],gammas[i]) for i in range(len(alphas)))
 
-def generate_absorbance_data(wl_span,parameters_dict):
+def generate_absorbance_data(wl_span, parameters_dict):
     """
-    helper function to generate absorption data based on 
-    lorentzian parameters
+    Helper function to generate absorption data based on 
+    Lorentzian parameters
+    
+    :param array-like wl_span: Array of wavelengths
+    :param dict parameters_dict: The dictionary of alphas, betas, and gammas
+   
+    :return: data_frame
+    :rtype: pandas.DataFrame
+
     """
     components = parameters_dict.keys()
     n_components = len(components)
@@ -43,8 +68,21 @@ def generate_absorbance_data(wl_span,parameters_dict):
     return data_frame
 
 
-def generate_random_absorbance_data(wl_span,component_peaks,component_widths=None,seed=None):
+def generate_random_absorbance_data(wl_span, component_peaks, 
+                                    component_widths=None, seed=None):
+    """
+    Helper function to generate absorption data based on 
+    Lorentzian parameters
+    
+    :param array-like wl_span: Array of wavelengths
+    :param dict component_peaks: Dictionary with number of component peaks
+    :param dict component_widths: Optional widths for components (otherwise 1000)
+    :param int seed: Random seed number
+   
+    :return: data_frame
+    :rtype: pandas.DataFrame
 
+    """
     np.random.seed(seed)
     parameters_dict = dict()
     min_l = min(wl_span)
@@ -69,11 +107,13 @@ def add_noise_to_signal(signal, size):
     Adds a random normally distributed noise to a clean signal. Used mostly in Kipet
     To noise absorbances or concentration profiles obtained from simulations. All
     values that are negative after the noise is added are set to zero
-    Args:
-        signal (data): the Z or S matrix to have noise added to it
-        size (scalar): sigma (or size of distribution)
+    
+    :param pandas.DataFrame signal: The Z or S matrix to have noise added to it
+    :param float size: sigma (or size of distribution)
     Returns:
-        pandas dataframe
+    :return: Noised data
+    :rtype: pandas.DataFrame
+    
     """
     clean_sig = signal    
     noise = np.random.normal(0,size,clean_sig.shape)

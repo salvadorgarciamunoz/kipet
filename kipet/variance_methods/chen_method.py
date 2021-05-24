@@ -3,9 +3,10 @@ Initialization for method from Chen et al. 2016
 """
 import os
 
+import pandas as pd
 from pyomo.environ import Objective, SolverFactory
 
-from kipet.core_methods.ResultsObject import *
+from kipet.core_methods.ResultsObject import ResultsObject
 from kipet.variance_methods.chen_method_pyomo import *
 from kipet.variance_methods.chen_method_scipy import *
 

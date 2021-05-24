@@ -33,18 +33,19 @@ class AttrDict(dict):
 class DosingPoint():
     """Small class to handle the dosing points in a cleaner manner"""
     
-    def __init__(self, component, time, step):
+    def __init__(self, component, time, conc, vol):
         
         self.component = component
         self.time = time
-        self.step = step
+        self.conc = conc
+        self.vol = vol
     
     def __repr__(self):
-        return f'{self.component}: {self.time}, {self.step}'
+        return f'{self.component}: {self.time}, {self.conc} {self.vol}'
     
     def __str__(self):
         return self.__repr__()
     
     @property
     def as_list(self):
-        return [self.component, self.time, self.step]
+        return [self.component, self.time, self.conc, self.vol]

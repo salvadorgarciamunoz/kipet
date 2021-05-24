@@ -10,8 +10,10 @@ class VariableNames(object):
     
     def __init__(self):
     
-        # Variables for KIPET models    
+        # Strong defaults
+        self.volume_name = 'V'
     
+        # Variables for KIPET models    
         self.model_parameter = 'P'
         self.model_parameter_scaled = 'K'
         self.concentration_measured = 'Cm'

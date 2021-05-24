@@ -1,26 +1,42 @@
+"""
+The ReactionLab class is a container for ReactionModels when multiple datasets
+and model variations are available. This allows the user to perform parameter
+fitting with the various models simultaneously.
+"""
 # Standard library imports
-import collections
-import os
-import pathlib
-import sys
 
 # Third party imports
 import pandas as pd
 
 # Kipet library imports
-import kipet.core_methods.data_tools as data_tools
+# import kipet.core_methods.data_tools as data_tools
 from kipet.core_methods.MEE import MultipleExperimentsEstimator
 from kipet.top_level.reaction_model import ReactionModel
 from kipet.top_level.settings import Settings
 from kipet.top_level.unit_base import UnitBase
 
 
-class KipetModel:
+class ReactionLab:
     
-    """The highest level object in KIPET. All uses of KIPET start with the creation
-    of a KipetModel instance.
+    """One of two highest level objects in KIPET. This is used to arrange
+    multiple models/datasets for simultaneous parameter fitting.
     
-        
+    ReactionLab offers many avenues to setting up the problem. 
+    
+    * You can first generate several separate ReactionModel instances and add
+      them to ReactionLab. This can be done using a single module or by importing
+      several models from different modules
+    
+    * You can use the ReactionLab object to create ReactionModel instances and
+      then perform parameter fittings with no additional effort
+    
+    * You can mix both of these methods, if you wish.
+    
+    Using ReactionLab makes it very simple to generate new ReactionModel
+    instances that share many commonalities. This reduces redundant code
+    writing if the models are very similar (such as when the only difference 
+    is the data and a couple of states).
+    
     :var dict reaction_models: The dictionary containing ReactionModel instances
     :var Settings settings: A Settings instance holding all modeling options
     :var dict results: A dictionary of ResultsObjects for each ReactionModel instance
@@ -44,11 +60,11 @@ class KipetModel:
     
     :Example:
         >>> import kipet
-        >>> kipet_model = kipet.KipetModel()
+        >>> reaction_lab = kipet.ReactionLab()
     
     """
     def __init__(self):
-        """Initialize the KipetModel instance.
+        """Initialize the ReactionLab instance.
         
         The KipetModel object does not require any attributes at initialization.
         
@@ -63,7 +79,7 @@ class KipetModel:
 
     def __str__(self):
         
-        block_str = "KipetModel\n\n"
+        block_str = "ReactionLab\n\n"
 
         for name, model in self.reaction_models.items():
             block_str += f"{name}\tDatasets: {len(model.datasets)}\n"
@@ -105,7 +121,7 @@ class KipetModel:
 
 
     def remove_reaction(self, model):
-        """Remove a model instance from the KipetModel model list
+        """Remove a model instance from the ReactionLab model list
         
         :parameter str/ReactionModel model: The name or instance of the reaction model to be removed
     
@@ -123,7 +139,7 @@ class KipetModel:
 
     def new_reaction(self, name, model=None, ignore=None):
 
-        """Declare new reactions to the KipetModel using this function
+        """Declare new reactions to the ReactionLab using this function
 
         :parameter str name: The name of the model/experiment used in all references
                          made to it in KIPET, especially in python dicts
@@ -135,7 +151,7 @@ class KipetModel:
           a new instance (r2) with the same settings except for the data, you could use
           the following::
 
-            r2 = kipet_model.new_reaction('r2', model=r1, ignore=['datasets'])
+            r2 = reaction_lab.new_reaction('r2', model=r1, ignore=['datasets'])
 
 
         :return: A new ReactionModel instance
@@ -191,7 +207,7 @@ class KipetModel:
     
 
     def add_reaction(self, model):
-        """Adds a ReactionModel instance to the KipetModel instance
+        """Adds a ReactionModel instance to the ReactionLab instance
         
         :parameter ReactionModel model: ReactionModel instance
           
@@ -201,14 +217,14 @@ class KipetModel:
             model.unit_base = self.ub
             self.reaction_models[model.name] = model
         else:
-            raise ValueError("KipetModel can only add ReactionModel instances.")
+            raise ValueError("ReactionLab can only add ReactionModel instances.")
 
         return None
     
 
     def run_opt(self, method='mee'):
         """This method will perform parameter fitting for all ReactionModels in
-        the KipetModel models attribute. If more than one ReactionModel instance
+        the ReactionLab models attribute. If more than one ReactionModel instance
         is present, the MultipleExperimentEstiamtor is used to solve for the
         global parameter set.
         
@@ -321,64 +337,6 @@ class KipetModel:
             results_obj.file_dir = self.settings.general.charts_directory
 
         return results
-
-
-    @staticmethod
-    def write_data_file(filename, data):
-        """Method to write data to a file using KipetModel
-
-        Convenient method to save modified data in a format ready to use with ReactionModels.
-
-        :parameter str filename: The name of the file (plus relative directory)
-
-        :parameter pandas.DataFrame data: The pandas DataFrame to be written to the file
-
-        :returns: None
-        
-        """
-        _filename = filename
-        calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
-        _filename = pathlib.Path(calling_file_name).joinpath(_filename)
-        data_tools.write_file(_filename, data)
-        
-        return None
-
-    @staticmethod
-    def read_data_file(filename):
-        """Method to read data file using KipetModel
-        
-        This is useful if you need to modify a datafile before using it with a ReactionModel.
-
-        :parameter str filename: The name of the data file (expected to be in the data
-           directory, otherwise use an absolute path).
-
-        :return: The data read from the file
-        :rtype: pandas.DataFrame
-        """
-        _filename = filename
-        calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
-        _filename = pathlib.Path(calling_file_name).joinpath(_filename)
-        read_data = data_tools.read_file(_filename)
-        
-        return read_data
-
-
-    @staticmethod
-    def add_noise_to_data(data, noise):
-        """Wrapper for adding noise to data after data has been added to
-        the specific ReactionModel
-        
-        :parameter pandas.DataFrame data: The dataset to which noise is to be added.
-        
-        :parameter float noise: The variance of the added noise.
-        
-        :return: The dataset after noised has been added.
-        :rtype: pandas.DataFrame
-
-        """
-        noised_data = data_tools.add_noise_to_signal(data, noise)
-        
-        return noised_data 
     
 
     @property
@@ -424,10 +382,26 @@ class KipetModel:
         :rtype: pandas.DataFrame
 
         """
-        df_param = pd.DataFrame(data=None, index=self.all_params, columns=self.models.keys())
+        df_param = pd.DataFrame(data=None, index=self.all_params, columns=self.reaction_models.keys())
             
         for reaction, model in self.reaction_models.items():
             for param in model.parameters.names:
                 df_param.loc[param, reaction] = model.results.P[param]
             
         return df_param
+    
+    def plot(self, var=None):
+        """Plot method for ReactionLab
+        
+        :param str var: The variable to plot (same as in ReactionModel)
+        
+        :return: None:
+            
+        """
+        for name, model in self.reaction_models.items():
+            
+            if var is None:
+                model.plot()
+            else:
+                model.plot(var)
+        

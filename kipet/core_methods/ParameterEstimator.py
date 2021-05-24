@@ -1,26 +1,30 @@
-# -*- coding: utf-8 -*-
+"""
+Primary class for performing the parameter fitting in KIPET
 
-from __future__ import print_function
-
+"""
+# Standard library imports
 import copy
 import os
-import re
 import time
 
-import matplotlib.pyplot as plt
+# Third party imports
+# import matplotlib.pyplot as plt
 import numpy as np
+from scipy.sparse import coo_matrix
 import scipy.stats as st
-from pyomo import *
-from pyomo.dae import *
-from pyomo.environ import *
-from pyomo.opt import ProblemFormat, SolverFactory, TerminationCondition
+# from pyomo import *
+# from pyomo.dae import *
+# from pyomo.environ import *
+# from pyomo.opt import ProblemFormat, SolverFactory, TerminationCondition
 
+# KIPET library imports
 from kipet.common.objectives import (absorption_objective, comp_objective,
                                      conc_objective)
 from kipet.common.read_hessian import *
 from kipet.core_methods.Optimizer import *
 from kipet.core_methods.TemplateBuilder import *
 from kipet.mixins.PEMixins import PEMixins
+from kipet.post_model_build.pyomo_model_tools import convert
 from kipet.top_level.variable_names import VariableNames
 
 
@@ -1050,20 +1054,20 @@ class ParameterEstimator(PEMixins, Optimizer):
                         col.append(i * nw + p)
                         data.append(val)
 
-        Vd_matrix = scipy.sparse.coo_matrix((data, (row, col)), shape=(nd, nd)).tocsr()
+        Vd_matrix = coo_matrix((data, (row, col)), shape=(nd, nd)).tocsr()
         
         return Vd_matrix
 
-    def _calc_new_D(self, subset):
-        """Updates the D data for the wavelength selection"""
+    # def _calc_new_D(self, subset):
+    #     """Updates the D data for the wavelength selection"""
         
-        new_D = pd.DataFrame(np.nan, index=self._meas_times, columns=subset)
-        for t in self._meas_times:
-            for l in self._meas_lambdas:
-                if l in subset:
-                    new_D.at[t, l] = self.model.D[t, l]
+    #     new_D = pd.DataFrame(np.nan, index=self._meas_times, columns=subset)
+    #     for t in self._meas_times:
+    #         for l in self._meas_lambdas:
+    #             if l in subset:
+    #                 new_D.at[t, l] = self.model.D[t, l]
                     
-        return new_D
+    #     return new_D
         
 
     def run_param_est_with_subset_lambdas(self, builder_clone, end_time, subset, nfe, ncp, sigmas, solver='ipopt', ):
@@ -1093,7 +1097,8 @@ class ParameterEstimator(PEMixins, Optimizer):
             subset = list(x1)
         
         # This is the filter for creating the new data subset
-        new_D = self._calc_new_D(subset)
+        old_D = convert(self.model.D)
+        new_D = old_D.loc[:, subset] 
         
         
         print(end_time, new_D)
@@ -1161,7 +1166,8 @@ class ParameterEstimator(PEMixins, Optimizer):
             x1, y1 = zip(*lists1)
             x = list(x1)
 
-            new_D = self._calc_new_D(new_subs)
+            old_D = convert(self.model.D)
+            new_D = old_D.loc[:, new_subs]
 
             # opt_model, nfe, ncp = construct_model_from_reduced_set(builder_before_data, end_time, new_D)
             # Now that we have a new DataFrame, we need to build the entire problem from this
@@ -1177,8 +1183,8 @@ class ParameterEstimator(PEMixins, Optimizer):
 
         count = 0
         for x in initial_solutions:
-            print("When wavelengths of less than ", x[0], "correlation are removed")
-            print("The lack of fit is: ", x[1])
+            print(f'When wavelengths of less than {x[0]:0.3f} correlation are removed')
+            print(f'The lack of fit is {x[1]:0.6f} %')
 
     # =============================================================================
     # --------------------------- DIAGNOSTIC TOOLS ------------------------
@@ -1218,7 +1224,7 @@ class ParameterEstimator(PEMixins, Optimizer):
   
         lof = np.sqrt(sum_e/sum_d)*100
 
-        print("The lack of fit is ", lof, " %")
+        print(f'The lack of fit is {lof:0.6f} %')
         return lof
 
     def wavelength_correlation(self):

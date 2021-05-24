@@ -16,10 +16,27 @@ from kipet.visuals.plots import colors
 
 class SpectralData():
     
-    """All of the spectral tools will be moved here"""   
+    """This class is used to handle the spectral data used in a ReactionModel
+    
+    Since spectral data is different from the state data and requires different
+    methods to modify the data, a separate class was designed to house all of
+    the spectra specific methods.
+    
+    :param str name: The name for the data set
+    :param pandas.DataFrame data: The spectral data (D matrix)
+    :param bool remove_negatives: Option to set negative values to zero
+    
+    """   
  
     def __init__(self, name, data=None, remove_negatives=False):
+        """
+        Initialize a SpectralData instance
+    
+        :param str name: The name for the data set
+        :param pandas.DataFrame data: The spectral data (D matrix)
+        :param bool remove_negatives: Option to set negative values to zero
         
+        """
         self.name = name
         self.data = data
         self.data_orig = data
@@ -30,8 +47,17 @@ class SpectralData():
         
         self._check_columns()
         
-    def add_data(self, data):
         
+    def add_data(self, data):
+        """Adds a dataset to a SpectralData instance.
+        
+        This is used only if the SpectralData instance is created without a
+        data attribute (not being None). This handles setting up the data_orig
+        attribute as well and is therefore better than simply using setattr.
+        
+        :param pandas.DataFrame data: The spectral data (D matrix)
+        
+        """
         setattr(self, 'data', data)
 
         if self.remove_negatives:
@@ -41,7 +67,9 @@ class SpectralData():
             
         self._check_columns()
         
+        
     def _check_columns(self):
+        """Ensures that the columns in the dataframes are floats"""
         
         if hasattr(self, 'data') and self.data is not None:
             old_columns = self.data.columns
@@ -53,19 +81,20 @@ class SpectralData():
             self.data.columns = new_columns
             
     def reset(self):
+        """Resets the data back to the originally supplied data
         
+        """
         self.data = self.data_orig
         return None
         
     def plot(self, data_set='data'):
-        """ Plots spectral data
+        """ Plots spectral data in 3D plot.
         
-            Args:
-                dataFrame (DataFrame): spectral data
+        Plots the modified or original data sets.
+        
+        :param pandas.DataFrame data_set: attribute name of the spectral data
               
-            Returns:
-                None
-    
+        :return: None
         """
         data = getattr(self, data_set)
        
@@ -88,8 +117,11 @@ class SpectralData():
         return None
     
     def _remove_negatives(self):
+        """Simple method to set negative values to zero in a dataframe
         
+        """
         self.data[self.data < 0] = 0
+    
     
     def savitzky_golay(self, window_size=3, orderPoly=2, orderDeriv=0, in_place=True):
         """
@@ -362,12 +394,14 @@ class SpectralData():
                 lists1 = sorted(specific_subset.items())
                 x1, y1 = zip(*lists1)
                 specific_subset = list(x1)
-                
-            new_D = pd.DataFrame(np.nan,index=original_dataset.index, columns = specific_subset)
-            for t in original_dataset.index:
-                for l in original_dataset.columns.values:
-                    if l in subset:
-                        new_D.at[t,l] = self.model.D[t,l]           
+            
+            if isinstance(specific_subset, dict):
+                subset =  specific_subset.keys()
+            else:
+                subset = specific_subset
+            
+            new_D = original_dataset.loc[:, subset]  
+                      
         else:
             count=0
             for l in original_dataset.columns.values:
@@ -383,7 +417,7 @@ class SpectralData():
     
     
     def decrease_times(self, A_set=2, in_place=True):
-        '''
+        """
         Takes in the original, full dataset and removes specific wavelengths, or only keeps every
         multiple of A_set. Returns a new, smaller dataset that should be easier to solve
         
@@ -397,7 +431,7 @@ class SpectralData():
         Returns:
             DataFrame with the smaller dataset
         
-        '''
+        """
         original_dataset = self.data
         new_D = original_dataset[original_dataset.columns[::A_set]] 
         if in_place:
