@@ -16,7 +16,7 @@ from kipet.top_level.settings import Settings
 from kipet.top_level.unit_base import UnitBase
 
 
-class ReactionLab:
+class ReactionSet:
     
     """One of two highest level objects in KIPET. This is used to arrange
     multiple models/datasets for simultaneous parameter fitting.
@@ -189,7 +189,7 @@ class ReactionLab:
                     "constants",
                     "algebraics",
                     "states",
-                    "ub",
+                    "unit_base",
                     "settings",
                     "c",
                     "odes_dict",
