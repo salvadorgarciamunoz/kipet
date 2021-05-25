@@ -1,5 +1,5 @@
 """
-The ReactionLab class is a container for ReactionModels when multiple datasets
+The ReactionSet class is a container for ReactionModels when multiple datasets
 and model variations are available. This allows the user to perform parameter
 fitting with the various models simultaneously.
 """
@@ -21,18 +21,18 @@ class ReactionSet:
     """One of two highest level objects in KIPET. This is used to arrange
     multiple models/datasets for simultaneous parameter fitting.
     
-    ReactionLab offers many avenues to setting up the problem. 
+    ReactionSet offers many avenues to setting up the problem. 
     
     * You can first generate several separate ReactionModel instances and add
-      them to ReactionLab. This can be done using a single module or by importing
+      them to ReactionSet. This can be done using a single module or by importing
       several models from different modules
     
-    * You can use the ReactionLab object to create ReactionModel instances and
+    * You can use the ReactionSet object to create ReactionModel instances and
       then perform parameter fittings with no additional effort
     
     * You can mix both of these methods, if you wish.
     
-    Using ReactionLab makes it very simple to generate new ReactionModel
+    Using ReactionSet makes it very simple to generate new ReactionModel
     instances that share many commonalities. This reduces redundant code
     writing if the models are very similar (such as when the only difference 
     is the data and a couple of states).
@@ -60,13 +60,13 @@ class ReactionSet:
     
     :Example:
         >>> import kipet
-        >>> reaction_lab = kipet.ReactionLab()
+        >>> reaction_lab = kipet.ReactionSet()
     
     """
     def __init__(self):
-        """Initialize the ReactionLab instance.
+        """Initialize the ReactionSet instance.
         
-        The KipetModel object does not require any attributes at initialization.
+        The ReactionSet object does not require any attributes at initialization.
         
         """
         self.reaction_models = {}
@@ -79,7 +79,7 @@ class ReactionSet:
 
     def __str__(self):
         
-        block_str = "ReactionLab\n\n"
+        block_str = "ReactionSet\n\n"
 
         for name, model in self.reaction_models.items():
             block_str += f"{name}\tDatasets: {len(model.datasets)}\n"
@@ -107,7 +107,7 @@ class ReactionSet:
 
 
     def add_reaction_list(self, model_list):
-        """Method to add a list of ReactionModel instances to the KipetModel
+        """Method to add a list of ReactionModel instances to the ReactionSet
         
         :parameter list model_list: A list of ReactionModel instances
         
@@ -121,7 +121,7 @@ class ReactionSet:
 
 
     def remove_reaction(self, model):
-        """Remove a model instance from the ReactionLab model list
+        """Remove a model instance from the ReactionSet model list
         
         :parameter str/ReactionModel model: The name or instance of the reaction model to be removed
     
@@ -133,13 +133,13 @@ class ReactionSet:
         elif isinstance(model, ReactionModel):
             self.reaction_models.pop(model.name)
         else:
-            print("KipetModel does not have specified model")
+            print("ReactionSet does not have specified model")
         return None
 
 
     def new_reaction(self, name, model=None, ignore=None):
 
-        """Declare new reactions to the ReactionLab using this function
+        """Declare new reactions to the ReactionSet using this function
 
         :parameter str name: The name of the model/experiment used in all references
                          made to it in KIPET, especially in python dicts
@@ -201,13 +201,13 @@ class ReactionSet:
                         setattr(self.reaction_models[name], item, getattr(model, item))
 
             else:
-                raise ValueError("KipetModel can only add ReactionModel instances.")
+                raise ValueError("ReactionSet can only add ReactionModel instances.")
 
         return self.reaction_models[name]
     
 
     def add_reaction(self, model):
-        """Adds a ReactionModel instance to the ReactionLab instance
+        """Adds a ReactionModel instance to the ReactionSet instance
         
         :parameter ReactionModel model: ReactionModel instance
           
@@ -217,14 +217,14 @@ class ReactionSet:
             model.unit_base = self.ub
             self.reaction_models[model.name] = model
         else:
-            raise ValueError("ReactionLab can only add ReactionModel instances.")
+            raise ValueError("ReactionSet can only add ReactionModel instances.")
 
         return None
     
 
     def run_opt(self, method='mee'):
         """This method will perform parameter fitting for all ReactionModels in
-        the ReactionLab models attribute. If more than one ReactionModel instance
+        the ReactionSet models attribute. If more than one ReactionModel instance
         is present, the MultipleExperimentEstiamtor is used to solve for the
         global parameter set.
         
@@ -391,7 +391,7 @@ class ReactionSet:
         return df_param
     
     def plot(self, var=None):
-        """Plot method for ReactionLab
+        """Plot method for ReactionSet
         
         :param str var: The variable to plot (same as in ReactionModel)
         
