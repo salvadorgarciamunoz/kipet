@@ -19,7 +19,7 @@ from kipet.common.interpolation import interpolate_trajectory
 #from kipet.common.model_funs import step_fun
 from kipet.core_methods.EstimabilityAnalyzer import EstimabilityAnalyzer
 from kipet.core_methods.EstimationPotential import (
-    replace_non_estimable_parameters, rhps_method)
+    rhps_method)
 from kipet.core_methods.FESimulator import FESimulator
 from kipet.core_methods.ParameterEstimator import ParameterEstimator
 from kipet.core_methods.PyomoSimulator import PyomoSimulator
@@ -29,18 +29,16 @@ from kipet.dev_tools.display import Print
 from kipet.mixins.TopLevelMixins import WavelengthSelectionMixins
 from kipet.model_components.units_handler import convert_single_dimension
 from kipet.post_model_build.pyomo_model_tools import get_vars
-from kipet.post_model_build.replacement import ParameterReplacer
-from kipet.post_model_build.scaling import scale_models
-from kipet.top_level.data_component import DataBlock, DataSet
-from kipet.top_level.element_blocks import (AlgebraicBlock, ComponentBlock,
-                                            ConstantBlock, ParameterBlock,
-                                            StateBlock)
-from kipet.top_level.expression import (AEExpressions, Expression,
-                                        ODEExpressions)
-from kipet.top_level.helper import DosingPoint
-from kipet.top_level.settings import Settings
-from kipet.top_level.spectral_handler import SpectralData
-from kipet.top_level.variable_names import VariableNames
+from kipet.model_components.data_component import DataBlock, DataSet
+from kipet.model_components.element_blocks import (AlgebraicBlock, ComponentBlock,
+                                                   ConstantBlock, ParameterBlock,
+                                                   StateBlock)
+from kipet.model_components.expression import (AEExpressions, Expression,
+                                               ODEExpressions)
+from kipet.common.helper import DosingPoint
+from kipet.general_settings.settings import Settings
+from kipet.model_components.spectral_handler import SpectralData
+from kipet.general_settings.variable_names import VariableNames
 
 __var = VariableNames()
 DEBUG=True #__var.DEBUG
@@ -65,20 +63,20 @@ class ReactionModel(WavelengthSelectionMixins):
     
     Public attributes
     
-    :var spectra: SpectraData object if available, otherwise None
-    :var components: ComponentBlock object
-    :var parameters: ParameterBlock object
-    :var constants: ConstantBlock object
-    :var algebraics: AlgebraicBlock object
-    :var states: StateBlock object
-    :var datasets: DataBlock object
-    :var results_dict: dictionary of ResultsObject instances for simulation, variance, parameter estimation models
-    :var settings: Settings instance
-    :var variances: dicitonary of component variances
+    :var SpectraHandler spectra: SpectraData object if available, otherwise None
+    :var ComponentBlock components: ComponentBlock object
+    :var ParameterBlock parameters: ParameterBlock object
+    :var ConstantBlock constants: ConstantBlock object
+    :var AlgebraicBlock algebraics: AlgebraicBlock object
+    :var StateBlock states: StateBlock object
+    :var DataBlock datasets: DataBlock object
+    :var dict results_dict: dictionary of ResultsObject instances for simulation, variance, parameter estimation models
+    :var Settings settings: Settings instance
+    :var dict variances: dicitonary of component variances
     :var odes: ODEExpressions object
     :var algs: AEExpressions object
-    :var odes_dict: dictionary of odes
-    :var algs_dict: dictionary of algebraic equations
+    :var dict odes_dict: dictionary of odes
+    :var dict algs_dict: dictionary of algebraic equations
     
     Private attributes
     
@@ -103,14 +101,43 @@ class ReactionModel(WavelengthSelectionMixins):
       
     :Methods:
     
+    - :func:`parameter`
+    - :func:`component`
+    - :func:`state`
+    - :func:`volume`
+    - :func:`constant`
+    - :func:`fixed_state`
+    - :func:`step`
+    - :func:`add_dosing_point`
+    - :func:`add_data`
+    - :func:`set_time`
     - :func:`add_reaction`
-    - :func:`add_reaction_list`
-    - :func:`remove_reaction`
-    - :func:`new_reaction`
+    - :func:`add_expression`
+    - :func:`add_ode`
+    - :func:`add_odes`
+    - :func:`add_objective_from_algebraic`
+    - :func:`make_model`
+    - :func:`simulate`
+    - :func:`bound_profile`
+    - :func:`fix_parameter`
     - :func:`run_opt`
-    - :func:`read_data_file`
-    - :func:`write_data_file`
-    - :func:`add_noise_to_data`
+    - :func:`initialize_from_trajectory`
+    - :func:`set_known_absorbing_species`
+    - :func:`rhps_method`
+    - :func:`set_non_absorbing_species`
+    - :func:`unwanted_contribution`
+    - :func:`analyze_parameters`
+    - :func:`reactions_from_stoich`
+    - :func:`stoich_from_reactions`
+    - :func:`add_volume_terms`
+    - :func:`check_model_units`
+    - :func:`plot`
+    - :func:`ae`
+    - :func:`ode`
+    - :func:`odes_expr`
+    - :func:`get_state`
+    - :func:`get_alg`
+    - :func:`diagnostics`
     
     :Properties:
     
@@ -145,7 +172,7 @@ class ReactionModel(WavelengthSelectionMixins):
         if unit_base is not None:
             self.unit_base = unit_base
         else:
-            from kipet.top_level.unit_base import UnitBase
+            from kipet.general_settings.unit_base import UnitBase
             self.unit_base = UnitBase()
             
         # This is used directly by the user for modifying spectral data
@@ -185,6 +212,7 @@ class ReactionModel(WavelengthSelectionMixins):
         self._allow_optimization = False
         self._G_data = {'G_contribution': None, 'Z_in': dict(), 'St': dict()}
         self._step_list = dict()
+        self._reaction_branches = dict()
         self.__custom_volume_state = False
         self.__volume_terms_added = False
         self.__var = VariableNames()
@@ -529,7 +557,7 @@ class ReactionModel(WavelengthSelectionMixins):
         
         """
         if name == self.__var.volume_name:
-            raise AttributeError(f'{self.__volume_name} is a protected state name')
+            raise AttributeError(f'{self.__var.volume_name} is a protected state name')
             
         return self._add_model_component('constant', 
                                         1, 
@@ -706,7 +734,9 @@ class ReactionModel(WavelengthSelectionMixins):
     
     """Model data"""
     
-    def add_data(self, *args, **kwargs):
+    def add_data(self, name=None, file=None, data=None,
+                 category=None, remove_negatives=False,
+                 time_scale=None):
         """This method allows the user to add experimental data to the ReactionModel
         
         .. note::
@@ -719,10 +749,7 @@ class ReactionModel(WavelengthSelectionMixins):
         the spectra attribute, which is a SpectraHandler object that has various preprocessing
         methods.
           
-        :param str name: The name of the model component
-        
-        **Keyword Arguments**
-        
+        :param str name: The name of the dataset
         :param str time_scale: The units of time of the measured data
         :param str file: The file name of the data - if given, KIPET handles data automatically
         :param data: The dataframe of the data, if not using the file directly
@@ -733,32 +760,25 @@ class ReactionModel(WavelengthSelectionMixins):
         :return: None
     
         """        
-        name = kwargs.get('name', None)
-        time_scale = kwargs.get('time_scale', self.unit_base.time)
+        if time_scale is None:
+            time_scale = self.unit_base.time
         
         time_conversion = 1
         if time_scale != self.unit_base.time:
             time_conversion = self.unit_base.ur(time_scale).to(self.unit_base.time).m
         
-        if len(args) > 0:
-            name = args[0]
         if name is None:
             name = f'ds-{len(self.datasets) + 1}'
-            
-        filename = kwargs.get('file', None)
-        data = kwargs.pop('data', None)
-        category = kwargs.pop('category', None)
-        remove_negatives = kwargs.get('remove_negatives', False)
     
-        if filename is not None:
+        if file is not None:
             calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
-            filename = pathlib.Path(calling_file_name).joinpath(filename)
-            kwargs['file'] = filename
-            dataframe = io.read_file(filename)
-        elif filename is None and data is not None:
+            file = pathlib.Path(calling_file_name).joinpath(file)
+            dataframe = io.read_file(file)
+
+        elif file is None and data is not None:
             dataframe = data
         else:
-            raise ValueError('User must provide filename or dataframe')
+            raise ValueError('User must provide file or dataframe')
         
         dataframe.index = dataframe.index*time_conversion
         
@@ -769,10 +789,10 @@ class ReactionModel(WavelengthSelectionMixins):
             return None
                     
         else:
-            dataset = DataSet(name,
+            dataset = DataSet(name=name,
                               category=category,
                               data = dataframe,
-                              file = filename,
+                              file = file,
                               )
             
             if remove_negatives:
@@ -780,8 +800,8 @@ class ReactionModel(WavelengthSelectionMixins):
             self.datasets.add_dataset(dataset)
         
         self._check_data_matches(name)
-        self.datasets._check_duplicates()
-            
+        self.datasets._check_duplicates
+
         return None
     
     
@@ -861,7 +881,24 @@ class ReactionModel(WavelengthSelectionMixins):
     
     """ Expressions """
     
-    def add_reaction(self, name, expr, description=None):
+    def _add_branch(self, branch_name, name):
+        """Declare reaction branches
+        
+        This lets you activate/deactivte entire reaction pathways
+        
+        :param str name: Branch name
+        :param bool active: Indicates if the branch (all sub reactions) are
+          active
+          
+        """
+        if branch_name in self._reaction_branches:
+            self._reaction_branches[branch_name].append(name)
+        else:
+            self._reaction_branches[branch_name] = [name]
+        
+        return None
+    
+    def add_reaction(self, name, expr, **kwargs):
         """Wrapper to add reactions explicitly without using is_reaction
         
         This adds an expression to the model that is identified as being a 
@@ -872,11 +909,15 @@ class ReactionModel(WavelengthSelectionMixins):
         :param expr: The expression representing the reaction
         :type expr: Pyomo expression
         :param str description: An optional description of the expression
+        :param bool active: Option to turn reaction on/off (for model building)
         
         :return: Returns a Pyomo variable representing the expression such that it can be used in model building
         :rtype: Pyomo Expression
         """
-        return self.add_expression(name, expr, description=description, is_reaction=True)
+        kwargs['is_reaction'] = True
+        branch = kwargs.pop('branch', 'default-branch')
+        self._add_branch(branch, name)
+        return self.add_expression(name, expr, **kwargs)
         
     
     def add_expression(self, name, expr, **kwargs):
@@ -904,6 +945,8 @@ class ReactionModel(WavelengthSelectionMixins):
                                   name, 
                                   **kwargs)
         
+        if not kwargs.get('active', True):
+            expr = 0
         expr_ = Expression(name, expr)
         expr_.check_division()
         self.algs_dict.update(**{name: expr_})
@@ -976,40 +1019,40 @@ class ReactionModel(WavelengthSelectionMixins):
 
         return None
     
-    def add_algebraic(self, alg_var, expr):
-        """Method to add an algebraic expression to the ReactionModel
+    # def add_algebraic(self, alg_var, expr):
+    #     """Method to add an algebraic expression to the ReactionModel
         
-        Args:
-            alg_var (str): state variable
+    #     Args:
+    #         alg_var (str): state variable
             
-            expr (Expression): expression for algebraic equation as Pyomo
-                Expression
+    #         expr (Expression): expression for algebraic equation as Pyomo
+    #             Expression
             
-        Returns:
-            None
+    #     Returns:
+    #         None
         
-        """
-        expr = Expression(alg_var, expr)
-        expr.check_division()
-        self.algs_dict.update(**{alg_var: expr})
+    #     """
+    #     expr = Expression(alg_var, expr)
+    #     expr.check_division()
+    #     self.algs_dict.update(**{alg_var: expr})
     
-        return None
+    #     return None
     
-    def add_algebraics(self, alg_fun):
-        """Takes in a dict of algebraic expressions and sends them to
-        add_algebraic
+    # def add_algebraics(self, alg_fun):
+    #     """Takes in a dict of algebraic expressions and sends them to
+    #     add_algebraic
         
-        Args:
-            algebraics (dict): dict of algebraic expressions
+    #     Args:
+    #         algebraics (dict): dict of algebraic expressions
              
-        Returns:
-            None
-        """
-        if isinstance(alg_fun, dict):
-            for key, value in alg_fun.items():
-                self.add_algebraic(key, value)
+    #     Returns:
+    #         None
+    #     """
+    #     if isinstance(alg_fun, dict):
+    #         for key, value in alg_fun.items():
+    #             self.add_algebraic(key, value)
         
-        return None
+    #     return None
 
       
     def add_objective_from_algebraic(self, algebraic_var):
@@ -2205,38 +2248,38 @@ class ReactionModel(WavelengthSelectionMixins):
     #         pass
         
 
-    def make_reaction_table(self, stoich_coeff, rxns):
+    # def make_reaction_table(self, stoich_coeff, rxns):
         
-        df = pd.DataFrame()
-        for k, v in stoich_coeff.items():
-            df[k] = v
+    #     df = pd.DataFrame()
+    #     for k, v in stoich_coeff.items():
+    #         df[k] = v
         
-        df.index = rxns
-        self.reaction_table = df
+    #     df.index = rxns
+    #     self.reaction_table = df
     
-    def reaction_block(self, stoich_coeff, rxns):
-        # make a reactions_dict in __init__ and update here
-        """Method to allow for simple construction of a reaction system
+    # def reaction_block(self, stoich_coeff, rxns):
+    #     # make a reactions_dict in __init__ and update here
+    #     """Method to allow for simple construction of a reaction system
         
-        Args:
-            stoich_coeff (dict): dict with components as keys and stoichiometric
-                coeffs is lists as values:
-                    example: stoich_coeff['A'] = [-1, 0 , 1] etc
+    #     Args:
+    #         stoich_coeff (dict): dict with components as keys and stoichiometric
+    #             coeffs is lists as values:
+    #                 example: stoich_coeff['A'] = [-1, 0 , 1] etc
                 
-            rxns (list): list of algebraics that represent reactions
+    #         rxns (list): list of algebraics that represent reactions
             
-        Returns:
-            r_dict (dict): dict of completed reaction expressions
+    #     Returns:
+    #         r_dict (dict): dict of completed reaction expressions
             
-        """
-        self.make_reaction_table(stoich_coeff, rxns)
+    #     """
+    #     self.make_reaction_table(stoich_coeff, rxns)
         
-        r_dict = {}
+    #     r_dict = {}
         
-        for com in self.components.names: 
-            r_dict[com] = sum(stoich_coeff[com][i] * self.ae(r) for i, r in enumerate(rxns)) 
+    #     for com in self.components.names: 
+    #         r_dict[com] = sum(stoich_coeff[com][i] * self.ae(r) for i, r in enumerate(rxns)) 
     
-        return r_dict
+        # return r_dict
     
     def _create_stoich_dataframe(self):
         """Builds the dataframe used to hold the stoichiometric matrix
@@ -2248,7 +2291,7 @@ class ReactionModel(WavelengthSelectionMixins):
         if self.algebraics.get_match('is_reaction', True) is None:
             raise ValueError('You need to declare reaction expressions')
         
-        odes = self.odes_dict
+        # odes = self.odes_dict
         reaction_exprs = self.algebraics.get_match('is_reaction', True)
         dr = pd.DataFrame(np.zeros((len(self.components), len(reaction_exprs))), columns=reaction_exprs, index=self.components.names)    
            
@@ -2305,12 +2348,18 @@ class ReactionModel(WavelengthSelectionMixins):
             for comp, s_list in St.items():
                 dr.loc[comp, :] = s_list
 
+        self.St = dr
         # Now we have the dr dataframe, put together the reactions
         odes_dict = {}
         for comp in comps:
             ode = 0
             for rxn in dr.columns:
-                ode += dr.loc[comp, rxn]*self.algs_dict[rxn].expression
+                
+                expr_to_add = 0
+                if self.algebraics[rxn].active:
+                    expr_to_add = self.algs_dict[rxn].expression
+                
+                ode += dr.loc[comp, rxn]*expr_to_add
                 
             odes_dict[comp] = ode
             if add_odes:
@@ -2623,9 +2672,7 @@ class ReactionModel(WavelengthSelectionMixins):
         :return: None
         
         """
-        from kipet.model_components.units_handler import \
-            convert_single_dimension
-        
+
         print('Checking expected equation units:\n')
         
         if not self.__flag_odes_built:
@@ -2653,7 +2700,7 @@ class ReactionModel(WavelengthSelectionMixins):
             else:
                 convert_to = ' / '.join([str(key_comp.units), self.unit_base.time])
             
-            expr.check_expression_units(convert_to=str(convert_to), scalar=1)
+            expr.check_expression_units(convert_to=str(convert_to))
         
             
         for key, expr in self.algs_dict.items():

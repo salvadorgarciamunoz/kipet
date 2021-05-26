@@ -1,5 +1,10 @@
 """
-General scaling method for Kipet models
+General scaling methods for Kipet models
+
+.. warning::
+
+        This class is still under development and may change in future versions!
+
 """
 # Standard library imports
 import copy
@@ -9,15 +14,22 @@ from pyomo.environ import Param
 
 from kipet.common.VisitorClasses import ReplacementVisitor, ScalingVisitor
 # Kipet library imports
-from kipet.core_methods.PyomoSimulator import PyomoSimulator
-from kipet.top_level.variable_names import VariableNames
+from kipet.general_settings.variable_names import VariableNames
 
 __var = VariableNames()
+
 
 def scale_models(models_input, k_vals, name=None):
     """Takes a model or dict of models and iterates through them to update the
     odes and parameter values
-    
+
+    :param array-like models_input: The models to be updated
+    :param dict k_vals: The current parameter values
+    :param str name: The name of the model
+
+    :return: The dict of ? and the dict of models
+    :rtype: tuple
+
     """
     models_dict = copy.deepcopy(models_input)
     
@@ -33,9 +45,16 @@ def scale_models(models_input, k_vals, name=None):
 
     return d_init, models_dict
 
+
 def _scale_model(model, k_vals):
     """Scales an individual model and updates the initial parameter dict
-    
+
+    :param ConcreteModel model: The Pyomo model to be scaled
+    :param dict k_vals: The current parameter values
+
+    :return: The scaled parameter dict
+    :rtype: dict
+
     """
     scaled_bounds = {}    
 
@@ -68,8 +87,16 @@ def _scale_model(model, k_vals):
             
     return parameter_dict
 
+
 def add_scaling_parameters(model, k_vals=None):
-    
+    """This will actually set up the model variables in the Pyomo models
+
+    :param ConcreteModel model: A pyomo model
+    :param dict k_vals: A dict of parameter values
+
+    :return: None
+
+    """
     print("The model has not been scaled and will now be scaled using K parameters")
     
     if k_vals is None:
@@ -85,7 +112,8 @@ def add_scaling_parameters(model, k_vals=None):
                     default=1))
     
     return None
-        
+
+
 def scale_parameters(model, k_vals=None):
     """If scaling, this multiplies the constants in model.K to each
     parameter in model.P.
@@ -109,11 +137,16 @@ def scale_parameters(model, k_vals=None):
         scaled_expr = _scale_expression(v.body, scale)
         getattr(model, __var.ode_constraints)[k] = scaled_expr == 0
 
+
 def remove_scaling(model, bounds=None):
-    
-    """You need to reset the bounds on the parameter too"""
-    """EP problem: parameter bounds are not respected"""
-    
+    """This method resets the scaling
+
+    :param ConcreteModel model: A pyomo model
+    :param tuple bounds: The bounds to be reset
+
+    :return: None
+
+    """
     if not hasattr(model, __var.model_parameter_scaled):
         raise AttributeError('The model is not scaled')
         
@@ -136,25 +169,37 @@ def remove_scaling(model, bounds=None):
     return None
         
 def _scale_expression(expr, scale):
-    
+    """Method to set up the scaling
+
+    :param expression expr: The expression to scale
+    :param dict scale: The mapping of ids to variables
+
+    :return: The scaled expression
+    :rtype: expression
+
+    """
     visitor = ScalingVisitor(scale)
     return visitor.dfs_postorder_stack(expr)
 
+
 def update_expression(expr, replacement_param, change_value):
-    """Takes the noparam_infon-estiambale parameter and replaces it with its intitial
+    """Takes the non-estiambale parameter and replaces it with its intitial
     value
-    
-    Args:
-        expr (pyomo constraint expr): the target ode constraint
-        
-        replacement_param (str): the non-estimable parameter to replace
-        
-        change_value (float): initial value for the above parameter
-        
-    Returns:
-        new_expr (pyomo constraint expr): updated constraints with the
-            desired parameter replaced with a float
-    
+
+    .. warning::
+
+        This may not be needed and may be deleted
+
+    :param expression expr: The target ode constraint
+    :param str replacement_param: The non-estimable parameter to replace
+    :param float change_value: The initial value for the above parameter
+
+    :param expression new_expr: updated constraints with the
+        desired parameter replaced with a float
+
+    :return: Updated expression
+    :rtype: expression
+
     """
     visitor = ReplacementVisitor()
     visitor.change_replacement(change_value)
@@ -162,4 +207,3 @@ def update_expression(expr, replacement_param, change_value):
     new_expr = visitor.dfs_postorder_stack(expr)
     
     return new_expr
-

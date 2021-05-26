@@ -3,27 +3,220 @@ Code Documentation
 
 All of the public classes and methods used in KIPET are listed on these pages.
 
-ReactionLab
+kipet_model
 ===========
 
 .. automodule:: kipet.kipet_model
     :members:
     :show-inheritance:
 
-ReactionModel
+reaction_model
 =============
 
-.. automodule:: kipet.top_level.reaction_model
+.. automodule:: kipet.reaction_model
     :members:
 
-Input/Output
+kipet_io
 ============
 
 .. automodule:: kipet.kipet_io
    :members:
 
-Pyomo Tools
-=============
+	
+common
+======
+
+
+additional_inputs
+^^^^^^^^^^^^^^^^^
+
+.. automodule:: kipet.common.additional_inputs
+	:members:
+
+component_expression
+^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: kipet.common.component_expression
+	:members:
+	
+diagnostic_tools
+^^^^^^^^^^^^^^^^
+
+.. automodule:: kipet.common.diagnostic_tools
+	:members:
+
+helper
+^^^^^^
+
+.. automodule:: kipet.common.helper
+	:members:
+
+interpolation
+^^^^^^^^^^^^^
+
+.. automodule:: kipet.common.interpolation
+	:members:
+
+jumps
+^^^^^
+
+.. automodule:: kipet.common.jumps
+	:members:
+	
+model_funs
+^^^^^^^^^^
+
+.. automodule:: kipet.common.model_funs
+	:members:
+	
+objectives
+^^^^^^^^^^
+
+.. automodule:: kipet.common.objectives
+	:members:
+
+parameter_handling
+^^^^^^^^^^^^^^^^^^
+
+.. automodule:: kipet.common.parameter_handling
+	:members:
+
+parameter_ranking
+^^^^^^^^^^^^^^^^^
+
+.. automodule:: kipet.common.parameter_ranking
+	:members:
+	
+prob_gen_tools
+^^^^^^^^^^^^^^
+
+.. automodule:: kipet.common.prob_gen_tools
+	:members:
+	
+read_hessian
+^^^^^^^^^^^^
+
+.. automodule:: kipet.common.read_hessian
+	:members:
+	
+read_write_tools
+^^^^^^^^^^^^^^^^
+
+.. automodule:: kipet.common.read_write_tools
+	:members:
+
+ReducedHessian
+^^^^^^^^^^^^^^
+
+.. automodule:: kipet.common.ReducedHessian
+	:members:
+	
+VisitorClasses
+^^^^^^^^^^^^^^
+
+.. automodule:: kipet.common.VisitorClasses
+	:members:
+
+general_settings
+================
+
+The following modules contain the various options and setting used throughout KIPET.
+
+settings
+^^^^^^^^
+
+.. automodule:: kipet.general_settings.settings
+	:members:
+
+unit_base
+^^^^^^^^^
+
+.. automodule:: kipet.top_level.unit_base
+	:members:
+
+variable_names
+^^^^^^^^^^^^^^
+
+.. automodule:: kipet.top_level.variable_names
+	:members:
+
+	
+model_components
+================
+
+This contains the various modules and classes used to handle and manipulate data in KIPET.
+
+data_component
+^^^^^^^^^^^^^^
+
+.. automodule:: kipet.model_components.data_component
+	:members:
+	
+element_blocks
+^^^^^^^^^^^^^^
+
+.. automodule:: kipet.model_components.element_blocks
+	:members:
+
+expression
+^^^^^^^^^^
+
+.. automodule:: kipet.model_components.expression
+	:members:
+
+ModelComponent
+^^^^^^^^^^^^^^
+
+.. automodule:: kipet.model_components.ModelComponent
+	:members:
+
+spectral_handler
+^^^^^^^^^^^^^^^^
+
+.. automodule:: kipet.model_components.spectral_handler
+	:members:
+
+units_handler
+^^^^^^^^^^^^^
+
+.. automodule:: kipet.model_components.units_handler
+	:members:
+
+
+post_model_build
+================
+
+These are tools that can be used to modify the Pyomo models after they have been built.	
+	
+pyomo_model_tools
+^^^^^^^^^^^^^^^^^
 
 .. automodule:: kipet.post_model_build.pyomo_model_tools
     :members:
+	
+replacement
+^^^^^^^^^^^
+
+.. automodule:: kipet.post_model_build.replacement
+    :members:
+	
+scaling
+^^^^^^^
+
+.. automodule:: kipet.post_model_build.scaling
+    :members:
+	
+visuals
+=======
+
+Methods for visualizing the data in KIPET
+
+plots
+^^^^^
+
+This module contains the PlotObject class that is used for all plotting needs in KIPET.
+
+.. automodule:: kipet.visuals.plots
+    :members:
+
+	

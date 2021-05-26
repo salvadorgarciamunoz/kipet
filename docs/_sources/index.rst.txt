@@ -51,6 +51,6 @@ KIPET development is hosted on GitHub and we welcome feedback and questions ther
 
 https://github.com/salvadorgarciamunoz/KIPET
 
-KIPET makes use of Pyomo as the algebraic modelling language and much of the syntax can be found here:
+KIPET makes use of Pyomo as the algebraic modeling language and much of the syntax can be found here:
 
 https://pyomo.readthedocs.io/en/stable/

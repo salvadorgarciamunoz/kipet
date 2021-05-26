@@ -8,7 +8,9 @@ from pyomo.environ import *
 
 
 class ReplacementVisitor(EXPR.ExpressionReplacementVisitor):
-    
+
+    """Class used to replace elements within a Pyomo expression"""
+
     def __init__(self):
         super(ReplacementVisitor, self).__init__()
         self._replacement = None
@@ -53,8 +55,11 @@ class ReplacementVisitor(EXPR.ExpressionReplacementVisitor):
                 return True, node
 
         return False, None
-    
+
+
 class ScalingVisitor(EXPR.ExpressionReplacementVisitor):
+
+    """Class used to replace elements in a Pyomo expression with scaled values"""
 
     def __init__(self, scale):
         super(ScalingVisitor, self).__init__()
@@ -85,7 +90,9 @@ class ScalingVisitor(EXPR.ExpressionReplacementVisitor):
 
 
 class FindingVisitor(EXPR.ExpressionValueVisitor):
-            
+
+    """Class used simply to find values within Pyomo expressions"""
+
     def __init__(self):
         super(FindingVisitor, self).__init__()
         self._suspect = None

@@ -1,12 +1,25 @@
 """
-Parameter handling
+Parameter handling for ConcreteModels in various cases (especially MEE)
 """
-from kipet.top_level.variable_names import VariableNames
+# KIPET library imports
+from kipet.general_settings.variable_names import VariableNames
 
+# Load the KIPET variables
 __var = VariableNames()
-parameter_set_name = __var.model_parameter
+
 
 def calculate_parameter_averages(model_dict):
+    """Calculate the average parameter values across experiments.
+
+    This takes a plural value of ReactionModel ResultsObject (they need to be already fit) and determines the average
+    parameter values. This is meant to be used as a possible initialization in MEE (not necessary).
+
+    :param dict model_dict: The dict of ReactionModel instances
+
+    :return avg_param: A dict of parameter averages
+    :rtype: dict
+
+    """
     
     p_dict = {}
     c_dict = {}
@@ -23,9 +36,17 @@ def calculate_parameter_averages(model_dict):
     avg_param = {param: p_dict[param]/c_dict[param] for param in p_dict.keys()}
     
     return avg_param
-    
+
+
 def initialize_parameters(model_dict):
-    
+    """Automates the parameter initialization in MEE by first calculation parameter averages. This changes the values
+    in place.
+
+    :param dict model_dict: The dict of ReactionModel instances
+
+    :return: None
+
+    """
     avg_param = calculate_parameter_averages(model_dict)
     
     for key, model in model_dict.items():
@@ -34,20 +55,17 @@ def initialize_parameters(model_dict):
             
     return None
 
+
 def check_initial_parameter_values(model_object):
     """Checks the initial parameter values and alters them if they violate the
     bounds.
     
-    Args:
-        model_object (pyomo ConcreteModel): A pyomo model instance of the current
-            problem 
+    :param ConcreteModel model_object: A pyomo model instance of the current problem
             
-    Returns:
-        None
+    :return: None
         
     """
-    
-    for k, v in getattr(model_object, parameter_set_name).items():
+    for k, v in getattr(model_object, __var.model_parameter).items():
         
         bound_push = 1.05
         
@@ -58,44 +76,33 @@ def check_initial_parameter_values(model_object):
             v.set_value(v.lb*bound_push)
             
     return None
-        
+
+
 def set_scaled_parameter_bounds(model_object, parameter_set=None, rho=10, scaled=True, original_bounds=None):
-    """Set the parameter values (scaled) for a given set of parameters
-    
-    Args:
-        model_object (pyomo ConcreteModel): A pyomo model instance of the current
-            problem 
+    """Set the parameter values (scaled) for a given set of parameters. This is done in place.
+
+    :param ConcreteModel model_object: A pyomo model instance of the current problem
             
-        parameter_set (list): list of parameters to be considered, if None all
-            parameters in the model are considered
+    :param list parameter_set: A list of parameters to be considered, if None all parameters in the model are considered
+    :param float rho: Ratio for setting the upper and lower bounds
+    :param bool scaled: True if the parameters are scaled
+    :param bool original_bounds: True if the original parameter bounds are to be used (instead of rho)
             
-        rho (float): ratio for setting the upper and lower bounds
-        
-        scaled (bool): True if the parameters are scaled
-        
-        original_bounds (bool): True if the original parameter bounds are to be
-            used (instead of rho)
-            
-    Returns:
-        None
+    :return: None
     
     """
-    param_set = param = getattr(model_object, parameter_set_name)
+    param_set = param = getattr(model_object, __var.model_parameter)
     
     if parameter_set is None:
         parameter_set = [p for p in param_set]
-    
     for k, v in param_set.items():
-        
         if k in parameter_set:
-            
             if not scaled:
                 ub = rho*v.value
                 lb = 1/rho*v.value
             else:
                 ub = rho
                 lb = 1/rho
-            
             if original_bounds is not None:
                 if ub > original_bounds[k][1]:
                     ub = original_bounds[k][1]
@@ -105,10 +112,8 @@ def set_scaled_parameter_bounds(model_object, parameter_set=None, rho=10, scaled
             v.setlb(lb)
             v.setub(ub)
             v.unfix()
-            
             if scaled:
                 v.set_value(1)
-    
         else:
             v.fix()
 

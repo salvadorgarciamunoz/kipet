@@ -5,7 +5,7 @@ ModelComponent Classes
 from kipet.model_components.units_handler import convert_single_dimension
 
 
-class ModelElement():
+class ModelElement:
     
     """Abstract Class to handle the modeling components in KIPET"""
     
@@ -38,8 +38,7 @@ class ModelElement():
         #self._check_scaling()
 
     def _check_scaling(self):
-            
-        #print(f'\nConverting {self.name} ################################################')
+
         quantity = 1 * self.units
         quantity.ito_base_units()
         
@@ -175,6 +174,7 @@ class ModelAlgebraic(ModelElement):
                  units_orig=None,
                  conversion_factor=1,
                  is_reaction=False,
+                 active=True,
                  ):
     
         super().__init__(name, ModelComponent.class_, value, units,
@@ -186,6 +186,7 @@ class ModelAlgebraic(ModelElement):
         self.data = data
         self.step = step
         self.is_reaction = is_reaction
+        self.active = active
     
     def __str__(self):
         
@@ -447,7 +448,7 @@ class ModelConstant(ModelElement):
         margin = 25
         settings = 'ModelConstant\n'
         
-        for key in self.__dict__: #['name', 'class_', 'value', 'units']:
+        for key in self.__dict__:
             if key == 'class_':
                 continue
             settings += f'{str(key).rjust(margin)} : {getattr(self, key)}\n'

@@ -25,7 +25,7 @@ from kipet.core_methods.Optimizer import *
 from kipet.core_methods.TemplateBuilder import *
 from kipet.mixins.PEMixins import PEMixins
 from kipet.post_model_build.pyomo_model_tools import convert
-from kipet.top_level.variable_names import VariableNames
+from kipet.general_settings.variable_names import VariableNames
 
 
 class ParameterEstimator(PEMixins, Optimizer):

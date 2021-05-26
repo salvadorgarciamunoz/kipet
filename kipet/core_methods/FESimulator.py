@@ -10,7 +10,7 @@ from pyomo.environ import *
 # KIPET library imports
 from kipet.core_methods.fe_factory import fe_initialize
 from kipet.core_methods.PyomoSimulator import PyomoSimulator
-from kipet.top_level.variable_names import VariableNames
+from kipet.general_settings.variable_names import VariableNames
 
 __author__ = 'Michael Short, Kevin McBride'  #: July 2018 - January 2021
 

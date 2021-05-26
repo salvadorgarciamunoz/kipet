@@ -1,18 +1,9 @@
 """
 Component expression handling and units model development
 """
-# Standard library imports
-
-# Third party imports
-from pyomo.core.base.PyomoModel import ConcreteModel
-from pyomo.core.base.var import Var
-from pyomo.environ import units as u
-
-from kipet.common.VisitorClasses import ReplacementVisitor
 # KIPET library imports
 from kipet.post_model_build.pyomo_model_tools import get_index_sets
-from kipet.post_model_build.replacement import _update_expression
-from kipet.top_level.variable_names import VariableNames
+from kipet.general_settings.variable_names import VariableNames
 
 string_replace_dict = {
     ' ': '_',
@@ -21,25 +12,34 @@ string_replace_dict = {
     '.': '_',
     }
 
-class ModalVar():
-        
+
+class ModalVar:
+    """Simple class to model a model variable"""
     def __init__(self, name, comp, index, model):
         
         self.name = name
         self.comp = comp
         self.index = index
         self.model = model
-    
-class Comp():
+
+
+class Comp:
+    """This class is needed to handle pyomo variables and return a dict of these variables.
+
+    This will not be used by the user directly. This is one of the key classes that allows the user to use
+    dummy pyomo variables in building the KIPET models.
+
+    :param ConcreteModel model: The model we are going to use (dummy model)
+    :param
+    """
     
     var = VariableNames()
     
-    def __init__(self, model, constant_info=None):
+    def __init__(self, model):
         
         self._model = model
         self._model_vars = self.var.model_vars
         self._rate_vars = self.var.rate_vars
-        self.constant_info = constant_info
         self.var_dict = {}
         self.var_unit_dict = {}
         self.assign_vars()
@@ -47,7 +47,8 @@ class Comp():
         
     def assign_vars(self):
         """Digs through and assigns the variables as top-level attributes
-        
+
+        :return: None
         """
         list_of_vars = self._model_vars
         
@@ -81,8 +82,14 @@ class Comp():
                     else:
                         setattr(self, comp_name, mv_obj[comp])
 
-    def assign_rate_vars(self):
+        return None
 
+    def assign_rate_vars(self):
+        """Assigns the rate variables as top-level attributes
+
+        :return: None
+
+        """
         for mv in self._rate_vars:
             if hasattr(self._model, mv):
                 
@@ -104,63 +111,16 @@ class Comp():
                     if dim > 1:
                         setattr(self, comp_name, mv_obj[0, comp])
                     else:
-                        setattr(self, comp_name, mv_obj[comp])  
+                        setattr(self, comp_name, mv_obj[comp])
 
-    def _id(self, comp):
-        
-        id_ = id(getattr(self, comp))
-        print(id_)
-        return id_
+        return None
     
     @property
     def get_var_list(self):
-        
+        """Returns a list of variables in the Comp dict
+
+        :return: A list of variables
+        :rtype: list
+
+        """
         return list(self.var_dict.keys())
-    
-    
-# class Comp_Check():
-    
-#     var = VariableNames()
-    
-#     def __init__(self, model, param_list):
-        
-#         self._model = model
-#         self._param_list = param_list
-#         self.var_dict = {}
-#         self.assign_params_for_units_check()
-        
-#     def assign_params_for_units_check(self):
-#         """Digs through and assigns the variables as top-level attributes
-        
-#         """
-#         m = self._model
-#         for var in self._param_list:
-#             if hasattr(m, var):
-#                 var_obj = getattr(m, var)
-#                 self.var_dict[var] = var_obj
-#                 setattr(self, var, var_obj)
-                
-# def get_unit_model(element_dict, set_up_model):
-#     """Takes a ReactionModel instance and returns a Comp_Check object
-#     representing the model's varialbes with units
-#     """            
-#     unit_model = ConcreteModel()
-#     new_params = set()
-#     for elem, comp_block in element_dict.items():
-#         if len(comp_block) > 0:
-#             for comp in comp_block:
-                
-#                 new_params.add(comp.name)
-#                 m_units = comp.units
-#                 if m_units is None:
-#                     m_units = str(1)
-#                 else:
-#                     m_units = getattr(u, str(m_units))
-                    
-#                 print(m_units)
-#                 print(type(m_units))
-#                 setattr(unit_model, comp.name, Var(initialize=1, units=m_units))
-        
-#     c_units = Comp_Check(unit_model, list(new_params))
-    
-#     return c_units

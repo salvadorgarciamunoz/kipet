@@ -1,13 +1,16 @@
 """
-General KIPET Model Settings
-
-This should remove all of the fixed variable names across the KIPET software
+General KIPET Model Varialbe names
 """
 
 class VariableNames(object):
     
-    """Names of the KIPET model variables"""
-    
+    """Names of the KIPET model variables
+
+    This provides a central location to reduce errors in developing KIPET modules by forcing a naming convention.
+    It also provides useful collections of variables for use in many other functions.
+
+    This is not really needed by the user and should only be used by developers.
+    """
     def __init__(self):
     
         # Strong defaults
@@ -61,11 +64,16 @@ class VariableNames(object):
     
     @property
     def time_dependent_variables(self):
-        
+        """Property to return variables that are time dependent:
+
+        :Defaults:
+
+            ['Z', 'dZdt', 'S', 'C', 'X', 'dXdt', 'U', 'Y']
+
+        :return model_vars: The list of target variables
+        :rtype: list
+
         """
-        ['Z', 'dZdt', 'S', 'C', 'X', 'dXdt', 'U', 'Y']
-        """
-        
         model_vars = [self.concentration_model,
                       self.concentration_model_rate,
                       self.spectra_species,
@@ -80,8 +88,15 @@ class VariableNames(object):
         
     @property
     def modeled_states(self):
-        """
-        ['Z', 'dZdt', 'X', 'dXdt']
+        """Property to return variables that are modeled:
+
+        :Defaults:
+
+            ['Z', 'dZdt', 'X', 'dXdt']
+
+        :return model_vars: The list of target variables
+        :rtype: list
+
         """
         model_vars = [self.concentration_model,
                       self.concentration_model_rate,
@@ -93,13 +108,18 @@ class VariableNames(object):
     
     @property
     def model_vars(self):
-        """
-        ['Z', 'X', 'P', 'Y', 'step', 'Const']
+        """Property to return component variables:
+
+        :Defaults:
+
+            ['Z', 'X', 'P', 'Y', 'step', 'Const']
+
+        :return model_vars: The list of target variables
+        :rtype: list
+
         """
         model_vars = [self.concentration_model,
-                      #self.concentration_model_rate,
                       self.state_model,
-                      #self.state_model_rate,
                       self.model_parameter,
                       self.algebraic,
                       self.step_variable,
@@ -110,7 +130,12 @@ class VariableNames(object):
     
     @property
     def rate_vars(self):
-        
+        """Property to return rate variables:
+
+        :return model_vars: The list of target variables
+        :rtype: list
+
+        """
         model_vars = [
             self.concentration_model_rate,
             self.state_model_rate,
@@ -120,7 +145,12 @@ class VariableNames(object):
     
     @property
     def plot_vars(self):
-        
+        """Property to return plotted variables
+
+        :return model_vars: The list of target variables
+        :rtype: list
+
+        """
         model_vars = [
             self.concentration_model_rate,
             self.state_model_rate,

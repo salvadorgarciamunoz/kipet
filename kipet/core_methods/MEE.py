@@ -26,7 +26,7 @@ from kipet.core_methods.ParameterEstimator import *
 from kipet.core_methods.PyomoSimulator import *
 from kipet.core_methods.VarianceEstimator import *
 from kipet.mixins.PEMixins import PEMixins
-from kipet.top_level.variable_names import VariableNames
+from kipet.general_settings.variable_names import VariableNames
 
 __author__ = 'Michael Short, Kevin McBride'  #: February 2019 - October 2020
 

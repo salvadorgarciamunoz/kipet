@@ -23,7 +23,7 @@ from kipet.core_methods.PyomoSimulator import PyomoSimulator
 from kipet.post_model_build.pyomo_model_tools import get_index_sets
 # KIPET library imports
 from kipet.post_model_build.scaling import scale_parameters
-from kipet.top_level.variable_names import VariableNames
+from kipet.general_settings.variable_names import VariableNames
 
 logger = logging.getLogger('ModelBuilderLogger')
 

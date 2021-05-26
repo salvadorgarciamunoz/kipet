@@ -30,6 +30,7 @@ def get_vars(model):
 
     return vars_list
 
+
 def get_vars_block(model):
     """Alternative method for getting the model varialbes
     
@@ -46,6 +47,7 @@ def get_vars_block(model):
         
     return model_variables
 
+
 def get_params(model):
     """Returns a list of the model parameters
     
@@ -57,6 +59,7 @@ def get_params(model):
     param_list = list(model.component_map(Param))
     
     return param_list
+
 
 def get_result_vars(model):
     """Get the Vars and Params needed for the results object
@@ -70,6 +73,7 @@ def get_result_vars(model):
     result_vars += get_params(model)
     
     return result_vars
+
 
 def get_index_sets(model_var_obj):
     """Retuns a list of the index sets for the model variable
@@ -90,6 +94,7 @@ def get_index_sets(model_var_obj):
         return None
     
     return index_set
+
 
 def index_set_info(index_list):
     """Returns whether index list contains a continuous set and where the
@@ -112,6 +117,7 @@ def index_set_info(index_list):
     index_dict['other_set'] = tuple(index_dict['other_set'])
         
     return index_dict
+
 
 def change_continuous_set(cs, new_bounds):
     """Changes the bounds of the continuous set.
@@ -139,6 +145,7 @@ def change_continuous_set(cs, new_bounds):
     cs._fe = sorted(cs)
     
     return None
+
 
 def convert(var):
     """Load variables from the pyomo model into various formats.

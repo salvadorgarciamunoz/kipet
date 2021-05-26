@@ -1,32 +1,27 @@
 """
 Expression Classes
 """
-# Standad library imports
-
 # Third party imports
 from pyomo.core.expr.numeric_expr import (DivisionExpression,
                                           NegationExpression,
                                           ProductExpression)
-from pyomo.environ import ConcreteModel, Objective, Var
 from pyomo.environ import units as pyo_units
 
 # KIPET library imports
-from kipet.common.VisitorClasses import ReplacementVisitor
-from kipet.dev_tools.display import Print
 from kipet.post_model_build.replacement import _update_expression
 
-DEBUG = False
 
-_print = Print(verbose=DEBUG)
-
-
-class ExpressionBlock():
+class ExpressionBlock:
     
-    """Class for general expression block classes"""
+    """Class for general expression block classes
+
+    :Methods:
+
+        - :func:`display`
+        - :func:`display_units`
+    """
     
-    def __init__(self,
-                 exprs=None,
-                 ):
+    def __init__(self, exprs=None):
         
         self.exprs = exprs
         self._title = 'EXPR'
@@ -36,30 +31,42 @@ class ExpressionBlock():
         return len(self.exprs)
         
     def display(self):
-        
+        """This method loops through all expressions and displays them in a readable format
+
+        :return: None
+
+        """
         if self.exprs is not None:
             print(f'{self._title} expressions:')
             for key, expr in self.exprs.items():
                 print(f'{key}: {expr.expression.to_string()}')
 
+        return None
 
     def display_units(self):
+        """Loops through the expressions and shows their units
 
+        :return: None
+
+        """
         margin = 8
         if self.exprs is not None:
             print(f'{self._title} units:')
             for key, expr in self.exprs.items():
-                #print(f'  {key}: {expr.units}')
                 print(f'{str(key).rjust(margin)} : {expr.units}')
-    
+
+        return None
+
 
 class ODEExpressions(ExpressionBlock):
     
-    """Class for ODE expressions"""
+    """Class for ODE expressions
+
+    :param dict ode_exprs: dict of ODE expressions
+
+    """
     
-    def __init__(self,
-                 ode_exprs=None,
-                 ):
+    def __init__(self, ode_exprs=None):
         
         super().__init__(ode_exprs)
         self._title = 'ODE'
@@ -67,18 +74,33 @@ class ODEExpressions(ExpressionBlock):
         
 class AEExpressions(ExpressionBlock):
     
-    """Class for AE expressions"""
+    """Class for AE expressions
+
+    :param dict alg_exprs: dict of alebraic expressions
+
+    """
     
-    def __init__(self,
-                 alg_exprs=None,
-                 ):
+    def __init__(self, alg_exprs=None):
         
         super().__init__(alg_exprs)
         self._title = 'ALG'
 
-class Expression():
+
+class Expression:
     
-    """Class for individual expressions"""
+    """Class for individual expressions
+
+    :param str name: The name of the expression
+    :param expression: Pyomo expression
+
+    :Methods:
+
+        - :func:`show_units`
+        - :func:`check_units`
+        - :func:`check_division`
+        - :func:`check_expression_units`
+
+    """
     
     def __init__(self,
                  name,
@@ -95,11 +117,20 @@ class Expression():
     
     @property
     def show_units(self):
+        """Display the units of the expression
+
+        :return: String of the units
+        :rtype: str
+
+        """
         return self.units.to_string()
     
     def _change_to_unit(self, c_mod, c_mod_new):
         """Method to remove the fixed parameters from the ConcreteModel
-        TODO: move to a new expression class
+
+        :param Comp c_mod: The Comp object of dummy pyomo variables
+        :param Comp c_mod_new: The Comp object of new variables
+
         """
         var_dict = c_mod_new.var_dict
         expr_new = self.expression
@@ -111,30 +142,24 @@ class Expression():
             expr_new = _update_expression(expr_new, old_var, new_var)
         return expr_new
 
-    def check_units(self):#, c_mod, c_mod_new):
+    def check_units(self):
         """Check the expr units by exchanging the real model with unit model
         components
         
-        Args:
-            key (str): component represented in ODE
-            
-            expr (Expression): Expression object of ODE
-            
-            c_mod (Comp): original Comp object used to declare the expressions
-            
-            c_mod_new (Comp_Check): dummy model with unit components
-            
-        Returns:
-            pint_units (): Returns expression with unit model components
-        
+        :return: None
+
         """
         self.units = pyo_units.get_units(self.expression)
         return None
 
     def check_division(self, eps=1e-12):
         """Add a small amount to the numerator and denominator in a
-        DivisionExpression to improve the numerics
-        
+        DivisionExpression to improve the numerics.
+
+        :param float eps: The small addition to the numerator and denominator
+
+        :return: None
+
         """
         expr = self.expression
         
@@ -149,70 +174,51 @@ class Expression():
             self.expression_orig = expr
     
         return None
-    
-    #Consolidate the units per expression - avoid checking the individual units
-    
-    def check_term(self, term, convert_to):
-        
+
+    @staticmethod
+    def _check_term(term, convert_to):
+        """This loops through terms in the expression to ensure the units are valid
+
+        :param expression term: The term to check
+        :param str convert_to: The units to convert to, if necessary
+
+        :return term_new: The updated expression term
+        :rtype: expression
+
+        """
         unit_term = pyo_units.get_units(term)
-        _print(f'     Units: {unit_term} ==> {convert_to}\n')
-        _changed_flag = False
         term_new = term
         
         if unit_term is not None:
-            _print('Starting conversion and making the new term\n')
             term_new = pyo_units.convert(term, to_units=getattr(pyo_units, convert_to))
             
         return term_new
     
-    def check_expression_units(self, convert_to=None, scalar=1):
-        
+    def check_expression_units(self, convert_to=None):
+        """Method to call in order to check an expressions units. This updates the expressions in place.
+
+        :param str convert_to: The units to convert the expression to
+
+        :return: None
+
+        """
+        scalar = 1
         if convert_to is None:
             raise ValueError('You need to supply a conversion')
-        
         expr = self.expression
         expr_new = 0
-        
-        _print(f'The ODE expression being handled is:\n     {expr}\n')
-        _print(f'The type of expression being handled is:\n     {type(expr)}\n')
-    
         if isinstance(expr, NegationExpression):
             scalar *= -1
-    
         if isinstance(self.expression, (DivisionExpression, ProductExpression)):
-            _print(f'The number of terms in this expression is: 1\n')
-            
-            term = self.check_term(expr, convert_to)
+            term = self._check_term(expr, convert_to)
             expr_new = scalar*term
-        
-        
         else:
             if isinstance(expr, (int, float)):
                 return None
-
-            _print(f'The number of terms in this expression is: {len(expr.args)}\n')
-            
             for i, term in enumerate(expr.args):
-                _print(f'({i+1}) The expression term considered here is\n     {term}\n')
-                term = self.check_term(term, convert_to)
+                term = self._check_term(term, convert_to)
                 expr_new += scalar*term
-        
-        _print('The new expression is:\n')
-        _print(f'     {expr_new}')
-            
         self.expression = expr_new
         self.units = getattr(pyo_units, convert_to)
              
         return None
-        
-            
-            
-    
-    
-    
-    
-    
-    
-    
-    
-    

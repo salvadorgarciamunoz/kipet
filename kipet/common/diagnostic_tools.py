@@ -1,5 +1,10 @@
 """
 Diagnostic Tools used in Kipet
+
+.. note::
+
+    These methods should be checked for usefulness and possibly removed
+
 """
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,13 +14,13 @@ import scipy
 
 def rank(A, eps=1e-10):
     """ obtains the rank of a matrix based on SVD
-    
-        Args:
-            eps (optional, float): the value of the singular values that corresponds to 0 
-                            when smaller than eps. Default = 1e-10
 
-        Returns:
-            rank (int): The rank of the matrix
+    :param numpy.ndarray A: A numpy matrix
+    :param float eps: the value of the singular values that corresponds to 0
+        when smaller than eps. Default = 1e-10
+
+    :return rank: The rank of the matrix
+    :rtype: int
 
     """
     print(type(A))  
@@ -29,24 +34,24 @@ def rank(A, eps=1e-10):
     else:
         raise RuntimeError("Must provide A as either numpy matrix or pandas dataframe")
 
-def nullspace(A, atol=1e-13, rtol=0):
-    """ obtains the nullspace of a matrix based on SVD. Taken from the SciPy cookbook
-    
-        Args:
-            atol : float
-        The absolute tolerance for a zero singular value.  Singular values
-        smaller than `atol` are considered to be zero.
-            rtol : float
-        The relative tolerance.  Singular values less than rtol*smax are
-        considered to be zero, where smax is the largest singular value.
 
-        Returns:
-           ns : ndarray
-        If `A` is an array with shape (m, k), then `ns` will be an array
+def nullspace(A, atol=1e-13, rtol=0):
+    """Obtains the nullspace of a matrix based on SVD. Taken from the SciPy cookbook
+
+    If `A` is an array with shape (m, k), then `ns` will be an array
         with shape (k, n), where n is the estimated dimension of the
         nullspace of `A`.  The columns of `ns` are a basis for the
         nullspace; each element in numpy.dot(A, ns) will be approximately
         zero.
+
+    :param numpy.ndarray A: A numpy matrix
+    :param float atol: The absolute tolerance for a zero singular value.  Singular values
+        smaller than `atol` are considered to be zero.
+    :param float rtol: The relative tolerance.  Singular values less than rtol*smax are
+        considered to be zero, where smax is the largest singular value.
+
+    :return ns:
+    :rtype: numpy.ndarray
 
     """
     A = np.atleast_2d(A)
@@ -55,83 +60,69 @@ def nullspace(A, atol=1e-13, rtol=0):
     nnz = (s >= tol).sum()
     ns = vh[nnz:].conj().T
     return ns
-       
-def basic_pca(dataFrame,n=None,with_plots=False):
-    """ Runs basic component analysis based on SVD
-    
-        Args:
-            dataFrame (DataFrame): spectral data
-            
-            n (int): number of largest singular-values
-            to plot
-            
-            with_plots (boolean): argument for files with plots due to testing
 
-        Returns:
-            None
+
+def basic_pca(dataFrame, n=None, with_plots=False):
+    """ Runs basic component analysis based on SVD
+
+    :param pandas.DataFrame dataFrame: spectral data
+    :param int n: number of largest singular-values to plot
+    :param bool with_plots: Argument for files with plots due to testing
+
+    :return: None
 
     """
             
     times = np.array(dataFrame.index)
     lambdas = np.array(dataFrame.columns)
     D = np.array(dataFrame)
-    #print("D shape: ", D.shape)
     U, s, V = np.linalg.svd(D, full_matrices=True)
-    #print("U shape: ", U.shape)
-    #print("s shape: ", s.shape)
-    #print("V shape: ", V.shape)
-    #print("sigma/singular values", s)
-    if n == None:
+
+    if n is None:
         print("WARNING: since no number of components is specified, all components are printed")
         print("It is advised to select the number of components for n")
         n_shape = s.shape
         n = n_shape[0]
         
     u_shape = U.shape
-    #print("u_shape[0]",u_shape[0])
-    n_l_vector = n if u_shape[0]>=n else u_shape[0]
-    n_singular = n if len(s)>=n else len(s)
+    n_l_vector = n if u_shape[0] >= n else u_shape[0]
+    n_singular = n if len(s) >= n else len(s)
     idxs = range(n_singular)
     vals = [s[i] for i in idxs]
     v_shape = V.shape
-    n_r_vector = n if v_shape[0]>=n else v_shape[0]
+    n_r_vector = n if v_shape[0] >=n else v_shape[0]
     
     if with_plots:
         for i in range(n_l_vector):
-            plt.plot(times,U[:,i])
+            plt.plot(times, U[:, i])
         plt.xlabel("time")
         plt.ylabel("Components U[:,i]")
         plt.show()
         
-        plt.semilogy(idxs,vals,'o')
+        plt.semilogy(idxs, vals, 'o')
         plt.xlabel("i")
         plt.ylabel("singular values")
         plt.show()
         
         for i in range(n_r_vector):
-            plt.plot(lambdas,V[i,:])
+            plt.plot(lambdas, V[i, :])
         plt.xlabel("wavelength")
         plt.ylabel("Components V[i,:]")
         plt.show()
+
 
 def perform_data_analysis(dataFrame, pseudo_equiv_matrix, rank_data):  
     """ Runs the analysis by Chen, et al, 2018, based upon the pseudo-equivalency
     matrix. User provides the data and the pseudo-equivalency matrix and the analysis
     provides suggested number of absorbing components as well as whether there are
     likely to be unwanted spectral contributions.
-    
-        Args:
-            dataFrame (DataFrame): spectral data
-            
-            pseudo_equiv_matrix (list of lists): list containing the rows of the pseudo-equivalency
-                                matrix.
-            
-            rank_data (int): rank of the data matrix, as determined from SVD (number of coloured species)
-                
-            with_plots (boolean): argument for files with plots due to testing
 
-        Returns:
-            None
+    :param pandas.DataFrame dataFrame: Spectral data
+    :param list pseudo_equiv_matrix: List containing the rows of the pseudo-equivalency matrix.
+    :param int rank_data: Rank of the data matrix, as determined from SVD (number of coloured species)
+    :param bool with_plots: Argument for files with plots due to testing
+
+    :return: None
 
     """  
     if not isinstance(dataFrame, pd.DataFrame):
@@ -167,4 +158,3 @@ def perform_data_analysis(dataFrame, pseudo_equiv_matrix, rank_data):
         print("Solve with unwanted contributions")
     else:
         print("There may be uncounted for species in the model, or multiple sources of unknown contributions")
-    

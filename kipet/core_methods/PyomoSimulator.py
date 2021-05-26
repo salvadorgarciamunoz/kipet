@@ -12,7 +12,7 @@ from kipet.core_methods.Simulator import *
 from kipet.dev_tools.display import Print
 from kipet.post_model_build.pyomo_model_tools import (get_index_sets,
                                                       index_set_info)
-from kipet.top_level.variable_names import VariableNames
+from kipet.general_settings.variable_names import VariableNames
 
 __var = VariableNames()
 DEBUG=__var.DEBUG

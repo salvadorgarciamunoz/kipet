@@ -1,15 +1,26 @@
 """
-KIPET 2020
+This file contains the object functions used throughout Kipet modules in one place. This should reduce the redundancy
+in using objective terms
 
-This file contains the object functions used throughout Kipet modules in one
-place.
+.. note::
+
+    These methods are not complete in all cases and may not be used in future versions of KIPET.
 
 """
 from pyomo.environ import Objective
 
 
 def get_objective(model, *args, **kwargs):
-    
+    """Main method to gather the objective terms
+
+    :param ConcreteModel model: The model for which the objective will be built
+    :param tuple args: The arguments to be passed
+    :param dict kwargs: The arguments to be passed
+
+    :return: An objective component for the model
+    :rtype: Objective
+
+    """
     objective_type = kwargs.get('objective_type', 'concentration')
     
     if objective_type == 'concentration':
@@ -19,49 +30,39 @@ def get_objective(model, *args, **kwargs):
 
 
 def conc_objective(model, *args, **kwargs):
-    """
-    
-    Parameters
-    ----------
-    m : Pyomo ConcreteModel
-        This is the current used in parameter fitting
+    """Method to build concentration terms in the objective function
 
-    Returns
-    -------
-    obj : Objective function for Pyomo models
-        This is the concentration based objective function
+    :param Pyomo ConcreteModel model: This is the current model used in parameter fitting
+    :param tuple args: Arguments to be passed
+    :param dict kwargs: Arguments to be passed
+
+    :return: obj
+    :rtype: expression
 
     """
-    obj=0
-  
+    obj = 0
     source = kwargs.get('source', 'concentration')
-    
     if source == 'concentration':
-    
         if model.mixture_components & model.measured_data:
             for index, values in model.Cm.items():
                 obj += _concentration_term(model, index, var='Cm', **kwargs)
-      
     elif source == 'spectra':
-      
         if model.mixture_components:
             for index, values in model.C.items():
                 obj += _concentration_term(model, index, var='C', **kwargs)
       
     return obj
 
-def comp_objective(model, *args, **kwargs):
-    """
-    
-    Parameters
-    ----------
-    m : Pyomo ConcreteModel
-        This is the current used in parameter fitting
 
-    Returns
-    -------
-    obj : Objective function for Pyomo models
-        This is the concentration based objective function
+def comp_objective(model, *args, **kwargs):
+    """Method to build individual concentration terms in the objective function
+
+    :param Pyomo ConcreteModel model: This is the current model used in parameter fitting
+    :param tuple args: Arguments to be passed
+    :param dict kwargs: Arguments to be passed
+
+    :return: obj
+    :rtype: expression
 
     """
     obj=0
@@ -72,42 +73,35 @@ def comp_objective(model, *args, **kwargs):
         
     return obj
 
-def spectra_objective(model, *args, **kwargs):
-    """
-    
-    Parameters
-    ----------
-    m : Pyomo ConcreteModel
-        This is the current used in parameter fitting
 
-    Returns
-    -------
-    obj : Objective function for Pyomo models
-        This is the concentration based objective function
+def spectra_objective(model, *args, **kwargs):
+    """Method to build individual spectral terms in the objective function
+
+    :param Pyomo ConcreteModel model: This is the current model used in parameter fitting
+    :param tuple args: Arguments to be passed
+    :param dict kwargs: Arguments to be passed
+
+    :return: obj
+    :rtype: expression
 
     """
     obj=0
-    # change this to items in the list (D or D_bar)
-    # for t in model.meas_times:
-    #     for l in model.meas_lambdas:
-    
+
     for index, values in model.D.items():
         obj += _spectra_term(model, index)
         
     return obj
 
-def absorption_objective(model, *args, **kwargs):
-    """
-    
-    Parameters
-    ----------
-    m : Pyomo ConcreteModel
-        This is the current used in parameter fitting
 
-    Returns
-    -------
-    obj : Objective function for Pyomo models
-        This is the concentration based objective function
+def absorption_objective(model, *args, **kwargs):
+    """Method to build individual absorption terms in the objective function
+
+    :param Pyomo ConcreteModel model: This is the current model used in parameter fitting
+    :param tuple args: Arguments to be passed
+    :param dict kwargs: Arguments to be passed
+
+    :return: obj
+    :rtype: expression
 
     """
     sigma_device = kwargs.get('device_variance', 1)
@@ -150,21 +144,17 @@ def absorption_objective(model, *args, **kwargs):
 
 #     return D_bar
         
+
 def _concentration_term(model, index, var='C', **kwargs):
-    """
-    
-    Parameters
-    ----------
-    m : Pyomo ConcreteModel
-        This is the current used in parameter fitting
+    """Method to build individual concentration terms in the objective function
 
-    index : tuple
-        This is the index of the model.C component
+    :param Pyomo ConcreteModel model: This is the current model used in parameter fitting
+    :param tuple index: Index of the concentration point
+    :param str var: The type of concentration to fit (C/Cm)
+    :param dict kwargs: This is basically the variance
 
-    Returns
-    -------
-    objective_concentration_term : Pyomo expression
-        LS concentration term for objective
+    :return: objective_concentration_term
+    :rtype: expression
 
     """
     custom_sigma = kwargs.get('variance', None)
@@ -177,25 +167,21 @@ def _concentration_term(model, index, var='C', **kwargs):
     if variance is None:
         variance = 1
     
-    objective_concentration_term = (getattr(model, var)[index] - model.Z[index]) ** 2  / variance
+    objective_concentration_term = (getattr(model, var)[index] - model.Z[index]) ** 2 / variance
     
     return objective_concentration_term
-    
+
+
 def _complementary_state_term(model, index, **kwargs):
-    """
-    
-    Parameters
-    ----------
-    m : Pyomo ConcreteModel
-        This is the current used in parameter fitting
+    """Method to build individual complementary state terms in the objective function
 
-    index : tuple
-        This is the index of the model.C component
+    :param Pyomo ConcreteModel model: This is the current model used in parameter fitting
+    :param tuple index: Index of the concentration point
+    :param str var: The type of concentration to fit (C/Cm)
+    :param dict kwargs: This is basically the variance
 
-    Returns
-    -------
-    objective_complementary_state_term : Pyomo expression
-        LS complementary state term for objective
+    :return: objective_concentration_term
+    :rtype: expression
 
     """
     custom_sigma = kwargs.get('variance', None)
@@ -209,51 +195,64 @@ def _complementary_state_term(model, index, **kwargs):
     
     return objective_complementary_state_term
 
+
 def _spectra_term(model, index, use_sigma=True):
-    """
-    
-    Parameters
-    ----------
-    m : Pyomo ConcreteModel
-        This is the current used in parameter fitting
+    """Method to build individual spectral terms in the objective function
 
-    index : tuple
-        This is the index of the model.C component
+    :param Pyomo ConcreteModel model: This is the current model used in parameter fitting
+    :param tuple index: Index of the concentration point
+    :param bool use_sigma: Option to use the variance in the terms
 
-    Returns
-    -------
-    objective_complementary_state_term : Pyomo expression
-        LS complementary state term for objective
+    :return: objective_spectral_term
+    :rtype: expression
 
     """
-    objective_complementary_state_term = 0.5*(model.D[index] - model.D_bar[index]) ** 2
+    objective_spectral_term = 0.5*(model.D[index] - model.D_bar[index]) ** 2
     
     if use_sigma:
-        objective_complementary_state_term /= model.sigma['device']**2
+        objective_spectral_term /= model.sigma['device']**2
 
-    return objective_complementary_state_term
-    
+    return objective_spectral_term
+
+
 def _absorption_term(model, index, sigma_device=1, D_bar=None, g_options=None):
-    
-    print(index)
-    print(model.D[index])
-    print(D_bar[index])
-    
+    """Method to build individual concentration terms in the objective function
+
+    :param Pyomo ConcreteModel model: This is the current model used in parameter fitting
+    :param tuple index: Index of the concentration point
+    :param float sigma_device: Device variance
+    :param GeneralVar D_bar: Optional D variable use
+    :param dict g_options: Unwanted contribution data
+
+    :return: objective_absorption_term
+    :rtype: expression
+
+    """
     if g_options['unwanted_G'] or g_options['time_variant_G']:
         objective_absorption_term = (model.D[index] - D_bar[index] - model.qr[index[0]]*model.g[index[1]]) ** 2 / sigma_device
     elif g_options['time_invariant_G_no_decompose']:
         objective_absorption_term = (model.D[index] - D_bar[index] - model.g[index[1]]) ** 2 / sigma_device
     else:
         objective_absorption_term = (model.D[index] - D_bar[index]) ** 2 / sigma_device
-        
-    print(f'The index: {index}')
-    print(objective_absorption_term.to_string())
-    print('\n #### \n')
 
     return objective_absorption_term
-    
+
+
 def _spectral_term_MEE(model, index, sigma_device, g_option, shared_spectra, with_d_vars, list_components):
-    
+    """Method to build individual spectral terms in the objective function for MEE
+
+    :param Pyomo ConcreteModel model: This is the current model used in parameter fitting
+    :param tuple index: Index of the concentration point
+    :param float sigma_device: Device variance
+    :param dict g_option: Unwanted contribution data
+    :param bool shared_spectra: Option to share spectra across experiments
+    :param bool with_d_vars: Option to use D variables (always True)...
+    :param list list_components: A list of model components
+
+    :return: objective_spectral_term
+    :rtype: expression
+
+    """
     t = index[0]
     l = index[1]
     if with_d_vars:
@@ -270,4 +269,3 @@ def _spectral_term_MEE(model, index, sigma_device, g_option, shared_spectra, wit
    
     objective_spectral_term = (base + G_term)**2/sigma_device
     return objective_spectral_term
-

@@ -44,12 +44,25 @@ plot_options = {
         ),
     }
 
-class PlotObject():
-    
-    """This will hold the relevant information needed to make a plot in KIPET"""
-    
+
+class PlotObject:
+
+    """This will hold the relevant information needed to make a plot in KIPET
+
+    This object is created in ReactionModel and accessed using the plot method therein.
+
+    :param ReactionModel reaction_model: A ReactionModel instance
+    :param bool jupyter: Indicates if the user is using a Jupyter notebook
+    :param str filename: Optional file name for the plot
+    """
     def __init__(self, reaction_model=None, jupyter=False, filename=None):
-        
+        """Initialization of the PlotObject instance
+
+        :param ReactionModel reaction_model: A ReactionModel instance
+        :param bool jupyter: Indicates if the user is using a Jupyter notebook
+        :param str filename: Optional file name for the plot
+
+        """
         self.reaction_model = reaction_model
         self.name = reaction_model.name
         self.color_num = 0
@@ -59,9 +72,18 @@ class PlotObject():
         t = time.localtime()
         date = f'{t.tm_year}-{t.tm_mon:02}-{t.tm_mday:02}-{t.tm_hour:02}-{t.tm_min:02}-{t.tm_sec:02}'
         self.timestamp = date
-        
-    def _make_line_trace(self, fig, x, y, name, color):
-        """Make line traces
+
+    @staticmethod
+    def _make_line_trace(fig, x, y, name, color):
+        """Convenience method for making traces in place.
+
+        :param go.Figure fig: A figure object
+        :param list x: X-axis values for plot
+        :param list y: Y-axis values for plot
+        :param str name: Name of the data
+        :param int color: Index for the color
+
+        :return: None
         
         """
         line = dict(color=colors[color], width=4)
@@ -75,7 +97,16 @@ class PlotObject():
         return None
     
     def _make_marker_trace(self, fig, x, y, name, color, marker_options):
-        """Make marker traces
+        """Convenience method for making marker traces in place.
+
+        :param go.Figure fig: A figure object
+        :param list x: X-axis values for plot
+        :param list y: Y-axis values for plot
+        :param str name: Name of the data
+        :param int color: Index for the color
+        :param dict marker_options: Options for the marker characteristics
+
+        :return: None
         
         """
         fig.add_trace(
@@ -88,8 +119,17 @@ class PlotObject():
         return None
 
     def _fig_finishing(self, fig, pred, plot_name='Z'):
-        """Finish the plots before showing
-        
+        """Finish the plots before showing.
+
+        This method creates the plots and opens the browser to show them. It also saves the plots as SVGs in the
+        same charts directory as the HTML versions.
+
+        :param go.Figure fig: The figure object
+        :param pandas.DataFrame pred: The predicted data from the model
+        :param str plot_name: The name of the plot (based on data)
+
+        :return: None
+
         """
         x_data = [t for t in pred.index]
         x_axis_mod = 0.025*(float(x_data[-1]) - float(x_data[0]))
@@ -145,8 +185,16 @@ class PlotObject():
         return None
 
     def _state_plot(self, fig, var, pred, exp, use_spectral_format=False):
-        """Plot the state profiles
-        
+        """Generic method to plot state profiles
+
+        :param go.Figure fig: The figure object
+        :param str var: The variable to plot
+        :param pandas.DataFrame pred: The predicted data from the model
+        :param pandas.DataFrame exp: The experimental data
+        :param bool use_spectral_format: For absorbance profiles True, otherwise False
+
+        :return: None
+
         """
         self._make_line_trace(fig=fig,
                               x=pred.index,
@@ -155,7 +203,7 @@ class PlotObject():
                               color=self.color_num,
                               )
         marker_options = {'size': 15,
-                           'opacity': 0.75,
+                          'opacity': 0.75,
                           }
         label = 'exp.'   
         if use_spectral_format:
@@ -171,6 +219,7 @@ class PlotObject():
                                     color=self.color_num,
                                     marker_options=marker_options,
                                     )
+        return None
 
     def _plot_all_Z(self):
         """Plot all concentration profiles
@@ -207,11 +256,12 @@ class PlotObject():
                 )
         self._fig_finishing(fig, pred, plot_name='all-concentration-profiles')
 
+        return None
+
     def _plot_Z(self, var):
         """Plot state profiles
-        
-        Args:
-            var (str): concentration variable
+
+        :param str var: concentration variable
         
         """
         fig = go.Figure()
@@ -243,9 +293,9 @@ class PlotObject():
     def _plot_Y(self, var, extra=None):
         """Plot state profiles
 
-        Args:
-            var (str): algebraic variable
-        
+        :param str var: algebraic variable
+
+        :return: None
         """
         fig = go.Figure()
         pred = self.reaction_model.results.Y
@@ -270,9 +320,10 @@ class PlotObject():
     def _plot_X(self, var):
         """Plot state profiles
         
-        Args:
-            var (str): state variable
-        
+        :param str var: state variable
+
+        :return: None
+
         """
         fig = go.Figure()
         pred = getattr(self.reaction_model.results, 'X')
@@ -297,7 +348,9 @@ class PlotObject():
         
     def _plot_all_S(self):
         """Plot all S profiles
-        
+
+        :return: None
+
         """
         fig = go.Figure()
         pred = getattr(self.reaction_model.results, 'S')
@@ -320,7 +373,11 @@ class PlotObject():
 
     def _plot_S(self, var):
         """Plot individual S profile
-        
+
+        :param str var: component name
+
+        :return: None
+
         """
         fig = go.Figure()
         pred = getattr(self.reaction_model.results, 'S')
@@ -339,8 +396,14 @@ class PlotObject():
                 )
         self._fig_finishing(fig, pred, plot_name=f'{var}-absorbance-spectra')
         
-    def _plot_step(self, var, extra=None):
-    
+    def _plot_step(self, var):
+        """Plot the step function
+
+        :param str var: The step variable to plot
+
+        :return: None
+
+        """
         fig = go.Figure()
         pred = self.reaction_model.results.step
         self._state_plot(fig, var, pred, None)
@@ -352,10 +415,19 @@ class PlotObject():
             yaxis_title=f'[dimensionless]',
             )
         self._fig_finishing(fig, pred, plot_name=f'{var}-step-profile')
-        
-    
+
+        return None
+
     def _get_proper_unit_str(self, var_data, check_expr=False):
-        
+        """Gets the proper units for the charts labels
+
+        :param str var_data: The variable data object (ModelElement)
+        :param bool check_expr: Optional checking of expression units
+
+        :return: The units
+        :rtype: str
+
+        """
         try:
             str_units = var_data.units.u
         except:
@@ -369,4 +441,3 @@ class PlotObject():
                     str_units = str(self.reaction_model.algebraics[var_data.name].units)
             
         return str_units
-        

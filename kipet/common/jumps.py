@@ -1,7 +1,8 @@
 """
 This module contains the code related to jumps - removes redundancy
+
+These have not been optimized or refactored.
 """
-from pyomo.core import *
 from pyomo.dae import *
 from pyomo.environ import *
 
@@ -9,7 +10,13 @@ from kipet.mixins.VisitorMixins import ReplacementVisitor
 
 
 def set_up_jumps(self, kwargs):
+    """This initializes the jump (dosing) points in the Estimator class
 
+    :param dict kwargs: Takes in the jump related arguments from the Estimator class
+
+    :return: None
+
+    """
     var_dic = kwargs.pop("jump_states", None)
     jump_times = kwargs.pop("jump_times", None)
     feed_times = kwargs.pop("feed_times", None)
@@ -32,7 +39,13 @@ def set_up_jumps(self, kwargs):
                     "There are more time points in feed_times than jump_times provided.")
     self.load_discrete_jump()
 
+
 def load_discrete_jump(self):
+    """Loads a discrete jump point
+
+    :return: None
+
+    """
     self.jump = True
 
     zeit = None
@@ -52,14 +65,19 @@ def load_discrete_jump(self):
     for i in range(0, len(fe_list)):  # test whether integer elements
         self.jump_constraints(i)
   
-# I want to change this spaghetti
+
 def jump_constraints(self, fe):
-    # type: (int) -> None
     """ Take the current state of variables of the initializing model at fe and load it into the tgt_model
     Note that this will skip fixed variables as a safeguard.
 
-    Args:
-        fe (int): The current finite element to be patched (tgt_model).
+    .. note::
+
+        This has not been refactored at all. This code works, but it is not pretty.
+
+    :param int fe: The current finite element to be patched (tgt_model).
+
+    :return: None
+
     """
     ###########################
     if not isinstance(fe, int):
@@ -132,19 +150,18 @@ def jump_constraints(self, fe):
                                     conlist.add(con[idx].expr)
                 kn = kn + 1
 
-    @staticmethod
     def t_ij(self, time_set, i, j):
         # type: (ContinuousSet, int, int) -> float
         """Return the corresponding time(continuous set) based on the i-th finite element and j-th collocation point
         From the NMPC_MHE framework by @dthierry.
     
-        Args:
-            time_set (ContinuousSet): Parent Continuous set
-            i (int): finite element
-            j (int): collocation point
+        :param ContinuousSet time_set: Parent Continuous set
+        :param int i: finite element
+        :param int j: collocation point
     
-        Returns:
-            float: Corresponding index of the ContinuousSet
+        :return: Corresponding index of the ContinuousSet
+        :rtype: float
+
         """
         if i < time_set.get_discretization_info()['nfe']:
             h = time_set.get_finite_elements()[i + 1] - time_set.get_finite_elements()[i]  #: This would work even for 1 fe
@@ -154,15 +171,15 @@ def jump_constraints(self, fe):
         fe = time_set.get_finite_elements()[i]
         time = fe + tau[j] * h
         return round(time, 6)
-    
-    @staticmethod
+
     def fe_cp(self, time_set, feedtime):
         """Return the corresponding fe and cp for a given time
-         Args:
-            time_set:
-            t:
-        
-        type: (ContinuousSet, float) -> tuple
+
+        :param ContinuousSet time_set: Parent continuous set
+        :param float feedtime: The time of the jump point
+
+        :return: The FE and the CP
+        :rtype: tuple
                  
         """
         fe_l = time_set.get_lower_element_boundary(feedtime)

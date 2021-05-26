@@ -18,7 +18,7 @@ from kipet.common.VisitorClasses import ReplacementVisitor
 # KIPET library imports
 from kipet.post_model_build.pyomo_model_tools import (change_continuous_set,
                                                       get_index_sets)
-from kipet.top_level.variable_names import VariableNames
+from kipet.general_settings.variable_names import VariableNames
 
 __author__ = 'David M Thierry, Kevin McBride'  #: April 2018 - January 2021
 
