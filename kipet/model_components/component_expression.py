@@ -2,7 +2,7 @@
 Component expression handling and units model development
 """
 # KIPET library imports
-from kipet.post_model_build.pyomo_model_tools import get_index_sets
+from kipet.model_tools.pyomo_model_tools import get_index_sets
 from kipet.general_settings.variable_names import VariableNames
 
 string_replace_dict = {

@@ -14,37 +14,33 @@ from pyomo.environ import ConcreteModel, Set, Var
 from pyomo.environ import units as pyo_units
 
 # Kipet library imports
-import kipet.kipet_io as io
-from kipet.common.interpolation import interpolate_trajectory
-#from kipet.common.model_funs import step_fun
-from kipet.core_methods.EstimabilityAnalyzer import EstimabilityAnalyzer
-from kipet.core_methods.EstimationPotential import (
-    rhps_method)
-from kipet.core_methods.FESimulator import FESimulator
-from kipet.core_methods.ParameterEstimator import ParameterEstimator
-from kipet.core_methods.PyomoSimulator import PyomoSimulator
-from kipet.core_methods.TemplateBuilder import TemplateBuilder
-from kipet.core_methods.VarianceEstimator import VarianceEstimator
-from kipet.dev_tools.display import Print
-from kipet.mixins.TopLevelMixins import WavelengthSelectionMixins
+import kipet.input_output.kipet_io as io
+from kipet.calculation_tools.interpolation import interpolate_trajectory
+#from kipet.calculation_tools.model_funs import step_fun
+from kipet.estimability_tools.estimability_analysis import EstimabilityAnalyzer
+from kipet.estimability_tools.reduced_hessian_parameter_selection import rhps_method
+from kipet.estimator_tools.fe_simulator import FESimulator
+from kipet.estimator_tools.parameter_estimator import ParameterEstimator
+from kipet.estimator_tools.pyomo_simulator import PyomoSimulator
+from kipet.model_tools.template_builder import TemplateBuilder
+from kipet.estimator_tools.variance_estimator import VarianceEstimator
+from kipet.mixins.wavelength_mixins import WavelengthSelectionMixins
 from kipet.model_components.units_handler import convert_single_dimension
-from kipet.post_model_build.pyomo_model_tools import get_vars
+from kipet.model_tools.pyomo_model_tools import get_vars
 from kipet.model_components.data_component import DataBlock, DataSet
 from kipet.model_components.element_blocks import (AlgebraicBlock, ComponentBlock,
                                                    ConstantBlock, ParameterBlock,
                                                    StateBlock)
 from kipet.model_components.expression import (AEExpressions, Expression,
                                                ODEExpressions)
-from kipet.common.helper import DosingPoint
+from kipet.calculation_tools.helper import DosingPoint
 from kipet.general_settings.settings import Settings
 from kipet.model_components.spectral_handler import SpectralData
 from kipet.general_settings.variable_names import VariableNames
 
 __var = VariableNames()
-DEBUG=True #__var.DEBUG
-_print = Print(verbose=DEBUG)
 model_components = ['parameters', 'components', 'states', 'algebraics', 'constants', 'steps']
-version_number = '0.2.2'
+version_number = '0.2.4'
 
 
 # This should be removed - no mixins!
@@ -623,6 +619,7 @@ class ReactionModel(WavelengthSelectionMixins):
                                         **kwargs)
         
     
+    # For variables with higher dimensions
     # def variable(self, *args, **kwargs):
     #     """Create a generic variable with a localized pyomo var
           # This will be a generic method that others can use...
@@ -822,20 +819,14 @@ class ReactionModel(WavelengthSelectionMixins):
         blocks = ['components', 'states', 'algebraics']
         
         if not name_is_from_model:
-            # matched_data_vars = set()
-            # all_data_vars = set()
             dataset = self.datasets[name]
             if dataset.category in ['spectral', 'trajectory']:
                 return None
             else:
                 for block in blocks:
                     for col in dataset.data.columns:
-                        #all_data_vars.add(col)
                         if col in getattr(self, block).names:
                             setattr(getattr(self, block)[col], 'data_link', dataset.name)
-                            #matched_data_vars.add(col)
-        
-
         else:
             for block in blocks:
                 if name in getattr(self, block).names:
@@ -1018,41 +1009,6 @@ class ReactionModel(WavelengthSelectionMixins):
         self.__flag_algs_built = True
 
         return None
-    
-    # def add_algebraic(self, alg_var, expr):
-    #     """Method to add an algebraic expression to the ReactionModel
-        
-    #     Args:
-    #         alg_var (str): state variable
-            
-    #         expr (Expression): expression for algebraic equation as Pyomo
-    #             Expression
-            
-    #     Returns:
-    #         None
-        
-    #     """
-    #     expr = Expression(alg_var, expr)
-    #     expr.check_division()
-    #     self.algs_dict.update(**{alg_var: expr})
-    
-    #     return None
-    
-    # def add_algebraics(self, alg_fun):
-    #     """Takes in a dict of algebraic expressions and sends them to
-    #     add_algebraic
-        
-    #     Args:
-    #         algebraics (dict): dict of algebraic expressions
-             
-    #     Returns:
-    #         None
-    #     """
-    #     if isinstance(alg_fun, dict):
-    #         for key, value in alg_fun.items():
-    #             self.add_algebraic(key, value)
-        
-    #     return None
 
       
     def add_objective_from_algebraic(self, algebraic_var):
@@ -1100,16 +1056,13 @@ class ReactionModel(WavelengthSelectionMixins):
         and passes them in the correct manner to the TemplateBuilder
         
         """
-        
         if not self._template_populated:
         
             with_data = kwargs.get('with_data', True)
     
-            # Add a volume state if not already done so
             if not self.__custom_volume_state:
                 self.volume(value=1, units=self.unit_base.volume)
             
-            # Check if adding volume terms to ODEs is True
             if self.settings.general.add_volume_terms:
                 if not self.__flag_odes_built:
                     self.add_volume_terms()
@@ -1142,7 +1095,6 @@ class ReactionModel(WavelengthSelectionMixins):
                 else:
                     pass
                 
-            # Add the ODEs
             if len(self.odes_dict) != 0:
                 self._build_odes()
                 self._builder.set_odes_rule(self.odes)
@@ -1164,18 +1116,13 @@ class ReactionModel(WavelengthSelectionMixins):
             self._builder.set_parameter_scaling(self.settings.general.scale_parameters)
             self._builder.add_state_variance(self.components.variances)
             
-            # if self._has_step_or_dosing:
-            #     self._builder.add_dosing_var(self._number_of_steps)
-            
             if self._has_dosing_points:
                 self._add_feed_times()
                 
             if hasattr(self, '_step_list') and len(self._step_list) > 0:
                 self._builder.add_step_vars(self._step_list)
                 
-            # It seems this is repetitive - refactor
             if hasattr(self, '_G_contribution') and self._G_contribution is not None:
-            #if self.settings.parameter_estimator.G_contribution is not None:
                 self._unwanted_G_initialization()
                 self._builder._G_contribution = self._G_contribution
             else:
@@ -1561,10 +1508,8 @@ class ReactionModel(WavelengthSelectionMixins):
 
         vars_to_init = get_vars(self._s_model)
         
-        #_print(f'The vars_to_init: {vars_to_init}')
         for var in vars_to_init:
             if hasattr(self.results, var) and var != 'S':
-                #_print(f'Updating variable: {var}')
                 getattr(self, estimator).initialize_from_trajectory(var, getattr(self.results, var))
             elif var == 'S' and hasattr(self.results, 'S'):
                 getattr(self, estimator).initialize_from_trajectory(var, getattr(self.results, var))
@@ -1572,27 +1517,6 @@ class ReactionModel(WavelengthSelectionMixins):
                 continue
         
         return None
-    
-    # def initialize_from_reduced_spectral_data(self, estimator='p_estimator'):
-        
-    #     if not hasattr(self, 's_model'):
-    #         _print('Starting simulation for initialization')
-    #         self.simulate()
-    #         _print('Finished simulation, updating variables...')
-
-    #     _print(f'The model has the following variables:\n{get_vars(self._s_model)}')
-    #     vars_to_init = get_vars(self._s_model)
-        
-    #     _print(f'The vars_to_init: {vars_to_init}')
-    #     for var in vars_to_init:
-    #         if hasattr(self.results, var):    
-    #             _print(f'Updating variable: {var}')
-    #             getattr(self, estimator).initialize_from_trajectory(var, getattr(self.results, var))
-    #         else:
-    #             continue
-        
-    #     return None
-    
     
     def _create_estimator(self, estimator=None):
         """This function handles creating the Estimator object
@@ -1617,6 +1541,7 @@ class ReactionModel(WavelengthSelectionMixins):
         
         setattr(self, f'{estimator[0]}_model', model_to_clone.clone())
         setattr(self, estimator, Estimator(getattr(self, f'{estimator[0]}_model')))
+        
         getattr(self, estimator).apply_discretization(self.settings.collocation.method,
                                                       ncp=self.settings.collocation.ncp,
                                                       nfe=self.settings.collocation.nfe,
@@ -2403,21 +2328,8 @@ class ReactionModel(WavelengthSelectionMixins):
                 return expr, 1
     
         for comp, ode in self.odes_dict.items():
-    
-        
             expr = ode.expression
-            #print('')
-            #print(f'Looking at {comp} and {expr}')
-            #print(comp, expr)
-            #expr_new = 0
-            
-            #print(f'The ODE expression being handled is:\n     {expr}\n')
-            #print(f'The type of expression being handled is:\n     {type(expr)}\n')
-        
-            #print(type(expr))
-        
             expr_use = expr
-        
             scalar = 1
         
             if isinstance(expr, NegationExpression):
@@ -2425,48 +2337,20 @@ class ReactionModel(WavelengthSelectionMixins):
                 scalar = -1        
                 
             if isinstance(ode.expression, (DivisionExpression, ProductExpression)):
-            #    _print(f'The number of terms in this expression is: 1\n')
                 expr_use = expr 
             
             if isinstance(ode.expression, SumExpression):
                 expr_use = expr.args
                 
-            #    term = self.check_term(expr, convert_to)
-            #    expr_new = scalar*term
-            coeff = 1
-            
-            #else:
-            #print(f'The number of terms in this expression is: {len(expr.args)}\n')
-                
-            expr_use = [expr_use]
- 
- #           print('\nStarting For LOOP')
-            for i, term in enumerate(expr_use):
-  #              print(i, term)
-   #             print('')
-    #            print(type(term))
-                
+            for i, term in enumerate([expr_use]):     
                 if not isinstance(term, list):
                     term = [term]
                 for t in term:
-     #               print(t)
                     t, scalar_update = check_expr_type(t)
                     
                     for name, rxn in all_rxns.items():
-      #                  print(name, rxn)
                         if t is rxn:
-       #                     print(f'{name}: {t} == {rxn}')
                             dr.loc[comp, name] = scalar*scalar_update
-                        #print(f'Equal to {name}: {term == rxn}')
-                
-            #term = self.check_term(term, convert_to)
-            #expr_new += scalar*term
-        
-        #_print('The new expression is:\n')
-        #_print(f'     {expr_new}')
-            
-        #self.expression = expr_new
-        #self.units = getattr(pyo_units, convert_to)
         self.St = dr
         
         if as_dict:

@@ -3,40 +3,27 @@ Primary class for performing the parameter fitting in KIPET
 
 """
 # Standard library imports
-import copy
-import os
 import time
 
 # Third party imports
-# import matplotlib.pyplot as plt
-import numpy as np
-from scipy.sparse import coo_matrix
 import scipy.stats as st
-# from pyomo import *
-# from pyomo.dae import *
-# from pyomo.environ import *
-# from pyomo.opt import ProblemFormat, SolverFactory, TerminationCondition
 
 # KIPET library imports
 from kipet.common.objectives import (absorption_objective, comp_objective,
                                      conc_objective)
 from kipet.common.read_hessian import *
-from kipet.core_methods.Optimizer import *
-from kipet.core_methods.TemplateBuilder import *
+from kipet.core_methods.pyomo_simulator import PyomoSimulator
+from kipet.core_methods.template_builder import *
+from kipet.core_methods.results_object import ResultsObject
 from kipet.mixins.PEMixins import PEMixins
 from kipet.post_model_build.pyomo_model_tools import convert
 from kipet.general_settings.variable_names import VariableNames
 
 
-class ParameterEstimator(PEMixins, Optimizer):
-    """Optimizer for parameter estimation.
+class ParameterEstimator(PEMixins, PyomoSimulator):
 
-    Parameters
-    ----------
-    model : Pyomo model
-        Pyomo model to be used in the parameter estimation
+    """Optimizer for parameter estimation"""
 
-    """
     def __init__(self, model):
         super(ParameterEstimator, self).__init__(model)
 
@@ -94,36 +81,30 @@ class ParameterEstimator(PEMixins, Optimizer):
 
         """ Solves parameter estimation problem.
 
-        Args:
-            solver (str): name of the nonlinear solver to used
+        :param str solver: The solver used to solve the NLP
+        :param dict kwds: The dictionary of options passed from the ReactionModel
 
-            solver_opts (dict, optional): options passed to the nonlinear solver
+        :Keyword Args:
+            - solver (str): name of the nonlinear solver to used
+            - solver_opts (dict, optional): options passed to the nonlinear solver
+            - variances (dict or float, optional): map of component name to noise variance. The
+              map also contains the device noise variance. If not float then we only use device variance
+              and ignore model variance.
+            - tee (bool,optional): flag to tell the optimizer whether to stream output
+              to the terminal or not.
+            - with_d_vars (bool,optional): flag to the optimizer whether to add
+            - variables and constraints for D_bar(i,j).
+            - report_time (bool, optional): flag as to whether to time the parameter estimation or not.
+            - estimability (bool, optional): flag to tell the model whether it is
+              being used by the estimability analysis and therefore will need to return the
+              hessian for analysis.
+            - model_variance (bool, optional): Default is True. Flag to tell whether we are only
+              considering the variance in the device, or also model noise as well.
+            - model_variance (bool, optional): Default is True. Flag to tell whether we are only
+              considering the variance in the device, or also model noise as well.
 
-            variances (dict or float, optional): map of component name to noise variance. The
-            map also contains the device noise variance. If not float then we only use device variance
-            and ignore model variance.
-
-            tee (bool,optional): flag to tell the optimizer whether to stream output
-            to the terminal or not.
-
-            with_d_vars (bool,optional): flag to the optimizer whether to add
-
-            variables and constraints for D_bar(i,j).
-            
-            report_time (bool, optional): flag as to whether to time the parameter estimation or not.
-
-            estimability (bool, optional): flag to tell the model whether it is
-            being used by the estimability analysis and therefore will need to return the
-            hessian for analysis.
-            
-            model_variance (bool, optional): Default is True. Flag to tell whether we are only
-            considering the variance in the device, or also model noise as well.
-
-            model_variance (bool, optional): Default is True. Flag to tell whether we are only
-            considering the variance in the device, or also model noise as well.
-
-        Returns:
-            Results object with loaded results
+        :return: The results from the parameter fitting
+        :rtype: ResultsObject
 
         """
         run_opt_kwargs = copy.copy(kwds)
@@ -210,7 +191,8 @@ class ParameterEstimator(PEMixins, Optimizer):
             add_inputs(self, add_kwargs)
         
         if jump:
-            self.set_up_jumps(run_opt_kwargs)
+            from kipet.common.jumps_method import set_up_jumps
+            set_up_jumps(self.model, run_opt_kwargs)
             
         for key, val in solver_opts.items():
             opt.options[key] = val
@@ -222,9 +204,7 @@ class ParameterEstimator(PEMixins, Optimizer):
                 "WARNING: The model has an active objective. Running optimization with models objective.\n"
                 " To solve optimization with default objective (Weifengs) deactivate all objectives in the model.")
             solver_results = opt.solve(self.model, tee=tee)
-    
 
-        
         elif self._spectra_given:
             self.objective_value, self.cov_mat = self._solve_extended_model(variances, 
                                        opt,
@@ -232,8 +212,7 @@ class ParameterEstimator(PEMixins, Optimizer):
                                        covariance=covariance,
                                        with_d_vars=with_d_vars,
                                        **kwds)
-            
-       
+
         elif self._concentration_given: # or self._custom_data_given:
             self.objective_value, self.cov_mat = self._solve_model_given_c(variances, 
                                       opt,
@@ -251,18 +230,22 @@ class ParameterEstimator(PEMixins, Optimizer):
 
         return self._get_results()
 
-
     def _get_results(self):
-        """Removed results unit from function"""
-    
+        """Removed results unit from function
+
+        :return: The formatted results
+        :rtype: ResultsObject
+
+        """
         results = ResultsObject()
-        
         results.objective = self.objective_value
         results.parameter_covariance = self.cov_mat
         results.load_from_pyomo_model(self.model)
 
         if self._spectra_given:
-            self.compute_D_given_SC(results)
+            from kipet.common.beer_lambert import D_from_SC
+            D_from_SC(self.model, results)
+            # self.compute_D_given_SC(results)
 
         if hasattr(self.model, self.__var.model_parameter_scaled): 
             setattr(results, self.__var.model_parameter, {name: getattr(self.model, self.__var.model_parameter)[name].value*getattr(self.model, self.__var.model_parameter_scaled)[name].value for name in self.model.parameter_names})
@@ -280,7 +263,14 @@ class ParameterEstimator(PEMixins, Optimizer):
         return results
 
     def _get_list_components(self, species_list):
-        
+        """Returns the list of components used
+
+        :param list species_list: List of species
+
+        :return: List of model components
+        :rtype: list
+
+        """
         if species_list is None:
             list_components = [k for k in self._mixture_components]
         else:
@@ -294,7 +284,18 @@ class ParameterEstimator(PEMixins, Optimizer):
         return list_components
             
     def _get_objective_expr(self, model, with_d_vars, component_set, sigma_sq, device=False):
-    
+        """Build the objective expression
+
+        :param ConcreteModel model: The model for use in parameter fitting
+        :param bool with_d_vars: For spectral problems
+        :param list component_set: A list of the components
+        :param dict sigma_sq: A dictionary of component variances
+        :param bool device: Indicates if the device variance is used
+
+        :return expr: The objective expression
+        :rtype: expression
+
+        """
         expr = 0
         for t in model.meas_times:
             for l in model.meas_lambdas:
@@ -331,22 +332,21 @@ class ParameterEstimator(PEMixins, Optimizer):
         """Solves estimation based on spectral data. (known variances)
 
            This method is not intended to be used by users directly
-        Args:
-            sigma_sq (dict): variances
 
-            optimizer (SolverFactory): Pyomo Solver factory object
+        :param dict sigma_sq: variances
+        :param SolverFactory optimizer: Pyomo Solver factory object
 
-            tee (bool,optional): flag to tell the optimizer whether to stream output
-            to the terminal or not
+        :Keyword Args:
 
-            with_d_vars (bool,optional): flag to the optimizer whether to add
-            variables and constraints for D_bar(i,j)
+            - tee (bool,optional): flag to tell the optimizer whether to stream output
+              to the terminal or not
+            - with_d_vars (bool,optional): flag to the optimizer whether to add
+              variables and constraints for D_bar(i,j)
+            - subset_lambdas (array_like,optional): Set of wavelengths to used in
+              the optimization problem (not yet fully implemented). Default all wavelengths.
 
-            subset_lambdas (array_like,optional): Set of wavelengths to used in
-            the optimization problem (not yet fully implemented). Default all wavelengths.
+        :return: None
 
-        Returns:
-            None
         """
         tee = kwds.pop('tee', False)
         with_d_vars = kwds.pop('with_d_vars', False)
@@ -548,19 +548,19 @@ class ParameterEstimator(PEMixins, Optimizer):
     def _solve_model_given_c(self, sigma_sq, optimizer, **kwds):
         """Solves estimation based on concentration data. (known variances)
 
-           This method is not intended to be used by users directly
-        Args:
-            sigma_sq (dict): variances
+        This method is not intended to be used by users directly
 
-            optimizer (SolverFactory): Pyomo Solver factory object
+        :param dict sigma_sq: variances
+        :param SolverFactory optimizer: Pyomo Solver factory object
 
-            tee (bool,optional): flag to tell the optimizer whether to stream output
-            to the terminal or not
+        :Keyword Args:
 
-        Returns:
-            None
+            - tee (bool,optional): flag to tell the optimizer whether to stream output
+              to the terminal or not
+
+        :return: None
+
         """
-        
         tee = kwds.pop('tee', False)
         if self._huplc_given:  # added for new huplc structure CS
             weights = kwds.pop('weights', [0.0, 1.0, 1.0])
@@ -619,9 +619,6 @@ class ParameterEstimator(PEMixins, Optimizer):
 
         if hasattr(model, 'custom_obj'):
             model.objective.expr += model.custom_obj
-        
-        #print(model.objective.expr.to_string())
-
 
         if warmstart==True:
             if hasattr(model,'dual') and hasattr(model,'ipopt_zL_out') and hasattr(model,'ipopt_zU_out') and hasattr(model,'ipopt_zL_in') and hasattr(model,'ipopt_zU_in'):
@@ -653,8 +650,17 @@ class ParameterEstimator(PEMixins, Optimizer):
         return obj_val, cov_mat
     
     def _covariance_ipopt_sens(self, model, optimizer, tee, all_sigma_specified):
-        """Generalize the covariance optimization with IPOPT Sens"""
-        
+        """Generalize the covariance optimization with IPOPT Sens
+
+        :param ConcreteModel model: The Pyomo model used in parameter fitting
+        :param SolverFactory optimizer: The SolverFactory currently being used
+        :param bool tee: Display option
+        :param dict all_sigma_specified: The provided variances
+
+        :return hessian: The covariance matrix
+        :rtype: numpy.ndarray
+
+        """
         if self.model_variance == False:
             print("WARNING: FOR PROBLEMS WITH NO MODEL VARIANCE it is advised to use k_aug!!!")
         self._tmpfile = "ipopt_hess"
@@ -662,7 +668,6 @@ class ParameterEstimator(PEMixins, Optimizer):
                                          tee=tee,
                                          logfile=self._tmpfile,
                                          report_timing=True)
-
         
         print("Done solving building reduce hessian")
         output_string = ''
@@ -683,8 +688,18 @@ class ParameterEstimator(PEMixins, Optimizer):
         return hessian
     
     def _covariance_k_aug(self, model, optimizer, tee, all_sigma_specified, labels=False):
-        """Generalize the covariance optimization with k_aug"""
-  
+        """Generalize the covariance optimization with IPOPT Sens
+
+        :param ConcreteModel model: The Pyomo model used in parameter fitting
+        :param SolverFactory optimizer: The SolverFactory currently being used
+        :param bool tee: Display option
+        :param dict all_sigma_specified: The provided variances
+        :param bool labels: Display options
+
+        :return hessian: The covariance matrix
+        :rtype: numpy.ndarray
+
+        """
         self.add_warm_start_suffixes(model, use_k_aug=True)   
         
         count_vars = 1
@@ -763,8 +778,14 @@ class ParameterEstimator(PEMixins, Optimizer):
         return hessian
     
     def _termination_problems(self, solver_results, optimizer):
-        """This is some funky code - do we need it?"""
-        
+        """Checks the termination conditions and will try once again if it fails
+
+        :param ResultsObject solver_results: The results from the parameter fittings
+        :param SolverFactory optimizer: The solver factory being used
+
+        :return: None
+
+        """
         self.termination_condition = solver_results.solver.termination_condition
         if self.termination_condition != TerminationCondition.optimal:
             print("WARNING: The solution of the iteration was unsuccessful. The problem is solved with additional solver options.")
@@ -787,6 +808,14 @@ class ParameterEstimator(PEMixins, Optimizer):
 
     @staticmethod
     def _huplc_obj_term(m, sigma_sq):
+        """Adds the HUPLC term to the objective
+
+        :param ConcreteModel m: The model used in parameter fitting
+        :param dict sigma_sq: The dict of variances
+
+        :return expressions third_term: The HUPLC objective expression
+
+        """
         third_term = 0.0
         if not 'device-huplc' in sigma_sq.keys():
             sigma_sq['device-huplc'] = 1.0
@@ -845,6 +874,9 @@ class ParameterEstimator(PEMixins, Optimizer):
     def _define_reduce_hess_order(self):
         """
         This sets up the suffixes of the reduced hessian
+
+        :return: None
+
         """
         self.model.red_hessian = Suffix(direction=Suffix.IMPORT_EXPORT)
         count_vars = 1
@@ -875,6 +907,11 @@ class ParameterEstimator(PEMixins, Optimizer):
     def _confidence_interval_display(self, variances):
         """
         Function to display calculated confidence intervals
+
+        :param dict variances: The component variances
+
+        :return: None
+
         """
         number_of_stds = st.norm.ppf(1-(1-self.confidence_interval)/2)
         #print(f'STDS: {number_of_stds}')
@@ -903,17 +940,13 @@ class ParameterEstimator(PEMixins, Optimizer):
 
     def _compute_covariance(self, hessian, variances):
         """Computes the covariance for post calculation anaylsis
-        
-        """        
-        nt = self._n_allmeas_times
-        nw = self._n_meas_lambdas
-        nd = nw * nt
-        
-        if hasattr(self, '_abs_components'):
-            isSkipFixed = True
-        else:
-            isSkipFixed = False
 
+        :param numpy.ndarray hessian: The Hessian matrix
+        :param dict variances: Component variances
+
+        :return: The parameter covariances
+        
+        """
         nparams = self._get_nparams(self.model)
         self._n_params = nparams
         variances_p, covariances_p = self._variances_p_calc(hessian, variances)
@@ -924,8 +957,14 @@ class ParameterEstimator(PEMixins, Optimizer):
     def _compute_covariance_C_generic(self, hessian, variances, use_model_variance=False):
         """
         Generic covariance function to reduce code
-        
-        Residuals are not even used...
+
+        :param numpy.ndarray hessian: The Hessian matrix
+        :param dict variances: Component variances
+        :param bool use_model_variance: I am not sure what this does
+
+        :return: covariances of the components (Hessian)
+        :rtype: numpy.ndarray
+
         """
         if use_model_variance:
             res = self._compute_residuals(self.model)
@@ -957,6 +996,12 @@ class ParameterEstimator(PEMixins, Optimizer):
 
         This function is not intended to be used by the users directly
 
+        :param numpy.ndarray hessian: The Hessian matrix
+        :param dict variances: Component variances
+
+        :return: The covariance matrix
+        :rtype: numpy.ndarray
+
         """
         cov_mat = self._compute_covariance_C_generic(hessian, variances, use_model_variance=True)
         return cov_mat
@@ -968,6 +1013,13 @@ class ParameterEstimator(PEMixins, Optimizer):
         Outputs the parameter confidence intervals.
 
         This function is not intended to be used by the users directly
+
+        :param numpy.ndarray hessian: The Hessian matrix
+        :param dict variances: Component variances
+
+        :return: The covariance matrix
+        :rtype: numpy.ndarray
+
         """
         cov_mat = self._compute_covariance_C_generic(hessian, variances, use_model_variance=False)
         return cov_mat
@@ -975,13 +1027,12 @@ class ParameterEstimator(PEMixins, Optimizer):
     def _compute_B_matrix(self, variances, **kwds):
         """Builds B matrix for calculation of covariances
 
-           This method is not intended to be used by users directly
+        This method is not intended to be used by users directly
 
-        Args:
-            variances (dict): variances
+        :param dict variances: variances
 
-        Returns:
-            None
+        :return: None
+
         """
         nt = self._n_meas_times
         time_set = self.model.meas_times
@@ -1014,13 +1065,12 @@ class ParameterEstimator(PEMixins, Optimizer):
     def _compute_Vd_matrix(self, variances, **kwds):
         """Builds d covariance matrix
 
-           This method is not intended to be used by users directly
+        This method is not intended to be used by users directly
 
-        Args:
-            variances (dict): variances
+        :param dict variances: variances
 
-        Returns:
-            None
+        :return: None
+
         """
         nt = self._n_meas_times
         nw = self._n_meas_lambdas
@@ -1058,34 +1108,19 @@ class ParameterEstimator(PEMixins, Optimizer):
         
         return Vd_matrix
 
-    # def _calc_new_D(self, subset):
-    #     """Updates the D data for the wavelength selection"""
-        
-    #     new_D = pd.DataFrame(np.nan, index=self._meas_times, columns=subset)
-    #     for t in self._meas_times:
-    #         for l in self._meas_lambdas:
-    #             if l in subset:
-    #                 new_D.at[t, l] = self.model.D[t, l]
-                    
-    #     return new_D
-        
-
-    def run_param_est_with_subset_lambdas(self, builder_clone, end_time, subset, nfe, ncp, sigmas, solver='ipopt', ):
+    def run_param_est_with_subset_lambdas(self, builder_clone, end_time, subset, nfe, ncp, sigmas, solver='ipopt'):
         """ Performs the parameter estimation with a specific subset of wavelengths.
             At the moment, this is performed as a totally new Pyomo model, based on the
             original estimation. Initialization strategies for this will be needed.
 
-                Args:
-                    builder_clone (TemplateBuidler): Template builder class of complete model
-                                without the data added yet
-                    end_time (float): the end time for the data and simulation
-                    subset(list): list of selected wavelengths
-                    nfe (int): number of finite elements
-                    ncp (int): number of collocation points
-                    sigmas(dict): dictionary containing the variances, as used in the ParameterEstimator class
+        :param TemplateBuilder builder_clone: Template builder class of complete model without the data added yet
+        :param float end_time: the end time for the data and simulation
+        :param list subset: list of selected wavelengths
+        :param int nfe: number of finite elements
+        :param int ncp: number of collocation points
+        :param dict sigmas: dictionary containing the variances, as used in the ParameterEstimator class
 
-                Returns:
-                    results (Pyomo model solved): The solved pyomo model
+        :return ResultsObject results: The solved pyomo model results
 
         """
         if not isinstance(subset, (list, dict)):
@@ -1120,17 +1155,18 @@ class ParameterEstimator(PEMixins, Optimizer):
         problem should be solved first and the correlations for wavelngths from this optimization
         need to be supplied to the function as an option.
 
-                Args:
-                    builder_before_data (TemplateBuilder): Template builder class of complete model
-                                without the data added yet
-                    end_time (int): the end time for the data and simulation
 
-                    correlations (dict): dictionary containing the wavelengths and their correlations
-                                to the concentration profiles
-                    lof_full_model(int): the value of the lack of fit of the full model (with all wavelengths)
+        :param TemplateBuilder builder_before_data: Template builder class of complete model without the data added yet
+        :param int end_time: the end time for the data and simulation
+        :param dict correlations: dictionary containing the wavelengths and their correlations to the concentration profiles
+        :param int lof_full_model: the value of the lack of fit of the full model (with all wavelengths)
+        :param int nfe: number of finite elements
+        :param int ncp: number of collocation points
+        :param dict sigmas: dictionary containing the variances, as used in the ParameterEstimator class
+        :param float step_size: The spacing used in correlation thresholds
+        :param tuple search_range: correlation bounds within to search
 
-                Returns:
-                    *****final model results.
+        :return: None
 
         """
         if not isinstance(step_size, float):
@@ -1193,11 +1229,7 @@ class ParameterEstimator(PEMixins, Optimizer):
     def lack_of_fit(self):
         """ Runs basic post-processing lack of fit analysis
 
-            Args:
-                None
-
-            Returns:
-                lack of fit (int): percentage lack of fit
+        :return float lack of fit: percentage lack of fit
 
         """
         nt = self._n_meas_times
@@ -1231,11 +1263,8 @@ class ParameterEstimator(PEMixins, Optimizer):
         """ determines the degree of correlation between the individual wavelengths and
         the and the concentrations.
 
-            Args:
-                None
 
-            Returns:
-                dictionary of correlations with wavelength
+        :return dict: dictionary of correlations with wavelength
 
         """
         nt = self._n_meas_times
@@ -1287,11 +1316,7 @@ class ParameterEstimator(PEMixins, Optimizer):
     def lack_of_fit_huplc(self):
         """ Runs basic post-processing lack of fit analysis
 
-            Args:
-                None
-
-            Returns:
-                lack of fit (int): percentage lack of fit
+        :return float lack of fit: percentage lack of fit
 
         """
         nt = self._n_huplcmeas_times
@@ -1320,6 +1345,11 @@ class ParameterEstimator(PEMixins, Optimizer):
         return lof
     
     def g_handling_status_messages(self):
+        """Determines the unwanted contribution type and informs the user of this
+
+        :return: None
+
+        """
         if self.G_contribution == 'unwanted_G':
             print("\nType of unwanted contributions not set, so assumed that it is time-variant.\n")
             self.G_contribution = 'time_variant_G'
@@ -1332,8 +1362,14 @@ class ParameterEstimator(PEMixins, Optimizer):
         return None
      
     def decompose_G_test(self, St, Z_in):
-        """Check whether or not G can be decomposed"""
-        
+        """Check whether or not G can be decomposed
+
+        :param dict St: Reaction coefficient matrix
+        :param dict Z_in: Dosing points
+
+        :return: None
+
+        """
         if St == dict() and Z_in == dict():
             raise RuntimeError('Because time-invariant unwanted contribution is chosen, please provide information of St or Z_in to build omega matrix.')
         
@@ -1357,16 +1393,13 @@ def wavelength_subset_selection(correlations=None, n=None):
     on the minimum correlation value set by the user (or from the automated
     lack of fit minimization procedure)
 
-        Args:
-            correlations (dict): dictionary obtained from the wavelength_correlation
-                    function, containing every wavelength from the original set and
-                    their correlations to the concentration profile.
+    :param dict correlations: dictionary obtained from the wavelength_correlation  function, containing every
+       wavelength from the original set and their correlations to the concentration profile.
+    :param int n: a value between 0 - 1 that slects the minimum amount correlation between the wavelength and the
+       concentrations.
 
-            n (int): a value between 0 - 1 that slects the minimum amount
-                    correlation between the wavelength and the concentrations.
-
-        Returns:
-            dictionary of correlations with wavelength
+    :return: A dictionary of correlations with wavelength
+    :rtype: dict
 
     """
     if not isinstance(correlations, dict):
@@ -1392,26 +1425,18 @@ def wavelength_subset_selection(correlations=None, n=None):
 def construct_model_from_reduced_set(builder_clone, end_time, D):
     """ constructs the new pyomo model based on the selected wavelengths.
 
-        Args:
-            builder_clone (TemplateBuilder): Template builder class of complete model
-                            without the data added yet
-            end_time (int): the end time for the data and simulation
-            D (dataframe): the new, reduced dataset with only the selected wavelengths.
+    :param TemplateBuilder builder_clone: Template builder class of complete model without the data added yet
+    :param float end_time: The end time for the data and simulation
+    :param pandas.DataFrame D: The new, reduced dataset with only the selected wavelengths.
 
-        Returns:
-            opt_mode(TemplateBuilder): new Pyomo model from TemplateBuilder, ready for
-                    parameter estimation
+    :return TemplateBuilder opt_mode: new Pyomo model from TemplateBuilder, ready for parameter estimation
 
     """
-
     if not isinstance(builder_clone, TemplateBuilder):
         raise RuntimeError('builder_clone needs to be of type TemplateBuilder')
 
     if not isinstance(D, pd.DataFrame):
         raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
-
-    #if not isinstance(end_time, int):
-    #    raise RuntimeError('nfe needs to be type int. Number of finite elements must be defined')
 
     builder_clone._spectral_data = D
     opt_model = builder_clone.create_pyomo_model(0.0, end_time)
@@ -1422,18 +1447,15 @@ def construct_model_from_reduced_set(builder_clone, end_time, D):
 def run_param_est(opt_model, nfe, ncp, sigmas, solver='ipopt'):
     """ Runs the parameter estimator for the selected subset
 
-        Args:
-            opt_model (pyomo model): The model that we wish to run the
-            nfe (int): number of finite elements
-            ncp (int): number of collocation points
-            sigmas(dict): dictionary containing the variances, as used in the ParameterEstimator class
+    :param ConcreteModel opt_model: The model that we wish to run the
+    :param int nfe: The number of finite elements
+    :param int ncp: The number of collocation points
+    :param dict sigmas: A dictionary containing the variances, as used in the ParameterEstimator class
 
-        Returns:
-            results_pyomo (results of optimization): Parameter Estimation results
-            lof (float): lack of fit results
+    :return results_pyomo: Parameter Estimation results
+    :return lof: lack of fit results
 
     """
-
     p_estimator = ParameterEstimator(opt_model)
     p_estimator.apply_discretization('dae.collocation', nfe=nfe, ncp=ncp, scheme='LAGRANGE-RADAU')
     options = dict()

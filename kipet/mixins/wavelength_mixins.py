@@ -9,20 +9,23 @@ import sys
 import time
 
 # Kipet library imports
-from kipet.core_methods.ParameterEstimator import wavelength_subset_selection
+from kipet.core_methods.parameter_estimator import wavelength_subset_selection
 
 # Thirdparty library imports 
 import plotly.graph_objects as go
 import plotly.io as pio
 
 
-class WavelengthSelectionMixins():
+class WavelengthSelectionMixins:
     
-    """Wrapper class mixin of wavelength subset selection methods for KipetModel"""
+    """Wrapper class mixin of wavelength subset selection methods for ReactionModel"""
     
     def lack_of_fit(self):
-        """Wrapper for ParameterEstimator lack_of_fit method"""
-    
+        """Wrapper for ParameterEstimator lack_of_fit method
+
+        :return: lof from p_estimator
+
+        """
         lof = self.p_estimator.lack_of_fit()
         return lof
         
@@ -98,8 +101,7 @@ class WavelengthSelectionMixins():
             #     calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
             #     chart_dir = Path(calling_file_name).joinpath('charts', f'{self.name}-{folder_name}')
             #     plot_method = pio.write_html
-            
-            
+
             calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
             chart_dir = pathlib.Path(calling_file_name).joinpath('charts', f'{self.name}-{date}')
             
@@ -112,14 +114,18 @@ class WavelengthSelectionMixins():
                 fig.write_image(f'{filename}.svg', width=1400, height=900)
 
             plot_method(fig, file=filename.as_posix(), auto_open=True)
-    
-    
+
         self.wavelength_correlations = correlations
         return correlations
     
     def run_lof_analysis(self, **kwargs):
-        """Wrapper for run_lof_analysis method in ParameterEstimator"""
-        
+        """Wrapper for run_lof_analysis method in ParameterEstimator
+
+        :param dict kwargs: The options to pass through to the ParameterEstimator object
+
+        :return: None
+
+        """
         builder_before_data = copy.copy(self._builder)
         builder_before_data.clear_data()
         
@@ -133,12 +139,17 @@ class WavelengthSelectionMixins():
         sigmas = self.settings.parameter_estimator.variances
         
         self.p_estimator.run_lof_analysis(builder_before_data, end_time, correlations, lof, nfe, ncp, sigmas, **kwargs)
-    
-        # Make a dict for the results - why is this not the case?
+
+        return None
     
     def wavelength_subset_selection(self, n=0):
-        """Wrapper for wavelength_subset_selection method in ParameterEstimator"""
-        
+        """Wrapper for wavelength_subset_selection method in ParameterEstimator
+
+        :param float n: The subset of wavelengths to select (based on correlation)
+
+        :return: The results of the wavelength_subset_selection method in ParameterEstimator
+
+        """
         if n == 0:
             raise ValueError('You need to choose a subset!')
             
@@ -150,20 +161,22 @@ class WavelengthSelectionMixins():
         return wavelength_subset_selection(correlations=correlations, n=n)
     
     def run_opt_with_subset_lambdas(self, wavelength_subset, **kwargs):
-        """Wrapper for run_param_est_with_subset_lambdas method in ParameterEstimator"""
-        
+        """Wrapper for run_param_est_with_subset_lambdas method in ParameterEstimator
+
+        :param list wavelength_subset: The subset of chosen wavelengths
+        :param dict kwargs: The dict of options to pass through (here the solver)
+
+        :return: Parameter estimation results with the given subset
+        :rtype: ResultsObject
+        """
         solver = kwargs.pop('solver', 'k_aug')    
     
         builder_before_data = copy.copy(self._builder)
         builder_before_data.clear_data()
-        
-        #end_time = self.settings.general.simulation_times[1]
         end_time = self.p_estimator.model.end_time.value
-        
         nfe = self.settings.collocation.nfe
         ncp = self.settings.collocation.ncp
         sigmas = self.settings.parameter_estimator.variances
         
         results = self.p_estimator.run_param_est_with_subset_lambdas(builder_before_data, end_time, wavelength_subset, nfe, ncp, sigmas, solver=solver)    
         return results
-    

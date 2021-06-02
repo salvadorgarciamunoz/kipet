@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 # KIPET library imports
-# from kipet.post_model_build.pyomo_model_tools import _df_from_pyomo_data
+# from kipet.model_tools.pyomo_model_tools import _df_from_pyomo_data
 
 # Public methods that can be used in KIPET
 __all__ = ['write_data', 'read_data', 'read_file', 'add_noise_to_data']

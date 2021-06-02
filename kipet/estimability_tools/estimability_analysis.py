@@ -15,9 +15,10 @@ from pyomo.dae import *
 from pyomo.environ import *
 from scipy.optimize import least_squares
 
-from kipet.core_methods.ParameterEstimator import *
+from kipet.core_methods.parameter_estimator import *
 
 __author__ = 'Michael Short'  #: November 2018
+
 
 class EstimabilityAnalyzer(ParameterEstimator):
     """This class is for estimability analysis. For now it will be used to select the parameter set that
@@ -28,13 +29,13 @@ class EstimabilityAnalyzer(ParameterEstimator):
 
     Parameters
     ----------
-    model : TemplateBuilder
-        The full model TemplateBuilder problem needs to be fed into the Estimability Analyzer as this is 
-        needed in order to build the sensitivities for ranking parameters as well as for constructing the 
+    :param ConcreteModel model: The full model TemplateBuilder problem needs to be fed into the Estimability Analyzer
+        as this is needed in order to build the sensitivities for ranking parameters as well as for constructing the
         simplified models
-    """
 
+    """
     def __init__(self, model):
+        """Initialization of the EstimabilityAnalyzer"""
         super(EstimabilityAnalyzer, self).__init__(model)
         self.param_ranks = dict()
         
@@ -48,17 +49,15 @@ class EstimabilityAnalyzer(ParameterEstimator):
         """ Obtains the sensitivities (dsdp) using k_aug. This function only works for
         concentration-only problems and obtains the sensitivities based on the initial parameter
         values and how they affect the output (Z).
-        
-        Args:        
-            sigmasq (dict): map of component name to noise variance. The
-            map also contains the device noise variance
+
+        :Keyword Args:
+
+            - sigmasq (dict): map of component name to noise variance. The map also contains the device noise variance
+            - tee (bool,optional): flag to tell the optimizer whether to stream output to the terminal or not
             
-            tee (bool,optional): flag to tell the optimizer whether to stream output
-            to the terminal or not
-            
-        Returns:
-            dsdp (numpy matrix):  sensitivity matrix with columns being parameters and rows the Z vars
-            idx_to_params (dict): dictionary that maps the columns to the parameters
+        :return numpy.ndarray dsdp: Sensitivity matrix with columns being parameters and rows the Z vars
+        :return dict idx_to_params: Dictionary that maps the columns to the parameters
+
         """               
         if not self.model.alltime.get_discretization_info():
             raise RuntimeError('apply discretization first before running the estimability')
@@ -214,9 +213,9 @@ class EstimabilityAnalyzer(ParameterEstimator):
             os.remove('dxdp_.dat')
         # print(idx_to_param)
         
-        return dsdp , idx_to_param
+        return dsdp, idx_to_param
 
-    def rank_params_yao(self, param_scaling = None, meas_scaling = None, sigmas = None):
+    def rank_params_yao(self, param_scaling=None, meas_scaling=None, sigmas=None):
         """This function ranks parameters in the method described in Yao (2003) by obtaining the 
         sensitivities related to the parameters in the model through solving the original NLP model 
         for concentrations, getting the sensitivities relating to each paramater, and then using 
@@ -224,22 +223,17 @@ class EstimabilityAnalyzer(ParameterEstimator):
         paper. These are in the form of dictionaries, relating the confidences to the initial
         guesses for the parameters as well as for the confidence in the measurements.
 
-        Args:
-        ----------
-        param_scaling (dictionary): dictionary including each parameter and their relative uncertainty.
-        e.g. a value of 0.5 means that the value for the real parameter is within 50% of the guessed value
-    
-        meas_scaling (scalar): scalar value showing the certainty of the measurement, obtained from the device 
-        manufacturer or general knowledge of process
+        :param dict param_scaling: Dictionary including each parameter and their relative uncertainty.
+          e.g. a value of 0.5 means that the value for the real parameter is within 50% of the guessed value
+        :param float meas_scaling: Scalar value showing the certainty of the measurement, obtained from the device
+          manufacturer or general knowledge of process
+        :param dict sigmasq: Map of component name to noise variance. The map also contains the device noise variance.
         
-        sigmasq (dict): map of component name to noise variance. The map also contains the device noise variance.
-        
-        returns:
-            list with order of parameters
+        :return: list with order of parameters
+
         """
-        
-        if param_scaling == None:
-            param_scaling ={}
+        if param_scaling is None:
+            param_scaling = {}
             print("WARNING: No scaling provided by user, so uncertainties based on the bounds provided by the user is assumed.")
             # uncertainties calculated based on bounds given
             for p in self.model.P:
@@ -248,28 +242,30 @@ class EstimabilityAnalyzer(ParameterEstimator):
                 init = (ub-lb)/2
                 param_scaling[p] = init/(ub-lb)
                 print("automated param_scaling", param_scaling)
-        elif param_scaling != None:
+
+        elif param_scaling is not None:
             if type(param_scaling) is not dict:
                 raise RuntimeError('The param_scaling must be type dict')
         
-        if meas_scaling == None:
+        if meas_scaling is None:
             meas_scaling = 0.001
             print("WARNING: No scaling for measurments provided by user, so uncertainties based on measurements will be set to 0.01")
-        elif meas_scaling != None:
+
+        elif meas_scaling is not None:
             if isinstance(meas_scaling, int) or isinstance(meas_scaling, float):
                 print("meas_scaling", meas_scaling)
             else:
                 raise RuntimeError('The meas_scaling must be type int')
          
-        if sigmas == None:
-            sigmas ={}
+        if sigmas is None:
+            sigmas = {}
             print("WARNING: No variances provided by user, so variances are assumed to be 1.")
             # sigmas need to be specified
             for p in self.model.P:
                 sigmas[p] = 1
                 print("automated sigmas", sigmas)
                 
-        elif sigmas != None:
+        elif sigmas is not None:
             if type(param_scaling) is not dict:
                 raise RuntimeError('The param_scaling must be type dict')
             
@@ -283,15 +279,13 @@ class EstimabilityAnalyzer(ParameterEstimator):
                         sigmas[k] = max(sigmas.values())
                 
                 if not all_sigma_specified:
-                    raise RuntimeError(
-                            'All variances must be specified to determine sensitivities.\n Please pass variance dictionary to rank_params_yao')        
+                    raise RuntimeError('All variances must be specified to determine sensitivities.\n Please pass '
+                                       'variance dictionary to rank_params_yao')
         # k_aug is used to get the sensitivities. The full model is solved with dummy
         # parameters and variables at the initial values for the parameters
         self.cloned_before_k_aug = self.model.clone()
         dsdp, idx_to_param = self.get_sensitivities_for_params(tee=True, sigmasq=sigmas)
-        # print("idx_to_param",idx_to_param )
         nvars = np.size(dsdp,0)
-        #print("nvars,", nvars)
         nparams = 0
         for v in six.itervalues(self.model.P):
             if v.is_fixed():
@@ -487,35 +481,27 @@ class EstimabilityAnalyzer(ParameterEstimator):
         print(self.param_ranks)
         return self.ordered_params
 
-    def run_analyzer(self, method = None, parameter_rankings = None, meas_scaling = None, variances = None):
+    def run_analyzer(self, method=None, parameter_rankings=None, meas_scaling=None, variances=None):
         """This function performs the estimability analysis. The user selects the method to be used. 
         The default will be selected based on the type of data selected. For now, only the method of 
         Wu, McLean, Harris, and McAuley (2011) using the means squared error is used. Other estimability 
         analysis tools will be added in time. The parameter rankings need to be included as well and 
         this can be done using various methods, however for now, only the Yao (2003) method is used.
 
-        Args:
-        ----------
-        method: string
-            The estimability method to be used. Default is Wu, et al (2011) for concentrations. Others 
-            to be added
-    
-        parameter_rankings: list
-            A list containing the parameter rankings in order from most estimable to least estimable. 
-            Can be obtained using one of Kipet's parameter ranking functions.
-            
-        meas_scaling: scalar 
-            value showing the certainty of the measurement obtained from the device manufacturer or
-             general knowledge of process. Same as used in the parameter ranking algorithm.
+
+        :param str method: The estimability method to be used. Default is Wu, et al (2011) for concentrations. Others
+             to be added
+        :param list parameter_rankings: A list containing the parameter rankings in order from most estimable to least
+             estimable. Can be obtained using one of Kipet's parameter ranking functions.
+        :param float meas_scaling: Value showing the certainty of the measurement obtained from the device manufacturer
+             or general knowledge of process. Same as used in the parameter ranking algorithm.
+        :param dict variances: Variances are required, as needed by the parameter estimator.
         
-        variances: dict
-            variances are required, as needed by the parameter estimator.
-        
-        returns: list
-            list of parameters that should remain in the parameter estimation, while all other 
-            parameters should be fixed.
+        :return: List of parameters that should remain in the parameter estimation, while all other  parameters
+            should be fixed.
+
         """
-        if method == None:
+        if method is None:
             method = "Wu"
             print("The method to be used is that of Wu, et al. 2011")
         elif method != "Wu":
@@ -523,10 +509,10 @@ class EstimabilityAnalyzer(ParameterEstimator):
         else:
             method = "Wu"
             
-        if parameter_rankings == None:
+        if parameter_rankings is None:
             raise RuntimeError('The parameter rankings need to be provided in order to run the estimability analysis chosen')
             
-        elif parameter_rankings != None:
+        elif parameter_rankings is not None:
             if type(parameter_rankings) is not list:
                 raise RuntimeError('The parameter_rankings must be type dict')   
                 
@@ -540,16 +526,16 @@ class EstimabilityAnalyzer(ParameterEstimator):
             if v not in self.model.P:
                 raise RuntimeError("parameter %s is not in the model! Either remove the parameter from the list or add it to the model" % v)
         
-        if meas_scaling == None:
+        if meas_scaling is None:
             meas_scaling = 0.001
             print("WARNING: No scaling for measurments provided by user, so uncertainties based on measurements will be set to 0.01")
-        elif meas_scaling != None:
+        elif meas_scaling is not None:
             if isinstance(meas_scaling, int) or isinstance(meas_scaling, float):
                 pass
             else:
                 raise RuntimeError('The meas_scaling must be type int')
                 
-        if variances == None:
+        if variances is None:
             variances ={}
             print("WARNING: No variances provided by user, so variances are assumed to be 1.")
             # sigmas need to be specified
@@ -557,7 +543,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
                 variances[p] = 1
                 print("automated sigmas", variances)
             variances["device"] = 1
-        elif variances != None:
+        elif variances is not None:
             if type(variances) is not dict:
                 raise RuntimeError('The sigmas must be type dict')
         
@@ -567,27 +553,20 @@ class EstimabilityAnalyzer(ParameterEstimator):
         else:
             raise RuntimeError("the estimability method must be 'Wu' as this is the only supported method as of now")
 
+
     def wu_estimability(self, parameter_rankings = None, meas_scaling = None, sigmas = None):
         """This function performs the estimability analysis of Wu, McLean, Harris, and McAuley (2011) 
         using the means squared error. 
 
-        Args:
-        ----------
-        parameter_rankings: list
-            A list containing the parameter rankings in order from most estimable to least estimable. 
-            Can be obtained using one of Kipet's parameter ranking functions.
-            
-        meas_scaling: int
-            measurement scaling as used to scale the sensitivity matrix during param ranking
+        :param list parameter_rankings: A list containing the parameter rankings in order from most estimable to least
+           estimable. Can be obtained using one of Kipet's parameter ranking functions.
+        :param int meas_scaling: Measurement scaling as used to scale the sensitivity matrix during param ranking
+        :param dict sigmas: Dictionary containing all the variances as required by the parameter estimator
         
-        sigmas: dict
-            dictionary containing all the variances as required by the parameter estimator
-        
-        Returns:
-        -----------
-            list of parameters that should remain in the parameter estimation, while all other parameters should be fixed.
+        :return: List of parameters that should remain in the parameter estimation, while all other parameters should be fixed.
+        :rtype: list
+
         """
-        
         J = dict()
         params_estimated = list()
         cloned_full_model = dict()
@@ -696,7 +675,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
             cor_crit_rat[k] = (count - k)/N * (crit_rat_Kub - 1)
         
         #Finally we select the value of k with the lowest corrected critical value
-        params_to_select = min(cor_crit_rat, key = lambda x: cor_crit_rat.get(x) )
+        params_to_select = min(cor_crit_rat, key=lambda x: cor_crit_rat.get(x) )
         print("The number of estimable parameters is:", params_to_select)
         print("optimization should be run wih the following parameters as variables and all others fixed")
         estimable_params = list()
@@ -708,20 +687,17 @@ class EstimabilityAnalyzer(ParameterEstimator):
                 break
             count += 1
         return estimable_params
-    
-    def _compute_scaled_residuals(self, model, meas_scaling = None):
-        """
-        Computes the square of residuals between the optimal solution (Z) and the concentration data (C)
-        
-        Args:
-            model (pyomo results object): solved pyomo model results object
-            meas_scaling (dict): parameter scaling, defined in Wu, needs to be the same as used to rank 
-                    parameters (scale sensitivity matrix)
 
-        returns:
-            value of sum of squared scaled residuals
-        This method is not intended to be used by users directly
-        """        
+    def _compute_scaled_residuals(self, model, meas_scaling = None):
+        """Computes the square of residuals between the optimal solution (Z) and the concentration data (C)
+        
+        :param ConcreteModel model: Solved pyomo model results object
+        :param dict meas_scaling: parameter scaling, defined in Wu, needs to be the same as used to rank
+            parameters (scale sensitivity matrix)
+
+        :return: Value of sum of squared scaled residuals
+
+        """
         nt = self._n_allmeas_times
         nc = self._n_actual
         self.residuals = dict()

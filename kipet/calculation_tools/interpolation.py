@@ -12,7 +12,40 @@ import numpy as np
 import pandas as pd
 
 
-def interpolate_trajectory(t, data):
+def interpolate_trajectory(t, tr):
+    """Method for interpolating trajectories
+
+    :param list t: the list of times
+    :param pandas.DataFrame tr: The trajectory data
+
+    :return float tr_val: The interpolated value
+
+    """
+    tr_val = np.zeros((len(t)))
+    times = [float(ti) for ti in t]
+    indx = tr.index.astype(float)
+
+    for i, t_indx in enumerate(times):
+
+        if i == 0:
+            tr_val[i] = tr.iloc[0]
+            continue
+
+        indx_left = bisect.bisect_left(indx[1:], times[i])
+        if indx_left == len(tr) - 1:
+            tr_val[i] = tr.iloc[indx_left]
+            continue
+
+        dx = indx[indx_left + 1] - indx[indx_left]
+        dy = tr.iloc[indx_left + 1] - tr.iloc[indx_left]
+        m = dy / dx
+        val = tr.iloc[indx_left] + (times[i] - indx[indx_left]) * m
+        tr_val[i] = val
+
+    return tr_val
+
+
+def interpolate_trajectory2(t, data):
     """Takes some data and fills in the missing points using interpolation
 
     :param float t: The time point

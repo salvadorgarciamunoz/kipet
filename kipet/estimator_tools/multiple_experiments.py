@@ -2,33 +2,24 @@
 
 # Standard library imports
 import copy
-import math
 import os
 
 # Third party imports
 import numpy as np
-import pandas as pd
-import scipy.stats as st
-from pyomo import *
-from pyomo.dae import *
-from pyomo.environ import *
+from pyomo.environ import (Block, ConcreteModel, Constraint, minimize, 
+                           Objective, SolverFactory, Suffix, Var)
 from scipy.sparse import coo_matrix
 
+# KIPET library imports
 from kipet.common.objectives import (absorption_objective, comp_objective,
                                      conc_objective)
-# KIPET library imports
-from kipet.common.parameter_handling import initialize_parameters
 from kipet.common.read_hessian import split_sipopt_string
-from kipet.core_methods.fe_factory import *
-from kipet.core_methods.FESimulator import *
-from kipet.core_methods.Optimizer import *
-from kipet.core_methods.ParameterEstimator import *
-from kipet.core_methods.PyomoSimulator import *
-from kipet.core_methods.VarianceEstimator import *
+from kipet.core_methods.results_object import ResultsObject
 from kipet.mixins.PEMixins import PEMixins
 from kipet.general_settings.variable_names import VariableNames
 
-__author__ = 'Michael Short, Kevin McBride'  #: February 2019 - October 2020
+__author__ = 'Kevin McBride, Michael Short'  #: February 2019 - June 2021
+
 
 class MultipleExperimentsEstimator(PEMixins, object):
     """This class is for Estimation of Variances and parameters when we have multiple experimental datasets.
@@ -36,13 +27,10 @@ class MultipleExperimentsEstimator(PEMixins, object):
     This blocks are first run individually in order to find good initializations and then they are linked and
     run together in a large optimization problem.
 
-    Parameters
-    ----------
-    model : TemplateBuilder
-        The full model TemplateBuilder problem needs to be fed into the MultipleExperimentsEstimator. This
-        pyomo model will form the basis for all the optimization tasks
-    """
+    :param list reaction_models: The full model TemplateBuilder problem needs to be fed into the
+         MultipleExperimentsEstimator. This pyomo model will form the basis for all the optimization tasks
 
+    """
     def __init__(self, reaction_models):
         
         #super(MultipleExperimentsEstimator, self).__init__()
@@ -68,15 +56,25 @@ class MultipleExperimentsEstimator(PEMixins, object):
         #self._add_basic_models()
   
     def _add_basic_models(self):
-        
+        """Creates a Pyomo model for the ReactionModel if not already done
+
+        :return: None
+
+        """
         for name, model in self.reaction_models.items():
             print(f'Checking for basic model in {name}')
             if model.model is None:
                 model.model = model.create_pyomo_model
             print('Finished creating model')
-    
-    def make_sublist(self):
 
+        return None
+
+    def make_sublist(self):
+        """Make a list of components that are concentration based (may not be needed anymore
+
+        :return: None
+
+        """
         self._sublist_components = {}        
         for name, model in self.reaction_models.items():
             self._sublist_components[name] = [comp.name for comp in model.components if comp.state == 'concentration']
@@ -86,7 +84,8 @@ class MultipleExperimentsEstimator(PEMixins, object):
         """This function is used to link the variables to the columns in the reduced
             hessian for multiple experiments.   
            
-            Not meant to be used directly by users
+        :return: None
+
         """
         self.model.red_hessian = Suffix(direction=Suffix.IMPORT_EXPORT)
         count_vars = 1
@@ -116,7 +115,11 @@ class MultipleExperimentsEstimator(PEMixins, object):
         return None
            
     def _set_up_marks(self, conc_only=True):
-        """Set up the data based on the number of species and measurements
+        """Set up the data based on the number of species and measurements.
+
+        :param bool conc_only: Indicates if this problem is only for concentration data
+
+        :return: None
         
         """    
         nt = np.cumsum(np.array([len(self.model.experiment[exp].meas_times) for i, exp in enumerate(self.experiments)]))
@@ -156,9 +159,14 @@ class MultipleExperimentsEstimator(PEMixins, object):
     
     def _display_covariance(self, variances_p):
         """Displays the covariance results to the console
+
+        :param dict variances_p: The dict of parameter variances to display
+
+        :return: None
+
         """
         #print(self.confidence_interval)
-        number_of_stds = 1#st.norm.ppf(1-(1-self.confidence_interval)/2)
+        number_of_stds = 1 #st.norm.ppf(1-(1-self.confidence_interval)/2)
         
         print(number_of_stds)
         
@@ -195,11 +203,13 @@ class MultipleExperimentsEstimator(PEMixins, object):
         
     def _compute_covariance(self, hessian, variances):
         """
-        Computes the covariance matrix for the paramaters taking in the Hessian
-        matrix and the variances.
+        Computes the covariance matrix for the paramaters taking in the Hessian matrix and the variances.
         Outputs the parameter confidence intervals.
 
-        This function is not intended to be used by the users directly
+        :param numpy.ndarray hessian: The Hessian matrix
+        :param dict variances: The parameter variances
+
+        :return: None
 
         """
         if not self.spectra_problem:
@@ -220,21 +230,14 @@ class MultipleExperimentsEstimator(PEMixins, object):
         
         return None
         
-    def _compute_B_matrix(self, variances, **kwds):
+    def _compute_B_matrix(self):
         """Builds B matrix for calculation of covariances
 
-            This method is not intended to be used by users directly
+        :return numpy.ndarray B_matrix: The B matrix usd in the covariance calculation
 
-        Args:
-            variances (dict): variances
-
-        Returns:
-            None
         """
         nt = self._n_meas_times
         nw = self._n_meas_lambdas
-        nc = self._n_actual
-        nparams = self._n_params
 
         npn = np.r_[self.n_mark[0], np.diff(list(self.n_mark.values()))]
         npt = np.r_[self.t_mark[0], np.diff(list(self.t_mark.values()))]
@@ -290,24 +293,18 @@ class MultipleExperimentsEstimator(PEMixins, object):
         
         return B_matrix
         
-    def _compute_Vd_matrix(self, variances, **kwds):
-        """Builds d covariance matrix
+    def _compute_Vd_matrix(self, variances):
+        """Builds Vd covariance matrix
 
-            This method is not intended to be used by users directly
+        This method is not intended to be used by users directly
 
-        Args:
-            variances (dict): variances
+        :param dict variances: variances
 
-        Returns:
-            None
+        :return numpy.ndarray Vd_matrix: The Vd_matrix used in covariance calculations
+
         """
-        row = []
-        col = []
-        data = []
-        nt = self._n_meas_times
         nw = self._n_meas_lambdas
         nc = self._n_actual
-
         v_array = np.zeros(nc)
         s_array = np.zeros(nw * nc)
         
@@ -335,14 +332,8 @@ class MultipleExperimentsEstimator(PEMixins, object):
                     
                     if exp_count == 0:
                         nc = self.n_mark[exp_count]
-                        nt = self.t_mark[exp_count]
-                        nw = self.l_mark[exp_count]
-                    else: 
-                        nt = (self.t_mark[exp_count] - self.t_mark[exp_count - 1] )
-                        nw = (self.l_mark[exp_count] - self.l_mark[exp_count - 1])
 
                     s_array[(j+jshift) * nc + (k+kshift)] = self.model.experiment[x].S[l, c].value
-                    idx = (j+jshift) * nc + (k+kshift)
                     knum = max(knum,k)
                     count += 1
                 
@@ -386,14 +377,12 @@ class MultipleExperimentsEstimator(PEMixins, object):
     
         return Vd_matrix
     
-    """
-    Save the sim results in self.sim_results as a dict: self._sim_solved set to True
-    """
-    
     def solve_hessian(self, solver, **kwargs):
         """Solves for the Hessian regardless of data source - only uses ipopt_sens
-        
-        Args:
+
+        :param str solver: The name of the solver
+
+        :Keyword Args:
             sigma_sq (dict): variances
 
             optimizer (SolverFactory): Pyomo Solver factory object
@@ -401,8 +390,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
             tee (bool,optional): flag to tell the optimizer whether to stream output
             to the terminal or not
 
-        Returns:
-            hessian (np.ndarray): The hessian matrix for covariance calculations
+        :return numpy.ndarray hessian: The hessian matrix for covariance calculations
             
         """
         tee = kwargs.pop('tee', True)
@@ -442,7 +430,11 @@ class MultipleExperimentsEstimator(PEMixins, object):
         return hessian
         
     def _scale_variances(self,):
-        """Option to scale the variances for MEE"""
+        """Option to scale the variances for MEE
+
+        :return: None
+
+        """
         var_scaled = dict()
         for s,t in self.variances.items():
             maxx = max(list(t.values()))
@@ -454,41 +446,16 @@ class MultipleExperimentsEstimator(PEMixins, object):
         self.variance_scale = maxx
         
         return None
-    
-    # def calculate_parameter_averages(self):
-        
-    #     p_dict = {}
-    #     c_dict = {}
-        
-    #     for key, model in self.reaction_models.items():
-    #         for param, obj in getattr(model, self.__var.model_parameter).items():
-    #             if param not in p_dict:
-    #                 p_dict[param] = obj.value
-    #                 c_dict[param] = 1
-    #             else:
-    #                 p_dict[param] += obj.value
-    #                 c_dict[param] += 1
-                    
-    #     self.avg_param = {param: p_dict[param]/c_dict[param] for param in p_dict.keys()}
-        
-    #     return None
-        
-    # def initialize_parameters(self):
-        
-    #     self.calculate_parameter_averages()
-        
-    #     for key, model in self.reaction_models.items():
-    #         for param, obj in getattr(model, self.__var.model_parameter).items():
-    #             obj.value = self.avg_param[param] 
-                
-    #     return None
-            
+
     def solve_consolidated_model(self, 
                                  global_params=None,
                                  **kwargs):
         """This function consolidates the individual models into a single
         optimization problem that links the parameters and spectra (if able)
-        from each experiment
+        from each experiment.
+
+        :param list global_params: This is the list of global parameters to be linked in the MEE
+        :param dict kwargs: The dictionary of options passed from ReactionSet
         
         """
         solver_opts = kwargs.get('solver_opts', {'linear_solver': 'ma57'})
@@ -505,10 +472,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
         self.variance_scale = 1
         if scaled_variance == True:
             self._scale_variances()
-            
-        # if parameter_means:
-        #     initialize_parameters(self.reaction_models)
-        
+
         if global_params is None:
             global_params = self.all_params
         
@@ -516,17 +480,14 @@ class MultipleExperimentsEstimator(PEMixins, object):
             """This function forms the rule for the construction of the individual blocks 
             for multiple experiments, referenced in run_parameter_estimation. This function 
             is not meant to be used by users directly.
-            
-            Args:
-                m (pyomo Concrete model): the concrete model that we are adding the block to
-                exp (list): a list containing the experiments
+
+            :param ConcreteModel m: The concrete model that we are adding the block to
+            :param list exp: A list containing the experiments
                 
-            Returns:
-                Pyomo model: Pyomo model inside the block
-                
+            :return ConcreteModel m: Pyomo model inside the block (after modification)
+
             """
             list_components = self.reaction_models[exp].components.names
-            #WITH_D_VARS as far as I can tell should always be True, unless we ignore the device noise
             with_d_vars= True
             m = copy.copy(self.reaction_models[exp].p_model)
             
@@ -534,7 +495,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
             if hasattr(m, 'alltime_domain'):
                 m.del_component('alltime_domain')
             
-            if with_d_vars and hasattr(m, 'D'): #self._spectra_given:
+            if with_d_vars and hasattr(m, 'D'):
               
                 m.D_bar = Var(m.meas_times,
                               m.meas_lambdas)
@@ -657,6 +618,11 @@ class MultipleExperimentsEstimator(PEMixins, object):
     
     @property
     def all_params(self):
+        """Method to return all of the parameters in the ReactionModels
+
+        :return set set_of_all_model_params: The set of all parameters
+
+        """
         set_of_all_model_params = set()
         for name, model in self.reaction_models.items():
             set_of_all_model_params = set_of_all_model_params.union(model.parameters.names)
@@ -665,6 +631,11 @@ class MultipleExperimentsEstimator(PEMixins, object):
     
     @property
     def all_wavelengths(self):
+        """Method to return all of the wavelengths in the ReactionModels
+
+        :return set set_of_all_wavelengths: The set of all wavelengths
+
+        """
         set_of_all_wavelengths = set()
         for name, model in self.reaction_models.items():
             set_of_all_wavelengths = set_of_all_wavelengths.union(list(model.p_model.meas_lambdas))
@@ -672,19 +643,13 @@ class MultipleExperimentsEstimator(PEMixins, object):
     
     @property
     def all_species(self):
+        """Method to return all of the components in the ReactionModels
+
+        :return set set_of_all_species: The set of all components
+
+        """
         set_of_all_species = set()
         for name, model in self.reaction_models.items():
             set_of_all_species = set_of_all_species.union(model.components.names)
         return set_of_all_species
-    
-#%%
 
-# combined_model = kipet_model.mee.model
-
-# from kipet.core_methods.ResultsObject import ResultsObject
-
-# for i in combined_model.experiment:
-#       solver_results[i] = ResultsObject()
-#       solver_results[i].load_from_pyomo_model(combined_model.experiment[i])
-                                            
-# print(solver_results)

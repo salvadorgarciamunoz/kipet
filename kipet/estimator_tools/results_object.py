@@ -14,6 +14,7 @@ from kipet.post_model_build.pyomo_model_tools import convert, get_vars
 # This needs deletion at some point!
 result_vars = ['Z', 'C', 'Cm', 'K', 'S', 'X', 'dZdt', 'dXdt', 'P', 'Pinit', 'sigma_sq', 'estimable_parameters', 'Y', 'UD', 'step']
 
+
 class ResultsObject(object):
     """Container for all of the results from the Pyomo model"""
     
@@ -84,7 +85,7 @@ class ResultsObject(object):
             
     @property
     def show_parameters(self):
-        """Displays the parameter values in a conveninent manner
+        """Displays the parameter values in a convenient manner
         
         :return: None
         
@@ -95,7 +96,7 @@ class ResultsObject(object):
             
     @property
     def variances(self):
-        """Displays the variances of the parameters in a conveninent manner
+        """Displays the variances of the parameters in a convenient manner
         
         :return: None
         

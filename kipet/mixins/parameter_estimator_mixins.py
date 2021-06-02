@@ -9,9 +9,25 @@ from kipet.common.read_hessian import *
 
 class PEMixins(object):
 
+    """This mixin class takes some of the methods used by both the ParameterEstimator and the MEE classes
+    and placed them into a single location
+
+    This is not meant to be used by the user directly.
+    """
+
     def _set_up_reduced_hessian(self, model_obj, time_set, component_set, var_name, index):
-        """Method to declare the reduced hessian suffix variables"""
-    
+        """Method to declare the reduced hessian suffix variables
+
+        :param expression model_obj: The model objective
+        :param index time_set: The time index
+        :param index component_set: The list of components
+        :param str var_name: The model variable name
+        :param int index: The current index number
+
+        :return index: Updated index number
+        :rtype: int
+
+        """
         for t in time_set:
             for c in component_set:
                 v = getattr(model_obj, var_name)[t, c]
@@ -20,14 +36,19 @@ class PEMixins(object):
                 index += 1
        
         return index
-                        
     
     def _order_k_aug_hessian(self, unordered_hessian, var_loc):
-        """
-        not meant to be used directly by users. Takes in the inverse of the reduced hessian
+        """ This is not meant to be used directly by users. Takes in the inverse of the reduced hessian
         outputted by k_aug and uses the rh_name to find the locations of the variables and then
         re-orders the hessian to be in a format where the other functions are able to compute the
         confidence intervals in a way similar to that utilized by sIpopt.
+
+        :param np.ndarray unordered_hessian: The raw Hessian
+        :param array-like var_loc: The index of the variable location
+
+        :return hessian: The ordered Hessian
+        :rtype: numpy.ndarray
+
         """
         vlocsize = len(var_loc)
         n_vars = len(self._idx_to_variable)
@@ -45,11 +66,18 @@ class PEMixins(object):
         return hessian
     
     def _compute_residuals(self, model_obj, exp_index=None):
-        """4
+        """
         Computes the square of residuals between the optimal solution (Z) and the concentration data (C)
         Note that this returns a matrix of time points X components and it has not been divided by sigma^2
 
         This method is not intended to be used by users directly
+
+        :param expression model_obj: The model objective
+        :param exp_index: None
+
+        :return residuals:
+        :rtype: dict
+
         """
         nt = self._n_meas_times
         nc = self._n_actual
@@ -70,8 +98,12 @@ class PEMixins(object):
     
     @staticmethod
     def _get_nparams(model_obj, isSkipFixed=True):
-        """Returns the number of unfixed parameters"""
-        
+        """Returns the number of unfixed parameters in the objective.
+
+        :param expression model_obj: The model objective
+        :param bool isSkipFixed: Not used at the moment
+
+        """
         nparams = 0
 
         for v in model_obj.P.values():
@@ -92,12 +124,15 @@ class PEMixins(object):
     
     def _variances_p_calc(self, hessian, variances):
         """Computes the covariance for post calculation anaylsis
-        
+
+        :param np.ndarray hessian: The Hessian matrix
+        :param dict variances: The parameter variances
+
+        :return numpy.ndarray variances_p: The diagonal of the reduced Hessian
+        :return numpy.ndarray V_theta: The reduced Hessian
+
         """        
         print(f'Var: {variances}')
-        
-        
-        
         nparams = self._n_params
 
         H = hessian[-nparams:, :]
@@ -122,8 +157,14 @@ class PEMixins(object):
 
     @staticmethod
     def add_warm_start_suffixes(model, use_k_aug=False):
-        """Adds suffixed variables to problem"""
-        
+        """Adds suffixed variables to problem
+
+        :param ConcreteModel model: The Pyomo model considered
+        :param bool use_k_aug: Indicates if k_aug is being used
+
+        :return: None
+
+        """
         # Ipopt bound multipliers (obtained from solution)
         model.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
         model.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
@@ -141,8 +182,13 @@ class PEMixins(object):
             
     @staticmethod
     def update_warm_start(model):
-        """Updates the suffixed variables for a warmstart"""
-        
+        """Updates the suffixed variables for a warmstart
+
+        :param ConcreteModel model: The Pyomo model considered
+
+        :return: None
+
+        """
         model.ipopt_zL_in.update(model.ipopt_zL_out)
         model.ipopt_zU_in.update(model.ipopt_zU_out)
         

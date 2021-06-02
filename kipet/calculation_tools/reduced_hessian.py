@@ -5,7 +5,6 @@ This module creates the reduced Hessian for use in various KIPET modules
 """
 # Standard library imports
 import os
-import time
 from pathlib import Path
 
 # Third party imports
@@ -17,7 +16,7 @@ from scipy.sparse import coo_matrix, csc_matrix, csr_matrix, triu
 from scipy.sparse.linalg import spsolve
 
 # KIPET library imports
-from kipet.common.parameter_handling import set_scaled_parameter_bounds
+from kipet.estimability_tools.parameter_handling import set_scaled_parameter_bounds
 
 DEBUG = True
 
@@ -539,7 +538,7 @@ def delete_from_csr(mat, row_indices=[], col_indices=[]):
     :param list col_indicies: cols to delete
 
     :return csr_matrix mat: The sparse matrix with the rows and cols removed
-    
+
     """
     if not isinstance(mat, csr_matrix):
         raise ValueError("works only for CSR format -- use .tocsr() first")

@@ -4,12 +4,13 @@ Module for reading and converting hessian data
 # Standard library imports
 import contextlib
 import os
+import re
 
 # Third party imports
 import numpy as np
 
 
-def supress_stdout(func):
+def suppress_stdout(func):
     """Decorator to redirect output
 
     .. note::

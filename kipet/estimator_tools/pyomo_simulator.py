@@ -1,81 +1,56 @@
-import sys
-import warnings
-from functools import reduce
+"""
+This holds the class PyomoSimulator, which simply modifies a Pyomo model using various methods
+"""
 
+# Third library import
+import numpy as np
 import pandas as pd
-from pyomo.dae import *
-from pyomo.environ import *
+from pyomo.environ import Objective, Suffix
+from pyomo.core.base import TransformationFactory
+from pyomo.opt import SolverFactory 
 
+# KIPET library imports
+from kipet.common.interpolation import interpolate_trajectory
 from kipet.common.VisitorClasses import ScalingVisitor
-from kipet.core_methods.ResultsObject import *
-from kipet.core_methods.Simulator import *
-from kipet.dev_tools.display import Print
+from kipet.core_methods.results_object import ResultsObject
 from kipet.post_model_build.pyomo_model_tools import (get_index_sets,
-                                                      index_set_info)
+                                                      index_set_info,
+                                                      model_info)
 from kipet.general_settings.variable_names import VariableNames
 
-__var = VariableNames()
-DEBUG=__var.DEBUG
-_print = Print(verbose=DEBUG)
 
-class PyomoSimulator(Simulator):
+class PyomoSimulator():
     """Simulator based on pyomo.dae discretization strategies.
 
-    Attributes:
-        model (Pyomo model)
-
-        _times (array_like): array of times after discretization
-
-        _n_times (int): number of discretized time points
-
-        _ipopt_scaled (bool): flag that indicates if there are
-        ipopt scaling factors specified
     """
 
     def __init__(self, model):
         """Simulator constructor.
 
-        Note:
-            Makes a shallow copy to the model. Changes applied to
-            the model within the simulator are applied to the original
-            model passed to the simulator
+        :param ConcreteModel model: The Pyomo model of the ReactionModel
 
-        Args:
-            model (Pyomo model)
         """
         self.__var = VariableNames()
+        self.model = model
 
-        super(PyomoSimulator, self).__init__(model)
-        self._alltimes = sorted(self.model.alltime)#added for special structure CS
-        #self._times = sorted(self.model.time)
-        self._n_alltimes = len(self._alltimes) #added for special structure CS
-        #self._n_times = len(self._times)
-        self._meas_times=sorted(self.model.meas_times)
-        self._allmeas_times=sorted(self.model.allmeas_times)
-        self._ipopt_scaled = False
-        self._spectra_given = hasattr(self.model, self.__var.spectra_data)
-        self._concentration_given = hasattr(self.model, self.__var.concentration_measured) or hasattr(self.model, self.__var.user_defined) or hasattr(self.model, self.__var.state)
-        self._conplementary_states_given = hasattr(self.model, self.__var.state)
-        self._absorption_given = hasattr(self.model, self.__var.spectra_species)  # added for special case of absorption data available but not concentration data CS
-        self._huplc_given = hasattr(self.model, 'Chat')
-        self._smoothparam_given = hasattr(self.model, self.__var.smooth_parameter)
+        # Most of the attributes are model attributes
+        self.attrs = model_info(self.model)
+        for key, value in self.attrs.items():
+            setattr(self, f'_{key}', value)
 
-        # creates scaling factor suffix
+        # Creates a scaling factor suffix
         if not hasattr(self.model, 'scaling_factor'):
             self.model.scaling_factor = Suffix(direction=Suffix.EXPORT)
 
     def apply_discretization(self, transformation, **kwargs):
         """Discretizes the model.
 
-        Args:
-            transformation (str): TODO
-            same keywords as in pyomo.dae method
+        :param str transformation: The type of transformation (only dae.collocation...)
+        :param dict kwargs: The options for the discretization
 
-        Returns:
-            None
+        :return: None
+
         """
-        # Additional keyword - not to use alltimes as the basis for the finite elements.
-        
         fixed_times = kwargs.pop('fixed_times', None)
         
         if not self.model.alltime.get_discretization_info():
@@ -89,6 +64,8 @@ class PyomoSimulator(Simulator):
                 
             self._alltimes = sorted(self.model.alltime)
             self._n_alltimes = len(self._alltimes)
+
+            # This needs to be looked at in more detail to see if it is still needed.
 
             #added for optional smoothing parameter with reading values from file CS:
             # if self._smoothparam_given:
@@ -131,6 +108,11 @@ class PyomoSimulator(Simulator):
             print('***WARNING: Model already discretized. Ignoring second discretization')
             
     def scale_model(self):
+        """Method to scale the model parameters
+
+        :return: None
+
+        """
         if hasattr(self.model, self.__var.model_parameter_scaled):
             print('Scaling the parameters')
             self.scale_parameters()
@@ -142,42 +124,47 @@ class PyomoSimulator(Simulator):
         parameter in model.P.
         
         I am not sure if this is necessary and will look into its importance.
+
+        :return: None
+
         """
-        #if self.model.K is not None:
         self.scale = {}
         for i in self.model.P:
             self.scale[id(self.model.P[i])] = self.model.K[i]
 
         for var in self.__var.modeled_states:
-
             for i in getattr(self.model, var):
                 self.scale[id(getattr(self.model, var)[i])] == 1
-
-        # for i in self.model.Z:
-        #     self.scale[id(self.model.Z[i])] = 1
-            
-        # for i in self.model.dZdt:
-        #     self.scale[id(self.model.dZdt[i])] = 1
-            
-        # for i in self.model.X:
-        #     self.scale[id(self.model.X[i])] = 1
-    
-        # for i in self.model.dXdt:
-        #     self.scale[id(self.model.dXdt[i])] = 1
     
         for k, v in getattr(self.model, self.__var.ode_constraints).items():
-        # for k, v in self.model.odes.items(): 
             scaled_expr = self.scale_expression(v.body, self.scale)
             # self.model.odes[k] = scaled_expr == 0
             getattr(self.model, self.__var.ode_constraints)[k] = scaled_expr == 0
     
-    def scale_expression(self, expr, scale):
-        
+    @staticmethod
+    def scale_expression(expr, scale):
+        """Replace variables in an expression with scaled variables
+
+        :param expression expr: The target expression
+        :param dict scale: The mapping of scale factors to the variables
+
+        :return: The expression after the scaled variables have been updated
+
+        """
         visitor = ScalingVisitor(scale)
         return visitor.dfs_postorder_stack(expr)
 
-    def fix_from_trajectory(self, variable_name, variable_index, trajectories, verbose=False):
+    def fix_from_trajectory(self, variable_name, variable_index, trajectories):
+        """Takes in data and fixes a trajectory to the data (interpolates if necessary)
 
+        :param str variable_name: The name of the variable type (Y, Z, etc.)
+        :param str variable_index: The name of the variable (A, B, etc.)
+        :param pandas.DataFrame trajectories: The dataset containing the target trajectory
+
+        :return: The list of fixed values
+        :rtype: list
+
+        """
         if variable_name in  self.__var.modeled_states:
             pass
             # raise NotImplementedError("Fixing state variables is not allowd. Only algebraics can be fixed")
@@ -203,12 +190,10 @@ class PyomoSimulator(Simulator):
     def _default_initialization(self):
         """Initializes discreted variables model with initial condition values.
 
-           This method is not intended to be used by users directly
-        Args:
-            None
+        This method is not intended to be used by users directly
 
-        Returns:
-            None
+        :return: None
+
         """
         tol = 1e-4
         
@@ -271,22 +256,34 @@ class PyomoSimulator(Simulator):
             self.initialize_from_trajectory(self.__var.state_model, x_init_panel)
 
     def initialize_parameters(self, params):
+        """Initialize the parameters given a dict of parameter values
+
+        :param dict params: A dictionary with parameter keys and initial values
+
+        :return: None
+
+        """
         for k, v in params.items():
             getattr(self.model, self.__var.model_parameter).value = v
 
-    
     def build_sets_new(self, variable_name, trajectories):
-        
+        """Checks trajectories to see if they have the correct format
+
+        :param str variable_name: The model variable
+        :param pandas.DataFrame trajectories: The trajectory data
+
+        :return: the inner and component sets as a tuple
+        :rtype: tuple
+
+        """
         var = getattr(self.model, variable_name)
         index_sets = get_index_sets(var)
         
         if isinstance(trajectories, pd.DataFrame):
             if variable_name not in self.__var.__dict__.values():
-                _print(f'Update of {variable_name} (non KIPET standard)')
                 inner_set = list(trajectories.index)
                 component_set = list(trajectories.columns)
             else:
-                _print(f'Update of KIPET Var {variable_name}')
                 
                 if var.dim() > 1 and var.index_set().dim() == 0:
                     inner_set = list(set([t[0] for t in var.index_set()]))
@@ -302,42 +299,19 @@ class PyomoSimulator(Simulator):
             return inner_set, component_set
                 
         else:
-            _print('Unsupported data type for initialization...')
             return None, None
-        
-    
-    # def build_sets(self, variable_name, trajectories):
-        
-    #     if isinstance(trajectories, pd.DataFrame):
-    #         if variable_name not in set_comp: # and isinstance(trajectories, dict):
-    #             _print(f'Update of {variable_name} (non KIPET standard)')
-    #             inner_set = list(trajectories.index)
-    #             component_set = list(trajectories.columns)
-    #         else:
-    #             _print(f'Update of KIPET Var {variable_name}')
-    #             inner_set = rgetattr(self, set_time[variable_name])
-    #             component_set = rgetattr(self, set_comp[variable_name])
-            
-    #         if variable_name == 'Cm':
-    #             print(inner_set)
-            
-    #         return inner_set, component_set
-            
-    #     else:
-    #         _print('Unsupported data type for initialization...')
-    #         return None, None
         
     def initialize_from_trajectory(self, variable_name, trajectories):
         """Initializes discretized points with values from trajectories.
-        Args:
-            variable_name (str): Name of the variable in pyomo model
-            trajectories (DataFrame or Series): Indexed in in the same way the pyomo
+
+        :param str variable_name : Name of the variable in pyomo model
+        :param pandas.DataFrame trajectories: Indexed in in the same way the pyomo
             variable is indexed. If the variable is by two sets then the first set is
             the indices of the data frame, the second set is the columns
-        Returns:
-            None
+
+        :return: None
+
         """
-        _print(f'Initialization of Var: {variable_name}')
         if not self.model.alltime.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
             
@@ -359,15 +333,18 @@ class PyomoSimulator(Simulator):
 
     def scale_variables_from_trajectory(self, variable_name, trajectories):
         """Scales discretized variables with maximum value of the trajectory.
-        Note:
+
+        .. note::
+
             This method only works with ipopt
-        Args:
-            variable_name (str): Name of the variable in pyomo model
-            trajectories (DataFrame or Series): Indexed in in the same way the pyomo
+
+        :param str variable_name : Name of the variable in pyomo model
+        :param pandas.DataFrame trajectories: Indexed in in the same way the pyomo
             variable is indexed. If the variable is by two sets then the first set is
             the indices of the data frame, the second set is the columns
-        Returns:
-            None
+
+        :return: None
+
         """
         tol = 1e-5
         
@@ -390,24 +367,22 @@ class PyomoSimulator(Simulator):
 
         self._ipopt_scaled = True
         return None
-        
 
     def run_sim(self, solver, **kwds):
-        """ Runs simulation by solving nonlinear system with ipopt
+        """ Runs simulation by solving nonlinear system with IPOPT
 
-        Args:
-            solver (str): name of the nonlinear solver to used
+        :param str solver: The name of the nonlinear solver to used
+        :param dict kwds: A dict of options passed to the solver
 
-            solver_opts (dict, optional): Options passed to the nonlinear solver
+        :Keyword Args:
 
-            variances (dict, optional): Map of component name to noise variance. The
-            map also contains the device noise variance
+            - solver_opts (dict, optional): Options passed to the nonlinear solver
+            - variances (dict, optional): Map of component name to noise variance. The
+              map also contains the device noise variance
+            - tee (bool,optional): flag to tell the simulator whether to stream output
+              to the terminal or not
 
-            tee (bool,optional): flag to tell the simulator whether to stream output
-            to the terminal or not
-
-        Returns:
-            None
+        :return: None
 
         """
         solver_opts = kwds.pop('solver_opts', dict())
@@ -418,40 +393,30 @@ class PyomoSimulator(Simulator):
         if not self.model.alltime.get_discretization_info():
             raise RuntimeError('apply discretization first before runing simulation')
 
-        # adjusts the seed to reproduce results with noise
+        # Adjusts the seed to reproduce results with noise
         np.random.seed(seed)
         
-        # variables
-        Z_var = self.model.Z
-        #dZ_var = self.model.dZdt
-        #P_var = self.model.P
-        #X_var = self.model.X
-        #U_var = self.model.U
-        #dX_var = self.model.dXdt
-        if hasattr(self.model, 'Cm'):
-            C_var = self.model.Cm  # added for estimation with inputs and conc data CS
-        if self._huplc_given: #added for additional data CS
-            Dhat_var = self.model.Dhat
-            Chat_var = self.model.Chat
-        # check all parameters are fixed before simulating
-        # for p_var_data in P_var.values():
-        #     if not p_var_data.fixed:
-        #         raise RuntimeError(
-        #             'For simulation fix all parameters. Parameter {} is unfixed'.format(p_var_data.getname()))
+        # Variables
+        # Z_var = self.model.Z
+        # if hasattr(self.model, 'Cm'):
+        #     C_var = self.model.Cm  # added for estimation with inputs and conc data CS
+            
+        # if self._huplc_given: #added for additional data CS
+        #     Dhat_var = self.model.Dhat
+        #     Chat_var = self.model.Chat
+        
+        # # Deactivates objective functions for simulation
+        # if self.model.nobjectives():
+        #     objectives_map = self.model.component_map(ctype=Objective, active=True)
+        #     active_objectives_names = []
+        #     for obj in objectives_map.values():
+        #         name = obj.getname()
+        #         active_objectives_names.append(name)
+        #         str_warning = 'Deactivating objective {} for simulation'.format(name)
+        #         warnings.warn(str_warning)
+        #         obj.deactivate()
 
-        # deactivates objective functions for simulation
-        if self.model.nobjectives():
-            objectives_map = self.model.component_map(ctype=Objective, active=True)
-            active_objectives_names = []
-            for obj in objectives_map.values():
-                name = obj.getname()
-                active_objectives_names.append(name)
-                str_warning = 'Deactivating objective {} for simulation'.format(name)
-                warnings.warn(str_warning)
-                obj.deactivate()
-
-        # Look at the output in results
-        # self.model.write('f.nl')
+        
         opt = SolverFactory(solver)
 
         for key, val in solver_opts.items():
@@ -461,16 +426,16 @@ class PyomoSimulator(Simulator):
         results = ResultsObject()
 
         # activates objective functions that were deactivated
-        if self.model.nobjectives():
-            active_objectives_names = []
-            objectives_map = self.model.component_map(ctype=Objective)
-            for name in active_objectives_names:
-                objectives_map[name].activate()
+        # if self.model.nobjectives():
+        #     active_objectives_names = []
+        #     objectives_map = self.model.component_map(ctype=Objective)
+        #     for name in active_objectives_names:
+        #         objectives_map[name].activate()
 
         # retriving solutions to results object
-        results.load_from_pyomo_model(self.model,
-                                      to_load=None)
+        results.load_from_pyomo_model(self.model)
 
+        return results
         # c_noise_results = []
 
         # w = np.zeros((self._n_components, self._n_allmeas_times))
@@ -611,9 +576,43 @@ class PyomoSimulator(Simulator):
         #     param_vals[name] = self.model.P[name].value
 
         # results.P = param_vals
-        return results
-    
-# def rgetattr(obj, attr, *args):
-#     def _getattr(obj, attr):
-#         return getattr(obj, attr, *args)
-#     return reduce(_getattr, [obj] + attr.split('.')) 
+        
+
+    @staticmethod
+    def add_warm_start_suffixes(model, use_k_aug=False):
+        """Adds suffixed variables to problem
+
+        :param ConcreteModel model: A Pyomo model
+        :param bool use_k_aug: Indicates if k_aug solver is being used
+
+        :return: None
+
+        """
+        # Ipopt bound multipliers (obtained from solution)
+        model.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
+        model.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+        # Ipopt bound multipliers (sent to solver)
+        model.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
+        model.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
+        # Obtain dual solutions from first solve and send to warm start
+        model.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
+        
+        if use_k_aug:
+            model.dof_v = Suffix(direction=Suffix.EXPORT)
+            model.rh_name = Suffix(direction=Suffix.IMPORT)
+            
+        return None
+            
+    @staticmethod
+    def update_warm_start(model):
+        """Updates the suffixed variables for a warmstart
+
+        :param ConcreteModel model: A Pyomo model
+
+        :return: None
+
+        """
+        model.ipopt_zL_in.update(model.ipopt_zL_out)
+        model.ipopt_zU_in.update(model.ipopt_zU_out)
+        
+        return None

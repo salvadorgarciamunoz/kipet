@@ -19,7 +19,7 @@ from pyomo.environ import units as u
 
 from kipet.common.component_expression import Comp
 from kipet.common.VisitorClasses import ReplacementVisitor
-from kipet.core_methods.PyomoSimulator import PyomoSimulator
+from kipet.core_methods.pyomo_simulator import PyomoSimulator
 from kipet.post_model_build.pyomo_model_tools import get_index_sets
 # KIPET library imports
 from kipet.post_model_build.scaling import scale_parameters
@@ -35,66 +35,12 @@ class TemplateBuilder(object):
     and uses it to generate the Pyomo model used in simulation or parameter
     estimation. The TemplateBuilder object is not meant to be accessed directly
     by the user.
-    
-    Private attributes
-    
-    :var _model: The base Pyomo model to be created
-    :var _s_model: The Pyomo model used in simulation
-    :var _builder: TemplateBuilder instance
-    :var _template_populated: Bool designating whether the builder object is built
-    :var __flag_odes_built: Bool indicating whether the odes are built
-    :var __flag_algs_built: Bool indicating whether the daes are built
-    :var _custom_objective: Algebraic variable to use in the custom objective term
-    :var _optimized: Bool indicating whether the ReactionModel has been optimized
-    :var _dosing_points: Dictionary with optional dosing points 
-    :var _has_dosing_points: Bool indicating if dosing points are used
-    :var _has_step_or_dosing: Bool indicating if dosing or step variables are used
-    :var _has_non_absorbing_species: Bool indicating if non-absorbing species are present
-    :var _var_to_fix_from_trajectory: List of variables with fixed trajectories
-    :var _var_to_initialize_from_trajectory: List of variables to initialize from trajectories
-    :var _default_time_unit: Default unit of time
-    :var _allow_optimization: Bool indicating if prerequisite data meets requirements for parameter fitting
-    :var _G_data: Dictionary containing unwanted contribution data
-    :var __var: VariableNames object containing global parameter and variable names in the Pyomo models
-
-    Attributes:
-        _component_names (set): container with names of components.
-
-        _parameters (dict): map of parameter names to corresponding values
-
-        _parameters_bounds (dict): map of parameter names to bounds tuple
-
-        _init_conditions (dict): map of component/state name to its initial condition
-
-        _spectal_data (DataFrame, optional): DataFrame with time indices and wavelength columns
-
-        _absorption_data (DataFrame, optional): DataFrame with wavelength indices and component names columns
-
-        _odes (Function): function specified by user to return dictionary with ODE expressions
-
-        _meas_times (set, optional): container of measurement times
-
-        _huplcmeas_times (set, optional): container of  H/UPLC measurement times
-
-        _allmeas_times (set, optional): container of all measurement times
-
-        _feed_times (set, optional): container of feed times
-
-        _complementary_states (set,optional): container with additional states
 
     """
     __var = VariableNames()
 
     def __init__(self, **kwargs):
-        """Template builder constructor
-
-        Args:
-            **kwargs: Arbitrary keyword arguments.
-            concentrations (dictionary): map of component name to initial condition
-
-            parameters (dictionary): map of parameter name to its corresponding value
-
-            extra_states (dictionary): map of state name to initial condition
+        """Initialization for the TemplateBuilder object.
 
         """
         self._smoothparameters = dict()  # added for mutable parameters CS
@@ -104,13 +50,9 @@ class TemplateBuilder(object):
         self._initextraparams = dict()
         self._initextraparams_init = dict()  # added for parameter initial guess CS
         self._initextraparams_bounds = dict()
-
-        # TODO: Put all data into it's own structure (attrs?)
-
         self._y_bounds = dict()  # added for additional optional bounds CS
         self._y_init = dict()
         self._prof_bounds = list()  # added for additional optional bounds MS
-       # self._init_conditions = dict()
         self._spectral_data = None
         self._concentration_data = None
         self._complementary_states_data = None # added for complementary state data (Est.) KM
@@ -147,40 +89,32 @@ class TemplateBuilder(object):
         self._times = None
         self._all_state_data = list()
         self._init_absorption_data = None
-        
-        # bounds and init for unwanted contributions KH.L
         self._G_contribution = None
-        
         self._qr_bounds = None
         self._qr_init = None
         self._g_bounds = None
         self._g_init = None
-
         self._add_dosing_var = False
 
-        
     def add_state_variance(self, sigma_dict):
         """Provide a variance for the measured states
         
-        Args:
-            sigma (dict): A dictionary of the measured states with known 
-            variance. Provide the value of sigma (standard deviation).
+        :param dict sigma_dict: A dictionary of the measured states with known variance. Provide the value of
+            sigma (standard deviation).
             
-        Returns:
-            None
+        :return: None
+
         """
         self._state_sigmas = sigma_dict 
         
         return None
 
-    def set_parameter_scaling(self, use_scaling: bool):
+    def set_parameter_scaling(self, use_scaling):
         """Makes an option to use the scaling method implemented for estimability
-        
-        Args:
-            use_scaling (bool): Defaults to False, for using scaled parameters
+
+        :param bool use_scaling: Defaults to False, for using scaled parameters
             
-        Returns:
-            None
+        :return: None
         
         """
         self._scale_parameters = use_scaling
@@ -190,39 +124,33 @@ class TemplateBuilder(object):
     def set_model_times(self, times):
         """Add the times to the builder template.
         
-        Args:
-            times (iterable): start and end times for the pyomo model
+        :param tuple times: start and end times for the pyomo model
         
-        Returns:
-            None
+        :return: None
             
         """
         self._times = times
-        
-    """
-    Adding in the model elements
-    """  
+
     def add_model_element(self, BlockObject):
-        
+        """Adds the ReactionModel component blocks
+
+        :param ComponentBlock BlockObject: The component block from ReactionModel
+
+        :return None:
+
+        """
         data_type = BlockObject.attr_class_set_name.rstrip('s')
         block_attr_name = f'template_{data_type}_data'
         setattr(self, block_attr_name, BlockObject)
         return None
  
     def add_smoothparameter(self, *args, **kwds):
-        """Add a kinetic parameter(s) to the model.
+        """Add kinetic parameter(s) to the model.
 
-        Note:
-            Plan to change this method add parameters as PYOMO variables
+        :param tuple args: name (str) and dataframe (pandas.DataFrame)
+        :param dict kwds: Arguments, mutable as bool
 
-            This method tries to mimic a template implementation. Depending
-            on the argument type it will behave differently
-
-        Args:
-            param1 (boolean): Mutable value. Creates a variable mutable
-
-        Returns:
-            None
+        :return: None
 
         """
         mutable = kwds.pop('mutable', False)
@@ -240,8 +168,12 @@ class TemplateBuilder(object):
             raise RuntimeError('Parameter argument not supported. Try pandas.Dataframe and mutable=True')
     
     def input_data(self, data_block_dict=None, spectral_data=None):
-        """This should take a DataContainer and input the data, but for now
-        it will take a DataBlock list
+        """Inputs the data from the ReactionModel. This will also figure out the times for the models if not provided.
+
+        :param dict data_block_dict: The input data
+        :param bool spectral_data: Indicates if the data is spectral
+
+        :return: None
         
         """
         time_span = 0
@@ -277,7 +209,11 @@ class TemplateBuilder(object):
         return None
     
     def clear_data(self):
-        
+        """Method to clear the model data
+
+        :return: None
+
+        """
         self._spectral_data = None
         self._concentration_data = None
         self._complementary_states_data = None # added for complementary state data (Est.) KM
@@ -291,18 +227,11 @@ class TemplateBuilder(object):
         """Generic method for adding data (concentration or complementary 
         state data) - uses the measured data attribute to process
         
-        Args:
-            data (DataFrame): DataFrame with measurement times as
-                              indices and concentrations as columns.
-                              
-            data_type (str): The name of the attribute for where the data is to
-                be stored.
-                
-            label (str): The label used to descibe the data in the pyomo model
-                index.
+        :param pandas.DataFrame data: DataFrame with measurement times as indices and concentrations as columns.
+        :param str data_type: The name of the attribute for where the data is to be stored.
+        :param str label: The label used to descibe the data in the pyomo model index.
 
-        Returns:
-            None
+        :return: None
 
         """
         built_in_data_types = {
@@ -390,43 +319,38 @@ class TemplateBuilder(object):
 
         return None
            
-    def add_huplc_data(self, data, overwrite=True): #added for the inclusion of h/uplc data CS
+    def add_huplc_data(self, data, overwrite=True):
         """Add HPLC or UPLC data as a wrapper to _add_state_data
 
-                Args:
-                    data (DataFrame): DataFrame with measurement times as
-                                      indices and wavelengths as columns.
+        :param pandas.DataFrame data: DataFrame with measurement times as indices and wavelengths as columns.
+        :param bool overwrite: Option to overwrite exisiting data
 
-                Returns:
-                    None
+        :return: None
+
         """
         self._add_state_data(data,
                              data_type='huplc',
                              overwrite=overwrite)
 
-    def add_smoothparam_data(self, data, overwrite=True): #added for mutable smoothing parameter option CS
-        """Add smoothing parameters as a wrapper to _add_state_data
+    def add_smoothparam_data(self, data, overwrite=True):
+        """Add smoothing parameter data
 
-                Args:
-                    data (DataFrame): DataFrame with measurement times as
-                                      indices and wavelengths as columns.
+        :param pandas.DataFrame data: DataFrame with measurement times as indices and wavelengths as columns.
+        :param bool overwrite: Option to overwrite exisiting data
 
-                Returns:
-                    None
+        :return: None
+
         """
         self._add_state_data(data,
                              data_type='smoothparam',
                              overwrite=overwrite)
 
     def add_init_absorption_data(self, data):
-        """Add absorption data initialized from simulation
+        """Initialize the absorption using simulated data
 
-        Args:
-            data (DataFrame): DataFrame with wavelengths as
-                              indices and muxture components as columns.
+        :param pandas.DataFrame data: DataFrame with measurement times as indices and wavelengths as columns.
 
-        Returns:
-            None
+        :return: None
 
         """
         if isinstance(data, pd.DataFrame):
@@ -434,16 +358,13 @@ class TemplateBuilder(object):
         else:
             raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
 
-
     def add_absorption_data(self, data, overwrite=True):
         """Add absorption data
 
-        Args:
-            data (DataFrame): DataFrame with wavelengths as
-                              indices and muxture components as columns.
+        :param pandas.DataFrame data: DataFrame with measurement times as indices and wavelengths as columns.
+        :param bool overwrite: Option to overwrite exisiting data
 
-        Returns:
-            None
+        :return: None
 
         """
         if isinstance(data, pd.DataFrame):
@@ -451,90 +372,100 @@ class TemplateBuilder(object):
         else:
             raise RuntimeError('Spectral data format not supported. Try pandas.DataFrame')
 
-    def round_time(self, time):
-        
+    @staticmethod
+    def round_time(time):
+        """Round the time to a fixed number of significant digits
+
+        :param float time: The time value
+
+        :return: time rounded to fixed number of decimals (6)
+        :rtype: float
+
+        """
         return round(time, 6)
 
-    # For inclusion of discrete jumps
     def add_feed_times(self, times):
         """Add measurement times to the model
 
-        Args:
-            times (array_like): feeding points
+        :param array-like times: feeding points
 
-        Returns:
-            None
+        :return: None
 
         """
         for t in times:
-            t = self.round_time(t)  # for added ones when generating data otherwise too many digits due to different data types CS
+            t = self.round_time(t)
             self._feed_times.add(t)
-            self._meas_times.add(t)  # added here to avoid double addition CS
+            self._meas_times.add(t)
 
-    # For inclusion of discrete jumps
     def add_measurement_times(self, times):
         """Add measurement times to the model
 
-        Args:
-            times (array_like): measurement points
+        :param array-like times: feeding points
 
-        Returns:
-            None
+        :return: None
 
         """
         for t in times:
-            t = self.round_time(t)  # for added ones when generating data otherwise too many digits due to different data types CS
+            t = self.round_time(t)
             self._meas_times.add(t)
 
-    # Why is this function here?
-    def add_huplcmeasurement_times(self, times): #added for additional huplc times that are on a different time scale CS
+    def add_huplcmeasurement_times(self, times):
         """Add H/UPLC measurement times to the model
 
-        Args:
-            times (array_like): measurement points
+        :param array_like times: measurement points
 
-        Returns:
-            None
+        :return: None
 
         """
         for t in times:
-            t = self.round_time(t)  # for added ones when generating data otherwise too many digits due to different data types CS
+            t = self.round_time(t)
             self._huplcmeas_times.add(t)
 
     # read bounds and initialize for qr and g (unwanted contri variables) from users KH.L
-    def add_qr_bounds_init(self, **kwds):
-        bounds = kwds.pop('bounds', None)
-        init = kwds.pop('init', None)
-        
+    def add_qr_bounds_init(self, bounds=None, init=None):
+        """Read bounds and initialize for qr variables
+
+        :param tuple bounds: The qr bounds
+        :param float init: The initial qr value
+
+        :return: None
+
+        """
         self._qr_bounds = bounds
         self._qr_init = init
         
         return None
         
-    def add_g_bounds_init(self, **kwds):
-        bounds = kwds.pop('bounds', None)
-        init = kwds.pop('init', None)
-        
+    def add_g_bounds_init(self, bounds=None, init=None):
+        """Read bounds and initialize for g variables
+
+        :param tuple bounds: The qr bounds
+        :param float init: The initial qr value
+
+        :return: None
+
+        """
         self._g_bounds = bounds
         self._g_init = init
     
         return None
     
     def add_dosing_var(self, n_steps):
-        
+        """Adds a dosing variable to the template
+
+        :param int n_steps: Number of steps
+
+        :return: None
+        """
         self._add_dosing_var = True
         self._number_of_steps = n_steps
     
     def set_odes_rule(self, rule):
-        """Set the ode expressions.
+        """Defines the ordinary differential equations that define the dynamics of the model
 
-        Defines the ordinary differential equations that define the dynamics of the model
+        :param dict rule: Model expressions for the rate equations
 
-        Args:
-            rule (dict) : Model expressions for the rate equations
-
-        Returns:
-            None
+        :return: None
 
         """
         self._odes = rule
@@ -542,15 +473,11 @@ class TemplateBuilder(object):
         return None
 
     def set_algebraics_rule(self, rule, asdict=False):
-        """Set the algebraic expressions.
+        """Defines the algebraic equations for the system
 
-        Defines the algebraic equations for the system
+        :param dict rule: Dictionary of algebraic expressions
 
-        Args:
-            rule (function): Python function that returns a list of tuples
-
-        Returns:
-            None
+        :return: None
 
         """
         if not asdict:
@@ -569,11 +496,9 @@ class TemplateBuilder(object):
 
         Defines the algebraic equations for the system
 
-        Args:
-            algebraic_vars (str, list): str or list of algebraic variables
+        :param list algebraic_vars: List of algebraic variables
 
-        Returns:
-            None
+        :return: None
 
         """
         if not isinstance(algebraic_vars, list):
@@ -585,14 +510,12 @@ class TemplateBuilder(object):
     def bound_profile(self, var, bounds, comp=None, profile_range=None):
         """function that allows the user to bound a certain profile to some value
 
-        Args:
-            var (pyomo variable object): the pyomo variable that we will bound
-            comp (str, optional): The component that bound applies to
-            profile_range (tuple,optional): the range within the set to be bounded
-            bounds (tuple): the values to bound the profile to
+        :param GeneralVar var: The pyomo variable that we will bound
+        :param str comp:The component that bound applies to
+        :param tuple profile_range: The range within the set to be bounded
+        :param tuple bounds: The values to bound the profile to
 
-        Returns:
-            None
+        :return: None
 
         """
         if not isinstance(var, str):
@@ -623,15 +546,9 @@ class TemplateBuilder(object):
 
         This method is not suppose to be used by users. Only for developers use
 
-        Args:
-            model (pyomo or casadi model): Model
+        :param ConcreteModel model: The created Pyomo model
 
-            start_time (float): initial time considered in the model
-
-            end_time (float): final time considered in the model
-
-        Returns:
-            None
+        :return: None
 
         """
         if not self.template_component_data.component_set('concentration'):
@@ -667,6 +584,11 @@ class TemplateBuilder(object):
 
     def _add_algebraic_var(self, model):
         """If algebraics are present, add the algebraic variable to the model
+
+        :param ConcreteModel model: The created Pyomo model
+
+        :return: None
+
         """
         if hasattr(self, 'template_algebraic_data'):    
             a_info = self.template_algebraic_data
@@ -703,8 +625,12 @@ class TemplateBuilder(object):
         return None
     
     def _add_initial_conditions(self, model):
-        """Set up the initial conditions for the model"""
-        
+        """Set up the initial conditions for the model
+
+        :param ConcreteModel model: The created Pyomo model
+
+        :return: None
+        """
         var_info = dict(self.template_component_data._dict)
         
         if hasattr(self, 'template_state_data'):
@@ -759,8 +685,12 @@ class TemplateBuilder(object):
         return None
 
     def _add_model_variables(self, model):
-        """Adds the model variables to the pyomo model"""
-        
+        """Adds the model variables to the pyomo model
+
+        :param ConcreteModel model: The created Pyomo model
+
+        :return: None
+        """
         c_info = self.template_component_data
         self._component_names = c_info.names
         
@@ -850,7 +780,13 @@ class TemplateBuilder(object):
         return None
     
     def _add_model_constants(self, model):
-        
+        """Add the model constants
+
+        :param ConcreteModel model: The created Pyomo model
+
+        :return: None
+
+        """
         if hasattr(self, 'template_constant_data'):
         
             con_info = self.template_constant_data
@@ -863,11 +799,15 @@ class TemplateBuilder(object):
                 obj.fix()
           
         return None
-    
-    
+
     def _add_model_parameters(self, model):
-        """Add the model parameters to the pyomo model"""
-        
+        """Add the model parameters to the pyomo model
+
+        :param ConcreteModel model: The created Pyomo model
+
+        :return: None
+
+        """
         if hasattr(self, 'template_parameter_data'):
             
             p_info = self.template_parameter_data
@@ -934,8 +874,13 @@ class TemplateBuilder(object):
         return None
 
     def _add_unwanted_contribution_variables(self, model):
-        """Add the bounds for the unwanted contributions, if any"""
-        
+        """Add the bounds for the unwanted contributions, if any
+
+        :param ConcreteModel model: The created Pyomo model
+
+        :return: None
+
+        """
         if self._qr_bounds is not None:
             qr_bounds = self._qr_bounds
         elif self._qr_bounds is None:
@@ -964,12 +909,21 @@ class TemplateBuilder(object):
         
         return None
 
-    
     def change_time(self, expr_orig, c_mod, new_time, current_model):
-        """Method to remove the fixed parameters from the ConcreteModel
-        TODO: move to a new expression class
-        
-        At the moment, this only supports one and two dimensional variables
+        """Method to remove the fixed parameters from the ConcreteModel and replace them with real parameters. This
+        converts the dummy variables used to generate the expressions.
+
+        .. note::
+
+            At the moment, this only supports one and two dimensional variables
+
+        :param expression expr_orig: The original user generated expression
+        :param dict c_mod: The dict of dummy variables
+        :param float new_time: The time to replace in the variable index
+        :param ConcreteModel current_model: The model containing the variables
+
+        :return expr_new_time: The expression with the new time
+
         """
         expr_new_time = expr_orig
         var_dict = c_mod
@@ -992,16 +946,11 @@ class TemplateBuilder(object):
         """Takes the non-estiambale parameter and replaces it with its intitial
         value
         
-        Args:
-            expr (pyomo constraint expr): the target ode constraint
+        :param expression expr: the target ode constraint
+        :param str replacement_param: the non-estimable parameter to replace
+        :param float change_value: initial value for the above parameter
             
-            replacement_param (str): the non-estimable parameter to replace
-            
-            change_value (float): initial value for the above parameter
-            
-        Returns:
-            new_expr (pyomo constraint expr): updated constraints with the
-                desired parameter replaced with a float
+        :return: expression new_expr: Updated constraints with the desired parameter replaced with a float
         
         """
         visitor = ReplacementVisitor()
@@ -1011,8 +960,13 @@ class TemplateBuilder(object):
         return new_expr
 
     def _add_model_odes(self, model):
-        """Adds the ODE system to the model, if any"""
-        
+        """Adds the ODE system to the model, if any
+
+        :param ConcreteModel model: The created Pyomo model
+
+        :return: None
+
+        """
         if isinstance(self._odes, dict):
             
             def rule_odes(m, t, k):
@@ -1044,8 +998,13 @@ class TemplateBuilder(object):
         return None
     
     def _add_algebraic_constraints(self, model):
-        """Adds the algebraic constraints the model, if any"""
-        
+        """Adds the algebraic constraints the model, if any
+
+        :param ConcreteModel model: The created Pyomo model
+
+        :return: None
+
+        """
         if self._algebraic_constraints:
             if hasattr(self, 'reaction_dict') or hasattr(self, '_use_alg_dict') and self._use_alg_dict:
                 n_alg_eqns = list(self._algebraic_constraints.keys())
@@ -1064,10 +1023,15 @@ class TemplateBuilder(object):
     def _add_objective_custom(self, model):
         """Adds the custom objectives, if any and uses the model variable
         UD for the data. This is where the custom data is stored.
-        
-        TODO: at the moment this only works for one additional custom obj -
-              make it work for multiple
-        
+
+        .. note::
+
+            This only handles one addition such objective term type
+
+        :param ConcreteModel model: The created Pyomo model
+
+        :return: None
+
         """
         def custom_obj(m, t, y):
             exprs = getattr(m, self.__var.user_defined)[t, y] - getattr(m, self.__var.algebraic)[t, y]
@@ -1087,8 +1051,14 @@ class TemplateBuilder(object):
         return None
 
     def _add_spectral_variables(self, model, is_simulation):
-        """Add D and C variables for the spectral data"""
-        
+        """Add D and C variables for the spectral data
+
+        :param ConcreteModel model: The created Pyomo model
+        :param bool is_simulation: Indicates if the model is for simulation or not
+
+        :return: None
+
+        """
         if self._spectral_data is not None:
             s_data_dict = dict()
             for t in model.meas_times:
@@ -1097,8 +1067,6 @@ class TemplateBuilder(object):
                         s_data_dict[t, l] = float(self._spectral_data.loc[t, l])
                     else:
                         s_data_dict[t, l] = float('nan')
-
-            
 
             setattr(model, self.__var.spectra_data, Param(model.meas_times,
                                                           model.meas_lambdas,
@@ -1114,8 +1082,13 @@ class TemplateBuilder(object):
         return None
 
     def _check_absorbing_species(self, model):
-        """Set up the appropriate S depending on absorbing species"""
-        
+        """Set up the appropriate S depending on absorbing species
+
+        :param ConcreteModel model: The created Pyomo model
+
+        :return: None
+
+        """
         if self._absorption_data is not None:
             s_dict = dict()
             for k in self._absorption_data.columns:
@@ -1157,8 +1130,13 @@ class TemplateBuilder(object):
         return None
     
     def _apply_bounds_to_variables(self, model):
-        """User specified bounds to certain model variables are added here"""
-        
+        """User specified bounds to certain model variables are added here
+
+        :param ConcreteModel model: The created Pyomo model
+
+        :return: None
+
+        """
         for bound_set in self._prof_bounds:
             var = bound_set[0]
             component_name = bound_set[1]
@@ -1183,6 +1161,10 @@ class TemplateBuilder(object):
     def _add_model_smoothing_parameters(self, model):
         """Adds smoothing parameters to the model, if any.
         These are optional smoothing parameter values (mutable) read from a file
+
+        :param ConcreteModel model: The created Pyomo model
+
+        :return: None
         
         """
         if self._smoothparam_data is not None:
@@ -1199,7 +1181,16 @@ class TemplateBuilder(object):
         return None
 
     def _set_up_times(self, model, start_time, end_time, is_simulation=False):
-        
+        """This method sets up the times for the model based on all of the inputs.
+
+        :param ConcreteModel model: The created Pyomo model
+        :param float start_time: The start time (0)
+        :param float end_time: The end time
+        :param bool is_simulation: Indicates if the model is for simulation
+
+        :return: None
+
+        """
         if self._times is not None:
             if start_time is None:
                 start_time = self._times[0]
@@ -1337,9 +1328,14 @@ class TemplateBuilder(object):
     def _check_time_inputs(time_set, start_time, end_time):
         """Checks the first and last time of a measurement to see if it's in
         the model time bounds
-        
+
+        :param array-like time_set: The list of all times
+        :param float start_time: The start time
+        :param float end_time: The end time
+
+        :return: None
+
         """
-        
         if time_set[0] < start_time:
             raise RuntimeError(f'Measurement time {time_set[0]} not within ({start_time}, {end_time})')
         if time_set[-1] > end_time:
@@ -1348,14 +1344,26 @@ class TemplateBuilder(object):
         return None
     
     def add_step_vars(self, step_data):
-        
+        """Adds a step variable if the data is provided
+
+        :param dict step_data: The step data for the ReactionModel
+
+        :return None
+
+        """
         if not hasattr(self, '_step_data'):
             self._step_data = None
         self._step_data = step_data
         return None
     
     def _add_time_steps(self, model):
-        
+        """Builds the step functions into the model using the step_fun method
+
+        :param ConcreteModel model: The created Pyomo model
+
+        :return: None
+
+        """
         from kipet.common.model_funs import step_fun
 
         # Add dosing var
@@ -1451,17 +1459,16 @@ class TemplateBuilder(object):
         return None
             
     def create_pyomo_model(self, start_time=None, end_time=None, is_simulation=False):
-        """Create a pyomo model.
+        """Create a pyomo model from the provided data.
 
         This method is the core method for further simulation or optimization studies
 
-        Args:
-            start_time (float): initial time considered in the model
+        :param flaot start_time: Initial time considered in the model
+        :param float end_time: Final time considered in the model
+        :param bool is_simulation: Indicates if the model is for simulation
 
-            end_time (float): final time considered in the model
-
-        Returns:
-            Pyomo ConcreteModel
+        :return: The finished Pyomo ConcreteModel
+        :rtype: ConcreteModel
 
         """
         if self._spectral_data is not None and self._absorption_data is not None:
@@ -1566,71 +1573,106 @@ class TemplateBuilder(object):
 
     @property
     def num_parameters(self):
+        """Returns the number of parameters
+
+        :return: The number of paramters
+        :rtype: float
+
+        """
         return len(self._parameters)
 
     @property
     def num_mixture_components(self):
+        """Returns the number of components
+
+        :return: The number of components
+        :rtype: float
+
+        """
         return len(self._component_names)
 
     @property
     def num_complementary_states(self):
+        """Returns the number of states
+
+        :return: The number of states
+        :rtype: float
+
+        """
         return len(self._complementary_states)
 
     @property
     def num_algebraics(self):
+        """Returns the number of algebraics
+
+        :return: The number of algebraics
+        :rtype: float
+
+        """
         return len(self._algebraics)
 
     @property
     def measurement_times(self):
+        """Returns the measurement times
+
+        :return: The measurement times
+        :rtype: float
+
+        """
         return self._meas_times
 
-    @property #added with additional data CS
+    @property
     def huplcmeasurement_times(self):
+        """Returns the HUPLC measurement times
+
+        :return: The number of HUPLC measurement times
+        :rtype: float
+
+        """
         return self._huplcmeas_times
 
     @property
     def feed_times(self):
+        """Returns the feed times
+
+        :return: The feed times
+        :rtype: float
+
+        """
         return self._feed_times  # added for feeding points CS
 
-    @num_parameters.setter
-    def num_parameters(self):
-        raise RuntimeError('Not supported')
-
-    @num_mixture_components.setter
-    def num_mixture_components(self):
-        raise RuntimeError('Not supported')
-
-    @num_complementary_states.setter
-    def num_complementary_states(self):
-        raise RuntimeError('Not supported')
-
-    @num_algebraics.setter
-    def num_algebraics(self):
-        raise RuntimeError('Not supported')
-
-    @measurement_times.setter
-    def measurement_times(self):
-        raise RuntimeError('Not supported')
-
-    @huplcmeasurement_times.setter
-    def huplcmeasurement_times(self):
-        raise RuntimeError('Not supported')
-
-    @feed_times.setter
-    def feed_times(self):
-        raise RuntimeError('Not supported')  # added for feeding points CS
-
     def has_spectral_data(self):
+        """Return bool if spectral data is in the model
+
+        :return: True if spectral data is in the model
+
+        """
         return self._spectral_data is not None
 
     def has_adsorption_data(self):
+        """Return bool if adsorption data is in the model
+
+        :return: True if adsorption data is in the model
+
+        """
         return self._absorption_data is not None
 
     def has_concentration_data(self):
+        """Return bool if concentration data is in the model
+
+        :return: True if concentration data is in the model
+
+        """
         return self._concentration_data is not None
 
-
     def optional_warmstart(self, model):
+        """Updates suffixes with previous results
+
+        :param ConcreteModel model: The current Pyomo model
+
+        :return: None
+
+        """
         if hasattr(model, 'dual') and hasattr(model, 'ipopt_zL_out') and hasattr(model, 'ipopt_zU_out') and hasattr(
                 model, 'ipopt_zL_in') and hasattr(model, 'ipopt_zU_in'):
             print('warmstart model components already set up before.')
@@ -1641,105 +1683,15 @@ class TemplateBuilder(object):
             model.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
             model.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
 
-    # def set_estinit_extra_species(self, model, initextra_est_list, check=True):#added for the estimation of initial conditions which have to be complementary state vars CS
-    #     # type: (ConcreteModel, list, bool) -> None
-    #     """Sets the non absorbing component of the model.
-
-    #     Args:
-    #         initextra_est_list: List of to be estimated initial conditions of complementary state variables.
-    #         model: The corresponding model.
-    #         check: Safeguard against setting this up twice.
-    #     """
-    #     if hasattr(model, 'estim_init'):
-    #         print("To be estimated initial conditions of complementary state variables were already set up before.")
-    #         return
-
-    #     if (self._initextra_est_list and check):
-    #         raise RuntimeError('To be estimated initial conditions of complementary state variables have been already set up.')
-
-    #     self._initextraest = initextra_est_list
-    #     self._estim_init = True
-    #     model.estim_init=Param(initialize=self._estim_init)
-        
-    #     return None
-
-    # def add_init_extra(self, *args, **kwds):#added for the estimation of initial conditions which have to be complementary state vars CS
-    #     """Add a kinetic parameter(s) to the model.
-
-    #     Note:
-    #         Plan to change this method add parameters as PYOMO variables
-
-    #         This method tries to mimic a template implementation. Depending
-    #         on the argument type it will behave differently
-
-    #     Args:
-    #         param1 (str): Species name. Creates a variable species
-
-    #         param1 (list): Species names. Creates a list of variable species
-
-    #         param1 (dict): Map species name(s) to value(s). Creates a fixed parameter(s)
-
-    #     Returns:
-    #         None
-
-    #     """
-    #     bounds = kwds.pop('bounds', None)
-    #     init = kwds.pop('init', None)
-    #     self._estim_init=True
-
-    #     if len(args) == 1:
-    #         name = args[0]
-    #         if isinstance(name, six.string_types):
-    #             self._initextraparams[name] = None
-    #             if bounds is not None:
-    #                 self._initextraparams_bounds[name] = bounds
-    #             if init is not None:
-    #                 self._initextraparams_init[name] = init
-    #         elif isinstance(name, list) or isinstance(name, set):
-    #             if bounds is not None:
-    #                 if len(bounds) != len(name):
-    #                     raise RuntimeError('the list of bounds must be equal to the list of species')
-    #             for i, n in enumerate(name):
-    #                 self._initextraparams[n] = None
-    #                 if bounds is not None:
-    #                     self._initextraparams_bounds[n] = bounds[i]
-    #                 if init is not None:
-    #                     self._initextraparams_init[n] = init[i]
-    #         elif isinstance(name, dict):
-    #             if bounds is not None:
-    #                 if len(bounds) != len(name):
-    #                     raise RuntimeError('the list of bounds must be equal to the list of species')
-    #             for k, v in name.items():
-    #                 self._initextraparams[k] = v
-    #                 if bounds is not None:
-    #                     self._initextraparams_bounds[k] = bounds[k]
-    #                     print(bounds[k])
-    #                 if init is not None:
-    #                     self._initextraparams_init[k] = init[k]
-    #         else:
-    #             raise RuntimeError('Species data not supported. Try str')
-    #     elif len(args) == 2:
-    #         first = args[0]
-    #         second = args[1]
-    #         if isinstance(first, six.string_types):
-    #             self._initextraparams[first] = second
-    #             if bounds is not None:
-    #                 self._initextraparams_bounds[first] = bounds
-    #             if init is not None:
-    #                 self._initextraparams_init[first] = init
-    #         else:
-    #             raise RuntimeError('Species argument not supported. Try str,val')
-    #     else:
-    #         raise RuntimeError('Species argument not supported. Try str,val')
-
     def set_non_absorbing_species(self, model, non_abs_list, check=True):
-        # type: (ConcreteModel, list, bool) -> None
         """Sets the non absorbing component of the model.
 
-        Args:
-            non_abs_list: List of non absorbing components.
-            model: The corresponding model.
-            check: Safeguard against setting this up twice.
+        :param list non_abs_list: List of non absorbing components.
+        :param ConcreteModel model: The corresponding model.
+        :param bool check: Safeguard against setting this up twice.
+
+        :return: None
+
         """
         if hasattr(model, 'non_absorbing'):
             print("non-absorbing species were already set up before.")
@@ -1780,17 +1732,17 @@ class TemplateBuilder(object):
             for componenta in abscomps:
                 if time in times:
                     matchCsC_con.add(Cs[time, componenta] == C[time, componenta])
-        ##########################
 
     def set_known_absorbing_species(self, model, known_abs_list, absorbance_data, check=True):
-        # type: (ConcreteModel, list, dataframe, bool) -> None
         """Sets the known absorbance profiles for specific components of the model.
 
-        Args:
-            knon_abs_list: List of known species absorbance components.
-            model: The corresponding model.
-            absorbance_data: the dataframe containing the known component spectra
-            check: Safeguard against setting this up twice.
+        :param list known_abs_list: List of known species absorbance components.
+        :param ConcreteModel model: The corresponding model.
+        :param pandas.DataFrame absorbance_data: the dataframe containing the known component spectra
+        :param bool check: Safeguard against setting this up twice.
+
+        :return: None
+
         """
         if hasattr(model, 'known_absorbance'):
             print("species with known absorbance were already set up before.")
@@ -1804,27 +1756,24 @@ class TemplateBuilder(object):
         self._known_absorbance_data = absorbance_data
         model.add_component('known_absorbance', Set(initialize=self._known_absorbance))
         S = getattr(model, self.__var.spectra_species)
-        C = getattr(model, self.__var.concentration_spectra)
-        Z = getattr(model, self.__var.concentration_model)
         lambdas = getattr(model, 'meas_lambdas')
         model.known_absorbance_data = self._known_absorbance_data
         for component in self._known_absorbance:
             for l in lambdas:
                 S[l, component].set_value(self._known_absorbance_data[component][l])
                 S[l, component].fix()
-      #########################
 
-        #added for additional huplc data CS
     def set_huplc_absorbing_species(self, model, huplc_abs_list, vol=None, solid_spec=None, check=True):
-        # type: (ConcreteModel, list, bool) -> None
         """Sets the non absorbing component of the model.
 
-        Args:
-            huplc_abs_list: List of huplc absorbing components.
-            vol: reactor volume
-            solid_spec: solid species observed with huplc data
-            model: The corresponding model.
-            check: Safeguard against setting this up twice.
+        :param list huplc_abs_list: List of huplc absorbing components.
+        :param float vol: reactor volume
+        :param str solid_spec: solid species observed with huplc data
+        :param ConcreteModel model: The corresponding model.
+        :param bool check: Safeguard against setting this up twice.
+
+        :return: None
+
         """
         if hasattr(model, 'huplc_absorbing'):
             print("huplc-absorbing species were already set up before.")
@@ -1833,11 +1782,9 @@ class TemplateBuilder(object):
         if (self._is_huplc_abs_set and check):
             raise RuntimeError('huplc-absorbing species have been already set up.')
 
-
         self._is_huplc_abs_set = True
         self._vol=vol
         model.add_component('vol', Param(initialize=self._vol))
-
 
         self._huplc_absorbing = huplc_abs_list
         model.add_component('huplc_absorbing', Set(initialize=self._huplc_absorbing))
@@ -1867,7 +1814,6 @@ class TemplateBuilder(object):
         for k in self._huplc_data.columns:
             for c in self._huplc_data.index:
                 Dhat_dict[c, k] = float(self._huplc_data[k][c])
-
 
         model.add_component('fixed_Dhat', ConstraintList())
         new_con = getattr(model, 'fixed_Dhat')

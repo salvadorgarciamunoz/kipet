@@ -21,6 +21,7 @@ def gaussian_single_peak(wl, alpha, beta, gamma):
     """
     return alpha*np.exp(-(wl-beta)**2/gamma)
 
+
 def absorbance(wl, alphas, betas, gammas):
     """
     Helper function to generate absorption data based on 
@@ -36,6 +37,7 @@ def absorbance(wl, alphas, betas, gammas):
 
     """
     return sum(gaussian_single_peak(wl,alphas[i],betas[i],gammas[i]) for i in range(len(alphas)))
+
 
 def generate_absorbance_data(wl_span, parameters_dict):
     """
@@ -102,6 +104,7 @@ def generate_random_absorbance_data(wl_span, component_peaks,
 
     return generate_absorbance_data(wl_span,parameters_dict)
 
+
 def add_noise_to_signal(signal, size):
     """
     Adds a random normally distributed noise to a clean signal. Used mostly in Kipet
@@ -119,5 +122,5 @@ def add_noise_to_signal(signal, size):
     noise = np.random.normal(0,size,clean_sig.shape)
     sig = clean_sig+noise    
     df= pd.DataFrame(data=sig)
-    df[df<0]=0
+    df[df < 0] = 0
     return df

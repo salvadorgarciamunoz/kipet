@@ -1,14 +1,20 @@
+"""
+The core methods used to estimate variances are maintained here.
+"""
+# Standard library imports
 import copy
 import time
+import warnings
 
-from pyomo.core import *
-from pyomo.dae import *
-from pyomo.environ import *
+# Third party imports
+import numpy as np
+from pyomo.environ import Objective, SolverFactory, value
 
-from kipet.core_methods.Optimizer import *
+# KIPET libray imports
+from kipet.core_methods.pyomo_simulator import PyomoSimulator
 
 
-class VarianceEstimator(Optimizer):
+class VarianceEstimator(PyomoSimulator):
     """Optimizer for variance estimation.
 
     Attributes:
@@ -24,18 +30,17 @@ class VarianceEstimator(Optimizer):
             raise NotImplementedError("Variance estimator requires spectral data in model as model.D[ti,lj]")
         self._is_D_deriv = False
 
-    def run_sim(self, solver, **kwds):
-        raise NotImplementedError("VarianceEstimator object does not have run_sim method. Call run_opt")
-
     def run_opt(self, solver, **kwds):
 
         """Solves estimation following either the original Chen etal (2016) procedure or via the 
         maximum likelihood estimation with unknown covariance matrix. Chen's method solves a sequence 
         of optimization problems to determine variances and initial guesses for parameter estimation.
         The maximum likelihood estimation with unknown covariance matrix also solves a sequence of optimization
-        problems is a more robust and reliable method, albeit somputationally costly.
+        problems is a more robust and reliable method, albeit computationally costly.
 
-        Args:
+        :param str solver: The solver used in variance estimation
+
+        :Keyword Args:
 
             solver_opts (dict, optional): options passed to the nonlinear solver
             
@@ -188,25 +193,24 @@ class VarianceEstimator(Optimizer):
 
         # Dosing
         if jump:
-            self.set_up_jumps(run_opt_kwargs)
+            from kipet.common.jumps_method import set_up_jumps
+            set_up_jumps(self.model, run_opt_kwargs)
         
         if report_time:
             start = time.time()
              
         # Call the chosen method
-        if method == 'originalchenetal':  
+        if method in ['originalchenetal', 'orig', 'original', 'old']:  
             from kipet.variance_methods.chen_method import run_method
             results = run_method(self, solver, run_opt_kwargs)
             
-        elif method == 'alternate':
-            from kipet.variance_methods.alternate_method import \
-                run_alternate_method
+        elif method in ['alternate', 'alt', 'new']:
+            from kipet.variance_methods.alternate_method import run_alternate_method
             solver = 'ipopt'
             results = run_alternate_method(self, solver, run_opt_kwargs)
         
         elif method == 'direct_sigmas':
-            from kipet.variance_methods.alternate_method import \
-                run_direct_sigmas_method
+            from kipet.variance_methods.alternate_method import run_direct_sigmas_method
             results = run_direct_sigmas_method(self, solver, run_opt_kwargs)
             
         # Report time
@@ -217,13 +221,18 @@ class VarianceEstimator(Optimizer):
         return results
 
     def _warn_if_D_negative(self):
-    
+        """Method the raises a warning if some D values are negative
+
+        :return: None
+
+        """
         for t in self._meas_times:
             for l in self._meas_lambdas:
                 if self.model.D[t, l] >= 0:
                     pass
                 else:
                     self._is_D_deriv = True
+
         if self._is_D_deriv == True:
             print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
 
@@ -232,12 +241,9 @@ class VarianceEstimator(Optimizer):
     def _create_tmp_outputs(self):
         """Creates temporary files for loging solutions of each optimization problem
 
-           This method is not intended to be used by users directly
+        This method is not intended to be used by users directly
 
-        Args:
-
-        Returns:
-            None
+        :return: None
 
         """
         self._tmp2 = "tmp_Z"
@@ -256,19 +262,18 @@ class VarianceEstimator(Optimizer):
     def solve_max_device_variance(self, solver, **kwds):
         """Solves the maximum likelihood formulation with (C-Z) = 0. solves ntp/2*log(eTe/ntp)
         and then calculates delta from the solution. See documentation for more details.
-    
-        Args:
-            solver_opts (dict, optional): options passed to the nonlinear solver
-        
-            tee (bool,optional): flag to tell the optimizer whether to stream output
-            to the terminal or not
-        
-            subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
+
+        :param ConcreteModel solver: The model used in the variance estimation
+        :param dict kwds: The options passed from the ReactionModel
+
+        :Keyword Args:
+            - solver_opts (dict, optional): options passed to the nonlinear solver
+            - tee (bool,optional): flag to tell the optimizer whether to stream output
+               to the terminal or not
+            - subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem
             (Weifeng paper). Default all wavelengths.
-    
-        Returns:
-    
-            delta_sq (float): value of the max device variance
+
+        :return float delta_sq: Value of the max device variance
     
         """   
         solver_opts = kwds.pop('solver_opts', dict())
@@ -289,11 +294,9 @@ class VarianceEstimator(Optimizer):
             list_components = [k for k in self._mixture_components if k not in self._known_absorbance]
         
         self._sublist_components = list_components
-            
         print("Solving For the worst possible device variance\n")
         
         self._warn_if_D_negative()
-        
         obj = 0.0
         ntp = len(self._meas_times)
         nwp = len(self._meas_lambdas)
@@ -314,10 +317,10 @@ class VarianceEstimator(Optimizer):
     
         for key, val in solver_opts.items():
             opt.options[key]=val
-        solver_results = opt.solve(self.model,
-                                   tee=tee)
+            
+        solver_results = opt.solve(self.model, tee=tee)
         
-        print("values for the parameters in case with no model variance")
+        print("Parameter values with no model variance")
         for k, v in self.model.P.items():
             print(k, v.value)
         
@@ -327,10 +330,11 @@ class VarianceEstimator(Optimizer):
                 D_bar = sum(value(self.model.Z[t, k]) * value(self.model.S[l, k]) for k in self.component_set)
                 etaTeta += (value(self.model.D[t, l])- D_bar)**2
     
+        # etaTeta = self.model.obj?
         deltasq = etaTeta/(ntp*nwp)
         
         self.model.del_component('init_objective')
-        print("worst case delta squared: ", deltasq)
+        print("Worst case delta^2: ", deltasq)
     
         return deltasq
     
@@ -338,7 +342,12 @@ class VarianceEstimator(Optimizer):
         """Function that solves for model variances based on a given device variance. Solves
         The log likelihood function and returns a dictionary containg all sigmas, including
         the device/delta in order to easily apply to the parameter estimation problem.
-           This method is intended to be used by users directly
+
+        This method is intended to be used by users directly
+
+        :param ConcreteModel solver: The concrete model used for the variance estimation
+        :param dict kwds: Options passed from the ReactionModel instance
+
         Args:
             solver (str): solver to use to solve the problems (recommended "ipopt")
             
@@ -351,11 +360,11 @@ class VarianceEstimator(Optimizer):
         
             subset_lambdas (array_like,optional): Set of wavelengths to used in problem 
             (Weifeng paper). Default all wavelengths.
-        Returns:
-            all_variances (dict): dictionary containg all sigmas, including the device/delta
-        """   
-        from kipet.variance_methods.alternate_method import \
-            _solve_sigma_given_delta
+
+        :return dict all_variances: Dictionary containing all sigmas, including the device/delta
+
+        """
+        from kipet.variance_methods.alternate_method import _solve_sigma_given_delta
         
         solver_opts = kwds.pop('solver_opts', dict())
         tee = kwds.pop('tee', True)
@@ -364,10 +373,10 @@ class VarianceEstimator(Optimizer):
         
         residuals, sigma_vals, stop_it, results = _solve_sigma_given_delta(self, 
                                                                            solver, 
-                                                                           subset_lambdas= set_A, 
-                                                                           solver_opts = solver_opts, 
+                                                                           subset_lambdas=set_A, 
+                                                                           solver_opts=solver_opts, 
                                                                            tee=tee, 
-                                                                           delta = delta)
+                                                                           delta=delta)
         all_variances = sigma_vals
         all_variances['device'] = delta
         return all_variances

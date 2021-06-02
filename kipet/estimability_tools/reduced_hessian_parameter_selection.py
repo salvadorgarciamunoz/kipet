@@ -19,8 +19,8 @@ from kipet.common.parameter_handling import (check_initial_parameter_values,
                                              set_scaled_parameter_bounds)
 from kipet.common.parameter_ranking import parameter_ratios, rank_parameters
 from kipet.common.ReducedHessian import ReducedHessian
-from kipet.core_methods.ParameterEstimator import ParameterEstimator
-from kipet.core_methods.ResultsObject import ResultsObject
+from kipet.core_methods.parameter_estimator import ParameterEstimator
+from kipet.core_methods.results_object import ResultsObject
 from kipet.post_model_build.scaling import (remove_scaling, scale_parameters,
                                             update_expression)
 
@@ -31,39 +31,39 @@ class EstimationPotential():
     presented by Chen and Biegler (accepted AIChE 2020) using the reduced 
     hessian to select the estimable parameters. 
 
-    Attributes:
+    :Attributes:
     
-        model_builder (pyomo ConcreteModel): The pyomo model 
+        - model_builder (pyomo ConcreteModel): The pyomo model
     
-        simulation_data (pandas.DataFrame): Optional simulation data to use for
+        - simulation_data (pandas.DataFrame): Optional simulation data to use for
             warm starting (Needs testing!)
         
-        options (dict): Various options for the esimability algorithm:
+        - options (dict): Various options for the esimability algorithm:
         
-            nfe (int): The number of finite elements to use in the collocation.
+            - nfe (int): The number of finite elements to use in the collocation.
             
-            ncp (int): The number of collocation points per finite element.
+            - ncp (int): The number of collocation points per finite element.
             
-            bound_approach (float): The accepted relative difference for
+            - bound_approach (float): The accepted relative difference for
                 determining whether or not a bound is considered active (Step 6).
                 
-            rho (float): Factor used to determine the lower and upper bounds for
+            - rho (float): Factor used to determine the lower and upper bounds for
                 each parameter in fitting (Step 5).
                 
-            epsilon (float): The minimum value for parameter values
+            - epsilon (float): The minimum value for parameter values
             
-            eta (float): Predetermined cut-off value for accepted std/parameter
+            - eta (float): Predetermined cut-off value for accepted std/parameter
                 ratios.
                 
-            max_iter_limit (int): Iteration limits for the estimability algorithm.
+            - max_iter_limit (int): Iteration limits for the estimability algorithm.
             
-            verbose (bool): Defaults to False, option to display the progress of
+            - verbose (bool): Defaults to False, option to display the progress of
                 the algorihm.
                 
-            debug (bool): Defaults to False, option to ask for user input to 
+            - debug (bool): Defaults to False, option to ask for user input to
                 proceed during the algorithm.
                 
-            simulate_start (bool): Option to simulate using the model to 
+            - simulate_start (bool): Option to simulate using the model to
                 warm start the optimization
         
     """
@@ -71,7 +71,19 @@ class EstimationPotential():
     def __init__(self, model, simulation_data=None, options=None,
                  method='k_aug', solver_opts={}, scaled=True,
                  use_bounds=False, use_duals=False, calc_method='fixed'):
-        
+
+        """Initialization of the EstimationPotential class
+
+        :param ConcreteModel model: The Pyomo model to perform analysis on
+        :param pandas.DataFrame simulation_data: Initialization data for the model
+        :param dict options: Dictionary of options to use in the RHPS method
+        :param str method: The method to use in calculating sensitivities
+        :param dict solver_opts: Options for the solver, if any
+        :param bool scaled: Optional scaling
+        :param bool use_bounds: Optional use of parameter bounds (dev opt)
+        :param bool use_duals: Use the dual option in sensitiivty calculations (dev opt)
+        :param str calc_method: Method to calculate the reduced Hessian (dev opt)
+        """
         # Options handling
         self.options = {} if options is None else options.copy()
         self._options = options.copy()
@@ -108,29 +120,18 @@ class EstimationPotential():
         
     def __repr__(self):
         
-        repr_str = (f'EstimationPotential({self.model}, simulation_data={"Provided" if self.simulation_data is not None else "None"}, options={self.options})')
+        repr_str = (f'EstimationPotential({self.model},'
+                    f' simulation_data={"Provided" if self.simulation_data is not None else "None"},'
+                    f' options={self.options})')
         
         return repr_str
         
     def estimate(self):
         """This performs the estimability analysis based on the method
         developed in Chen and Biegler 2020 AIChE...
-        
-        TODO:
-            1. Check method in the last step for clarity in the methodology
-            (does not affect the implementation!)
-            
-            2. Look at the optimization code already in KIPET and see if you
-            can use it for anything coded here.
-            
-            3. Make sure nothing is circular!
-        
-        Args:
-            None
-            
-        Returns:
-            None
-            
+
+        :return: None
+
         """
         bound_check = True     
 
@@ -421,10 +422,8 @@ class EstimationPotential():
             outer_iteration_counter += 1                
         
         print(step.substitute(number='Finished'))
-        #est_params_str = ', '.join(Se)
         
         self.model.K_vals = saved_parameters_K
-        #print(saved_parameters_K)
         
         print(f'The estimable parameters are: {", ".join(Se)}')
         print('\nThe final parameter values are:\n')
@@ -438,52 +437,23 @@ class EstimationPotential():
         return results, self.model
     
     def _get_results(self, Se):
-        
+        """Arranges the results into a ResultsObject
+
+        :param list Se: The list of estimable parameters
+
+        :return: The results from the parameter estimation process
+        :rtype: ResultsObject
+
+        """
         scaled_parameter_var = 'K'
         results = ResultsObject()
         results.estimable_parameters = Se
-        
-        #results.objective = self.objective_value
-        #results.parameter_covariance = self.cov_mat
-
-        # if self._spectra_given:
-        #     results.load_from_pyomo_model(self.model,
-        #                                   to_load=['Z', 'dZdt', 'X', 'dXdt', 'C', 'S', 'Y'])
-        #     if hasattr(self, '_abs_components'):
-        #         results.load_from_pyomo_model(self.model,
-        #                                       to_load=['Cs'])
-        #     if hasattr(self, 'huplc_absorbing'):
-        #         results.load_from_pyomo_model(self.model,
-        #                                       to_load=['Dhat_bar'])
-     
-        # elif self._concentration_given:
-        results.load_from_pyomo_model(self.model,
-                                          to_load=['Z', 'dZdt', 'X', 'U', 'dXdt', 'Cm', 'Y'])
-        # else:
-        #     raise RuntimeError(
-        #         'Must either provide concentration data or spectra in order to solve the parameter estimation problem')
-
-        # if self._spectra_given:
-        #     self.compute_D_given_SC(results)
+        results.load_from_pyomo_model(self.model)
 
         if hasattr(self.model, scaled_parameter_var): 
             results.P = {name: self.model.P[name].value*getattr(self.model, scaled_parameter_var)[name].value for name in self.model.parameter_names}
         else:
             results.P = {name: self.model.P[name].value for name in self.model.parameter_names}
-
-        # if hasattr(self.model, 'Pinit'):
-        #     param_valsinit = dict()
-        #     for name in self.model.initparameter_names:
-        #         param_valsinit[name] = self.model.init_conditions[name].value
-        #     results.Pinit = param_valsinit
-
-        # if self.termination_condition!=None and self.termination_condition!=TerminationCondition.optimal:
-        #     raise Exception("The current iteration was unsuccessful.")
-        # else:
-        #     if self._estimability == True:
-        #         return self.hessian, results
-        #     else:
-        #         return results
 
         return results
     
@@ -492,6 +462,8 @@ class EstimationPotential():
         main function. Includes the experimental data, sets the objectives,
         simulates to warm start the models if no data is provided, sets up the
         reduced hessian model with "fake data", and discretizes all models
+
+        :return: None
 
         """
         if not hasattr(self.model, 'objective'):
@@ -532,14 +504,11 @@ class EstimationPotential():
         is included in the model, it is detected and included in the objective
         function.
         
-        Args:
-            model (pyomo.core.base.PyomoModel.ConcreteModel): This is the pyomo
-            model instance for the estimability problem.
+        :param ConcreteModel model: This is the pyomo model instance for the estimability problem.
                 
-        Returns:
-            obj (pyomo.environ.Objective): This returns the objective function
-            for the estimability optimization.
-        
+        :return: This returns the objective function
+        :rtype: expression
+
         """
         obj = 0
         obj += 0.5*conc_objective(model) 
@@ -547,20 +516,15 @@ class EstimationPotential():
     
         return Objective(expr=obj)
 
-    def _calculate_reduced_hessian(self, Se, verbose=False, **kwargs):
+    def _calculate_reduced_hessian(self, Se):
         """This function solves an optimization with very restrictive bounds
         on the paramters in order to get the reduced hessian at fixed 
-        conditions
-        
-        Args:
-            Se (list): The current list of estimable parameters.
-            
-            verbose (bool): Defaults to False, option to show the output from
-                the solver (solver option 'tee').
-            
-        Returns:
-            reduced_hessian (np.ndarray): The resulting reduced hessian matrix.
-            
+        conditions.
+
+        :param list Se: The current list of estimable parameters.
+
+        :return numpy.ndarray reduced_hessian: The reduced Hessian
+
         """
         rh_model = copy.deepcopy(self.model)
         
@@ -576,25 +540,20 @@ class EstimationPotential():
         reduced_hessian = rh.calculate_reduced_hessian(optimize=True)
         
         return reduced_hessian
-          
-def rhps_method(model, options=None, **kwargs):
+
+
+def rhps_method(model, **kwargs):
     """Reduces a single model using the reduced hessian parameter selection
     method. It takes a pyomo ConcreteModel using P as the parameters to be fit
     and K as the scaled parameter values.
-    
-    Args:
-        model (ConcreteModel): The full model to be reduced
-        
-        simulation_data (ResultsObject): simulation data for initialization
-        
-        options (dict): defaults to None, for future option implementations
-        
-    Returns:
-        results (ResultsObject): returns the results from the parameter
-            selection and optimization
-        reduced_model (ConcreteModel): returns the reduced model with full
-            parameter set
-    
+
+    :param ConcreteModel model: The full model to be reduced
+    :param dict kwargs: The keyword args passed to EstimaitonPotential
+
+    :return results: The results from the parameter selection and optimization
+    :return reduced_model: returns the reduced model with full parameter set
+    :rtype: tuple(ResultsObject, ConcreteModel)
+
     """
     simulation_data = kwargs.get('simulation_data', None)
     replace = kwargs.get('replace', True)
@@ -626,20 +585,19 @@ def rhps_method(model, options=None, **kwargs):
     #     remove_scaling(reduced_model, bounds=orig_bounds)
         
     return results, reduced_model
-        
+
+
 def replace_non_estimable_parameters(model, set_of_est_params):
     """Takes a model and a set of estimable parameters and removes the 
     unestimable parameters from the model by fixing them to their current 
     values in the model
     
-    Args:
-        model (ConcreteModel): The full model to be reduced
-        
-        set_of_est_params (set): Parameters found to be estimable
-        
-    Returns:
-        model (ConcreteModel): The model with parameters replaced
-        
+    :param ConcreteModel model: The full model to be reduced
+    :param set set_of_est_params: Parameters found to be estimable
+
+    :return model: The model with parameters replaced
+    :rtype: ConcreteModel
+
     """
     all_model_params = set([k for k in model.P.keys()])
     params_to_change = all_model_params.difference(set_of_est_params)
