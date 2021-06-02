@@ -2,20 +2,7 @@
 
 from __future__ import division, print_function
 
-import copy
-import os
-import re
-
-import matplotlib.pyplot as plt
-import numpy as np
-import scipy
-import six
-from pyomo import *
-from pyomo.dae import *
-from pyomo.environ import *
-from scipy.optimize import least_squares
-
-from kipet.core_methods.parameter_estimator import *
+from kipet.estimator_tools.parameter_estimator import *
 
 __author__ = 'Michael Short'  #: November 2018
 

@@ -1,15 +1,32 @@
 """
 Holds the alternate method used in VarianceEstimator
 """
+# Standard library imports
+import warnings
+
+# Third party imports
 from pyomo.core import log, value
 from pyomo.environ import Objective, Param, SolverFactory
 
-from kipet.core_methods.ResultsObject import ResultsObject
+# KIPET library imports
+from kipet.estimator_tools.results_object import ResultsObject
 
 
 def run_alternate_method(var_est_object, solver, run_opt_kwargs):
-    """Calls the alternative method - Short et al 2020"""
-    
+    """Calls the alternative method - Short et al 2020
+
+    This is an improved method for determining the component variances. This method has been removed from the
+    VarianceEstimator class for simplification.
+
+    :param VarianceEstimator var_est_object: The variance estimation object
+    :param str solver: The solver being used (currently not used)
+    :param dict run_opt_kwargs: The dict of user settings passed on from the ReactionModel
+
+    :return results: The results from the variance estimation
+    :rtype: ResultsObject
+
+    """
+    # Unpack the keyword arguments
     solver_opts = run_opt_kwargs.pop('solver_opts', dict())
     init_sigmas = run_opt_kwargs.pop('initial_sigmas', float())
     tee = run_opt_kwargs.pop('tee', False)
@@ -17,26 +34,24 @@ def run_alternate_method(var_est_object, solver, run_opt_kwargs):
     A = run_opt_kwargs.pop('subset_lambdas', None)
     secant_point2 = run_opt_kwargs.pop('secant_point', None)
     individual_species = run_opt_kwargs.pop('individual_species', False)
-    
+
+    # Solver is fixed to ipopt
     solver = 'ipopt'
-    
+
     nu_squared = var_est_object.solve_max_device_variance(
                                            solver,
                                            tee=tee,
                                            subset_lambdas=A, 
                                            solver_opts=solver_opts)
-        
+
+    second_point = init_sigmas*10
     if secant_point2 is not None:
         second_point = secant_point2
-    else:
-        second_point = init_sigmas*10
+
     itersigma = dict()
-    
-    itersigma[1] = init_sigmas
     itersigma[0] = second_point
-    
+    itersigma[1] = init_sigmas
     iterdelta = dict()
-    
     count = 1
     tol = tol
     funcval = 1000
@@ -50,7 +65,7 @@ def run_alternate_method(var_est_object, solver, run_opt_kwargs):
                                             init_sigmas=itersigma[0])
 
     while abs(funcval) >= tol:
-        print("Overall sigma value at iteration", count,": ", itersigma[count])
+        print("Overall sigma value at iteration", count, ": ", itersigma[count])
         
         new_delta = _solve_delta_given_sigma(var_est_object,
                                              solver, 
@@ -58,8 +73,8 @@ def run_alternate_method(var_est_object, solver, run_opt_kwargs):
                                              subset_lambdas=A, 
                                              solver_opts=solver_opts, 
                                              init_sigmas=itersigma[count])
+
         print("New delta_sq val: ", new_delta)
-        
         iterdelta[count] = new_delta
         
         def func1(nu_squared, new_delta, init_sigmas):
@@ -94,7 +109,6 @@ def run_alternate_method(var_est_object, solver, run_opt_kwargs):
                                           delta=new_delta)
     else:
         print("The overall model variance is: ", itersigma[count])
-        #sigma_vals = {k: abs(itersigma[count]) for k in component_set}
         
         sigma_vals = {}
         for k in var_est_object.component_set:
@@ -102,21 +116,24 @@ def run_alternate_method(var_est_object, solver, run_opt_kwargs):
         
     print(f'sigma_vals: {sigma_vals}')
     results = ResultsObject()
-    
-    vars_to_load = ['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y']
-    if not hasattr(var_est_object, '_abs_components'):
-        vars_to_load.remove('Cs')
-    results.load_from_pyomo_model(var_est_object.model, to_load=vars_to_load)
-     
-    results.P = {name: var_est_object.model.P[name].value for name in var_est_object.model.parameter_names}
+    results.load_from_pyomo_model(var_est_object.model)
     results.sigma_sq = sigma_vals
     results.sigma_sq['device'] = new_delta
 
     return results
 
+
 def run_direct_sigmas_method(var_est_object, solver, run_opt_kwargs):
-    """Calls the direct sigma method"""
-        
+    """"Calls the direct sigmas method
+
+    :param VarianceEstimator var_est_object: The variance estimation object
+    :param str solver: The solver being used
+    :param dict run_opt_kwargs: The dict of user settings passed on from the ReactionModel
+
+    :return results: The results from the variance estimation
+    :rtype: ResultsObject
+
+    """
     solver_opts = run_opt_kwargs.pop('solver_opts', dict())
     tee = run_opt_kwargs.pop('tee', False)
     A = run_opt_kwargs.pop('subset_lambdas', None)
@@ -200,42 +217,26 @@ def run_direct_sigmas_method(var_est_object, solver, run_opt_kwargs):
                                           delta=fixed_device_var)
    
     results = ResultsObject()
+    results.load_from_pyomo_model(var_est_object.model)
     
-    vars_to_load = ['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y']
-    if not hasattr(var_est_object, '_abs_components'):
-        vars_to_load.remove('Cs')
-    results.load_from_pyomo_model(var_est_object.model, to_load=vars_to_load)
-    
-    results.P = {name: var_est_object.model.P[name].value for name in var_est_object.model.parameter_names}
+    #results.P = {name: var_est_object.model.P[name].value for name in var_est_object.model.parameter_names}
     results.sigma_sq = sigma_vals
     results.sigma_sq['device'] = delta
         
     return results
 
+
 def _solve_delta_given_sigma(var_est_object, solver, **kwds):
-    """Solves the maximum likelihood formulation with fixed sigmas in order to
-    obtain delta. This formulation is highly unstable as the problem is ill-posed
-    with the optimal solution being that C-Z = 0. Should not use.
+    """Solves the delta with provided variances
 
-       This method is not intended to be used by users directly
+    :param VarianceEstimator var_est_object: The variance estimation object
+    :param str solver: The solver being used (currently not used)
+    :param dict kwds: The dict of user settings passed on from the ReactionModel
 
-    Args:
-        init_sigmas (dict): variances 
-    
-        tee (bool,optional): flag to tell the optimizer whether to stream output
-        to the terminal or not
-    
-        profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
-        Default False
-    
-        subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
-        (Weifeng paper). Default all wavelengths.
+    :return results: The results from the variance estimation
+    :rtype: ResultsObject
 
-    Returns:
-
-        None
-
-    """   
+    """
     solver_opts = kwds.pop('solver_opts', dict())
     tee = kwds.pop('tee', False)
     set_A = kwds.pop('subset_lambdas', list())
@@ -309,36 +310,26 @@ def _solve_delta_given_sigma(var_est_object, solver, **kwds):
     return deltasq
 
 def _solve_sigma_given_delta(var_est_object, solver, **kwds):
-    """Solves the maximum likelihood formulation to determine the model variance from a
-    given device variance.
+    """Solves the delta (device variance) with provided variances
 
-       This method is not intended to be used by users directly
+    :param VarianceEstimator var_est_object: The variance estimation object
+    :param str solver: The solver being used (currently not used)
+    :param dict kwds: The dict of user settings passed on from the ReactionModel
 
-    Args:
-        delta (float): the device variance squared 
-    
-        tee (bool,optional): flag to tell the optimizer whether to stream output
-        to the terminal or not
-    
-        profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
-        Default False
-    
-        subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
-        (Weifeng paper). Default all wavelengths.
-        
-        solver_opts (dict, optional): dictionary containing solver options for IPOPT
+    :return residuals: The results from the variance estimation
+    :return variances_dict: dictionary containing the model variance values
+    :return stop_it: boolean indicator showing whether no solution was found (True) or if there is a solution (False)
+    :return solver_results: dictionary containing solver options for IPOPT
 
-    Returns:
+    :rtype: ResultsObject
 
-        residuals (float): the objective function value from the optimization
-        
-        variancesdict (dict): dictionary containing the model variance values
-        
-        stop_it (bool): boolean indicator showing whether no solution was found 
-                            (True) or if there is a solution (False)
-                            
-        solver_results: Variance estimation model results, similar to VarianceEstimator 
-                                    results from previous method
+    :Keyword Args:
+
+        - delta (float): the device variance squared
+        - tee (bool,optional): flag to tell the optimizer whether to stream output to the terminal or not
+        - profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. Default False
+        - subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem (Weifeng paper). Default all wavelengths.
+        - solver_opts (dict, optional): dictionary containing solver options for IPOPT
 
     """   
     solver_opts = kwds.pop('solver_opts', dict())
@@ -379,7 +370,7 @@ def _solve_sigma_given_delta(var_est_object, solver, **kwds):
     inlog = {k: 0 for k in var_est_object.component_set}
     var_est_object.model.eps = Param(initialize = 1e-8)  
     
-    variancesdict = {k: 0 for k in var_est_object.component_set}
+    variances_dict = {k: 0 for k in var_est_object.component_set}
             
     for t in var_est_object._meas_times:
         for k in var_est_object.component_set:
@@ -402,11 +393,11 @@ def _solve_sigma_given_delta(var_est_object, solver, **kwds):
         residuals = (value(var_est_object.model.init_objective))
         for t in var_est_object._allmeas_times:
             for k in var_est_object.component_set:
-                variancesdict[k] += 1 / ntp*((value(var_est_object.model.C[t, k]) - value(var_est_object.model.Z[t, k]))**2)
+                variances_dict[k] += 1 / ntp*((value(var_est_object.model.C[t, k]) - value(var_est_object.model.Z[t, k]))**2)
         
         print("Variances")
         for k in var_est_object.component_set:
-            print(k, variancesdict[k])
+            print(k, variances_dict[k])
         
         print("Parameter estimates")
         for k, v in var_est_object.model.P.items():
@@ -416,7 +407,7 @@ def _solve_sigma_given_delta(var_est_object, solver, **kwds):
         
     except:
         print("FAILED AT THIS ITERATION")
-        variancesdict = None
+        variances_dict = None
         residuals = 0
         stop_it = True
         solver_results = None
@@ -428,4 +419,4 @@ def _solve_sigma_given_delta(var_est_object, solver, **kwds):
     var_est_object.model.del_component('init_objective')
     var_est_object.model.del_component('eps')
 
-    return residuals, variancesdict, stop_it, solver_results
+    return residuals, variances_dict, stop_it, solver_results

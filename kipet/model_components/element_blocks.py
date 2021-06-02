@@ -1,7 +1,7 @@
 """
 The components in KIPET are stored in various subclasses of ModelElementBlocks
 """
-import kipet.model_components.ModelComponent as MC
+import kipet.model_components.model_components as MC
 from kipet.general_settings.variable_names import VariableNames
 
 

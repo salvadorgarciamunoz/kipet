@@ -1,12 +1,8 @@
 """TemplateBuilder - handles inputs for generating the Pyomo model"""
 
 # Standard library imports
-import copy
 import inspect
-import itertools
 import logging
-import numbers
-import sys
 import warnings
 
 # Third party imports
@@ -15,14 +11,10 @@ import pandas as pd
 import six
 from pyomo.dae import *
 from pyomo.environ import *
-from pyomo.environ import units as u
 
-from kipet.common.component_expression import Comp
-from kipet.common.VisitorClasses import ReplacementVisitor
-from kipet.core_methods.pyomo_simulator import PyomoSimulator
-from kipet.post_model_build.pyomo_model_tools import get_index_sets
+from kipet.model_components.component_expression import Comp
+from kipet.model_tools.visitor_classes import ReplacementVisitor
 # KIPET library imports
-from kipet.post_model_build.scaling import scale_parameters
 from kipet.general_settings.variable_names import VariableNames
 
 logger = logging.getLogger('ModelBuilderLogger')
@@ -1364,7 +1356,7 @@ class TemplateBuilder(object):
         :return: None
 
         """
-        from kipet.common.model_funs import step_fun
+        from kipet.model_tools.model_functions import step_fun
 
         # Add dosing var
         setattr(model, self.__var.dosing_variable, Var(model.alltime,

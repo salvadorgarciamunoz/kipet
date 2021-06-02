@@ -11,7 +11,7 @@ import pandas as pd
 # Kipet library imports
 # import kipet.core_methods.data_tools as data_tools
 from kipet.estimator_tools.multiple_experiments import MultipleExperimentsEstimator
-from kipet.reaction_model import ReactionModel
+from kipet.main_modules.reaction_model import ReactionModel
 from kipet.general_settings.settings import Settings
 from kipet.general_settings.unit_base import UnitBase
 

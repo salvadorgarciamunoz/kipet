@@ -2,11 +2,11 @@
 FESimulator - sets up the model for use with fe_factory
 """
 # KIPET library imports
-from kipet.core_methods.fe_factory import fe_initialize
-from kipet.core_methods.pyomo_simulator import PyomoSimulator
+from kipet.estimator_tools.fe_factory import FEInitialize
+from kipet.estimator_tools.pyomo_simulator import PyomoSimulator
 from kipet.general_settings.variable_names import VariableNames
 
-__author__ = 'Michael Short, Kevin McBride'
+__author__ = "Michael Short, Kevin McBride"
 
 
 class FESimulator(PyomoSimulator):
@@ -83,7 +83,7 @@ class FESimulator(PyomoSimulator):
         """
         self.inputs_sub = inputs_sub
 
-        init = fe_initialize(self.model,
+        init = FEInitialize(self.model,
                              self.c_sim,
                              init_con="init_conditions_c",
                              param_name=self.param_name,

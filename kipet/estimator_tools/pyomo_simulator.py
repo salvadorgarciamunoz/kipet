@@ -5,21 +5,21 @@ This holds the class PyomoSimulator, which simply modifies a Pyomo model using v
 # Third library import
 import numpy as np
 import pandas as pd
-from pyomo.environ import Objective, Suffix
+from pyomo.environ import Suffix
 from pyomo.core.base import TransformationFactory
 from pyomo.opt import SolverFactory 
 
 # KIPET library imports
-from kipet.common.interpolation import interpolate_trajectory
-from kipet.common.VisitorClasses import ScalingVisitor
-from kipet.core_methods.results_object import ResultsObject
-from kipet.post_model_build.pyomo_model_tools import (get_index_sets,
+from kipet.calculation_tools.interpolation import interpolate_trajectory
+from kipet.model_tools.visitor_classes import ScalingVisitor
+from kipet.estimator_tools.results_object import ResultsObject
+from kipet.model_tools.pyomo_model_tools import (get_index_sets,
                                                       index_set_info,
                                                       model_info)
 from kipet.general_settings.variable_names import VariableNames
 
 
-class PyomoSimulator():
+class PyomoSimulator:
     """Simulator based on pyomo.dae discretization strategies.
 
     """

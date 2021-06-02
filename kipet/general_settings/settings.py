@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 
 # Kipet library imports
-from kipet.common.helper import AttrDict
+from kipet.calculation_tools.helper import AttrDict
 
 
 class Settings:
@@ -90,7 +90,7 @@ class Settings:
         """
 
         current_dir = Path(__file__).parent
-        settings_file = (current_dir / '../settings.yml').resolve()
+        settings_file = (current_dir / '../general_settings/settings.yml').resolve()
 
         return settings_file
 

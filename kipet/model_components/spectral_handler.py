@@ -5,9 +5,6 @@ Spectral Data Handling for Kipet
 import plotly.graph_objs as go
 from plotly.offline import plot
 
-# KIPET library imports
-from kipet.core_methods.data_tools import *
-
 
 class SpectralData:
     """This class is used to handle the spectral data used in a ReactionModel

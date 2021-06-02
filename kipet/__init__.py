@@ -1,10 +1,6 @@
 import kipet
-
-from .general_settings.settings import Settings
-
+from kipet.general_settings.settings import Settings
+from kipet.main_modules.reaction_set import ReactionSet
+from kipet.main_modules.reaction_model import ReactionModel
+from kipet.input_output.kipet_io import *
 kipet.settings = Settings()
-
-#from .core_methods.data_tools import *
-from .kipet_model import ReactionSet
-from kipet.reaction_model import ReactionModel
-from .kipet_io import *

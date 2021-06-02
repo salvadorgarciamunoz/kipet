@@ -3,20 +3,26 @@ Primary class for performing the parameter fitting in KIPET
 
 """
 # Standard library imports
+import copy
+import os
 import time
+import warnings
 
 # Third party imports
+import numpy as np
+from pyomo.environ import (Constraint, ConstraintList, Objective,
+    SolverFactory, Suffix, TerminationCondition, Var)
 import scipy.stats as st
 
 # KIPET library imports
-from kipet.common.objectives import (absorption_objective, comp_objective,
-                                     conc_objective)
-from kipet.common.read_hessian import *
-from kipet.core_methods.pyomo_simulator import PyomoSimulator
-from kipet.core_methods.template_builder import *
-from kipet.core_methods.results_object import ResultsObject
-from kipet.mixins.PEMixins import PEMixins
-from kipet.post_model_build.pyomo_model_tools import convert
+from kipet.model_components.objectives import (comp_objective,
+                                               conc_objective)
+#from kipet.input_output.read_hessian import *
+from kipet.estimator_tools.pyomo_simulator import PyomoSimulator
+#from kipet.model_tools.template_builder import *
+from kipet.estimator_tools.results_object import ResultsObject
+from kipet.mixins.parameter_estimator_mixins import PEMixins
+from kipet.model_tools.pyomo_model_tools import convert
 from kipet.general_settings.variable_names import VariableNames
 
 
@@ -177,7 +183,7 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
             self._define_reduce_hess_order()
 
         if inputs_sub is not None:
-            from kipet.common.additional_inputs import add_inputs
+            from kipet.estimator_tools.additional_inputs import add_inputs
             
             add_kwargs = dict(
                 fixedtraj = fixedtraj,
@@ -191,7 +197,7 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
             add_inputs(self, add_kwargs)
         
         if jump:
-            from kipet.common.jumps_method import set_up_jumps
+            from kipet.estimator_tools.jumps_method import set_up_jumps
             set_up_jumps(self.model, run_opt_kwargs)
             
         for key, val in solver_opts.items():
@@ -243,7 +249,7 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         results.load_from_pyomo_model(self.model)
 
         if self._spectra_given:
-            from kipet.common.beer_lambert import D_from_SC
+            from kipet.calculation_tools.beer_lambert import D_from_SC
             D_from_SC(self.model, results)
             # self.compute_D_given_SC(results)
 

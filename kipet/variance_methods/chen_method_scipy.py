@@ -1,29 +1,27 @@
 """
 Module to hold the method developed by Chen et al. 2016 based on Scipy
 """
+# Standard library imports
+from contextlib import contextmanager
+from io import StringIO
 import sys
+import time
 
+# Third party imports
 import numpy as np
-from pyomo.environ import *
+from pyomo.environ import ConcreteModel, Var
 from scipy.optimize import least_squares
 from scipy.sparse import coo_matrix
 
-from kipet.core_methods.data_tools import stdout_redirector
-
-try:
-    from StringIO import StringIO
-except ImportError:
-    from io import StringIO
+# KIPET library imports
+# from kipet.core_methods.data_tools import stdout_redirector
 
 def build_s_model(var_est_object):
     """Builds s_model to solve formulation 22 with ipopt
 
-       This method is not intended to be used by users directly
+    :param VarianceEstimator var_est_object: The variance estimation object
 
-    Args:
-
-    Returns:
-        None
+    :return: None
 
     """
     var_est_object.S_model = ConcreteModel()
@@ -32,10 +30,12 @@ def build_s_model(var_est_object):
     else:
         lower_bound = None
         
-    var_est_object.S_model.S = Var(var_est_object._meas_lambdas,
-                         var_est_object.component_set,
-                         bounds=(lower_bound, None),
-                         initialize=1.0)
+    var_est_object.S_model.S = Var(
+        var_est_object._meas_lambdas,
+        var_est_object.component_set,
+        bounds=(lower_bound, None),
+        initialize=1.0
+    )
 
     for l in var_est_object._meas_lambdas:
         for k in var_est_object.component_set:
@@ -47,44 +47,34 @@ def build_s_model(var_est_object):
                         var_est_object.S_model.S[l, k].fix()
                         
 
-
 def solve_s_scipy(var_est_object, **kwds):
-    """Solves formulation 22 in weifengs paper (using scipy least_squares)
+    """Solves formulation 22 in Chen et al 2016 (using scipy least_squares)
 
-       This method is not intended to be used by users directly
+    This method is not intended to be used by users directly
 
-    Args:
-        tee (bool,optional): flag to tell the optimizer whether to stream output
-        to the terminal or not
-    
-        profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
-        Default False
+    :param VarianceEstimator var_est_object: The variance estimation object
 
-        ftol (float, optional): Tolerance for termination by the change of the cost function. Default is 1e-8
+    :Keyword Args:
+        - tee (bool,optional): flag to tell the optimizer whether to stream output
+          to the terminal or not
+        - profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model.
+          Default False
+        - ftol (float, optional): Tolerance for termination by the change of the cost function. Default is 1e-8
+        - xtol (float, optional): Tolerance for termination by the change of the independent variables. Default is 1e-8
+        - gtol (float, optional): Tolerance for termination by the norm of the gradient. Default is 1e-8.
+        - loss (str, optional): Determines the loss function. The following keyword values are allowed:
+            - 'linear' (default) : rho(z) = z. Gives a standard least-squares problem.
+            - 'soft_l1' : rho(z) = 2 * ((1 + z)**0.5 - 1). The smooth approximation of l1 (absolute value) loss. Usually a good choice for robust least squares.
+            - 'huber' : rho(z) = z if z <= 1 else 2*z**0.5 - 1. Works similarly to 'soft_l1'.
+            - 'cauchy' : rho(z) = ln(1 + z). Severely weakens outliers influence, but may cause difficulties in optimization process.
+            - 'arctan' : rho(z) = arctan(z). Limits a maximum loss on a single residual, has properties similar to 'cauchy'.
+        - f_scale (float, optional): Value of soft margin between inlier and outlier residuals, default is 1.0
+        - max_nfev (int, optional): Maximum number of function evaluations before the termination
 
-        xtol (float, optional): Tolerance for termination by the change of the independent variables. Default is 1e-8
-
-        gtol (float, optional): Tolerance for termination by the norm of the gradient. Default is 1e-8.
-
-        loss (str, optional): Determines the loss function. The following keyword values are allowed:
-            'linear' (default) : rho(z) = z. Gives a standard least-squares problem.
-
-            'soft_l1' : rho(z) = 2 * ((1 + z)**0.5 - 1). The smooth approximation of l1 (absolute value) loss. Usually a good choice for robust least squares.
-
-            'huber' : rho(z) = z if z <= 1 else 2*z**0.5 - 1. Works similarly to 'soft_l1'.
-
-            'cauchy' : rho(z) = ln(1 + z). Severely weakens outliers influence, but may cause difficulties in optimization process.
-
-            'arctan' : rho(z) = arctan(z). Limits a maximum loss on a single residual, has properties similar to 'cauchy'.
-        f_scale (float, optional): Value of soft margin between inlier and outlier residuals, default is 1.0
-
-        max_nfev (int, optional): Maximum number of function evaluations before the termination
-
-    Returns:
-        None
+    :return res.success: Success attribute from least_squares
 
     """
-    method = kwds.pop('method','trf')
+    method = kwds.pop('method', 'trf')
     def_tol = 1.4901161193847656e-07
     ftol = kwds.pop('ftol', def_tol)
     xtol = kwds.pop('xtol', def_tol)
@@ -203,22 +193,23 @@ def solve_s_scipy(var_est_object, **kwds):
 
     return res.success
 
+
 def build_c_model(var_est_object):
     """Builds s_model to solve formulation 25 with ipopt
 
-       This method is not intended to be used by users directly
+    :param VarianceEstimator var_est_object: The variance estimation object
 
-    Args:
-
-    Returns:
-        None
+    :return: None
 
     """
     var_est_object.C_model = ConcreteModel()
-    var_est_object.C_model.C = Var(var_est_object._allmeas_times,
-                         var_est_object._sublist_components,
-                         bounds=(0.0, None),
-                         initialize=1.0)
+    
+    var_est_object.C_model.C = Var(
+        var_est_object._allmeas_times,
+        var_est_object._sublist_components,
+        bounds=(0.0, None),
+        initialize=1.0
+    )
 
     for l in var_est_object._allmeas_times:
         for k in var_est_object._sublist_components:
@@ -226,40 +217,31 @@ def build_c_model(var_est_object):
             if hasattr(var_est_object.model, 'non_absorbing'):
                 var_est_object.C_model.C[l, k].fix()
 
+
 def solve_c_scipy(var_est_object, **kwds):
     """Solves formulation 25 in weifengs paper (using scipy least_squares)
 
-       This method is not intended to be used by users directly
+    :param VarianceEstimator var_est_object: The variance estimation object
 
-    Args:
-        tee (bool,optional): flag to tell the optimizer whether to stream output
-        to the terminal or not
-    
-        profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
-        Default False
+    :Keyword Args:
+        :Keyword Args:
+        - tee (bool,optional): flag to tell the optimizer whether to stream output
+          to the terminal or not
+        - profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model.
+          Default False
+        - ftol (float, optional): Tolerance for termination by the change of the cost function. Default is 1e-8
+        - xtol (float, optional): Tolerance for termination by the change of the independent variables. Default is 1e-8
+        - gtol (float, optional): Tolerance for termination by the norm of the gradient. Default is 1e-8.
+        - loss (str, optional): Determines the loss function. The following keyword values are allowed:
+            - 'linear' (default) : rho(z) = z. Gives a standard least-squares problem.
+            - 'soft_l1' : rho(z) = 2 * ((1 + z)**0.5 - 1). The smooth approximation of l1 (absolute value) loss. Usually a good choice for robust least squares.
+            - 'huber' : rho(z) = z if z <= 1 else 2*z**0.5 - 1. Works similarly to 'soft_l1'.
+            - 'cauchy' : rho(z) = ln(1 + z). Severely weakens outliers influence, but may cause difficulties in optimization process.
+            - 'arctan' : rho(z) = arctan(z). Limits a maximum loss on a single residual, has properties similar to 'cauchy'.
+        - f_scale (float, optional): Value of soft margin between inlier and outlier residuals, default is 1.0
+        - max_nfev (int, optional): Maximum number of function evaluations before the termination
 
-        ftol (float, optional): Tolerance for termination by the change of the cost function. Default is 1e-8
-
-        xtol (float, optional): Tolerance for termination by the change of the independent variables. Default is 1e-8
-
-        gtol (float, optional): Tolerance for termination by the norm of the gradient. Default is 1e-8.
-
-        loss (str, optional): Determines the loss function. The following keyword values are allowed:
-            'linear' (default) : rho(z) = z. Gives a standard least-squares problem.
-
-            'soft_l1' : rho(z) = 2 * ((1 + z)**0.5 - 1). The smooth approximation of l1 (absolute value) loss. Usually a good choice for robust least squares.
-
-            'huber' : rho(z) = z if z <= 1 else 2*z**0.5 - 1. Works similarly to 'soft_l1'.
-
-            'cauchy' : rho(z) = ln(1 + z). Severely weakens outliers influence, but may cause difficulties in optimization process.
-
-            'arctan' : rho(z) = arctan(z). Limits a maximum loss on a single residual, has properties similar to 'cauchy'.
-        f_scale (float, optional): Value of soft margin between inlier and outlier residuals, default is 1.0
-
-        max_nfev (int, optional): Maximum number of function evaluations before the termination
-
-    Returns:
-        None
+    :return res.success: Success attribute from least_squares
 
     """
     method = kwds.pop('method','trf')
@@ -373,3 +355,12 @@ def solve_c_scipy(var_est_object, **kwds):
             getattr(var_est_object.model, var_est_object.component_var)[t,c].value = res.x[j*n+k]
    
     return res.success
+
+@contextmanager
+def stdout_redirector(stream):
+    old_stdout = sys.stdout
+    sys.stdout = stream
+    try:
+        yield
+    finally:
+        sys.stdout = old_stdout

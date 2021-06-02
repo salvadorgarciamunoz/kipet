@@ -1,66 +1,64 @@
 """
 Module to hold the method developed by Chen et al. 2016
 """
-import numpy as np
-import scipy
 from pyomo.environ import Objective, SolverFactory
-from scipy.optimize import least_squares
 
 
 def solve_C(var_est_object, solver, **kwds):
-     """Solves formulation 23 from Weifengs procedure with ipopt
+    """Solves formulation 23 in Chen. et al 2016 for C
 
-        This method is not intended to be used by users directly
+    :param VarianceEstimator var_est_object: The variance estimation object
+    :param str solver: The solver being used (currently not used)
+    :param dict kwds: The dict of user settings passed on from the ReactionModel
 
-     Args:
+    :return: None
 
-     Returns:
-         None
+    """
+    solver_opts = kwds.pop('solver_opts', dict())
+    tee = kwds.pop('tee', False)
+    update_nl = kwds.pop('update_nl', False)
+    profile_time = kwds.pop('profile_time', False)
 
-     """
-     solver_opts = kwds.pop('solver_opts', dict())
-     tee = kwds.pop('tee', False)
-     update_nl = kwds.pop('update_nl', False)
-     profile_time = kwds.pop('profile_time', False)
-
-     # D_bar obj
-     obj = 0.0
-     for t in var_est_object._meas_times:
-         for l in var_est_object._meas_lambdas:
-             D_bar = sum(var_est_object.model.S[l, k].value*var_est_object.C_model.C[t, k] for k in var_est_object.component_set)
-             obj += (var_est_object.model.D[t, l]-D_bar)**2
+    # D_bar obj
+    obj = 0.0
+    for t in var_est_object._meas_times:
+        for l in var_est_object._meas_lambdas:
+            D_bar = sum(var_est_object.model.S[l, k].value*var_est_object.C_model.C[t, k] for k in var_est_object.component_set)
+            obj += (var_est_object.model.D[t, l]-D_bar)**2
      
-     var_est_object.C_model.objective = Objective(expr=obj)
+    var_est_object.C_model.objective = Objective(expr=obj)
              
-     if profile_time:
-         print('-----------------Solve_C--------------------')
+    if profile_time:
+        print('-----------------Solve_C--------------------')
 
-     opt = SolverFactory(solver)
+    opt = SolverFactory(solver)
 
-     for key, val in solver_opts.items():
-         opt.options[key]=val
+    for key, val in solver_opts.items():
+        opt.options[key]=val
          
-     solver_results = opt.solve(var_est_object.C_model,
-                                logfile=var_est_object._tmp4,
-                                tee=tee,
-                                #keepfiles=True,
-                                report_timing=profile_time)
+    solver_results = opt.solve(var_est_object.C_model,
+                               logfile=var_est_object._tmp4,
+                               tee=tee,
+                               #keepfiles=True,
+                               report_timing=profile_time)
 
-     var_est_object.C_model.del_component('objective')
+    var_est_object.C_model.del_component('objective')
      
-     for t in var_est_object._allmeas_times:
-         for c in var_est_object.component_set:
-             var_est_object.model.C[t, c].value = var_est_object.C_model.C[t, c].value
+    for t in var_est_object._allmeas_times:
+        for c in var_est_object.component_set:
+            var_est_object.model.C[t, c].value = var_est_object.C_model.C[t, c].value
+
+    return None
+
 
 def solve_S(var_est_object, solver, **kwds):
-    """Solves formulation 23 from Weifengs procedure with ipopt
+    """Solves formulation 23 in Chen. et al 2016 for S
 
-       This method is not intended to be used by users directly
+    :param VarianceEstimator var_est_object: The variance estimation object
+    :param str solver: The solver being used (currently not used)
+    :param dict kwds: The dict of user settings passed on from the ReactionModel
 
-    Args:
-
-    Returns:
-        None
+    :return: None
 
     """
     solver_opts = kwds.pop('solver_opts', dict())
@@ -113,26 +111,23 @@ def solve_S(var_est_object, solver, **kwds):
                
 
 def solve_Z(var_est_object, solver, **kwds):
-    """Solves formulation 20 in weifengs paper
+    """Solves formulation 20 in Chen. et al 2016
 
-       This method is not intended to be used by users directly
+    :param VarianceEstimator var_est_object: The variance estimation object
+    :param str solver: The solver being used (currently not used)
+    :param dict kwds: The dict of user settings passed on from the ReactionModel
 
-    Args:
-    
-        solver_opts (dict, optional): options passed to the nonlinear solver
+    :return: None
 
-        tee (bool,optional): flag to tell the optimizer whether to stream output
+    :Keyword Args:
+
+        - solver_opts (dict, optional): options passed to the nonlinear solver
+        - tee (bool,optional): flag to tell the optimizer whether to stream output
         to the terminal or not
-    
-        profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model. 
+        - profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model.
         Default False
-    
-        subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem 
+        - subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem
         (Weifeng paper). Default all wavelengths.
-
-    Returns:
-
-        None
 
     """
     solver_opts = kwds.pop('solver_opts', dict())
@@ -163,7 +158,6 @@ def solve_Z(var_est_object, solver, **kwds):
     for key, val in solver_opts.items():
         opt.options[key]=val
 
-    from pyomo.opt import ProblemFormat
     solver_results = opt.solve(var_est_object.model,
                                logfile=var_est_object._tmp2,
                                tee=tee,
@@ -171,72 +165,3 @@ def solve_Z(var_est_object, solver, **kwds):
                                report_timing=profile_time)
 
     var_est_object.model.del_component('z_objective')
-
-def solve_S_from_DC(var_est_object, C_dataFrame, tee=False, with_bounds=False, max_iter=200):
-    """Solves a basic least squares problems with SVD.
-    
-    Args:
-        C_dataFrame (DataFrame) data frame with concentration values
-    
-    Returns:
-        DataFrame with estimated S_values 
-
-    """
-    D_data = var_est_object.model.D
-    if var_est_object._n_meas_lambdas:
-        # build Dij vector
-        D_vector = np.zeros(var_est_object._n_meas_times*var_est_object._n_meas_lambdas)
-        
-        row  = []
-        col  = []
-        data = []    
-        for i,t in enumerate(var_est_object._meas_times):
-            for j,l in enumerate(var_est_object._meas_lambdas):
-                for k,c in enumerate(var_est_object._mixture_components):
-                    row.append(i*var_est_object._n_meas_lambdas+j)
-                    col.append(j*var_est_object._n_components+k)
-                    data.append(C_dataFrame[c][t])
-                D_vector[i*var_est_object._n_meas_lambdas+j] = D_data[t,l]    
-            
-                    
-        Bd = scipy.sparse.coo_matrix((data, (row, col)),
-                                     shape=(var_est_object._n_meas_times*var_est_object._n_meas_lambdas,
-                                            var_est_object._n_components*var_est_object._n_meas_lambdas))
-
-        if not with_bounds:
-            if var_est_object._n_meas_times == var_est_object._n_components:
-                s_array = scipy.sparse.linalg.spsolve(Bd, D_vector)
-            elif var_est_object._n_meas_times>var_est_object._n_components:
-                result_ls = scipy.sparse.linalg.lsqr(Bd, D_vector,show=tee)
-                s_array = result_ls[0]
-            else:
-                raise RuntimeError('Need n_t_meas >= var_est_object._n_components')
-        else:
-            nl = var_est_object._n_meas_lambdas
-            nt = var_est_object._n_meas_times
-            nc = var_est_object._n_components
-            x0 = np.zeros(nl*nc)+1e-2
-            M = Bd.tocsr()
-            
-            def F(x,M,rhs):
-                return  rhs-M.dot(x)
-
-            def JF(x,M,rhs):
-                return -M
-
-            if tee == True:
-                verbose = 2
-            else:
-                verbose = 0
-                
-            res_lsq = least_squares(F,x0,JF,
-                                    bounds=(0.0,np.inf),
-                                    max_nfev=max_iter,
-                                    verbose=verbose,args=(M,D_vector))
-            s_array = res_lsq.x
-            
-        s_shaped = s_array.reshape((var_est_object._n_meas_lambdas,var_est_object._n_components))
-    else:
-        s_shaped = np.empty((var_est_object._n_meas_lambdas,var_est_object._n_components))
-
-    return s_shaped

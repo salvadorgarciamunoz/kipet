@@ -11,11 +11,11 @@ from pyomo.environ import (Block, ConcreteModel, Constraint, minimize,
 from scipy.sparse import coo_matrix
 
 # KIPET library imports
-from kipet.common.objectives import (absorption_objective, comp_objective,
-                                     conc_objective)
-from kipet.common.read_hessian import split_sipopt_string
-from kipet.core_methods.results_object import ResultsObject
-from kipet.mixins.PEMixins import PEMixins
+from kipet.model_components.objectives import (absorption_objective, comp_objective,
+                                               conc_objective)
+from kipet.input_output.read_hessian import split_sipopt_string
+from kipet.estimator_tools.results_object import ResultsObject
+from kipet.mixins.parameter_estimator_mixins import PEMixins
 from kipet.general_settings.variable_names import VariableNames
 
 __author__ = 'Kevin McBride, Michael Short'  #: February 2019 - June 2021

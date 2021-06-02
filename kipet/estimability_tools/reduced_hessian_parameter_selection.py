@@ -9,19 +9,18 @@ from string import Template
 
 # Third party imports
 import numpy as np
-import pandas as pd
-from pyomo.environ import (Constraint, Objective, Param, Set, SolverFactory,
+from pyomo.environ import (Objective, SolverFactory,
                            Suffix)
 
 # KIPET library imports
-from kipet.common.objectives import comp_objective, conc_objective
-from kipet.common.parameter_handling import (check_initial_parameter_values,
-                                             set_scaled_parameter_bounds)
-from kipet.common.parameter_ranking import parameter_ratios, rank_parameters
-from kipet.common.ReducedHessian import ReducedHessian
-from kipet.core_methods.parameter_estimator import ParameterEstimator
-from kipet.core_methods.results_object import ResultsObject
-from kipet.post_model_build.scaling import (remove_scaling, scale_parameters,
+from kipet.model_components.objectives import comp_objective, conc_objective
+from kipet.estimability_tools.parameter_handling import (check_initial_parameter_values,
+                                                       set_scaled_parameter_bounds)
+from kipet.estimability_tools.parameter_ranking import parameter_ratios, rank_parameters
+from kipet.calculation_tools.reduced_hessian import ReducedHessian
+from kipet.estimator_tools.parameter_estimator import ParameterEstimator
+from kipet.estimator_tools.results_object import ResultsObject
+from kipet.model_tools.scaling import (scale_parameters,
                                             update_expression)
 
 __author__ = 'Kevin McBride'  #: April 2020

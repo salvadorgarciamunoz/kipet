@@ -21,7 +21,7 @@ def add_inputs(est_object, kwds):
     est_object.yfix = kwds.pop("yfix", None)
     est_object.yfixtraj = kwds.pop("yfixtraj", None)
     trajectories = kwds.pop("trajectories", None)
-    
+
     if est_object.inputs_sub is not None:
         for k in est_object.inputs_sub.keys():
             if not isinstance(est_object.inputs_sub[k], list):
@@ -54,4 +54,3 @@ def add_inputs(est_object, kwds):
                     print("A trajectory or fixed input is missing for {}\n".format((k, i)))
 
     return None
-

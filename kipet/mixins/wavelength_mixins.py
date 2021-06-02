@@ -9,7 +9,7 @@ import sys
 import time
 
 # Kipet library imports
-from kipet.core_methods.parameter_estimator import wavelength_subset_selection
+from kipet.estimator_tools.parameter_estimator import wavelength_subset_selection
 
 # Thirdparty library imports 
 import plotly.graph_objects as go

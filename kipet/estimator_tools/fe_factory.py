@@ -7,15 +7,15 @@ from pyomo.environ import Constraint, ConstraintList, Param, TransformationFacto
 from pyomo.opt import ProblemFormat, SolverFactory, TerminationCondition
 
 # KIPET library imports
-from kipet.common.VisitorClasses import ReplacementVisitor
+from kipet.model_tools.visitor_classes import ReplacementVisitor
 from kipet.general_settings.variable_names import VariableNames
-from kipet.post_model_build.pyomo_model_tools import (change_continuous_set,
-                                                      get_index_sets)
+from kipet.model_tools.pyomo_model_tools import (change_continuous_set,
+                                                 get_index_sets)
 
 __author__ = 'David M Thierry, Kevin McBride'  #: April 2018 - May 2021
 
 
-class fe_initialize(object):
+class FEInitialize(object):
     """This class implements the finite per finite element initialization for
     a pyomo model initialization. A march-forward simulation will be run and 
     the resulting data will be patched to the tgt_model.
@@ -34,6 +34,7 @@ class fe_initialize(object):
         it would be a parameter.
 
     """
+
     def __init__(self,
                  model_orig,
                  src_mod,
@@ -160,7 +161,7 @@ class fe_initialize(object):
                     fun_tup = False
                 e = con[k].expr.args[0]
                 e_dict[k] = e * self.model_ref.h_i[k[0]] + dv[k] * (
-                            1 - self.model_ref.h_i[k[0]]) == 0.0  #: As long as you don't clone
+                        1 - self.model_ref.h_i[k[0]]) == 0.0  #: As long as you don't clone
             if fun_tup:
                 self.model_ref.add_component(i + "_deq_aug",
                                              Constraint(con.index_set(),
@@ -552,7 +553,7 @@ class fe_initialize(object):
             for model_var, dosing_point_list in self.dosing_points.items():
 
                 for dosing_point in dosing_point_list:
-                    
+
                     self.jump_fe, self.jump_cp = fe_cp(time_set_orig, dosing_point.time)
                     comp_dict = self.make_comp_list()
 
@@ -595,7 +596,7 @@ class fe_initialize(object):
                             # Constraint setting the variable equal to the step size
                             exprjump = vdummy[0] - getattr(self.model_orig, model_var)[
                                 (dosing_point.time,) + (comp,)] == jump_param
-                            
+
                             # Add the new constraint to the original model
                             self.model_orig.add_component(f'jumpdelta_expr{self.con_num}_{comp}',
                                                           Constraint(expr=exprjump))

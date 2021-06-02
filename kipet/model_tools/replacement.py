@@ -5,7 +5,7 @@ This module can be used to replace parameters in the models with constant
 values followed by deletion of the parameters from the model.
 """
 # KIPET library imports
-from kipet.common.VisitorClasses import ReplacementVisitor
+from kipet.model_tools.visitor_classes import ReplacementVisitor
 
 
 class ParameterReplacer:

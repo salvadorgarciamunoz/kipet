@@ -9,7 +9,7 @@ and parameter fitting.
 import numpy as np
 
 # Kipet library imports
-from kipet.post_model_build.pyomo_model_tools import convert, get_vars
+from kipet.model_tools.pyomo_model_tools import convert, get_vars
 
 # This needs deletion at some point!
 result_vars = ['Z', 'C', 'Cm', 'K', 'S', 'X', 'dZdt', 'dXdt', 'P', 'Pinit', 'sigma_sq', 'estimable_parameters', 'Y', 'UD', 'step']

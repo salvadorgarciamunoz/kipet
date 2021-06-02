@@ -8,7 +8,7 @@ from pyomo.core.expr.numeric_expr import (DivisionExpression,
 from pyomo.environ import units as pyo_units
 
 # KIPET library imports
-from kipet.post_model_build.replacement import _update_expression
+from kipet.model_tools.replacement import _update_expression
 
 
 class ExpressionBlock:

@@ -12,7 +12,7 @@ import copy
 # Third party imports
 from pyomo.environ import Param
 
-from kipet.common.VisitorClasses import ReplacementVisitor, ScalingVisitor
+from kipet.model_tools.visitor_classes import ReplacementVisitor, ScalingVisitor
 # Kipet library imports
 from kipet.general_settings.variable_names import VariableNames
 

@@ -11,7 +11,7 @@ import numpy as np
 from pyomo.environ import Objective, SolverFactory, value
 
 # KIPET libray imports
-from kipet.core_methods.pyomo_simulator import PyomoSimulator
+from kipet.estimator_tools.pyomo_simulator import PyomoSimulator
 
 
 class VarianceEstimator(PyomoSimulator):
@@ -178,7 +178,7 @@ class VarianceEstimator(PyomoSimulator):
         
         # Fixed imputs and trajectory section
         if inputs_sub is not None:
-            from kipet.common.additional_inputs import add_inputs
+            from kipet.estimator_tools.additional_inputs import add_inputs
             
             add_kwargs = dict(
                 fixedtraj = fixedtraj,
@@ -193,7 +193,7 @@ class VarianceEstimator(PyomoSimulator):
 
         # Dosing
         if jump:
-            from kipet.common.jumps_method import set_up_jumps
+            from kipet.estimator_tools.jumps_method import set_up_jumps
             set_up_jumps(self.model, run_opt_kwargs)
         
         if report_time:

@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.graph_objs as go
 
 # KIPET library imports
-from kipet.kipet_io import read_file
+from kipet.input_output.kipet_io import read_file
 from kipet.visuals.plots import colors
 
 
