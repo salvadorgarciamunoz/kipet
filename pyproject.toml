@@ -1,7 +1,7 @@
 [tool.poetry]
 
 name = "kipet"
-version = "0.2.31"
+version = "0.2.4"
 description = "An all-in-one tool for fitting kinetic models using spectral and other state data"
 authors = ["Kevin McBride <kevin.w.mcbride.86@gmail.com>"]
 maintainers = ["Kevin McBride <kevin.w.mcbride.86@gmail.com>"]

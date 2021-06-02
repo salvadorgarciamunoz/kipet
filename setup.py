@@ -31,9 +31,9 @@ setup(
     license='GPL-3.0-or-later',
     keywords='optimization scientific parameter reaction spectral',
     packages=[
-        'kipet', 'kipet.common', 'kipet.core_methods', 'kipet.dev_tools',
+        'kipet', 'kipet.calculation_tools', 'kipet.core_methods', 'kipet.dev_tools',
         'kipet.mixins', 'kipet.model_components',
-        'kipet.post_model_build', 'kipet.general_settings', 'kipet.variance_methods',
+        'kipet.model_tools', 'kipet.general_settings', 'kipet.variance_methods',
         'kipet.visuals'
     ],
     package_dir={"": "."},
