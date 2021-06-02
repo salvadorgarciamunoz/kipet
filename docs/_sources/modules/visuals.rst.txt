@@ -1,0 +1,8 @@
+visuals
+*******
+
+plots
+=====
+
+.. automodule:: kipet.visuals.plots
+    :members:

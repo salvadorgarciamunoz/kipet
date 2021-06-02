@@ -9,49 +9,66 @@ In many cases, there may be unwanted contributions in the measured spectra, whic
 
 The unwanted contributions can be divided into the time invariant and the time variant instrumental variations. The time invariant unwanted contributions include baseline shift, distortion and presence of inert absorbing interferences without kinetic behavior. The main time variant unwanted contributions come from data drifting in the spectroscopic data. Beer-Lambert’s law can be modified as,
 
-.. figure:: ../../images/Regular_G_BLaw.JPG
-   :width: 200px
-   :align: center
+.. math::
+
+    \mathbf{D} = \mathbf{C}\mathbf{S}^\top + \mathbf{G} + \mathbf{E}
+
 
 where G is the unwanted contribution term.
 
 The time invariant unwanted contributions can be uniformly described as the addition of a rank-1 matrix G, given by the outer product,
 
-.. figure:: ../../images/Time_invariant_G_expression.JPG
-   :width: 700px
-   :align: center
+.. math::
+
+    \begin{align}
+    \mathbf{G} &= \mathbf{e}\mathbf{g}^\top\\
+    \mathbf{e} &= \left[1\;1\; \dots\;1\right]^\top_{(n_{tp} \times 1)}\\
+    \mathbf{g} &= \left[g_1 \; g_2 \; \dots \; g_{n_{wp}}\right]^\top\\
+    \mathbf{G} &\in R^{n_{tp}\cdot n_{wp}}
+    \end{align}
+
 
 where the vector g represents the unwanted contribution at each sampling time. According to Chen’s paper, the choices of objective function to deal with time invariant unwanted contributions depends on the rank of kernel of Ω_sub matrix (rko), which is composed of stoichiometric coefficient matrix St and dosing concentration matirx Z_in. (detailed derivation is omitted.) If rko > 0, G can be decomposed as,
 
-.. figure:: ../../images/Decomposed_G.JPG
-   :width: 400px
-   :align: center
+.. math::
+
+    \begin{align}
+    \mathbf{G} &= \mathbf{C}\mathbf{S}^\top_g\\
+    \mathbf{S}_g &= \left[\mathbf{s}_1^g\;\mathbf{s}_2^g\; \dots\;\mathbf{s}_{n_{wp}}^g\right]\\
+    \mathbf{S}_g &\in R^{n_{c}\cdot n_{wp}}
+    \end{align}
 
 Then the Beer-Lambert’s law can be rewritten as,
 
-.. figure:: ../../images/Time_invariant_estimated_S.png
-   :width: 200px
-   :align: center
+.. math::
+
+    \mathbf{D} = \mathbf{C}\left(\mathbf{S} + \mathbf{S}_g\right)^\top + \mathbf{E}
+
 
 Thus, the original objective function of the parameter estimation problem doesn’t need to change while the estimated absorbance matrix would be S+Sg and additional information is needed to separate S and Sg.
 
 If rko = 0, G cannot to decomposed. Therefore, the objective function of the parameter estimation problem should be modified as,
 
-.. figure:: ../../images/Cannot_decompose_obj.JPG
-   :width: 400px
-   :align: center
+.. math::
+
+    \sum^{n_{tp}}_{i=1} \sum^{n_{wp}}_{l=1} \left( d_{il} - \sum^{n_c}_{k=1} c_k(t_i)s_k(\lambda_l) - g(\lambda_l) \right)^2\\
 
 For time variant unwanted contributions, G can be expressed as a rank-1 matrix as well,
 
-.. figure:: ../../images/Time_variant_G_expression.JPG
-   :width: 700px
-   :align: center
+.. math::
+
+    \begin{align}
+    \mathbf{G} &= \mathbf{q}\mathbf{g}^\top\\
+    \mathbf{q} &= \left[q_1\;q_2\; \dots\;q_{n_{tp}}\right]^\top\\
+    \mathbf{g} &= \left[g_1 \; g_2 \; \dots \; g_{n_{wp}}\right]^\top\\
+    \end{align}
 
 and the objective of problem is modified as follows, 
 
-.. figure:: ../../images/Time_variant_obj.JPG
-   :width: 500px
-   :align: center
+.. math::
+
+    \min \sum^{n_{tp}}_{i=1} \sum^{n_{wp}}_{l=1} \left( d_{il} - \sum^{n_c}_{k=1} c_k(t_i)s_k(\lambda_l) - q_r(t_i)g(\lambda_l) \right)^2\\
+
 
 where the time variant unwanted contributions are considered as a function of time and wavelength. In addition, since there are no constraints except bounds to restrict qr(i) and g(l), this will lead to nonunique values of these two variables and convergence difficulty in solving optimization problem. Therefore, we force qr(t_ntp) to be 1.0 under the assumption that qr(t_ntp) is not equal to zero to resolve the convergence problem.
 
@@ -99,15 +116,15 @@ In the next example, "Ex_15_estimation_mult_exp_unwanted_G.py", we also show how
 
 Users may also wish to solve the estimation problem with scaled variances. For example, if the estimated variances are {"A": 1e-8, "B": 2e-8, "device": 4e-8} with the objective function,
 
-.. figure:: ../../images/obj_b4_scaled_variance.jpg
-   :width: 500px
-   :align: center
+.. math::
+
+    \min \frac{(D - C_A S_A - C_B S_B)^2}{4\times 10^{-8}} + \frac{(C_A - Z_A)^2}{1\times 10^{-8}} + \frac{(C_B - Z_B)^2}{2\times 10^{-8}}
 
 this option will scale the variances with the maximum variance (i.e. 4e-8 in this case) and thus the scaled variances become {"A": 0.25, "B": 0.5, "device": 1,0} with modified objective function,
 
-.. figure:: ../../images/obj_after_scaled_variance.jpg
-   :width: 500px
-   :align: center
+.. math::
+
+    \min \frac{(D - C_A S_A - C_B S_B)^2}{1.0} + \frac{(C_A - Z_A)^2}{0.25} + \frac{(C_B - Z_B)^2}{0.5}
 
 This scaled_variance option is not necessary but it helps solve the estimation problem for multiple datasets. It's worth trying when ipopt gets stuck at certain iteration. 
 

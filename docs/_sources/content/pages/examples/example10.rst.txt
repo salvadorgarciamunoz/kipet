@@ -2,7 +2,7 @@ Parameter Estimability Analysis
 -------------------------------
 :Files:
     | `Ex_8_estimability.py <https://github.com/kwmcbride/kipet_examples/blob/master/examples/example_8/Ex_8_estimability.py>`_
-    | `Ex_9_estimability_with_problem_gen.py  <https://github.com/kwmcbride/kipet_examples/blob/master/examples/example_9/Ex_9_estimability_with_problem_gen.py>`_.
+    | `Ex_9_estimability_with_problem_gen.py  <https://github.com/kwmcbride/kipet_examples/blob/master/examples/example_9/Ex_9_estimability_with_problem_gen.py>`_
 
 The EstimabilityAnalyzer module is used for all algorithms and tools pertaining to estimability. Thus far, estimability analysis tools are only provided for cases where concentration data is available. The methods rely on k_aug to obtain sensitivities, so will only work if k_aug is installed and added to path.
 

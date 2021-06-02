@@ -3,220 +3,110 @@ Code Documentation
 
 All of the public classes and methods used in KIPET are listed on these pages.
 
-kipet_model
-===========
+Users should generally only be interested in the modules and classes found in **Main modules**.
 
-.. automodule:: kipet.kipet_model
-    :members:
-    :show-inheritance:
+Developers may find the other modules and classes of interest.
 
-reaction_model
-=============
-
-.. automodule:: kipet.reaction_model
-    :members:
-
-kipet_io
+Main modules
 ============
 
-.. automodule:: kipet.kipet_io
-   :members:
+The two modules that will actually be used by the user are found here. They are initialized automatically
+and can be imported directly from "kipet".
 
-	
-common
-======
+.. toctree::
+   :maxdepth: 1
 
-
-additional_inputs
-^^^^^^^^^^^^^^^^^
-
-.. automodule:: kipet.common.additional_inputs
-	:members:
-
-component_expression
-^^^^^^^^^^^^^^^^^^^^
-
-.. automodule:: kipet.common.component_expression
-	:members:
-	
-diagnostic_tools
-^^^^^^^^^^^^^^^^
-
-.. automodule:: kipet.common.diagnostic_tools
-	:members:
-
-helper
-^^^^^^
-
-.. automodule:: kipet.common.helper
-	:members:
-
-interpolation
-^^^^^^^^^^^^^
-
-.. automodule:: kipet.common.interpolation
-	:members:
-
-jumps
-^^^^^
-
-.. automodule:: kipet.common.jumps
-	:members:
-	
-model_funs
-^^^^^^^^^^
-
-.. automodule:: kipet.common.model_funs
-	:members:
-	
-objectives
-^^^^^^^^^^
-
-.. automodule:: kipet.common.objectives
-	:members:
-
-parameter_handling
-^^^^^^^^^^^^^^^^^^
-
-.. automodule:: kipet.common.parameter_handling
-	:members:
-
-parameter_ranking
-^^^^^^^^^^^^^^^^^
-
-.. automodule:: kipet.common.parameter_ranking
-	:members:
-	
-prob_gen_tools
-^^^^^^^^^^^^^^
-
-.. automodule:: kipet.common.prob_gen_tools
-	:members:
-	
-read_hessian
-^^^^^^^^^^^^
-
-.. automodule:: kipet.common.read_hessian
-	:members:
-	
-read_write_tools
-^^^^^^^^^^^^^^^^
-
-.. automodule:: kipet.common.read_write_tools
-	:members:
-
-ReducedHessian
-^^^^^^^^^^^^^^
-
-.. automodule:: kipet.common.ReducedHessian
-	:members:
-	
-VisitorClasses
-^^^^^^^^^^^^^^
-
-.. automodule:: kipet.common.VisitorClasses
-	:members:
-
-general_settings
-================
-
-The following modules contain the various options and setting used throughout KIPET.
-
-settings
-^^^^^^^^
-
-.. automodule:: kipet.general_settings.settings
-	:members:
-
-unit_base
-^^^^^^^^^
-
-.. automodule:: kipet.top_level.unit_base
-	:members:
-
-variable_names
-^^^^^^^^^^^^^^
-
-.. automodule:: kipet.top_level.variable_names
-	:members:
-
-	
-model_components
-================
-
-This contains the various modules and classes used to handle and manipulate data in KIPET.
-
-data_component
-^^^^^^^^^^^^^^
-
-.. automodule:: kipet.model_components.data_component
-	:members:
-	
-element_blocks
-^^^^^^^^^^^^^^
-
-.. automodule:: kipet.model_components.element_blocks
-	:members:
-
-expression
-^^^^^^^^^^
-
-.. automodule:: kipet.model_components.expression
-	:members:
-
-ModelComponent
-^^^^^^^^^^^^^^
-
-.. automodule:: kipet.model_components.ModelComponent
-	:members:
-
-spectral_handler
-^^^^^^^^^^^^^^^^
-
-.. automodule:: kipet.model_components.spectral_handler
-	:members:
-
-units_handler
-^^^^^^^^^^^^^
-
-.. automodule:: kipet.model_components.units_handler
-	:members:
+   modules/main_modules
 
 
-post_model_build
-================
+Calculation Tools
+=================
 
-These are tools that can be used to modify the Pyomo models after they have been built.	
-	
-pyomo_model_tools
-^^^^^^^^^^^^^^^^^
+Several, more general, calculation methods are located here.
 
-.. automodule:: kipet.post_model_build.pyomo_model_tools
-    :members:
-	
-replacement
-^^^^^^^^^^^
+.. toctree::
+   :maxdepth: 1
 
-.. automodule:: kipet.post_model_build.replacement
-    :members:
-	
-scaling
-^^^^^^^
+   modules/calculation_tools
 
-.. automodule:: kipet.post_model_build.scaling
-    :members:
-	
-visuals
-=======
+Estimability Tools
+=================
 
-Methods for visualizing the data in KIPET
+Tools for analyzing parameters are found here.
 
-plots
-^^^^^
+.. toctree::
+   :maxdepth: 1
 
-This module contains the PlotObject class that is used for all plotting needs in KIPET.
+   modules/estimability_tools
 
-.. automodule:: kipet.visuals.plots
-    :members:
+Estimator Tools
+=================
 
-	
+The main estimation modules and classes are found here alongside several helper modules.
+The core methods for variance estimation and parameter fitting (VarianceEstimator and ParameterEstimator classes)
+are found here.
+
+.. toctree::
+   :maxdepth: 1
+
+   modules/estimator_tools
+
+Settings
+=================
+
+General settings for KIPET are stored here.
+
+.. toctree::
+   :maxdepth: 1
+
+   modules/general_settings
+
+Input/Output
+=================
+
+Input and output methods specific to KIPET.
+
+.. toctree::
+   :maxdepth: 1
+
+   modules/input_output
+
+Mixins
+=================
+
+Mixin classes used in other parts of KIPET
+
+.. toctree::
+   :maxdepth: 1
+
+   modules/mixins
+
+Model Components
+=================
+
+Methods and classes used in building the models used in KIPET
+
+.. toctree::
+   :maxdepth: 1
+
+   modules/model_components
+
+Variance Methods
+=================
+
+Core methods used to estimate the variances taken from the literature.
+
+.. toctree::
+   :maxdepth: 1
+
+   modules/variance_methods
+
+Visuals
+=================
+
+Plotting tools
+
+.. toctree::
+   :maxdepth: 1
+
+   modules/visuals

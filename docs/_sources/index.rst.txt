@@ -27,15 +27,12 @@ Table of Contents
 
    content/pages/installation
    content/pages/introduction
-   content/background
-   content/additional
+   content/pages/background
    content/pages/start
    content/pages/tutorials
-   content/citing
-   content/references
-
+   content/pages/citing
+   content/pages/references
    code
-   
 
 
 Indices and tables

@@ -33,8 +33,8 @@ The code for the entire problem is below:
     from pyomo.environ import exp
     import kipet
     
-	r1 = kipet.ReactionModel('cstr')
-	r1.unit_base.time = 'hr'	
+    r1 = kipet.ReactionModel('cstr')
+    r1.unit_base.time = 'hr'
     r1.unit_base.volume = 'm**3'
    
     # Perturb the initial parameter values by some factor
