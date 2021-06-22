@@ -1,0 +1,257 @@
+html {
+  position: relative;
+  min-height: 100%;
+  font-size: 14px;
+}
+
+body {
+  margin-top: 60px;
+  margin-bottom: 60px;
+  background: #3d4444;
+}
+
+.container {
+  max-width: 960px;
+  background: white;
+  padding-bottom: 20px;
+  margin: 0 auto;
+  position: relative;
+  border-radius: 16px;
+}
+
+.container-left {
+   width: 56px;
+   position: absolute;
+   left: -80px;
+   border-radius: 8px;
+}
+
+.container-right {
+   width: 150px;
+   position: absolute;
+   left: 984px;
+   border-radius: 8px;
+}
+
+.outer {
+}
+
+p {
+  font-size: 14px;
+}
+
+.nav-link {
+  color: black;
+}
+
+.info-block {
+  margin-top: 40px;
+  margin-bottom: 40px;
+}
+
+.section-block {
+}
+
+table {
+  font-family: arial, sans-serif;
+  border-collapse: collapse;
+  width: 100%;
+  border-left: 6px solid #1e7f9d;
+}
+
+td, th {
+  border: 2px solid #fff;
+  text-align: left;
+  padding: 8px;
+  vertical-align: middle;
+}
+
+tr:nth-child(even) {
+  background-color: #eee;
+}
+tr:nth-child(odd) {
+  background-color: #f5f5f5;
+}
+
+h2 {
+  color: black;
+  background-color: white;
+  border-radius: 0px;
+  padding: 8px;
+  padding-left:10px;
+  border: 2px solid #FFDBDC;
+  border-left: 6px solid #A90006;
+}
+
+th {
+  background-color: #dcf4ff;
+  color: black;
+}
+
+tr:hover {
+  background-color: #ddd;
+}
+
+.container a.external:hover {
+  text-decoration: none;
+}
+
+.container a.external {
+  color: black;
+  text-decoration: underline;
+}
+
+.container a.pagelink:hover {
+  text-decoration: none;
+}
+
+.container a.pagelink {
+  color: black;
+  text-decoration: underline;
+}
+
+a.external::after {
+    
+    background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' fill='%23333' viewBox='0 0 16 16'> <path fill-rule='evenodd' d='M8.636 3.5a.5.5 0 0 0-.5-.5H1.5A1.5 1.5 0 0 0 0 4.5v10A1.5 1.5 0 0 0 1.5 16h10a1.5 1.5 0 0 0 1.5-1.5V7.864a.5.5 0 0 0-1 0V14.5a.5.5 0 0 1-.5.5h-10a.5.5 0 0 1-.5-.5v-10a.5.5 0 0 1 .5-.5h6.636a.5.5 0 0 0 .5-.5z'/> <path fill-rule='evenodd' d='M16 .5a.5.5 0 0 0-.5-.5h-5a.5.5 0 0 0 0 1h3.793L6.146 9.146a.5.5 0 1 0 .708.708L15 1.707V5.5a.5.5 0 0 0 1 0v-5z'/> </svg>") 0 0 no-repeat;
+    background-size: auto;
+    background-size: 16px;
+    content: "";
+    display: inline-block;
+    height: 16px;
+    margin-left: 3px;
+    width: 16px;
+}
+
+a.file {
+  padding: 10px;
+}
+
+a.toggle {
+  background-color: #216b82;
+  border-color: #216b82;
+  color: white;
+  padding: 5px;
+  border-radius: 5px;
+  font-size: 12px;
+  text-decoration: underline;
+}
+
+a.toggle:hover {
+  background-color: #1e7f9d;
+  border-color: #1e7f9d;
+  text-decoration: none;
+}
+
+a.side-bar {
+  color: black;
+  background-color: white;
+}
+
+a.side-bar:hover {
+  color: white;
+  background-color: #1e7f9d;
+}
+
+
+a.side-bar-right {
+  color: black;
+  background-color: white;
+}
+
+a.side-bar-right:hover {
+  color: white;
+  background-color: #1e7f9d;
+}
+
+
+.big-equations {
+  overflow: auto;
+}
+
+.nav-tabs .nav-link {
+  background-color: white;
+  margin-right: 5px;
+  border-color: #ddd;
+}
+
+.nav-pills .nav-link {
+  border-radius: 16px;
+}
+
+.nav-tabs .nav-link.active {
+  background-color: #dcf4ff;
+  font-weight: 600;
+}
+
+.nav-left {
+  position: fixed;
+  width: 40px;
+  top: 50%;
+  transform: translate(0%, -50%);
+
+}
+
+.nav-right {
+  position: fixed;
+  width: 130px;
+  top: 50%;
+  transform: translate(0%, -50%);
+
+}
+
+.side-bar {
+  height: 56px;
+  width: 56px;
+  border-radius: 16px;
+  margin-top: 6px;
+  margin-bottom: 6px;
+  transition: 0.25s;
+}
+
+.side-bar-right {
+  height: 56px;
+  width: 130px;
+  border-radius: 16px;
+  margin-top: 6px;
+  margin-bottom: 6px;
+  transition: 0.25s;
+}
+
+.side-bar-margin {
+  margin-top: 28px;
+}
+
+.side-bar-item {
+  padding-left: 20px;
+}
+
+
+.side-bar-item:active { 
+  background-color: #ccc;
+}
+
+.border-top {
+  margin-top: 20px;
+}
+
+.chart {
+    border: 2px solid #ddd;
+    border-radius: 12px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+.modal-dialog {
+    max-width: 960px;
+        }
+        
+.modal-content {
+    margin: auto;
+        }
+ 
+.modal-header {
+    background-color: #dcf4ff;
+    padding:16px 16px;
+    color:black;
+ 
+ }
