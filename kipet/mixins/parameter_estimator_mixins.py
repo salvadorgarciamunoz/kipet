@@ -1,9 +1,12 @@
 """
 Common functions between PE and MEE
 """
+# Third party imports
+import numpy as np
 from pyomo.environ import Suffix
 
-from kipet.input_output.read_hessian import *
+# KIPET library imports
+from kipet.input_output.read_hessian import save_eig_red_hess
 
 
 class PEMixins(object):
@@ -63,6 +66,23 @@ class PEMixins(object):
                     hessian[i, j] = h
         print(hessian.size, "hessian size")
         return hessian
+        
+        # n_vars = len(self._idx_to_variable)
+        
+        # if n_vars == 1:
+        #     hessian = np.array(unordered_hessian).reshape(1, 1)
+        
+        # hessian = np.zeros((n_vars, n_vars))
+        
+        # for i, vi in enumerate(self._idx_to_variable.values()):
+        #     for j, vj in enumerate(self._idx_to_variable.values()):
+        #         if j < i:
+        #             continue
+        #         hessian[i, j] = unordered_hessian[(var_loc[vi]), (var_loc[vj])]
+                    
+        # hessian = hessian + np.tril(hessian.T, -1)
+                    
+        # return hessian
     
     def _compute_residuals(self, model_obj, exp_index=None):
         """
@@ -78,8 +98,6 @@ class PEMixins(object):
         :rtype: dict
 
         """
-        nt = self._n_meas_times
-        nc = self._n_actual
         residuals = dict()
         
         conc_data = ['C', 'Cm']
@@ -118,10 +136,18 @@ class PEMixins(object):
                         print(str(v) + '\has been skipped for covariance calculations')
                         continue
                 nparams += 1
+                
+        if hasattr(model_obj, 'time_step_change'):
+            for v in model_obj.time_step_change.values():
+                if isSkipFixed:
+                    if v.is_fixed():
+                        print(str(v) + '\has been skipped for covariance calculations')
+                        continue
+                nparams += 1
 
         return nparams
     
-    def _variances_p_calc(self, hessian, variances):
+    def _variances_p_calc(self, H, variances):
         """Computes the covariance for post calculation anaylsis
 
         :param np.ndarray hessian: The Hessian matrix
@@ -131,17 +157,8 @@ class PEMixins(object):
         :return numpy.ndarray V_theta: The reduced Hessian
 
         """        
-        print(f'Var: {variances}')
-        nparams = self._n_params
-
-        H = hessian[-nparams:, :]
- 
         B = self._compute_B_matrix(variances)
         Vd = self._compute_Vd_matrix(variances)
-        
-        print(f'B: {B.shape}')
-        print(f'H: {H.shape}')
-        print(f'Vd: {Vd.shape}')
         
         R = B.T @ H.T
         A = Vd @ R
