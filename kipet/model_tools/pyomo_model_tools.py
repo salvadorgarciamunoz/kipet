@@ -271,50 +271,40 @@ def model_info(model):
     __var = VariableNames()
     model_attrs = {}
     
-    model_attrs['mixture_components'] = [name for name in model.mixture_components]
-    model_attrs['complementary_states'] = [name for name in model.complementary_states]
-    model_attrs['algebraics'] = [name for name in model.algebraics]
-    model_attrs['meas_times'] = sorted([t for t in model.meas_times])
-    model_attrs['allmeas_times'] = sorted([t for t in model.allmeas_times])#added for new data structure CS
-    model_attrs['meas_lambdas'] = sorted([l for l in model.meas_lambdas])
-    model_attrs['n_meas_times'] = len(model_attrs['meas_times'])
-    model_attrs['n_allmeas_times'] = len(model_attrs['allmeas_times'])#added for new data structure CS
-    model_attrs['n_meas_lambdas'] = len(model_attrs['meas_lambdas'])
+    model_attrs['mixture_components'] = list(model.mixture_components)
+    model_attrs['complementary_states'] = list(model.complementary_states)
+    model_attrs['algebraics'] = list(model.algebraics)
     model_attrs['n_components'] = len(model_attrs['mixture_components'])
     model_attrs['n_algebraics'] = len(model_attrs['algebraics'])
     model_attrs['n_complementary_states'] = len(model_attrs['complementary_states'])
-    model_attrs['non_absorbing'] = None
-    model_attrs['huplc_absorbing'] = None #added for additional huplc data CS
-    model_attrs['known_absorbance'] = None
+   
     model_attrs['known_absorbance_data'] = None
     
-    # Other stuff that may never be used
+    model_attrs['non_absorbing'] = None
     if hasattr(model, 'non_absorbing'):
-        model_attrs['non_absorbing'] = [name for name in model.non_absorbing]
+        model_attrs['non_absorbing'] = list(model.non_absorbing)
         
+    model_attrs['known_absorbance'] = None
     if hasattr(model, 'known_absorbance'):
-        model_attrs['known_absorbance'] = [name for name in model.known_absorbance]
+        model_attrs['known_absorbance'] = list(model.known_absorbance)
 
     if hasattr(model, 'abs_components'):
-        model_attrs['abs_components'] = [name for name in model.abs_components]
+        model_attrs['abs_components'] = list(model.abs_components.keys())
         model_attrs['nabs_components'] = len(model_attrs['abs_components'])
 
+    model_attrs['huplc_absorbing'] = None
     if hasattr(model, 'huplc_absorbing'):
-        model_attrs['huplcmeas_times'] = sorted([t for t in model.huplcmeas_times])  # added for additional huplc data CS
-        model_attrs['n_huplcmeas_times'] = len(model_attrs['huplcmeas_times'])  # added for additional huplc data CS
-        model_attrs['huplc_absorbing'] = [name for name in model.huplc_absorbing]
+        model_attrs['huplc_absorbing'] =  list(model.huplc_absorbing)
     
     if hasattr(model, 'huplcabs_components'):
-        model_attrs['huplcabs_components'] = [name for name in model.huplcabs_components]
+        model_attrs['huplcabs_components'] = list(model.huplcabs_components)
         model_attrs['nhuplcabs_components'] = len(model_attrs['huplcabs_components'])
     
-    model_attrs['alltimes'] = sorted(model.alltime)
-    model_attrs['n_alltimes'] = len(model_attrs['alltimes'])
     model_attrs['ipopt_scaled'] = False
     model_attrs['spectra_given'] = hasattr(model, __var.spectra_data)
     model_attrs['concentration_given'] = hasattr(model, __var.concentration_measured) or hasattr(model, __var.user_defined) or hasattr(model, __var.state)
     model_attrs['conplementary_states_given'] = hasattr(model, __var.state)
-    model_attrs['absorption_given'] = hasattr(model, __var.spectra_species)  # added for special case of absorption data available but not concentration data CS
+    model_attrs['absorption_given'] = hasattr(model, __var.spectra_species)
     model_attrs['huplc_given'] = hasattr(model, 'Chat')
     model_attrs['smoothparam_given'] = hasattr(model, __var.smooth_parameter)
                 
