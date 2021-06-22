@@ -9,17 +9,49 @@ import os
 import pathlib
 import re
 import sys
+import traceback
 
 # Third party imports
 import numpy as np
 import pandas as pd
 
+
 # KIPET library imports
 # from kipet.model_tools.pyomo_model_tools import _df_from_pyomo_data
 
 # Public methods that can be used in KIPET
-__all__ = ['write_data', 'read_data', 'read_file', 'add_noise_to_data']
+__all__ = ['write_data', 'read_data', 'read_file', 'add_noise_to_data', 'Tee']
 
+
+# Context manager that copies stdout and any exceptions to a log file
+class Tee:
+    
+    def __init__(self, filename):
+    
+        self.file = open(filename, 'a+')
+        self.stdout = sys.stdout
+        #self.stderr = sys.stderr
+    
+    def __enter__(self):
+    
+        sys.stdout = self
+    
+    def __exit__(self, exc_type, exc_value, tb):
+    
+        sys.stdout = self.stdout
+        if exc_type is not None:
+            self.file.write(traceback.format_exc())
+        self.file.close()
+    
+    def write(self, data):
+        
+        self.file.write(data)
+        self.stdout.write(data)
+    
+    def flush(self):
+        
+        self.file.flush()
+        self.stdout.flush()
 
 def write_data(filename, data):
     """Method to write data to a file using KIPET
@@ -207,7 +239,7 @@ def add_noise_to_data(data, noise):
     :rtype: pandas.DataFrame
 
     """
-    from kipet.common.prob_gen_tools import add_noise_to_signal
+    from kipet.calculation_tools.prob_gen_tools import add_noise_to_signal
     noised_data = add_noise_to_signal(data, noise)
 
     return noised_data

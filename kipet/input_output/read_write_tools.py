@@ -4,7 +4,6 @@ Read/Write functions used for data in Kipet
 import sys
 from contextlib import contextmanager
 
-
 @contextmanager
 def stdout_redirector(stream):
     old_stdout = sys.stdout
