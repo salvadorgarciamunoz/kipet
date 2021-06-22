@@ -133,7 +133,7 @@ class Settings:
         self.parameter_estimator = AttrDict(self.cfg['parameter_estimator'])
         self.parameter_estimator.update({'solver_opts': AttrDict()})
         self.solver = AttrDict(self.cfg['solver'])
-        self.units = AttrDict(self.cfg['units'])
+        #self.units = AttrDict(self.cfg['units'])
 
         return None
 
@@ -162,6 +162,28 @@ class Settings:
 
         print(f'Updated default settings:\n\n{category}:\n\t{item}: {value}')
         return None
+
+    @property
+    def as_dicts(self):
+        
+        full_name = {
+            'general' : 'General Settings',
+            'collocation' : 'Collocation Settings',
+            'simulator' : 'Simulation Settings',
+            'variance_estimator' : 'Variance Estimator Settings',
+            'parameter_estimator' : 'Parameter Estimator Settings',
+            'solver' : 'Solver Settings',
+        }
+        
+        keys = ['collocation', 'simulator', 'general', 'variance_estimator',
+                'parameter_estimator', 'solver']
+        
+        nested_dict = {}
+        for key in keys:
+            nested_dict[key] = (full_name[key], getattr(self, key))
+            
+        return nested_dict
+        
 
 
 def _is_number(s):
