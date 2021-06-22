@@ -4,6 +4,10 @@ and model variations are available. This allows the user to perform parameter
 fitting with the various models simultaneously.
 """
 # Standard library imports
+import copy
+import inspect
+import pathlib
+import time
 
 # Third party imports
 import pandas as pd
@@ -75,7 +79,10 @@ class ReactionSet:
         self.global_parameters = None
         self.ub = UnitBase()
         
-        self.reset_base_units()
+        self.file = pathlib.Path(inspect.stack()[1].filename)
+        
+        t = time.localtime()
+        self.timestamp = f'{t.tm_year}-{t.tm_mon:02}-{t.tm_mday:02}-{t.tm_hour:02}-{t.tm_min:02}-{t.tm_sec:02}'
 
     def __str__(self):
         
@@ -95,15 +102,15 @@ class ReactionSet:
     def __len__(self):
         return len(self.reaction_models)
 
-    def reset_base_units(self):
-        """Sets the unit base values to the units declared in the settings
+    # def reset_base_units(self):
+    #     """Sets the unit base values to the units declared in the settings
         
-        :return: None
-        """
-        self.ub.TIME_BASE = self.settings.units.time
-        self.ub.VOLUME_BASE = self.settings.units.volume
+    #     :return: None
+    #     """
+    #     self.ub.TIME_BASE = self.settings.units.time
+    #     self.ub.VOLUME_BASE = self.settings.units.volume
         
-        return None
+    #     return None
 
 
     def add_reaction_list(self, model_list):
@@ -162,46 +169,118 @@ class ReactionSet:
         if model is None:
 
             self.reaction_models[name] = ReactionModel(name=name, unit_base=self.ub)
+            self.reaction_models[name].file = self.file
+            self.reaction_models[name].timestamp = self.timestamp
             
-            assign_list = [
-                "components",
-                "parameters",
-                "constants",
-                "algebraics",
-                "states",
-                "ub",
-                "c",
-            ]
+            self.reaction_models[name].settings = self.settings
+            
+            
+            # assign_list = [
+            #     "components",
+            #     "parameters",
+            #     "constants",
+            #     "algebraics",
+            #     "states",
+            #     "ub",
+            #     "c",
+            # ]
 
-            for item in assign_list:
-                if item not in ignore and hasattr(self, item):
-                    setattr(self.reaction_models[name], item, getattr(self, item))
+            # for item in assign_list:
+            #     if item not in ignore and hasattr(self, item):
+            #         setattr(self.reaction_models[name], item, copy.deepcopy(getattr(self, item)))
 
         else:
             if isinstance(model, ReactionModel):
-                kwargs = {}
-                kwargs["name"] = name
-                self.reaction_models[name] = ReactionModel(name=name, unit_base=self.ub)
+                
+                new_kipet_model = copy.deepcopy(model)
+        
+                # name = kwargs.get('name', self.name + '_copy')
+                # copy_model = kwargs.get('model', True)
+                # copy_builder = kwargs.get('builder', True)
+                # copy_components = kwargs.get('components', True)   
+                # copy_parameters = kwargs.get('parameters', True)
+                # copy_datasets = kwargs.get('datasets', True)
+                # copy_constants = kwargs.get('constants', True)
+                # copy_settings = kwargs.get('settings', True)
+                # copy_algebraic_variables = kwargs.get('alg_vars', True)
+                # copy_odes = kwargs.get('odes', True)
+                # copy_algs = kwargs.get('algs', True)
+                
+                # Reset the datasets
+                
+                 #     # Reset the datasets
+        
+                new_kipet_model.name = name
+                
+                # if not copy_model:
+                #     new_kipet_model.model = None
+                
+                # if not copy_builder:
+                #     new_kipet_model.builder = TemplateBuilder()
+                    
+                # if not copy_components:
+                #     new_kipet_model.components = ComponentBlock()
+                
+                # if not copy_parameters:
+                #     new_kipet_model.parameters = ParameterBlock()
+                    
+                #if not copy_datasets:
+                del new_kipet_model.datasets
+                from kipet.model_components.data_component import DataBlock
+                new_kipet_model.datasets = DataBlock()
+                    
+                # if not copy_constants:
+                #     new_kipet_model.constants = None
+                    
+                # if not copy_algebraic_variables:
+                #     new_kipet_model.algebraic_variables = []
+                    
+                # if not copy_settings:
+                #     new_kipet_model.settings = Settings()
+                    
+                # if not copy_odes:
+                #     new_kipet_model.odes = None
+                    
+                # if not copy_algs:
+                #     new_kipet_model.algs = None
+                
+                # list_of_attr_to_delete = ['p_model', 'v_model', 'p_estimator',
+                #                           'v_estimator', 'simulator']
+                
+                # for attr in list_of_attr_to_delete:
+                #     if hasattr(new_kipet_model, attr):
+                #         setattr(new_kipet_model, attr, None)
+                
+                # new_kipet_model.results_dict = {}
+                
+                new_kipet_model.name = name
+                self.reaction_models[name] = new_kipet_model
+                
+            #     kwargs = {}
+            #     kwargs["name"] = name
+            #     self.reaction_models[name] = ReactionModel(name=name, unit_base=self.ub)
+            #     self.reaction_models[name].file = self.file
+            #     self.reaction_models[name].timestamp = self.timestamp
 
-                assign_list = [
-                    "components",
-                    "parameters",
-                    "constants",
-                    "algebraics",
-                    "states",
-                    "unit_base",
-                    "settings",
-                    "c",
-                    "odes_dict",
-                    "algs_dict",
-                ]
+            #     assign_list = [
+            #         "components",
+            #         "parameters",
+            #         "constants",
+            #         "algebraics",
+            #         "states",
+            #         "unit_base",
+            #         "settings",
+            #         "c",
+            #         "odes_dict",
+            #         "algs_dict",
+            #     ]
 
-                for item in assign_list:
-                    if item not in ignore and hasattr(model, item):
-                        setattr(self.reaction_models[name], item, getattr(model, item))
+            #     for item in assign_list:
+            #         if item not in ignore and hasattr(model, item):
+            #             setattr(self.reaction_models[name], item, copy.deepcopy(getattr(model, item)))
 
-            else:
-                raise ValueError("ReactionSet can only add ReactionModel instances.")
+            # else:
+            #     raise ValueError("ReactionSet can only add ReactionModel instances.")
 
         return self.reaction_models[name]
     
@@ -221,7 +300,6 @@ class ReactionSet:
 
         return None
     
-
     def run_opt(self, method='mee'):
         """This method will perform parameter fitting for all ReactionModels in
         the ReactionSet models attribute. If more than one ReactionModel instance
@@ -246,12 +324,17 @@ class ReactionSet:
             if method == "mee":
                 self._calculate_parameters()
                 self._create_multiple_experiments_estimator()
-                self._run_full_model()
+                from kipet.input_output.kipet_io import Tee
+                with Tee(f'log-{self.file.stem}-{self.timestamp}.txt'):   
+                    self._run_full_model()
             # elif method == 'nsd':
             #     self._calculate_parameters()
-            #     self._mee_nsd(strategy='ipopt')
+                # with Tee(f'log-{self.timestamp}.txt'):  
+            #         self._mee_nsd(strategy='ipopt')
             else:
                 raise ValueError("Not a valid method for optimization")
+                
+            print('# KIPET procedure for multiple experiments finished\n')
 
         else:
             reaction_model = self.reaction_models[list(self.reaction_models.keys())[0]]
@@ -266,7 +349,7 @@ class ReactionSet:
         """
         
         self.mee = MultipleExperimentsEstimator(self.reaction_models)
-        self.mee.confidence_interval = self.settings.general.confidence
+        self.mee.confidence_interval = self.settings.parameter_estimator.confidence
 
         if "spectral" in self.data_types:
             self.settings.general.spectra_problem = True
@@ -405,3 +488,16 @@ class ReactionSet:
             else:
                 model.plot(var)
         
+    def report(self):
+        """Plot method for ReactionSet
+        
+        :param str var: The variable to plot (same as in ReactionModel)
+        
+        :return: None:
+            
+        """
+        from kipet.visuals.reports import Report
+        for reaction in self.reaction_models.values():
+            reaction.plot()
+        report = Report(list(self.reaction_models.values()))
+        report.generate_report()
