@@ -1,9 +1,10 @@
 # Standard library imports
-#import collections
 import copy
+import inspect
 import os
 import pathlib
 import sys
+import time
 
 # Third party imports
 import numpy as np
@@ -14,6 +15,7 @@ from pyomo.environ import ConcreteModel, Set, Var
 from pyomo.environ import units as pyo_units
 
 # Kipet library imports
+from kipet import __version__ as version_number
 import kipet.input_output.kipet_io as io
 from kipet.calculation_tools.interpolation import interpolate_trajectory
 #from kipet.calculation_tools.model_funs import step_fun
@@ -40,7 +42,6 @@ from kipet.general_settings.variable_names import VariableNames
 
 __var = VariableNames()
 model_components = ['parameters', 'components', 'states', 'algebraics', 'constants', 'steps']
-version_number = '0.2.4'
 
 
 # This should be removed - no mixins!
@@ -170,7 +171,10 @@ class ReactionModel(WavelengthSelectionMixins):
         else:
             from kipet.general_settings.unit_base import UnitBase
             self.unit_base = UnitBase()
-            
+        
+        self.file = pathlib.Path(inspect.stack()[1].filename)
+        t = time.localtime()
+        self.timestamp = f'{t.tm_year}-{t.tm_mon:02}-{t.tm_mday:02}-{t.tm_hour:02}-{t.tm_min:02}-{t.tm_sec:02}'
         # This is used directly by the user for modifying spectral data
         self.spectra = None
         
@@ -190,6 +194,7 @@ class ReactionModel(WavelengthSelectionMixins):
         self.algs_dict = {}
         
         # Private attributes (may be changed later)
+        self._uplc_data = None
         self._model = None
         self._s_model = None
         self._builder = TemplateBuilder()
@@ -212,6 +217,8 @@ class ReactionModel(WavelengthSelectionMixins):
         self.__custom_volume_state = False
         self.__volume_terms_added = False
         self.__var = VariableNames()
+        self._sim_output = ''
+        self._output = ''
         
         if model is not None:
             self._copy_from_model(model)
@@ -655,6 +662,8 @@ class ReactionModel(WavelengthSelectionMixins):
         :return: The representative Pyomo variable that can be used in expression building
         :rtype: pyomo.core.base.var._GeneralVarData
         """
+        kwargs['fixed'] = kwargs.get('fixed', True)
+        
         if name == self.__var.volume_name:
             raise AttributeError(f'{self.__volume_name} is a protected state name')
             
@@ -780,11 +789,15 @@ class ReactionModel(WavelengthSelectionMixins):
         dataframe.index = dataframe.index*time_conversion
         
         if category == 'spectral':
-            D_data = SpectralData(name, remove_negatives=remove_negatives)    
+            D_data = SpectralData(name, file=file, remove_negatives=remove_negatives)    
             D_data.add_data(dataframe)
             self.spectra = D_data
             return None
                     
+        elif category in ['uplc', 'huplc']:
+            self._uplc_data = dataframe
+            return None
+        
         else:
             dataset = DataSet(name=name,
                               category=category,
@@ -1056,7 +1069,7 @@ class ReactionModel(WavelengthSelectionMixins):
         and passes them in the correct manner to the TemplateBuilder
         
         """
-        if not self._template_populated:
+        if not self._template_populated:# or kwargs['estimator'] == 'p_estimator':
         
             with_data = kwargs.get('with_data', True)
     
@@ -1092,6 +1105,11 @@ class ReactionModel(WavelengthSelectionMixins):
                     self._allow_optimization = True
                 elif len(self.datasets) == 0 and self.spectra is None:
                     self._allow_optimization = False
+                else:
+                    pass
+                    
+                if self._uplc_data is not None:
+                    self._builder.add_huplc_data(self._uplc_data)
                 else:
                     pass
                 
@@ -1131,7 +1149,7 @@ class ReactionModel(WavelengthSelectionMixins):
             self._template_populated = True
         
         else:
-            print('Template already populated')
+            print('# Warning: Template already populated')
             
         return None
            
@@ -1178,6 +1196,12 @@ class ReactionModel(WavelengthSelectionMixins):
 
         """
         kwargs['is_simulation'] = kwargs.get('is_simulation', False)
+        kwargs['ignore_model'] = kwargs.get('ignore_model', False)
+        kwargs['estimator'] = kwargs.get('estimator', None)
+        
+        if kwargs['is_simulation']:
+            kwargs['estimator'] = 'simulator'
+        
         skip_non_abs = kwargs.pop('skip_non_abs', False)
          
         self._populate_template(*args, **kwargs)
@@ -1185,9 +1209,12 @@ class ReactionModel(WavelengthSelectionMixins):
         setattr(self._builder, 'c_mod', self.c)
         
         start_time, end_time = self._get_model_times()
-        if self._model is None:
-            self._model = self._builder.create_pyomo_model(start_time, end_time, False)
-        pyomo_model = self._builder.create_pyomo_model(start_time, end_time, kwargs['is_simulation'])
+        
+        if self._model is None and not kwargs['ignore_model']:
+            print('ReactionModel: Generating base model (self._model)')
+            self._model = self._builder.create_pyomo_model(start_time, end_time, 'p_estimator')
+            
+        pyomo_model = self._builder.create_pyomo_model(start_time, end_time, kwargs['estimator'])
         
         if not kwargs['is_simulation']:
             non_abs_comp = self.components.get_match('absorbing', False)
@@ -1239,7 +1266,23 @@ class ReactionModel(WavelengthSelectionMixins):
     
     """Simulation"""
     
-    def simulate(self):
+    def simulate(self, parameters=None, from_run_opt=False):
+        """The primary simulation method - calls _simulate_core inside a context
+        to capture standard output or not
+        
+        :return: None
+        
+        """
+        if from_run_opt:
+            self._simulate_core(parameters)
+        else:
+            from kipet.input_output.kipet_io import Tee
+            with Tee(f'log-{self.file.stem}-{self.timestamp}.txt'):   
+                self._simulate_core(parameters)
+           
+        return None
+    
+    def _simulate_core(self, parameters):
         """This method will simulate the model using the given initial values
         and times
         
@@ -1255,7 +1298,7 @@ class ReactionModel(WavelengthSelectionMixins):
         # Add any previous trajectories, if given
         self._from_trajectories('simulator')
         # Run the simulation
-        self._run_simulation()
+        self._run_simulation(parameters)
         
         return None
     
@@ -1267,7 +1310,7 @@ class ReactionModel(WavelengthSelectionMixins):
         fitting problem is run for initialization.
        
         """
-        print('Setting up simulation model')
+        print('# Simulator: Setting up simulation model')
         sim_set_up_options = copy.copy(self.settings.simulator)
         
         # Initialization is now defaulted to FESimulator (settings file)
@@ -1282,7 +1325,7 @@ class ReactionModel(WavelengthSelectionMixins):
         if dis_method == 'fe':
              simulation_class = FESimulator
         
-        self._s_model = self._create_pyomo_model(is_simulation=True)
+        self._s_model = self._create_pyomo_model(is_simulation=True, ignore_model=True)
         
         # Fix the optimization variables
         opt_vars = self.__var.optimization_variables
@@ -1307,18 +1350,18 @@ class ReactionModel(WavelengthSelectionMixins):
         
         # Add the dosing points to the model
         if self._has_step_or_dosing:
-            for time in simulator.model.alltime.data():
-                getattr(simulator.model, self.__var.dosing_variable)[time, self.__var.dosing_component].set_value(time)
-                getattr(simulator.model, self.__var.dosing_variable)[time, self.__var.dosing_component].fix()
+            for time_step in simulator.model.alltime.data():
+                getattr(simulator.model, self.__var.dosing_variable)[time_step, self.__var.dosing_component].set_value(time_step)
+                getattr(simulator.model, self.__var.dosing_variable)[time_step, self.__var.dosing_component].fix()
         
         # Add this simulator to the class attributes
         self.simulator = simulator
-        print('Finished creating simulator')
+        print('# Simulator: Finished creating simulator')
         
         return None
     
     
-    def _run_simulation(self):
+    def _run_simulation(self, parameters):
         """Runs the simulations, may be combined with the above at a later date
         
         """
@@ -1327,13 +1370,23 @@ class ReactionModel(WavelengthSelectionMixins):
         
         simulator_options = self.settings.simulator
         simulator_options.pop('method', None)
+        
+        if parameters is not None:
+            for key, value in parameters.items():
+                getattr(self._s_model, self.__var.model_parameter)[key].set_value(value)
+        
         results = self.simulator.run_sim(**simulator_options)
         self.results_dict['simulator'] = results 
-        self.results = results    
+        # self.results = results    
+        
+        if parameters is not None:
+            for param in self.parameters:
+                getattr(self._s_model, self.__var.model_parameter)[param.name].set_value(param.value)
+        
         return None
     
     
-    def bound_profile(self, var, bounds):
+    def bound_profile(self, var=None, bounds=None, comp=None, profile_range=None):
         """Wrapper for TemplateBuilder bound_profile method
         
         The user can define a variable and its bounds using this method.
@@ -1344,8 +1397,31 @@ class ReactionModel(WavelengthSelectionMixins):
         :return: None
         
         """
+        self._builder.bound_profile(
+            var=var, 
+            bounds=bounds, 
+            comp=comp, 
+            profile_range=profile_range
+        )
+        return None
+    
+    def bound_point(self, var=None, bounds=None, comp=None, point=None):
+        """Wrapper for TemplateBuilder bound_profile method for points
         
-        self._builder.bound_profile(var=var, bounds=bounds)
+        The user can define a variable and its bounds using this method.
+        
+        :param str var: The model variable to be constrained
+        :param tuple bounds: The lower and upper bounds of the variable
+        
+        :return: None
+        
+        """
+        self._builder.bound_point(
+            var=var, 
+            bounds=bounds, 
+            comp=comp, 
+            point=point
+        )
         return None
     
     
@@ -1509,10 +1585,10 @@ class ReactionModel(WavelengthSelectionMixins):
         vars_to_init = get_vars(self._s_model)
         
         for var in vars_to_init:
-            if hasattr(self.results, var) and var != 'S':
-                getattr(self, estimator).initialize_from_trajectory(var, getattr(self.results, var))
-            elif var == 'S' and hasattr(self.results, 'S'):
-                getattr(self, estimator).initialize_from_trajectory(var, getattr(self.results, var))
+            if hasattr(self.results_dict['simulator'], var) and var != 'S':
+                getattr(self, estimator).initialize_from_trajectory(var, getattr(self.results_dict['simulator'], var))
+            elif var == 'S' and hasattr(self.results_dict['simulator'], 'S'):
+                getattr(self, estimator).initialize_from_trajectory(var, getattr(self.results_dict['simulator'], var))
             else:
                 continue
         
@@ -1528,16 +1604,14 @@ class ReactionModel(WavelengthSelectionMixins):
         """        
         if estimator == 'v_estimator':
             Estimator = VarianceEstimator
-            est_str = 'VarianceEstimator'
             
         elif estimator == 'p_estimator':
             Estimator = ParameterEstimator
-            est_str = 'ParameterEstimator'
             
         else:
             raise ValueError('Keyword argument estimator must be p_estimator or v_estimator.')  
         
-        model_to_clone = self._create_pyomo_model()
+        model_to_clone = self._create_pyomo_model(estimator=estimator)
         
         setattr(self, f'{estimator[0]}_model', model_to_clone.clone())
         setattr(self, estimator, Estimator(getattr(self, f'{estimator[0]}_model')))
@@ -1562,9 +1636,9 @@ class ReactionModel(WavelengthSelectionMixins):
                 self._initialize_from_simulation(estimator=estimator)
         
         if self._has_step_or_dosing:
-            for time in getattr(self, estimator).model.alltime.data():
-                getattr(getattr(self, estimator).model, self.__var.dosing_variable)[time, self.__var.dosing_component].set_value(time)
-                getattr(getattr(self, estimator).model, self.__var.dosing_variable)[time, self.__var.dosing_component].fix()
+            for time_step in getattr(self, estimator).model.alltime.data():
+                getattr(getattr(self, estimator).model, self.__var.dosing_variable)[time_step, self.__var.dosing_component].set_value(time_step)
+                getattr(getattr(self, estimator).model, self.__var.dosing_variable)[time_step, self.__var.dosing_component].fix()
         
         
         return None
@@ -1577,13 +1651,9 @@ class ReactionModel(WavelengthSelectionMixins):
     def _run_ve_opt(self):
         """Wrapper for run_opt method in VarianceEstimator"""
         
-        if self.settings.variance_estimator.method == 'direct_sigmas':
-            worst_case_device_var = self.v_estimator.solve_max_device_variance(**self.settings.variance_estimator)
-            self.settings.variance_estimator.device_range = (self.settings.variance_estimator.best_accuracy, worst_case_device_var)
-            
-        self._run_opt('v_estimator', **self.settings.variance_estimator)
+        results = self._run_opt('v_estimator', **self.settings.variance_estimator)
         
-        return None
+        return results
     
     
     def _run_pe_opt(self):
@@ -1613,13 +1683,16 @@ class ReactionModel(WavelengthSelectionMixins):
             self.settings.parameter_estimator['covariance'] = True
         
         #Subset of lambdas
-        if self.settings.variance_estimator['freq_subset_lambdas'] is not None:
-            if isinstance(self.settings.variance_estimator['freq_subset_lambdas'], int):
-                self.settings.variance_estimator['subset_lambdas' ] = self.reduce_spectra_data_set(self.settings.variance_estimator['freq_subset_lambdas']) 
+        # if self.settings.variance_estimator['freq_subset_lambdas'] is not None:
+        #     if isinstance(self.settings.variance_estimator['freq_subset_lambdas'], int):
+        #         self.settings.variance_estimator['subset_lambdas' ] = self.reduce_spectra_data_set(self.settings.variance_estimator['freq_subset_lambdas']) 
         
         if self.settings.general.scale_pe and not self.settings.general.no_user_scaling:
             self.settings.solver.nlp_scaling_method = 'user-scaling'
-    
+            
+        if self.settings.variance_estimator.method == 'direct_sigmas' and self.settings.variance_estimator.fixed_device_variance is None:
+            self.settings.variance_estimator.max_device_variance = True
+            
         if self.settings.variance_estimator.max_device_variance:
             self.settings.parameter_estimator.model_variance = False
     
@@ -1644,8 +1717,42 @@ class ReactionModel(WavelengthSelectionMixins):
         
         return None
     
+    def max_device_variance(self):
+        """Calculates the maximum device variance. This assumes the model variance is zero.
+        
+        :return: The maximum device variance
+        :rtype: float
+
+        """
+        max_device_variance = None
+        if self.settings.variance_estimator.max_device_variance:
+            max_device_variance = self.v_estimator.solve_max_device_variance(**self.settings.variance_estimator)
+            print(f'The worst case device variance is :{max_device_variance}')
+        
+        return max_device_variance
     
     def run_opt(self):
+        """Wrapper for _run_opt_core that places it into a context manager for
+        saving the standard output as a log file while still printing it out
+        to the console.
+        
+        :return: The results of the optimization
+        :rtype: ResultsObject
+        
+        """
+        if self.settings.general.save_output:
+        
+            from kipet.input_output.kipet_io import Tee
+            with Tee(f'log-{self.file.stem}-{self.timestamp}.txt'):   
+                results = self._run_opt_core()
+            
+        else:
+            results = self._run_opt_core()
+            
+        return results
+        
+    
+    def _run_opt_core(self):
         """This runs the parameter fitting optimization problem. It will automatically
         perform the variance estimation step performed by the VarianceEstimator. The user
         can define the options for this using the settings attribute.
@@ -1657,12 +1764,18 @@ class ReactionModel(WavelengthSelectionMixins):
         :rtype: ResultsObject
         
         """
-        print(f'*** KIPET version {version_number}')
-        print(f'*** Starting the parameter estimation procedure')
         
-        print(f'\n*** Simulating the model with initial values')
-        self.simulate()
-        print(f'*** Simulation completed succesfully')
+        print('#' * 40)
+        print(f'# KIPET version {version_number}')
+        print(f'# Date: {self.timestamp}')
+        print(f'# File: {self.file.stem}')
+        print(f'# ReactionModel instance: {self.name}')
+        print('#' * 40)
+        
+        print('\n# Simulator: Initializing with starting values')
+        print(f'# Simulator: Using the {self.settings.simulator.method} method')
+        self.simulate(from_run_opt=True)
+        print('# Simulator: Completed successfully\n')
         
         # Check if all needed data for optimization available
         if not self._allow_optimization:
@@ -1671,36 +1784,44 @@ class ReactionModel(WavelengthSelectionMixins):
         # Some settings are required together, this method checks this
         self._update_related_settings()
         
+        """
+        VarianceEstimator
+        """
         # Check if all component variances are given; if not run VarianceEstimator
         has_spectral_data = self.spectra is not None
         has_all_variances = self.components.has_all_variances
-        variances_with_delta = None
+        method = self.settings.variance_estimator.method
         
-        # Check for bad options
-        if self.settings.variance_estimator.method == 'direct_sigmas':
-            raise ValueError('This variance method is not intended for use in the manner: see Ex_13_direct_sigma_variances.py')
-        
-        # If not all component variances are provided and spectral data is
-        # present, the VE needs to be run
+        # First check if VE is needed
         if not has_all_variances and has_spectral_data:
-            """If the data is spectral and not all variances are provided, VE needs to be run"""
-            
+        
             # Create the VE
-            print('*** Generating VarianceEsitmator Instance')
+            print('# VarianceEsitmator: Creating instance')
             self._create_estimator(estimator='v_estimator')
             self.settings.variance_estimator.solver_opts = self.settings.solver
-            # Optional max device variance
-            if self.settings.variance_estimator.max_device_variance:
-                max_device_variance = self.v_estimator.solve_max_device_variance(**self.settings.variance_estimator)
+            # This returns None or the calculated device variance
+            max_device_variance = self.max_device_variance()
             
-            # elif self.settings.variance_estimator.use_delta:
-            #     variances_with_delta = self.solve_variance_given_delta()
+            # Using known device variance (best-case accuracy) --> sigma_range
+            if method == 'direct_sigmas' and self.settings.variance_estimator.fixed_device_variance is None:
+                print(f'# VarianceEstimator: Solving for range of fixed device variances between best and worst variances ({self.settings.variance_estimator.num_points} steps)')
+                self.settings.variance_estimator.device_range = (self.settings.variance_estimator.best_accuracy, max_device_variance)
+                variance_dict = self._run_ve_opt()
+                self.direct_sigma_dict = variance_dict
+                return variance_dict
+                
+            elif self.settings.variance_estimator.fixed_device_variance is not None:
+                self.settings.variance_estimator.method = 'direct_sigmas'
+                #self.settings.variance_estimator.device_range = (self.settings.variance_estimator.fixed_device_variance, None)
+                print(f'# VarianceEstimator: Solving for variance using fixed device variance: {self.settings.variance_estimator.fixed_device_variance}')
+                self._run_ve_opt()
 
             else:
-                print('*** Starting the variance estimator')
+                print(f'# VarianceEstimator: Starting the variance estimator using {method} method')
                 self._run_ve_opt()
                 
-                #print('Finished VE Opt - moving to PE opt')
+            print('# VarianceEstimator: Complete\n')
+                
         # If not a spectral problem and not all variances are provided, they
         # set to 1
         elif not has_all_variances and not has_spectral_data:
@@ -1709,9 +1830,13 @@ class ReactionModel(WavelengthSelectionMixins):
                     comp.variance = self.variances[comp.name]
                 except:
                     comp.variance = 1
-                
-        # Create ParameterEstimator
-        print('*** Generating ParameterEsitmator Instance')
+        
+        print('# VarianceEstimator: All variances provided / concentration problem\n')
+        """
+        ParameterEstimator
+        """
+        
+        print('# ParameterEstimator: Creating instance\n')
         self._create_estimator(estimator='p_estimator')
         
         variances = self.components.variances
@@ -1736,26 +1861,26 @@ class ReactionModel(WavelengthSelectionMixins):
         elif self.settings.variance_estimator.max_device_variance:
             self.variances = max_device_variance
         
-        # Under construction
-        """ TODO
-        # elif variances_with_delta is not None: 
-        #     variances = variances_with_delta
-        """
         # Optional variance scaling
         if self.settings.general.scale_variances:
             self.variances = self._scale_variances(self.variances)
+        
+        print(f'# ParameterEstimator: The variances being used are:\n {self.variances}')
         
         # Update PE solver settings and variances
         self.settings.parameter_estimator.solver_opts = self.settings.solver
         self.settings.parameter_estimator.variances = self.variances
         
         # Run the PE
-        print('*** Solving the parameter fitting problem...\n')
+        print('# ParameterEstimator: Solving the parameter fitting problem...\n')
         self._run_pe_opt()
+        
+        print('\n# ParameterEstimator: Parameter fitting complete')
+        print(f'# KIPET procedure for {self.name} finished\n')
         
         # Save results in the results_dict
         self.results = self.results_dict['p_estimator']
-        self.results.file_dir = pathlib.Path.cwd() #self.settings.general.charts_directory
+        self.results.file_dir = pathlib.Path.cwd()
         
         # Tells MEE that the individual model is already solved
         self._optimized = True
@@ -1874,7 +1999,7 @@ class ReactionModel(WavelengthSelectionMixins):
         return None
                    
                             
-    def set_known_absorbing_species(self, *args, **kwargs):
+    def _set_known_absorbing_species(self, *args, **kwargs):
         """Wrapper for set_known_absorbing_species in TemplateBuilder
         
         .. note::
@@ -1883,6 +2008,9 @@ class ReactionModel(WavelengthSelectionMixins):
         :return: None
         
         """
+        #model, known_abs_list, absorbance_data
+        
+        
         self._builder.set_known_absorbing_species(*args, **kwargs)    
         return None
     
@@ -1984,54 +2112,57 @@ class ReactionModel(WavelengthSelectionMixins):
         :return: None
         
         """
-        if self._model is None:
-            self._model = self._create_pyomo_model()
-            
-        kwargs = {}
-        kwargs['solver_opts'] = self.settings.solver
-        kwargs['method'] = method
-        kwargs['calc_method'] = calc_method
-        kwargs['scaled'] = scaled
-        kwargs['use_bounds'] = False
-        kwargs['use_duals'] = False
-        kwargs['ncp'] = self.settings.collocation.ncp
-        kwargs['nfe'] = self.settings.collocation.nfe
+        from kipet.input_output.kipet_io import Tee
+        with Tee(f'log-{self.file.stem}-{self.timestamp}.txt'):   
         
-        # parameter_dict = self.parameters.as_dict(bounds=True)
-        results, reduced_model = rhps_method(self._model, **kwargs)
-        
-#        results.file_dir = self.settings.general.charts_directory
-        
-        self.reduced_model = reduced_model
-        self.using_reduced_model = True
-        self.reduced_model_results = results
-        
-        #Make a KipetModel as the result using the reduced model
-        red_model = ReactionModel()
-        self.red_model = ReactionModel(name=self.name+'_reduced')
+            if self._model is None:
+                self._model = self._create_pyomo_model()
                 
-        assign_list = ['components', 'parameters', 'constants', 'algebraics',
-                       'states', 'ub', 'settings', 'c', 'odes_dict']
-  
-        ignore = []
-        for item in assign_list:
-            if item not in ignore and hasattr(self, item):
-                setattr(self.red_model, item, getattr(self, item))
+            kwargs = {}
+            kwargs['solver_opts'] = self.settings.solver
+            kwargs['method'] = method
+            kwargs['calc_method'] = calc_method
+            kwargs['scaled'] = scaled
+            kwargs['use_bounds'] = False
+            kwargs['use_duals'] = False
+            kwargs['ncp'] = self.settings.collocation.ncp
+            kwargs['nfe'] = self.settings.collocation.nfe
+            
+            # parameter_dict = self.parameters.as_dict(bounds=True)
+            results, reduced_model = rhps_method(self._model, **kwargs)
+            
+    #        results.file_dir = self.settings.general.charts_directory
+            
+            self.reduced_model = reduced_model
+            self.using_reduced_model = True
+            self.reduced_model_results = results
+            
+            #Make a KipetModel as the result using the reduced model
+            red_model = ReactionModel()
+            self.red_model = ReactionModel(name=self.name+'_reduced')
+                    
+            assign_list = ['components', 'parameters', 'constants', 'algebraics',
+                           'states', 'ub', 'settings', 'c', 'odes_dict']
+      
+            ignore = []
+            for item in assign_list:
+                if item not in ignore and hasattr(self, item):
+                    setattr(self.red_model, item, getattr(self, item))
         
-        # reduced_kipet_model = self.clone('reduced_model', **items_not_copied)
-        
-        #%%
-        # reduced_kipet_model.add_parameter()
-        # self, name=None, init=None, bounds=None
-        
-        # reduced_kipet_model.model = reduced_model
-        # reduced_kipet_model.results = results
-        
-        # reduced_parameter_set = {k: [v.value, (v.lb, v.ub)] for k, v in reduced_kipet_model.model.P.items()}
-        # for param, param_data in reduced_parameter_set.items():
-        #     reduced_kipet_model.add_parameter(param, init=param_data[0], bounds=param_data[1])
-        
-        # return reduced_kipet_model
+            # reduced_kipet_model = self.clone('reduced_model', **items_not_copied)
+            
+            #%%
+            # reduced_kipet_model.add_parameter()
+            # self, name=None, init=None, bounds=None
+            
+            # reduced_kipet_model.model = reduced_model
+            # reduced_kipet_model.results = results
+            
+            # reduced_parameter_set = {k: [v.value, (v.lb, v.ub)] for k, v in reduced_kipet_model.model.P.items()}
+            # for param, param_data in reduced_parameter_set.items():
+            #     reduced_kipet_model.add_parameter(param, init=param_data[0], bounds=param_data[1])
+            
+            # return reduced_kipet_model
     
     
     def set_non_absorbing_species(self, non_abs_list):
@@ -2045,17 +2176,6 @@ class ReactionModel(WavelengthSelectionMixins):
         self._has_non_absorbing_species = True
         self.non_abs_list = non_abs_list
         return None
-        
-    # def add_noise_to_data(self, var, noise, overwrite=False):
-    #     """Wrapper for adding noise to data after data has been added to
-    #     the specific ReactionModel
-        
-    #     """
-    #     dataframe = self.datasets[var].data
-    #     if overwrite:
-    #         self.datasets[var].data = dataframe
-    #     return data_tools.add_noise_to_signal(dataframe, noise)    
-    
     
     def unwanted_contribution(self, variant, St=None, Z_in=None):
         """This method lets the user define whether the system has unwanted
@@ -2103,8 +2223,8 @@ class ReactionModel(WavelengthSelectionMixins):
         :rtype: tuple(list, list)
         
         """
-        if not hasattr(self, '_model') or self._model is None:
-            self._create_pyomo_model()
+        #if not hasattr(self, '_model') or self._model is None:
+        #    self._create_pyomo_model()
         
         # Here we use the estimability analysis tools
         self.e_analyzer = EstimabilityAnalyzer(self._model)
@@ -2114,13 +2234,6 @@ class ReactionModel(WavelengthSelectionMixins):
                                              ncp=1,
                                              scheme='LAGRANGE-RADAU')
         
-        #param_uncertainties = {'k1':0.09,'k2':0.01,'k3':0.02,'k4':0.5}
-        # sigmas, as before, represent the variances in regard to component
-        #sigmas = {'A':1e-10,'B':1e-10,'C':1e-11, 'D':1e-11,'E':1e-11,'device':3e-9}
-        # measurement scaling
-        #meas_uncertainty = 0.05
-        # The rank_params_yao function ranks parameters from most estimable to least estimable 
-        # using the method of Yao (2003). Notice the required arguments. Returns a dictionary of rankings.
         if method == 'yao':
             
             listparams = self.e_analyzer.rank_params_yao(meas_scaling=meas_uncertainty,
@@ -2156,55 +2269,6 @@ class ReactionModel(WavelengthSelectionMixins):
 
         
     """MODEL FUNCTION AREA"""
-    
-    # @staticmethod
-    # def _set_up_stoich_mat(rm, St, reaction, component, value):
-    #     """This method generates the stoichiometric matrix based on the provided
-    #     ODEs.
-        
-    #     :param ReactionModel rm: The ReactionModel object
-    #     :param dict St: The stoichiometric matrix
-        
-        
-    #     """
-    #     if component in rm.components.names and reaction in rm.algs_dict:
-    #         St[reaction][rm.components.names.index(component)] = value
-    #     else:
-    #         pass
-        
-
-    # def make_reaction_table(self, stoich_coeff, rxns):
-        
-    #     df = pd.DataFrame()
-    #     for k, v in stoich_coeff.items():
-    #         df[k] = v
-        
-    #     df.index = rxns
-    #     self.reaction_table = df
-    
-    # def reaction_block(self, stoich_coeff, rxns):
-    #     # make a reactions_dict in __init__ and update here
-    #     """Method to allow for simple construction of a reaction system
-        
-    #     Args:
-    #         stoich_coeff (dict): dict with components as keys and stoichiometric
-    #             coeffs is lists as values:
-    #                 example: stoich_coeff['A'] = [-1, 0 , 1] etc
-                
-    #         rxns (list): list of algebraics that represent reactions
-            
-    #     Returns:
-    #         r_dict (dict): dict of completed reaction expressions
-            
-    #     """
-    #     self.make_reaction_table(stoich_coeff, rxns)
-        
-    #     r_dict = {}
-        
-    #     for com in self.components.names: 
-    #         r_dict[com] = sum(stoich_coeff[com][i] * self.ae(r) for i, r in enumerate(rxns)) 
-    
-        # return r_dict
     
     def _create_stoich_dataframe(self):
         """Builds the dataframe used to hold the stoichiometric matrix
@@ -2418,7 +2482,7 @@ class ReactionModel(WavelengthSelectionMixins):
         output = 'ReactionModel has the following:\n'
         output_dict = {}
         
-        for model in [name + 'model' for name in ['', 's_', 'v_', 'p_']]:
+        for model in [name + 'model' for name in ['_', '_s_', 'v_', 'p_']]:
         
             if hasattr(self, model):
                 output += f'{model} True\n'
@@ -2610,7 +2674,19 @@ class ReactionModel(WavelengthSelectionMixins):
         return None
     
     
-    def plot(self, var=None, jupyter=False, filename=None):
+    def report(self, mee=False, all_names=None):
+        """Generates a report of the ReactionModel results
+        
+        :return: None
+        
+        """
+        from kipet.visuals.reports import Report
+        self.plot()
+        self.report_object = Report([self])
+        self.report_object.generate_report()
+        
+    
+    def plot(self, var=None, jupyter=False, filename=None, show=False):
         """Plotting method for the ReactionModel results.
         
         This provides a simple platform for generating figures using Plotly to
@@ -2634,7 +2710,8 @@ class ReactionModel(WavelengthSelectionMixins):
         """
         from kipet.visuals.plots import PlotObject
         
-        self._plot_object = PlotObject(reaction_model=self, jupyter=jupyter, filename=filename)
+        if not hasattr(self, '_plot_object'):
+            self._plot_object = PlotObject(reaction_model=self, jupyter=jupyter, filename=filename, show=show)
         
         if var == 'Z':
             self._plot_object._plot_all_Z()
