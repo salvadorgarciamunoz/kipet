@@ -138,7 +138,6 @@ class PyomoSimulator:
     
         for k, v in getattr(self.model, self.__var.ode_constraints).items():
             scaled_expr = self.scale_expression(v.body, self.scale)
-            # self.model.odes[k] = scaled_expr == 0
             getattr(self.model, self.__var.ode_constraints)[k] = scaled_expr == 0
     
     @staticmethod
@@ -217,23 +216,23 @@ class PyomoSimulator:
         if self._concentration_given:
             pass
         else:
-            for t in self._allmeas_times:
+            for t in self.model.allmeas_times:
                 for k in self._mixture_components:
-                    if t in self._meas_times:
-                        if abs(self.model.init_conditions[k].value) > tol:
-                            c_init.append(self.model.init_conditions[k].value)
-                        else:
-                            c_init.append(1.0)
-                    else: c_init.append(float('nan')) #added for new huplc structure!
+                    #if t in self._meas_times:
+                    if abs(self.model.init_conditions[k].value) > tol:
+                        c_init.append(self.model.init_conditions[k].value)
+                    else:
+                        c_init.append(1.0)
+                    #else: c_init.append(float('nan')) #added for new huplc structure!
 
-        if self._n_allmeas_times:
+        if self.model.allmeas_times:
             if self._concentration_given:
                 pass
             else:
-                c_array = np.array(c_init).reshape((self._n_allmeas_times, self._n_components))
+                c_array = np.array(c_init).reshape((len(self.model.allmeas_times), self._n_components))
                 c_init_panel = pd.DataFrame(data=c_array,
                                         columns=self._mixture_components,
-                                        index=self._allmeas_times)
+                                        index=self.model.allmeas_times)
 
                 if hasattr(self.model, self.__var.concentration_measured):
                     self.initialize_from_trajectory(self.__var.concentration_measured, c_init_panel)
@@ -386,198 +385,23 @@ class PyomoSimulator:
 
         """
         solver_opts = kwds.pop('solver_opts', dict())
-        sigmas = kwds.pop('variances', dict())
         tee = kwds.pop('tee', False)
         seed = kwds.pop('seed', None)
 
         if not self.model.alltime.get_discretization_info():
             raise RuntimeError('apply discretization first before runing simulation')
 
-        # Adjusts the seed to reproduce results with noise
         np.random.seed(seed)
-        
-        # Variables
-        # Z_var = self.model.Z
-        # if hasattr(self.model, 'Cm'):
-        #     C_var = self.model.Cm  # added for estimation with inputs and conc data CS
-            
-        # if self._huplc_given: #added for additional data CS
-        #     Dhat_var = self.model.Dhat
-        #     Chat_var = self.model.Chat
-        
-        # # Deactivates objective functions for simulation
-        # if self.model.nobjectives():
-        #     objectives_map = self.model.component_map(ctype=Objective, active=True)
-        #     active_objectives_names = []
-        #     for obj in objectives_map.values():
-        #         name = obj.getname()
-        #         active_objectives_names.append(name)
-        #         str_warning = 'Deactivating objective {} for simulation'.format(name)
-        #         warnings.warn(str_warning)
-        #         obj.deactivate()
-
-        
         opt = SolverFactory(solver)
-
         for key, val in solver_opts.items():
             opt.options[key] = val
             
         solver_results = opt.solve(self.model, tee=tee, symbolic_solver_labels=True)
         results = ResultsObject()
-
-        # activates objective functions that were deactivated
-        # if self.model.nobjectives():
-        #     active_objectives_names = []
-        #     objectives_map = self.model.component_map(ctype=Objective)
-        #     for name in active_objectives_names:
-        #         objectives_map[name].activate()
-
-        # retriving solutions to results object
         results.load_from_pyomo_model(self.model)
 
         return results
-        # c_noise_results = []
-
-        # w = np.zeros((self._n_components, self._n_allmeas_times))
-        # n_sig = np.zeros((self._n_components, self._n_allmeas_times))
-        # # for the noise term
-        # if sigmas:
-        #     for i, k in enumerate(self._mixture_components):
-        #         if k in sigmas.keys():
-        #             sigma = sigmas[k] ** 0.5
-        #             dw_k = np.random.normal(0.0, sigma, self._n_allmeas_times)
-        #             n_sig[i, :] = np.random.normal(0.0, sigma, self._n_allmeas_times)
-        #             w[i, :] = np.cumsum(dw_k)
-
-        # # this addition is not efficient but it can be changed later
-
-        # for i, t in enumerate(self._allmeas_times):
-        #     for j, k in enumerate(self._mixture_components):
-        #         # c_noise_results.append(Z_var[t,k].value+ w[j,i])
-        #         c_noise_results.append(Z_var[t, k].value + n_sig[j, i])
-
-        # c_noise_array = np.array(c_noise_results).reshape((self._n_allmeas_times, self._n_components))
-        # results.C = pd.DataFrame(data=c_noise_array,
-        #                           columns=self._mixture_components,
-        #                           index=self._allmeas_times)
-
-        # #added due to new structure for non_abs species, Cs as subset of C (CS):
-        # if hasattr(self, '_abs_components'):
-        #     cs_noise_results=[]
-        #     for i, t in enumerate(self._allmeas_times):
-        #         # if i in self._meas_times:
-        #         for j, k in enumerate(self._abs_components):
-        #             # c_noise_results.append(Z_var[t,k].value+ w[j,i])
-        #             cs_noise_results.append(Z_var[t, k].value + n_sig[j, i])
-
-        #     cs_noise_array = np.array(cs_noise_results).reshape((self._n_allmeas_times, self._nabs_components))
-        #     results.Cs = pd.DataFrame(data=cs_noise_array,
-        #                               columns=self._abs_components,
-        #                               index=self._allmeas_times)
-
-#        addition for inputs estimation with concentration data CS:
-        # if self._concentration_given == True and self._absorption_given == False:
-        #     c_noise_results = []
-        #     for i, t in enumerate(self._allmeas_times):
-        #         # if i in self._meas_times:
-        #         for j, k in enumerate(self._mixture_components):
-        #             c_noise_results.append(C_var[t, k].value)
-        #     c_noise_array = np.array(c_noise_results).reshape((self._n_allmeas_times, self._n_components))
-        #     results.C = pd.DataFrame(data=c_noise_array,
-        #                               columns=self._mixture_components,
-        #                               index=self._allmeas_times)
-
-        # if self._huplc_given == True:
-        #     results.load_from_pyomo_model(self.model,
-        #                               to_load=['Chat'])
-        # s_results = []
-        # # added due to new structure for non_abs species, non-absorbing species not included in S (CS):
-        # if hasattr(self, '_abs_components'):
-        #     for l in self._meas_lambdas:
-        #         for k in self._abs_components:
-        #             s_results.append(self.model.S[l, k].value)
-        # else:
-        #     for l in self._meas_lambdas:
-        #         for k in self._mixture_components:
-        #             s_results.append(self.model.S[l, k].value)
-
-        # d_results = []
-        # if sigmas:
-        #     sigma_d = sigmas.get('device') ** 0.5 if "device" in sigmas.keys() else 0
-        # else:
-        #     sigma_d = 0
-        # if s_results and c_noise_results:
-        #     # added due to new structure for non_abs species, Cs and S as above(CS):
-        #     if hasattr(self,'_abs_components'):
-        #         for i, t in enumerate(self._meas_times):
-        #             #if t in self._meas_times:
-        #                 # print(i, t)
-        #             for j, l in enumerate(self._meas_lambdas):
-        #                 suma = 0.0
-        #                 for w, k in enumerate(self._abs_components):
-        #                     # print(i, self._meas_times)
-        #                     Cs = cs_noise_results[i * self._nabs_components + w]
-        #                     S = s_results[j * self._nabs_components + w]
-        #                     suma += Cs * S
-        #                 if sigma_d:
-        #                     suma += np.random.normal(0.0, sigma_d)
-        #                 d_results.append(suma)
-        #                 # print(d_results)
-        #     else:
-        #         for i, t in enumerate(self._meas_times):
-        #             # # print(i, t)
-        #             # if t in self._meas_times:
-        #             for j, l in enumerate(self._meas_lambdas):
-        #                 suma = 0.0
-        #                 for w, k in enumerate(self._mixture_components):
-        #                     # print(i, self._meas_times)
-        #                     C = c_noise_results[i * self._n_components + w]
-        #                     S = s_results[j * self._n_components + w]
-        #                     suma += C * S
-        #                 if sigma_d:
-        #                     suma += np.random.normal(0.0, sigma_d)
-        #                 d_results.append(suma)
-        #                 # print(d_results)
-        # # added due to new structure for non_abs species, non-absorbing species not included in S (CS):
-        # if hasattr(self, '_abs_components'):
-        #     s_array = np.array(s_results).reshape((self._n_meas_lambdas, self._nabs_components))
-        #     results.S = pd.DataFrame(data=s_array,
-        #                               columns=self._abs_components,
-        #                               index=self._meas_lambdas)
-        # else:
-        #     s_array = np.array(s_results).reshape((self._n_meas_lambdas, self._n_components))
-        #     results.S = pd.DataFrame(data=s_array,
-        #                               columns=self._mixture_components,
-        #                               index=self._meas_lambdas)
-
-
-        # d_array = np.array(d_results).reshape((self._n_meas_times, self._n_meas_lambdas))
-        # results.D = pd.DataFrame(data=d_array,
-        #                          columns=self._meas_lambdas,
-        #                          index=self._meas_times)
-
-        # s_data_dict = dict()
-        # for t in self._meas_times:
-        #     for l in self._meas_lambdas:
-        #         s_data_dict[t, l] = float(results.D[l][t])
-
-        # # Added due to estimation with fe-factory and inputs where data already loaded to model before (CS)
-        # if self._spectra_given:
-        #     self.model.del_component(self.model.D)
-        #     self.model.del_component(self.model.D_index)
-        # #########
-
-        # self.model.D = Param(self._meas_times,
-        #                      self._meas_lambdas,
-        #                      initialize=s_data_dict)
-
-        # param_vals = dict()
-        # for name in self.model.parameter_names:
-        #     param_vals[name] = self.model.P[name].value
-
-        # results.P = param_vals
-        
-
+   
     @staticmethod
     def add_warm_start_suffixes(model, use_k_aug=False):
         """Adds suffixed variables to problem
