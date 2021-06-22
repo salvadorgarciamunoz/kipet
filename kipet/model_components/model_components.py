@@ -21,7 +21,20 @@ class ModelElement:
                  units_orig=None,
                  conversion_factor=1,
                  ): 
+        """The initialization of a general model component (higher level)
         
+        :param str name: The name of the model parameter
+        :param str class: The subclass of model component
+        :param float value: The initial value
+        :param str units: The units used to describe the parameter
+        :param UnitRegistry unit_base: Inherited unit registry object
+        :param str description: Optional description of the component (used in plots)
+        :param GeneralVar pyomo_var: The dummy pyomo variable representing this component
+        :param str model_var: The model variable where the component is indexed
+        :param str units_orig: The originally provided units
+        :param float conversion_factor: An attribute for converting scalars in unit changes
+        
+        """
         self.name = self._check_name(name)
         self.class_ = class_
         self.value = value
@@ -177,6 +190,25 @@ class ModelAlgebraic(ModelElement):
                  active=True,
                  ):
     
+        """The initialization of a model algebraic (dosing, steps, custom, etc.)
+        
+        :param str name: The name of the model component
+        :param float value: The initial value 
+        :param tuple bounds: A tuple of two floats to place bounds on the component trajectories
+        :param str units: The units used to describe the component
+        :param UnitRegistry unit_base: Inherited unit registry object
+        :param bool known: Indicates if the value attribute is fixed
+        :param str description: Optional description of the component (used in plots)
+        :param pandas.DataFrame data: Optional data - if used this will fix the trajectory
+        :param dict step: If the algebraic is a step variable, the data is passed here
+        :param GeneralVar pyomo_var: The dummy pyomo variable representing this component
+        :param str model_var: The model variable where the component is indexed
+        :param str units_orig: The originally provided units
+        :param float conversion_factor: An attribute for converting scalars in unit changes
+        :param bool is_reaction: Indicates if the algebraic is a reaction equation
+        :param bool active: Turns the algebraic equation on/off
+        
+        """
         super().__init__(name, ModelComponent.class_, value, units,
                          unit_base, description, pyomo_var, model_var, 
                          units_orig, conversion_factor,
@@ -220,6 +252,7 @@ class ModelComponent(ModelElement):
     
     class_ = 'model_component'
     
+    
     def __init__(self,
                  name=None,
                  state=None,
@@ -238,6 +271,26 @@ class ModelComponent(ModelElement):
                  inert=False,
                  S=None
                  ):
+        """The initialization of a model component (concentration based)
+        
+        :param str name: The name of the model component
+        :param str state: Fixed to concentration
+        :param float value: The initial value (usually concentration)
+        :param float variance: The component variance if known
+        :param str units: The units used to describe the component
+        :param UnitRegistry unit_base: Inherited unit registry object
+        :param bool known: Indicates if the value attribute is fixed
+        :param tuple bounds: A tuple of two floats to place bounds on the component trajectories
+        :param str description: Optional description of the component (used in plots)
+        :param bool absorbing: Indicates if the component is seen in the absorbtion data
+        :param GeneralVar pyomo_var: The dummy pyomo variable representing this component
+        :param str model_var: The model variable where the component is indexed
+        :param str units_orig: The originally provided units
+        :param float conversion_factor: An attribute for converting scalars in unit changes
+        :param bool inert: Indicates if the component participates in reactions
+        :param pandas.DataFrame S: The absorbtion spectra, if known
+        
+        """
     
         super().__init__(name, ModelComponent.class_, value, units,
                          unit_base, description, pyomo_var, model_var,
@@ -310,7 +363,24 @@ class ModelState(ModelElement):
                  units_orig=None,
                  conversion_factor=1,
                  ):
-    
+        """The initialization of a model state
+        
+        :param str name: The name of the model state
+        :param str state: Fixed to state
+        :param float value: The initial value (usually concentration)
+        :param float variance: The state variance if known
+        :param str units: The units used to describe the component
+        :param UnitRegistry unit_base: Inherited unit registry object
+        :param bool known: Indicates if the value attribute is fixed
+        :param tuple bounds: A tuple of two floats to place bounds on the component trajectories
+        :param str description: Optional description of the component (used in plots)
+        :param GeneralVar pyomo_var: The dummy pyomo variable representing this component
+        :param str model_var: The model variable where the component is indexed
+        :param str units_orig: The originally provided units
+        :param float conversion_factor: An attribute for converting scalars in unit changes
+        
+        
+        """
         super().__init__(name, ModelComponent.class_, value, units,
                          unit_base, description, pyomo_var, model_var, 
                          units_orig, conversion_factor)
@@ -380,7 +450,22 @@ class ModelParameter(ModelElement):
                  units_orig=None,
                  conversion_factor=1,
                  ):
-    
+        """The initialization of a model parameter
+        
+        :param str name: The name of the model parameter
+        :param float value: The initial value
+        :param str units: The units used to describe the parameter
+        :param UnitRegistry unit_base: Inherited unit registry object
+        :param tuple bounds: A tuple of two floats to place bounds on the component trajectories
+        :param bool fixed: Indicates if the parameter is fixed
+        :param float variance: The parameter variance if known
+        :param str description: Optional description of the component (used in plots)
+        :param GeneralVar pyomo_var: The dummy pyomo variable representing this component
+        :param str model_var: The model variable where the component is indexed
+        :param str units_orig: The originally provided units
+        :param float conversion_factor: An attribute for converting scalars in unit changes
+        
+        """
         super().__init__(name, ModelComponent.class_, value, units,
                          unit_base, description, pyomo_var, model_var, 
                          units_orig, conversion_factor)
@@ -437,7 +522,19 @@ class ModelConstant(ModelElement):
                  units_orig=None,
                  conversion_factor=1,
                  ):
-    
+        """The initialization of a model constant
+        
+        :param str name: The name of the model parameter
+        :param float value: The initial value
+        :param str units: The units used to describe the parameter
+        :param UnitRegistry unit_base: Inherited unit registry object
+        :param str description: Optional description of the component (used in plots)
+        :param GeneralVar pyomo_var: The dummy pyomo variable representing this component
+        :param str model_var: The model variable where the component is indexed
+        :param str units_orig: The originally provided units
+        :param float conversion_factor: An attribute for converting scalars in unit changes
+        
+        """
         super().__init__(name, ModelComponent.class_, value, units,
                          unit_base, description, pyomo_var, model_var, 
                          units_orig, conversion_factor)

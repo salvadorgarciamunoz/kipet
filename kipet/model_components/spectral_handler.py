@@ -2,6 +2,8 @@
 Spectral Data Handling for Kipet
 """
 # Third party imports
+import numpy as np
+import pandas as pd
 import plotly.graph_objs as go
 from plotly.offline import plot
 
@@ -31,7 +33,7 @@ class SpectralData:
     
     """
 
-    def __init__(self, name, data=None, remove_negatives=False):
+    def __init__(self, name, data=None, file=None, remove_negatives=False):
         """
         Initialize a SpectralData instance
     
@@ -42,6 +44,7 @@ class SpectralData:
         """
         self.name = name
         self.data = data
+        self.file = file
         self.data_orig = data
         self.remove_negatives = remove_negatives
 
@@ -49,6 +52,15 @@ class SpectralData:
             self._remove_negatives()
 
         self._check_columns()
+        
+        self._decreased_wavelengths = None
+        self._decreased_times = None
+        self._sg = None
+        self._msc = None
+        self._snv = None
+        self._base = None
+        self._negatives_removed = None
+        
 
     def add_data(self, data):
         """Adds a dataset to a SpectralData instance.
@@ -131,16 +143,17 @@ class SpectralData:
 
         """
         self.data[self.data < 0] = 0
+        self._removed_negatives = True
 
-    def savitzky_golay(self, window_size=3, orderPoly=2, orderDeriv=0, in_place=True):
+    def savitzky_golay(self, window=3, poly=2, deriv=0, in_place=True):
         """Implementation of the Savitzky-Golay filter for Kipet. Used for smoothing data, with
         the option to also differentiate the data. Can be used to remove high-frequency noise.
         Creates a least-squares fit of data within each time window with a high order polynomial centered
         centered at the middle of the window of points.
 
-        :param int window_size: The length of the window. Must be an odd integer number
-        :param int orderPoly: Order of the polynoial used in the filter. Should be less than window_size-1
-        :param int orderDeriv: (optional) The order of the derivative to compute (default = 0 means only smoothing)
+        :param int window: The length of the window. Must be an odd integer number
+        :param int poly: Order of the polynoial used in the filter. Should be less than window_size-1
+        :param int deriv: (optional) The order of the derivative to compute (default = 0 means only smoothing)
         :param bool in_place: Option to update the data in place
 
         :return: DataFrame containing the smoothed data
@@ -155,8 +168,9 @@ class SpectralData:
         """
         dataFrame = self.data
         try:
-            window_size = np.abs(np.int(window_size))
-            orderPoly = np.abs(np.int(orderPoly))
+            window_size = np.abs(np.int(window))
+            orderPoly = np.abs(np.int(poly))
+            orderDeriv = np.abs(np.int(deriv))
         except ValueError:
             raise ValueError("window_size and order have to be of type int")
         if window_size % 2 != 1 or window_size < 1:
@@ -200,6 +214,13 @@ class SpectralData:
 
         if in_place:
             self.data = data_frame
+
+        self._sg = {
+            'Method': 'Sovitzky-Golay',
+            'Window Size': window,
+            'Polygon Order': poly,
+            'Derivative Order': deriv,
+            }
 
         return data_frame
 
@@ -251,6 +272,12 @@ class SpectralData:
                                   index=dataFrame.index)
         if in_place:
             self.data = data_frame
+            
+        self._snv = {
+            'Method': 'Standard Normal Variate Filter',
+            'Offset': offset,
+            }
+            
         return data_frame
 
     def msc(self, reference_spectra=None, in_place=True):
@@ -312,6 +339,12 @@ class SpectralData:
                                   index=dataFrame.index)
         if in_place:
             self.data = data_frame
+            
+        self._msc = {
+            'Method': 'Multiplicative Scatter Correction Filter',
+            'Offset': 'Provided DataFrame of reference spectra',
+            }
+            
         return data_frame
 
     def baseline_shift(self, shift=None, in_place=True):
@@ -348,6 +381,12 @@ class SpectralData:
 
         if in_place:
             self.data = data_frame
+            
+        self._base = {
+            'Method': 'Basic Baseline Shift',
+            'Shift': shift,
+            }
+            
         return data_frame
 
     def decrease_wavelengths(self, A_set=2, specific_subset=None, in_place=True):
@@ -391,6 +430,12 @@ class SpectralData:
 
         if in_place:
             self.data = new_D
+            
+        self._decreased_wavelengths = {
+            'Method': 'Basic removal of specifc wavelength intervals',
+            'Frequency': A_set if specific_subset is None else 'None',
+            'Subset Used': 'Yes' if specific_subset is not None else 'No'
+            }
         return new_D
 
     def decrease_times(self, A_set=2, in_place=True):
@@ -410,4 +455,9 @@ class SpectralData:
         new_D = original_dataset[original_dataset.columns[::A_set]]
         if in_place:
             self.data = new_D
+            
+        self._decreased_times = {
+            'Method': 'Basic removal of specifc time intervals',
+            'Frequency': A_set,
+            }
         return new_D

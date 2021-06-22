@@ -200,7 +200,8 @@ class DataSet:
         :return: None
         
         """
-        self.data[self.data < 0] = 0
+        # self.data[self.data < 0] = 0
+        self.data.mask(self.data < 0, 0)
         return None
 
     def show_data(self):
