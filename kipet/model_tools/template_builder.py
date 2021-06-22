@@ -2,6 +2,7 @@
 
 # Standard library imports
 import inspect
+import itertools
 import logging
 import warnings
 
@@ -9,12 +10,13 @@ import warnings
 import numpy as np
 import pandas as pd
 import six
-from pyomo.dae import *
-from pyomo.environ import *
+from pyomo.dae import ContinuousSet, DerivativeVar
+from pyomo.environ import (ConcreteModel, Constraint, ConstraintList, 
+                           Param, Reals, Var, Set, Suffix)
 
+# KIPET library imports
 from kipet.model_components.component_expression import Comp
 from kipet.model_tools.visitor_classes import ReplacementVisitor
-# KIPET library imports
 from kipet.general_settings.variable_names import VariableNames
 
 logger = logging.getLogger('ModelBuilderLogger')
@@ -45,6 +47,9 @@ class TemplateBuilder(object):
         self._y_bounds = dict()  # added for additional optional bounds CS
         self._y_init = dict()
         self._prof_bounds = list()  # added for additional optional bounds MS
+        self._prof_points = list()
+        self._point_times = list()
+        self._point_wavelengths = list()
         self._spectral_data = None
         self._concentration_data = None
         self._complementary_states_data = None # added for complementary state data (Est.) KM
@@ -87,6 +92,7 @@ class TemplateBuilder(object):
         self._g_bounds = None
         self._g_init = None
         self._add_dosing_var = False
+        self._solid_spec = None
 
     def add_state_variance(self, sigma_dict):
         """Provide a variance for the measured states
@@ -174,6 +180,7 @@ class TemplateBuilder(object):
         data_type_labels = {'component' : 'concentration',
                             'state': 'complementary_states',
                             'algebraic': 'custom',
+                            'uplc': ''
                             }
 
         if data_block_dict is not None:
@@ -240,6 +247,7 @@ class TemplateBuilder(object):
             self.__var.state,
             self.__var.concentration_measured,
             self.__var.user_defined,
+            self.__var.huplc_data,
             ]
             
         deriv_data = [
@@ -284,7 +292,6 @@ class TemplateBuilder(object):
             if not overwrite:
                 if hasattr(self, f'_{data_type}_data'):
                     df_data = getattr(self, f'_{data_type}_data')
-                    #print(f'df_data:\n{df_data}')
                     df_data = pd.concat([df_data, dfallc], axis=1)
                     setattr(self, f'_{data_type}_data', df_data)
             else:
@@ -304,7 +311,6 @@ class TemplateBuilder(object):
                         pass
                     else:
                         setattr(self, f'_is_{label}_deriv', True)
-            #print(label, hasattr(self, f'_is_{label}_deriv'))
             if getattr(self, f'_is_{label}_deriv') == True:
                 print(
                     f"Warning! Since {label}-matrix contains negative values Kipet is assuming a derivative of {label} has been inputted")
@@ -323,6 +329,9 @@ class TemplateBuilder(object):
         self._add_state_data(data,
                              data_type='huplc',
                              overwrite=overwrite)
+        
+        self._is_huplc_abs_set = True
+        self._huplc_absorbing = data.columns
 
     def add_smoothparam_data(self, data, overwrite=True):
         """Add smoothing parameter data
@@ -387,33 +396,7 @@ class TemplateBuilder(object):
         for t in times:
             t = self.round_time(t)
             self._feed_times.add(t)
-            self._meas_times.add(t)
 
-    def add_measurement_times(self, times):
-        """Add measurement times to the model
-
-        :param array-like times: feeding points
-
-        :return: None
-
-        """
-        for t in times:
-            t = self.round_time(t)
-            self._meas_times.add(t)
-
-    def add_huplcmeasurement_times(self, times):
-        """Add H/UPLC measurement times to the model
-
-        :param array_like times: measurement points
-
-        :return: None
-
-        """
-        for t in times:
-            t = self.round_time(t)
-            self._huplcmeas_times.add(t)
-
-    # read bounds and initialize for qr and g (unwanted contri variables) from users KH.L
     def add_qr_bounds_init(self, bounds=None, init=None):
         """Read bounds and initialize for qr variables
 
@@ -510,28 +493,25 @@ class TemplateBuilder(object):
         :return: None
 
         """
-        if not isinstance(var, str):
-            raise RuntimeError('var argument needs to be type string')
-
-        if var not in ['C', 'U', 'S']:
-            raise RuntimeError('var argument needs to be either C, U, or S')
-
-        if comp is not None:
-            if not isinstance(comp, str):
-                raise RuntimeError('comp argument needs to be type string')
-            if comp not in self._component_names:
-                raise RuntimeError('comp needs to be one of the components')
-
-        if profile_range is not None:
-            if not isinstance(profile_range, tuple):
-                raise RuntimeError('profile_range needs to be a tuple')
-                if profile_range[0] > profile_range[1]:
-                    raise RuntimeError('profile_range[0] must be greater than profile_range[1]')
-
-        if not isinstance(bounds, tuple):
-            raise RuntimeError('bounds needs to be a tuple')
-
         self._prof_bounds.append([var, comp, profile_range, bounds])
+
+    def bound_point(self, var, bounds, comp=None, point=None):
+        """function that allows the user to bound a certain profile to some value
+
+        :param GeneralVar var: The pyomo variable that we will bound
+        :param str comp:The component that bound applies to
+        :param tuple profile_range: The range within the set to be bounded
+        :param tuple bounds: The values to bound the profile to
+
+        :return: None
+
+        """
+        if var != 'S':
+            self._point_times.append(point)
+        else:
+            self._point_wavelengths.append(point)
+        
+        self._prof_points.append([var, comp, point, bounds])
 
     def _validate_data(self, model):
         """Verify all inputs to the model make sense.
@@ -664,7 +644,6 @@ class TemplateBuilder(object):
             
         if hasattr(model, self.__var.concentration_init):
             
-            # What is this doing?
             def rule_Pinit_conditions(m, k):
                 if k in m.mixture_components:
                     return getattr(m, self.__var.concentration_init)[k] - m.init_conditions[k] == 0
@@ -704,13 +683,11 @@ class TemplateBuilder(object):
             
             var, model_set = model_pred_var_name[var_class.attr_class_set_name]
             
-            # Check if any data for the variable type exists (Pyomo 5.7 update)
             if hasattr(model_set, 'ordered_data') and len(model_set.ordered_data()) == 0:
                 continue
             
             setattr(model, var, Var(model.alltime,
                                           model_set,
-                                          # units=v_info.as_dict('units'),
                                           initialize=1) 
                     )    
         
@@ -720,11 +697,9 @@ class TemplateBuilder(object):
                     getattr(model, var)[time, comp].value = v_info[comp].value
                    
             setattr(model, f'd{var}dt', DerivativeVar(getattr(model, var),
-                                                     # units=self.u.mol/self.u.l,
                                                       wrt=model.alltime)
                     )
 
-        # Variables of provided data - set as fixed variables complementary to above
         fixed_var_name = {
                 self.__var.concentration_measured : self._concentration_data,
                 self.__var.state : self._complementary_states_data,
@@ -1000,6 +975,7 @@ class TemplateBuilder(object):
         if self._algebraic_constraints:
             if hasattr(self, 'reaction_dict') or hasattr(self, '_use_alg_dict') and self._use_alg_dict:
                 n_alg_eqns = list(self._algebraic_constraints.keys())
+                
                 def rule_algebraics(m, t, k):
                     alg_const = self._algebraic_constraints[k].expression
                     alg_var = getattr(m, self.__var.algebraic)[t, k]
@@ -1042,7 +1018,7 @@ class TemplateBuilder(object):
        
         return None
 
-    def _add_spectral_variables(self, model, is_simulation):
+    def _add_spectral_variables(self, model, estimator):
         """Add D and C variables for the spectral data
 
         :param ConcreteModel model: The created Pyomo model
@@ -1053,20 +1029,21 @@ class TemplateBuilder(object):
         """
         if self._spectral_data is not None:
             s_data_dict = dict()
-            for t in model.meas_times:
-                for l in model.meas_lambdas:
-                    if t in model.meas_times:
-                        s_data_dict[t, l] = float(self._spectral_data.loc[t, l])
-                    else:
-                        s_data_dict[t, l] = float('nan')
+            index_list = list(itertools.product(self._spectral_data.index, self._spectral_data.columns))
+            
+            for index in index_list:
+                try:
+                    s_data_dict[index] = float(self._spectral_data.loc[index])
+                except:
+                    s_data_dict[index] = float('nan')
 
-            setattr(model, self.__var.spectra_data, Param(model.meas_times,
+            setattr(model, self.__var.spectra_data, Param(model.times_spectral,
                                                           model.meas_lambdas,
                                                           domain=Reals,
                                                           initialize=s_data_dict))
             
-            if not is_simulation:
-                setattr(model, self.__var.concentration_spectra, Var(model.meas_times,
+            if estimator != 'simulator':
+                setattr(model, self.__var.concentration_spectra, Var(model.times_spectral,
                                                                  model.mixture_components,
                                                                  bounds=(0, None),
                                                                  initialize=1))
@@ -1121,6 +1098,42 @@ class TemplateBuilder(object):
                         
         return None
     
+    def _check_bounds_entries(self):
+        """Checks the bounded variables after the model has been built.
+        
+        :return: None
+        
+        """
+        for bound_set in self._prof_bounds:
+
+            var = bound_set[0]
+            comp = bound_set[1]
+            profile_range = bound_set[2]
+            bounds = bound_set[3]
+        
+            if not isinstance(var, str):
+                raise RuntimeError('var argument needs to be type string')
+    
+            if var not in ['C', 'U', 'S']:
+                raise RuntimeError('var argument needs to be either C, U, or S')
+    
+            if comp is not None:
+                if not isinstance(comp, str):
+                    raise RuntimeError('comp argument needs to be type string')
+                if comp not in self.template_component_data.names:
+                    raise RuntimeError('comp needs to be one of the components')
+    
+            if profile_range is not None:
+                if not isinstance(profile_range, tuple):
+                    raise RuntimeError('profile_range needs to be a tuple')
+                    if profile_range[0] > profile_range[1]:
+                        raise RuntimeError('profile_range[0] must be greater than profile_range[1]')
+    
+            if not isinstance(bounds, tuple):
+                raise RuntimeError('bounds needs to be a tuple')
+                
+        return None
+        
     def _apply_bounds_to_variables(self, model):
         """User specified bounds to certain model variables are added here
 
@@ -1148,6 +1161,15 @@ class TemplateBuilder(object):
                         getattr(model, var)[time, comp].setlb(lower_bound)
                         getattr(model, var)[time, comp].setub(upper_bound)
                         
+        for bound_set in self._prof_points:
+            var = bound_set[0]
+            component_name = bound_set[1]
+            time = bound_set[2]
+            upper_bound = bound_set[3][1]
+            lower_bound = bound_set[3][0]
+            getattr(model, var)[time, comp].setlb(lower_bound)
+            getattr(model, var)[time, comp].setub(upper_bound)
+                        
         return None
 
     def _add_model_smoothing_parameters(self, model):
@@ -1172,7 +1194,7 @@ class TemplateBuilder(object):
 
         return None
 
-    def _set_up_times(self, model, start_time, end_time, is_simulation=False):
+    def _set_up_times(self, model, start_time, end_time, estimator):
         """This method sets up the times for the model based on all of the inputs.
 
         :param ConcreteModel model: The created Pyomo model
@@ -1198,121 +1220,47 @@ class TemplateBuilder(object):
         
         start_time = self.round_time(start_time)
         end_time = self.round_time(end_time)
+        model_times = {}
+        model_data = {}
         
-        list_times = self._meas_times
-        m_times = sorted(list_times)
-        list_feedtimes = self._feed_times  # For inclusion of discrete feeds CS
-        feed_times = sorted(list_feedtimes)  # For inclusion of discrete feeds CS
-        m_lambdas = list()
-        m_alltimes = m_times
-        conc_times = list()
+        model_times['feed'] = sorted(list(set(self._feed_times)))
+        model_times['spectral'] = sorted(list(set(self._spectral_data.index))) if self._spectral_data is not None else list()
+        model_times['concentration'] = sorted(list(set(self._concentration_data.index))) if self._concentration_data is not None else list()
+        model_times['states'] = sorted(list(set(self._complementary_states_data.index))) if self._complementary_states_data is not None else list()
+        model_times['smooth'] = sorted(list(set(self._smoothparam_data.index))) if self._smoothparam_data is not None else list()
+        # model_times['point'] = set(self._point_times)
+    
+        model_data['lambda_D'] = sorted(list(self._spectral_data.columns)) if self._spectral_data is not None else list()
+        model_data['lambda_S'] = sorted(list(self._absorption_data.index)) if self._absorption_data is not None else list()
+        # model_data['lambda_point'] = set(self._point_wavelengths)
 
-        if not is_simulation:
+        if estimator == 'p_estimator':
+            model_times['uplc'] = sorted(list(set(self._huplc_data.index))) if self._huplc_data is not None else list()
+            model_times['custom'] = sorted(list(set(self._custom_data.index))) if self._custom_data is not None else list()
     
-            if self._spectral_data is not None and self._huplc_data is None:
-                list_times = list_times.union(set(self._spectral_data.index))
-                list_lambdas = list(self._spectral_data.columns)
-                m_times = sorted(list_times)
-                m_lambdas = sorted(list_lambdas)
-                m_alltimes=m_times
-    
-            if self._absorption_data is not None:
-                if not self._meas_times:
-                    raise RuntimeError('Need to add measurement times')
-                list_times = list(self._meas_times)
-                list_lambdas = list(self._absorption_data.index)
-                m_times = sorted(list_times)
-                m_lambdas = sorted(list_lambdas)
-    
-            if self._concentration_data is not None:
-                list_times = list_times.union(set(self._concentration_data.index))
-                list_concs = list(self._concentration_data.columns)
-                m_times = sorted(list_times)
-                conc_times = sorted(list_times)
-                m_alltimes = sorted(list_times)#has to be changed for including huplc data with conc data!
-                m_concs = sorted(list_concs)
-    
-            if self._complementary_states_data is not None:
-                list_times = list_times.union(set(self._complementary_states_data.index))
-                list_comps = list(self._complementary_states_data.columns)
-                m_times = sorted(list_times)
-                m_alltimes = sorted(list_times)
-                m_comps = sorted(list_comps)
-                
-            if self._custom_data is not None:
-                list_times = list_times.union(set(self._custom_data.index))
-                list_custom = list(self._custom_data.columns)
-                m_times = sorted(list_times)
-                m_alltimes = sorted(list_times)
-                m_custom = sorted(list_custom)
-    
-            #For inclusion of h/uplc data:
-            if self._huplc_data is not None and self._spectral_data is None: #added for additional H/UPLC data (CS)
-                list_huplctimes = self._huplcmeas_times
-                list_huplctimes = list_huplctimes.union(set(self._huplc_data.index))
-                list_conDhats = list(self._huplc_data.columns)
-                m_huplctimes = sorted(list_huplctimes)
-    
-            if self._huplc_data is not None and self._spectral_data is not None:
-                list_times = list_times.union(set(self._spectral_data.index))
-                list_lambdas = list(self._spectral_data.columns)
-                m_times = sorted(list_times)
-                m_lambdas = sorted(list_lambdas)
-                list_huplctimes = self._huplcmeas_times
-                list_huplctimes = list_huplctimes.union(set(self._huplc_data.index))
-                list_conDhats = list(self._huplc_data.columns)
-                m_huplctimes = sorted(list_huplctimes)
-                list_alltimes = list_times.union(list_huplctimes)
-                m_alltimes = sorted(list_alltimes)
-    
-            #added for optional smoothing CS:
-            if self._smoothparam_data is not None:
-                if self._huplc_data is not None and self._spectral_data is not None:
-                    list_alltimes = list_times.union(list_huplctimes)
-                    m_alltimes = sorted(list_alltimes)
-                    list_alltimessmooth = list_alltimes.union(set(self._smoothparam_data.index))
-                    m_allsmoothtimes = sorted(list_alltimessmooth)
-                else:
-                    list_timessmooth = list_times.union(set(self._smoothparam_data.index))
-                    m_alltimes = m_times
-                    m_allsmoothtimes = sorted(list_timessmooth)
-    
-            if self._huplc_data is not None:
-                if m_huplctimes:
-                    self._check_time_inputs(m_huplctimes, start_time, end_time)
-                    
-            if self._smoothparam_data is not None:
-                if m_allsmoothtimes:
-                    self._check_time_inputs(m_allsmoothtimes, start_time, end_time)
-                model.allsmooth_times = Set(initialize=m_allsmoothtimes, ordered=True)
-
-        if m_alltimes:
-            self._check_time_inputs(m_alltimes, start_time, end_time)
-
-        self._m_lambdas = m_lambdas
-
-        # For inclusion of discrete feeds CS
-        if self._feed_times is not None:
-            list_feedtimes = list(self._feed_times)
-            feed_times = sorted(list_feedtimes)
-
-        if self._huplc_data is not None:
-            model.huplcmeas_times = Set(initialize=m_huplctimes, ordered=True)
-            model.huplctime = ContinuousSet(initialize=model.huplcmeas_times,
-                                                  bounds=(start_time, end_time))
-            
-        model.allmeas_times = Set(initialize=m_alltimes, ordered=True) #add for new data structure CS
-        model.meas_times = Set(initialize=m_times, ordered=True)
-        model.feed_times = Set(initialize=feed_times, ordered=True)  # For inclusion of discrete feeds CS
-        model.meas_lambdas = Set(initialize=m_lambdas, ordered=True)
-        model.alltime = ContinuousSet(initialize=model.allmeas_times,
-                                      bounds=(start_time, end_time)) #add for new data structure CS
+        model_times['all_times'] = sorted(list(set().union(*model_times.values())))
+        model_data['all_lambdas'] = sorted(list(set().union(*model_data.values())))
+        
+        for key, value in model_times.items():
+            if key not in ['times', 'all_times']:
+                setattr(model, f'times_{key}', Set(initialize=value, ordered=True))
+        
+        model.feed_times = Set(initialize=model_times['feed'], ordered=True)
+        model.meas_lambdas = Set(initialize=model_data['all_lambdas'], ordered=True)
+        
+        model.allmeas_times = Set(initialize=model_times['all_times'], ordered=True)
+        model.alltime = ContinuousSet(initialize=model.allmeas_times, bounds=(start_time, end_time))
         
         model.start_time = Param(initialize=start_time, domain=Reals)
         model.end_time = Param(initialize=end_time, domain=Reals)
         
+        if 'uplc' in model_times:
+            model.huplcmeas_times = Set(initialize=model_times['uplc'], ordered=True)
+            model.huplctime = ContinuousSet(initialize=model.huplcmeas_times, bounds=(start_time, end_time))
+            
         self.start_time = start_time
         self.end_time = end_time
+        self.model_times = model_times
         
         return None
     
@@ -1381,21 +1329,23 @@ class TemplateBuilder(object):
         if hasattr(self, '_step_data') and len(self._step_data) > 0:
             steps = list(self._step_data.keys())
             
-            for step in steps:
-                step_info = self._step_data[step]
-                num_of_steps = len(step_info)
-                step_index = list(range(num_of_steps))
-                
-                
+            #for step in steps:
+                #step_info = self._step_data[step]
+                #num_of_steps = len(step_info)
+                #step_index = list(range(num_of_steps))
+                  
             tsc_index = []
             tsc_init = {}
             tsc_bounds = {}
+            tsc_fixed = {}
         
             for k, v in self._step_data.items():
                 for i, step_dict in enumerate(v):
                     tsc_init[f'{k}_{i}'] = step_dict['time']
                     tsc_bounds[f'{k}_{i}'] = step_dict.get('bounds', (model.start_time, model.end_time))
+                    tsc_fixed[f'{k}_{i}'] = step_dict['fixed']
                     tsc_index.append(f'{k}_{i}')
+                    
             
             setattr(model, self.__var.time_step_change, Var(tsc_index,
                                                            # step_index,
@@ -1406,6 +1356,9 @@ class TemplateBuilder(object):
             for k, v in getattr(model, self.__var.time_step_change).items():
                 v.setlb(tsc_bounds[k][0])
                 v.setub(tsc_bounds[k][1])
+                
+                if tsc_fixed[k]:
+                    v.fix()
             
             setattr(model, self.__var.step_variable, Var(model.alltime,
                                                          steps,
@@ -1413,8 +1366,6 @@ class TemplateBuilder(object):
                                                          initialize=1.0))
                 
             #Constraint to keep track of the step values (for diagnostics)
-                
-            
 
             constraint_suffix = 'constraint'
             
@@ -1424,6 +1375,7 @@ class TemplateBuilder(object):
                          #      step_index,
                                rule=rule_step_function))   
             
+            # If needed, this section may be implemented
             # def rule_step_alg(m, t, k, k2, factor):
             #       print(t, k, k2, factor)
             #       step_const = 1/factor*getattr(m, self.__var.algebraic)[t, k] - step_fun(m, t, num=k2, **self._step_data[k2])
@@ -1446,11 +1398,9 @@ class TemplateBuilder(object):
             #                        rule=rule_step_alg,
             #                        ))
                 
-                     
-                   
         return None
             
-    def create_pyomo_model(self, start_time=None, end_time=None, is_simulation=False):
+    def create_pyomo_model(self, start_time=None, end_time=None, estimator='simulator'):
         """Create a pyomo model from the provided data.
 
         This method is the core method for further simulation or optimization studies
@@ -1463,6 +1413,9 @@ class TemplateBuilder(object):
         :rtype: ConcreteModel
 
         """
+        print(f'# TemplateBuilder: Preparing model for {estimator}')
+        is_simulation = estimator == 'simulator' 
+        
         if self._spectral_data is not None and self._absorption_data is not None:
             raise RuntimeError('Either add absorption data or spectral data but not both')
         
@@ -1486,11 +1439,10 @@ class TemplateBuilder(object):
         pyomo_model.states = pyomo_model.mixture_components | pyomo_model.complementary_states
         pyomo_model.measured_data = Set(initialize=self._all_state_data)
         
-        
         # Set up the model time sets and parameters
-        self._set_up_times(pyomo_model, start_time, end_time, is_simulation)
+        self._set_up_times(pyomo_model, start_time, end_time, estimator)
         
-        # Set up the model by calling the following methods:
+        # Set up the model elements by calling the following methods:
         self._add_model_variables(pyomo_model)
         self._add_model_parameters(pyomo_model)
             
@@ -1503,7 +1455,9 @@ class TemplateBuilder(object):
         self._add_algebraic_var(pyomo_model)
         self._add_model_constants(pyomo_model)
         self._add_initial_conditions(pyomo_model)
-        self._add_spectral_variables(pyomo_model, is_simulation)
+        self._add_spectral_variables(pyomo_model, estimator)
+        
+        # This may be added below (no examples of this)
         self._add_model_smoothing_parameters(pyomo_model)
         
         # If unwanted contributions are being handled:
@@ -1516,6 +1470,7 @@ class TemplateBuilder(object):
         if not hasattr(self, 'c_mod'):
             self.c_mod = Comp(pyomo_model)
             
+        # Exit point for the dummy model
         if hasattr(self, 'early_return') and self.early_return:
             return pyomo_model
 
@@ -1526,7 +1481,8 @@ class TemplateBuilder(object):
         self._add_model_odes(pyomo_model)
         self._add_algebraic_constraints(pyomo_model)
         
-        if self._custom_objective and not is_simulation:
+        # Add objective terms for custom data
+        if self._custom_objective and estimator == 'p_estimator':
             self._add_objective_custom(pyomo_model)
         
         # Check the absorbing species sets
@@ -1542,24 +1498,47 @@ class TemplateBuilder(object):
         if hasattr(self, 'template_state_data'):
             self._state_sigmas.update(**self.template_state_data.var_variances())
         
+        # Add state/component variances
         for k, v in self._state_sigmas.items():
             if v is None:
                 self._state_sigmas[k] = 1
-                #print(f'Warning: No variance provided for model component {k}, it is being set to one')
        
         state_sigmas = {k: v for k, v in self._state_sigmas.items() if k in pyomo_model.measured_data}
-        pyomo_model.sigma = Param(pyomo_model.measured_data, domain=Reals, initialize=state_sigmas)
+        pyomo_model.sigma = Param(
+            pyomo_model.measured_data, 
+            domain=Reals, 
+            initialize=state_sigmas
+        )
        
-        # In case of a second call after known_absorbing has been declared
-        if self._huplc_data is not None and self._is_huplc_abs_set:
-            self.set_huplc_absorbing_species(pyomo_model, self._huplc_absorbing, self._vol, self._solid_spec, check=False)
+        # Add UPLC data too the ParameterEstimator model
+        if estimator ==  'p_estimator':
+            if self._huplc_data is not None and self._is_huplc_abs_set:
+                self.set_huplc_absorbing_species(pyomo_model, self._huplc_absorbing, self._vol, self._solid_spec, check=False)
 
-        if self._is_known_abs_set:  
-            self.set_known_absorbing_species(pyomo_model,
-                                             self._known_absorbance,
-                                             self._known_absorbance_data,
-                                             check=False
-                                             )
+        # In case of a second call after known_absorbing has been declared
+        
+        # This needs to be handled like a normal update
+        # If a species has .S that is not None, then this should be called here
+        
+        if not is_simulation:
+        
+            known_abs = []
+            known_abs_data = []
+            for comp in self.template_component_data:
+                if comp.S is not None:
+                    known_abs.append(comp.name)
+                    known_abs_data.append(comp.S)
+            
+            self._known_absorbance = known_abs
+            self._known_absorbance_data = known_abs_data
+            
+            if len(self._known_absorbance) > 0:  
+                self.set_known_absorbing_species(
+                    pyomo_model,
+                    self._known_absorbance,
+                    self._known_absorbance_data,
+                    check=False
+                )
             
         return pyomo_model
 
@@ -1665,8 +1644,7 @@ class TemplateBuilder(object):
         :return: None
 
         """
-        if hasattr(model, 'dual') and hasattr(model, 'ipopt_zL_out') and hasattr(model, 'ipopt_zU_out') and hasattr(
-                model, 'ipopt_zL_in') and hasattr(model, 'ipopt_zU_in'):
+        if hasattr(model, 'dual') and hasattr(model, 'ipopt_zL_out') and hasattr(model, 'ipopt_zU_out') and hasattr(model, 'ipopt_zL_in') and hasattr(model, 'ipopt_zU_in'):
             print('warmstart model components already set up before.')
         else:
             model.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
@@ -1699,14 +1677,13 @@ class TemplateBuilder(object):
         C = getattr(model, self.__var.concentration_spectra)
         Z = getattr(model, self.__var.concentration_model)
 
-        times = getattr(model, 'meas_times')
+        times = getattr(model, 'times_spectral')
         alltimes = getattr(model, 'allmeas_times')
         allcomps = getattr(model, 'mixture_components')
 
         model.add_component('fixed_C', ConstraintList())
         new_con = getattr(model, 'fixed_C')
 
-        #############################
         # Exclude non absorbing species from S matrix and create subset Cs of C (CS):
         model.add_component('abs_components_names', Set())
         abscompsnames = [name for name in set(sorted(set(allcomps) - set(self._non_absorbing)))]
@@ -1724,6 +1701,8 @@ class TemplateBuilder(object):
             for componenta in abscomps:
                 if time in times:
                     matchCsC_con.add(Cs[time, componenta] == C[time, componenta])
+                    
+        return None
 
     def set_known_absorbing_species(self, model, known_abs_list, absorbance_data, check=True):
         """Sets the known absorbance profiles for specific components of the model.
@@ -1744,16 +1723,16 @@ class TemplateBuilder(object):
             raise RuntimeError('Species with known absorbance were already set up before.')
 
         self._is_known_abs_set = True
-        self._known_absorbance = known_abs_list
-        self._known_absorbance_data = absorbance_data
         model.add_component('known_absorbance', Set(initialize=self._known_absorbance))
         S = getattr(model, self.__var.spectra_species)
         lambdas = getattr(model, 'meas_lambdas')
         model.known_absorbance_data = self._known_absorbance_data
         for component in self._known_absorbance:
             for l in lambdas:
-                S[l, component].set_value(self._known_absorbance_data[component][l])
+                S[l, component].set_value(self._known_absorbance_data[0].loc[l, component])
                 S[l, component].fix()
+                
+        return None
 
     def set_huplc_absorbing_species(self, model, huplc_abs_list, vol=None, solid_spec=None, check=True):
         """Sets the non absorbing component of the model.
@@ -1775,21 +1754,17 @@ class TemplateBuilder(object):
             raise RuntimeError('huplc-absorbing species have been already set up.')
 
         self._is_huplc_abs_set = True
-        self._vol=vol
-        model.add_component('vol', Param(initialize=self._vol))
+        #self._vol=vol
+        #model.add_component('vol', Param(initialize=self._vol, within=Reals))
 
         self._huplc_absorbing = huplc_abs_list
         model.add_component('huplc_absorbing', Set(initialize=self._huplc_absorbing))
-        alltime = getattr(model, 'alltime')
         times = getattr(model, 'huplcmeas_times')
-        alltimes = getattr(model, 'allmeas_times')
         timesh = getattr(model, 'huplctime')
-        alltime=getattr(model, 'alltime')
-        #########
+
         model.add_component('huplcabs_components_names', Set())
         huplcabscompsnames = [name for name in set(sorted(self._huplc_absorbing))]
         model.add_component('huplcabs_components', Set(initialize=huplcabscompsnames))
-        huplcabscomps = getattr(model, 'huplcabs_components')
 
         self._solid_spec=solid_spec
         if solid_spec is not None:
@@ -1799,22 +1774,14 @@ class TemplateBuilder(object):
             model.add_component('solid_spec_arg2', Set(initialize=solid_spec_arg2keys))
             model.add_component('solid_spec', Var(model.solid_spec_arg1, model.solid_spec_arg2, initialize=self._solid_spec))
 
-        C = getattr(model, self.__var.concentration_spectra)
-        Z = getattr(model, self.__var.concentration_model)
-
         Dhat_dict=dict()
         for k in self._huplc_data.columns:
             for c in self._huplc_data.index:
                 Dhat_dict[c, k] = float(self._huplc_data[k][c])
 
         model.add_component('fixed_Dhat', ConstraintList())
-        new_con = getattr(model, 'fixed_Dhat')
-
         model.add_component('Dhat', Var(times, huplcabscompsnames,initialize=Dhat_dict))
-        Dhat = getattr(model, 'Dhat')
         model.add_component('Chat', Var(timesh, huplcabscompsnames,initialize=1))
-
-        Chat = getattr(model, 'Chat')
-
         model.add_component('matchChatZ', ConstraintList())
-        matchChatZ_con = getattr(model, 'matchChatZ')
+        
+        return None
