@@ -111,6 +111,9 @@ class Report:
             param_data['description'] = 'Not provided' if param.description is None else param.description
             params.append(param_data)
             
+            if hasattr(reaction_model, 'p_model'):
+                param_data['fixed'] = reaction_model.p_model.P[param.name].fixed
+            
         if hasattr(reaction_model.results, 'time_step_change'):
             for indx, param in pd.DataFrame(reaction_model.results.time_step_change).iterrows():
                
@@ -133,7 +136,7 @@ class Report:
                
                 param_data = {}
                 param_data['name'] = f'{indx}'
-                param_data['units'] = dimensionless_check(reaction_model.components[indx].units.u)
+                param_data['units'] = dimensionless_check(reaction_model.components[indx].units)
                 param_data['value'] = param.loc[0]
                 param_data['lb'] = reaction_model.components[indx].bounds[0]
                 param_data['ub'] = reaction_model.components[indx].bounds[1]
@@ -471,7 +474,6 @@ def dimensionless_check(units):
     :rtype: str
     
     """
-    
     if units.u == '':
         return '-'
     else:
