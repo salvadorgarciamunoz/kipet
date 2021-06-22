@@ -10,16 +10,19 @@ import warnings
 
 # Third party imports
 import numpy as np
+import pandas as pd
+from pathlib import Path
+
 from pyomo.environ import (Constraint, ConstraintList, Objective,
-    SolverFactory, Suffix, TerminationCondition, Var)
+    SolverFactory, Suffix, TerminationCondition, value, Var)
+from scipy.sparse import coo_matrix
 import scipy.stats as st
 
 # KIPET library imports
 from kipet.model_components.objectives import (comp_objective,
                                                conc_objective)
-#from kipet.input_output.read_hessian import *
+from kipet.input_output.read_hessian import split_sipopt_string, read_reduce_hessian, save_eig_red_hess
 from kipet.estimator_tools.pyomo_simulator import PyomoSimulator
-#from kipet.model_tools.template_builder import *
 from kipet.estimator_tools.results_object import ResultsObject
 from kipet.mixins.parameter_estimator_mixins import PEMixins
 from kipet.model_tools.pyomo_model_tools import convert
@@ -36,6 +39,7 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         self.__var = VariableNames()
 
         self.hessian = None
+        self.cov = None
         self._estimability = False
         self._idx_to_variable = dict()
         self._n_actual = self._n_components
@@ -50,8 +54,19 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         self.time_invariant_G_decompose = False
         self.time_invariant_G_no_decompose = False
         
-        self.confidence_interval = 0.6826894921373
-
+        # Parameter name list
+        
+        self.param_names = []
+        self.param_names_full = []
+        self.param_names_full += [f'P[{p}]' for p, v in getattr(self.model, 'P').items() if not v.fixed] #self.__var.model_parameter)]
+        self.param_names += [p for p, v in getattr(self.model, 'P').items() if not v.fixed]
+        if hasattr(self.model, 'Pinit'):
+            self.param_names_full += [f'init_conditions[{p}]' for p in getattr(self.model, 'Pinit')]
+            self.param_names += [p for p in getattr(self.model, 'Pinit')]
+        if hasattr(self.model, 'time_step_change'):
+            self.param_names_full += [f'time_step_change[{p}]' for p, v in getattr(self.model, 'time_step_change').items() if not v.fixed]
+            self.param_names += [p for p, v in getattr(self.model, 'time_step_change').items() if not v.fixed]
+#
         if hasattr(self.model, 'non_absorbing'):
             warnings.warn("Overriden by non_absorbing")
             list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
@@ -60,9 +75,8 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
 
         # for new huplc structure (CS):
         if self._huplc_given:
-            list_huplcabs = [k for k in self._huplc_absorbing]
-            self._list_huplcabs = list_huplcabs
-            self._n_huplc = len(list_huplcabs)
+            self._list_huplcabs = self._huplc_absorbing
+            # self._n_huplc = len(self._list_huplcabs)
 
         if hasattr(self.model, 'known_absorbance'):
             warnings.warn("Overriden by known_absorbance")
@@ -120,14 +134,11 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         tee = kwds.pop('tee', False)
         with_d_vars = kwds.pop('with_d_vars', False)
         covariance = kwds.pop('covariance', False)
-        symbolic_solver_labels = kwds.pop('symbolic_solver_labels', False)
-
+ 
         estimability = kwds.pop('estimability', False)
         report_time = kwds.pop('report_time', False)
         model_variance = kwds.pop('model_variance', True)
 
-        # additional arguments for inputs CS
-        inputs = kwds.pop("inputs", None)
         inputs_sub = kwds.pop("inputs_sub", None)
         trajectories = kwds.pop("trajectories", None)
         fixedtraj = kwds.pop("fixedtraj", False)
@@ -136,16 +147,11 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         yfixtraj = kwds.pop("yfixtraj", None)
 
         jump = kwds.pop("jump", False)
-        var_dic = kwds.pop("jump_states", None)
-        jump_times = kwds.pop("jump_times", None)
-        feed_times = kwds.pop("feed_times", None)
         
-        confidence = kwds.pop('confidence_interval', None)
-        if confidence is None:
-            confidence = 0.6826894921373 # One standard deviation
+        self.confidence = kwds.pop('confidence', None)
+        if self.confidence is None:
+            self.confidence = 0.95
         
-        # user should input if the unwanted contribuiton is involved, and what type it is.
-        # If it's time_invariant, St or Z_in should be inputed to check the rank of kernal of Omega matrix. KH.L
         G_contribution = kwds.pop('G_contribution', None)
         St = kwds.pop('St', dict())
         Z_in = kwds.pop('Z_in', dict())
@@ -153,7 +159,6 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         self.solver = solver
         self.model_variance = model_variance
         self._estimability = estimability
-        self.confidence_interval = confidence
 
         if not self.model.alltime.get_discretization_info():
             raise RuntimeError('apply discretization first before initializing')
@@ -177,11 +182,6 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
                 if not 'compute_red_hessian' in solver_opts.keys():
                     solver_opts['compute_red_hessian'] = 'yes'
             
-            if self.solver == 'k_aug':
-                solver_opts['compute_inv'] = ''
-
-            self._define_reduce_hess_order()
-
         if inputs_sub is not None:
             from kipet.estimator_tools.additional_inputs import add_inputs
             
@@ -193,7 +193,6 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
                 yfixtraj = yfixtraj,
                 trajectories = trajectories,
             )
-            
             add_inputs(self, add_kwargs)
         
         if jump:
@@ -212,19 +211,21 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
             solver_results = opt.solve(self.model, tee=tee)
 
         elif self._spectra_given:
-            self.objective_value, self.cov_mat = self._solve_extended_model(variances, 
-                                       opt,
-                                       tee=tee,
-                                       covariance=covariance,
-                                       with_d_vars=with_d_vars,
-                                       **kwds)
+            self.objective_value, self.cov_mat = self._solve_extended_model(
+                variances, 
+                opt,
+                tee=tee,
+                covariance=covariance,
+                with_d_vars=with_d_vars,
+                **kwds)
 
-        elif self._concentration_given: # or self._custom_data_given:
-            self.objective_value, self.cov_mat = self._solve_model_given_c(variances, 
-                                      opt,
-                                      tee=tee,
-                                      covariance=covariance,
-                                      **kwds)
+        elif self._concentration_given:
+            self.objective_value, self.cov_mat = self._solve_model_given_c(
+                variances, 
+                opt,
+                tee=tee,
+                covariance=covariance,
+                **kwds)
        
         else:
             raise RuntimeError(
@@ -245,13 +246,13 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         """
         results = ResultsObject()
         results.objective = self.objective_value
-        results.parameter_covariance = self.cov_mat
+        results.parameter_covariance = self.cov
         results.load_from_pyomo_model(self.model)
+        results.show_parameters(self.confidence)
 
         if self._spectra_given:
             from kipet.calculation_tools.beer_lambert import D_from_SC
             D_from_SC(self.model, results)
-            # self.compute_D_given_SC(results)
 
         if hasattr(self.model, self.__var.model_parameter_scaled): 
             setattr(results, self.__var.model_parameter, {name: getattr(self.model, self.__var.model_parameter)[name].value*getattr(self.model, self.__var.model_parameter_scaled)[name].value for name in self.model.parameter_names})
@@ -290,7 +291,7 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         return list_components
             
     def _get_objective_expr(self, model, with_d_vars, component_set, sigma_sq, device=False):
-        """Build the objective expression
+        """Build the objective expression for D_bar (primary objective term in KIPET)
 
         :param ConcreteModel model: The model for use in parameter fitting
         :param bool with_d_vars: For spectral problems
@@ -303,27 +304,38 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
 
         """
         expr = 0
-        for t in model.meas_times:
+        for t in model.times_spectral:
             for l in model.meas_lambdas:
+                
+                #print(t, l)
                 if with_d_vars:
+                #    print('Here 1')
                     D_bar = model.D_bar[t, l]
                 else:
                     if device:    
                         if hasattr(model, 'huplc_absorbing'):
+                #            print('Here 2')
                             D_bar = sum(model.Z[t, k] * model.S[l, k] for k in component_set if k not in model.solid_spec_arg1)
                         else:
+                #            print('Here 3')
                             D_bar = sum(model.Z[t, k] * model.S[l, k] for k in component_set)    
                     else:
                         if hasattr(model, '_abs_components'):
                             if hasattr(model, 'huplc_absorbing') and hasattr(model, 'solid_spec_arg1'):
+                #                print('Here 4')
                                 D_bar = sum(model.Cs[t, k] * model.S[l, k] for k in model._abs_components if k not in model.solid_spec_arg1)
                             else:
+                #                print('Here 5')
                                 D_bar = sum(model.Cs[t, k] * model.S[l, k] for k in model._abs_components)
                         else:
                             if hasattr(model, 'huplc_absorbing') and hasattr(model, 'solid_spec_arg1'):
+                #                print('Here 6')
                                 D_bar = sum(model.C[t, k] * model.S[l, k] for k in component_set if k not in model.solid_spec_arg1)
                             else:
+                #                print('Here 7')
                                 D_bar = sum(model.C[t, k] * model.S[l, k] for k in component_set)
+                
+                #print(D_bar)
                             
                 if self.G_contribution == 'time_variant_G':
                     expr += (model.D[t, l] - D_bar - model.qr[t]*model.g[l]) ** 2 / (sigma_sq['device'])
@@ -331,6 +343,8 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
                     expr += (model.D[t, l] - D_bar - model.g[l]) ** 2 / (sigma_sq['device'])
                 else:
                     expr += (model.D[t, l] - D_bar) ** 2 / (sigma_sq['device'])
+                   
+        #print(expr) 
                    
         return expr 
 
@@ -370,11 +384,12 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         covariance = kwds.pop('covariance', False)
         species_list = kwds.pop('subset_components', None)
         set_A = kwds.pop('subset_lambdas', list())
+        
         self._eigredhess2file=eigredhess2file
         cov_mat = None
 
         if not set_A:
-            set_A = self._meas_lambdas
+            set_A = self.model.meas_lambdas
 
         list_components = self._get_list_components(species_list)
         
@@ -409,21 +424,20 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
 
         model = self.model
         
-        # Instead of calling (19), (24) is called but all qr[i] are fixed at 1.0. KH.L
         if self.time_invariant_G_no_decompose:
-            for i in model.alltime:
+            for i in model.times_spectral:
                 model.qr[i] = 1.0
             model.qr.fix()
 
         def _qr_end_constraint(model):
-            return model.qr[model.alltime[-1]] == 1.0
+            return model.qr[model.times_spectral[-1]] == 1.0
         
         if self.G_contribution == 'time_variant_G':
             model.qr_end_cons = Constraint(rule = _qr_end_constraint)
         
         
         if with_d_vars and self.model_variance:
-            model.D_bar = Var(model.meas_times, model.meas_lambdas)
+            model.D_bar = Var(model.times_spectral, model.meas_lambdas)
             
             def rule_D_bar(model, t, l):
                 if hasattr(model, 'huplc_absorbing') and hasattr(model, 'solid_spec_arg1'):
@@ -432,7 +446,7 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
                 else:
                     return model.D_bar[t, l] == sum(getattr(model, self.component_var)[t, k] * model.S[l, k] for k in self.component_set)
 
-            model.D_bar_constraint = Constraint(model.meas_times,
+            model.D_bar_constraint = Constraint(model.times_spectral,
                                                 model.meas_lambdas,
                                                 rule=rule_D_bar)
         
@@ -444,25 +458,28 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
                 sum(model.Z[t, j] + model.solidvol[t, j] for j in list_huplcabs))
 
         def rule_objective(m):
-            expr = self._get_objective_expr(m, with_d_vars, list_components, sigma_sq)
-
-            expr *= weights[0]
-            second_term = 0.0
-            print('These are the variances')
-            print(sigma_sq)
             
-            for t in m.meas_times:
-                second_term += sum((model.C[t, k] - model.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components)
-                
-            expr += weights[1] * second_term
+            terms = {}
+            obj_weight = {}
+            
+            terms['D_bar'] = self._get_objective_expr(m, with_d_vars, list_components, sigma_sq)
+            obj_weight['D_bar'] = weights[0]
 
-            #for addition of L2 penalty term to objective penalizing values that deviate from values defined in ppenalty_dict (CS):
+            terms['model_fit'] = 0
+            obj_weight['model_fit'] = 1
+            
+            for t in m.times_spectral:
+                terms['model_fit'] += sum((model.C[t, k] - model.Z[t, k]) ** 2 / sigma_sq[k] for k in list_components)
+                
+            terms['L2_penalty'] = 0
+            obj_weight['L2_penalty'] = 1
+            # L2 penalty term to objective penalizing values that deviate from values defined in ppenalty_dict:
             if penaltyparam==True:
                 if ppenalty_weights is None:
-                    fourth_term = 0.0
+                    terms['L2_penalty'] = 0.0
                     for k in model.P.keys():
                         if k in ppenalty_dict.keys():
-                            fourth_term = (model.P[k] - ppenalty_dict[k]) ** 2
+                            terms['L2_penalty'] += (model.P[k] - ppenalty_dict[k]) ** 2
                 else:
                     if len(ppenalty_dict)!=len(ppenalty_weights):
                         raise RuntimeError(
@@ -471,44 +488,58 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
                         raise RuntimeError(
                             'Check the parameter names in ppenalty_weights and ppenalty_dict again. They must match.')
                     else:
-                        fourth_term = 0.0
                         for k in model.P.keys():
                             if k in ppenalty_dict.keys():
-                                fourth_term += ppenalty_weights[k] * (model.P[k] - ppenalty_dict[k]) ** 2
-                expr +=fourth_term
+                                terms['L2_penalty'] += ppenalty_weights[k] * (model.P[k] - ppenalty_dict[k]) ** 2
 
-
+            terms['huplc'] = 0
+            obj_weight['huplc'] = 1
+            terms['constraint_penalty'] = 0
+            obj_weight['constraint_penalty'] = 1
+            
             # for new huplc structure (CS):
             if hasattr(model, 'huplc_absorbing'):
-                third_term = self._huplc_obj_term(model, sigma_sq)
-                expr += weights[2] * third_term
-
+                terms['huplc'] = self._huplc_obj_term(model, sigma_sq, species_list)
+                
+                # This might break - I don't have anything to compare it too
                 if penaltyparamcon == True: #added for optional penalty term related to constraint CS
                     rho=1e-1
                     sumpen=0.0
                     for t in model.alltime:
                         sumpen = sumpen + m.Y[t,'npen']
-                    fifth_term = rho*sumpen
-                    expr += fifth_term
+                    terms['constraint_penalty'] = rho*sumpen
+
+            expr = 0
+            for k in terms.keys():
+                expr += terms[k] * obj_weight[k]
 
             return expr
 
-        
-
-        # estimation without model variance and only device variance
+        # Estimation without model variance and only device variance
         def rule_objective_device_only(model):
+            
+            terms = {}
+            obj_weight = {}
+            
+            terms['D_bar'] = 0
+            obj_weight['D_bar'] = 1
+            terms['huplc'] = 0
+            obj_weight['huplc'] = 1
             
             if hasattr(model, 'huplc_absorbing'):
                 component_set = model._abs_components
             else:
                 component_set = list_components
             
-            expr = self._get_objective_expr(model, with_d_vars, component_set, sigma_sq, device=True)
-                
+            terms['D_bar'] = self._get_objective_expr(model, with_d_vars, component_set, sigma_sq, device=True)
+            
             if hasattr(model, 'huplc_absorbing'):
-                third_term = self._huplc_obj_term(model, sigma_sq)
-                expr += weights[2] * third_term
+                terms['huplc'] = self._huplc_obj_term(model, sigma_sq, species_list)
                       
+            expr = 0
+            for k in terms.keys():
+                expr += terms[k] * obj_weight[k]
+
             return expr
 
         if self.model_variance == True:
@@ -516,7 +547,9 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         else:
             model.objective = Objective(rule=rule_objective_device_only)
 
-        #print(model.objective.expr.to_string())
+        custom_weight = 1
+        if hasattr(model, 'custom_obj'):
+            model.objective.expr += custom_weight*(model.custom_obj)
 
         if warmstart==True:
             if hasattr(model,'dual') and hasattr(model,'ipopt_zL_out') and hasattr(model,'ipopt_zU_out') and hasattr(model,'ipopt_zL_in') and hasattr(model,'ipopt_zU_in'):
@@ -524,22 +557,22 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
             else:
                 self.add_warm_start_suffixes(model, use_k_aug=False)
 
-        if covariance and self.solver == 'ipopt_sens':
-            hessian = self._covariance_ipopt_sens(model, optimizer, tee, all_sigma_specified)
+        if self.solver in ['k_aug', 'ipopt_sens']:
+
+            if self.solver == 'ipopt_sens':
+                hessian = self._covariance_ipopt_sens(model, optimizer, tee, all_sigma_specified)
+                
+            elif self.solver == 'k_aug':
+                hessian = self._covariance_k_aug(model, optimizer, tee, all_sigma_specified)
+                
             if self.model_variance:
-                cov_mat = self._compute_covariance(hessian, sigma_sq)
-            else:
-                cov_mat = self._compute_covariance_no_model_variance(hessian, sigma_sq)
-        
-        elif covariance and self.solver == 'k_aug':
-            hessian = self._covariance_k_aug(model, optimizer, tee, all_sigma_specified)
-            if self.model_variance:
-                cov_mat = self._compute_covariance(hessian, sigma_sq)
-            else:
-                cov_mat = self._compute_covariance_no_model_variance(hessian, sigma_sq)
+                hessian = self._compute_covariance(hessian, sigma_sq)
+                
+            self.cov = pd.DataFrame(hessian, index=self.param_names, columns=self.param_names)   
+            cov_mat = self.cov.values
         
         else:
-            solver_results = optimizer.solve(model, tee=tee)
+            solver_results = optimizer.solve(model, tee=tee) 
            
         if with_d_vars:
             model.del_component('D_bar')
@@ -568,19 +601,16 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
 
         """
         tee = kwds.pop('tee', False)
-        if self._huplc_given:  # added for new huplc structure CS
+        
+        if self._huplc_given:
             weights = kwds.pop('weights', [0.0, 1.0, 1.0])
         else:
             weights = kwds.pop('weights', [0.0, 1.0])
+       
         covariance = kwds.pop('covariance', False)
         warmstart = kwds.pop('warmstart', False)
-        eigredhess2file = kwds.pop('eigredhess2file', False)
-        penaltyparam = kwds.pop('penaltyparam', False)
         penaltyparamcon = kwds.pop('penaltyparamcon', False) #added for optional penalty term related to constraint CS
-        ppenalty_dict = kwds.pop('ppenalty_dict', None)
-        ppenalty_weights = kwds.pop('ppenalty_weights', None)
         species_list = kwds.pop('subset_components', None)
-        symbolic_solver_labels = kwds.pop('symbolic_solver_labels', False)
         cov_mat = None
 
         list_components = self._get_list_components(species_list)
@@ -593,6 +623,8 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         all_sigma_specified = True
 
         keys = sigma_sq.keys()
+        
+        # HUPLC shows up here too
         for k in list_components:
             if hasattr(self, 'huplc_absorbing') and k not in keys:
                 for ki in self.solid_spec_args1:
@@ -611,6 +643,8 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
                 sumpen = 0.0
                 obj += conc_objective(model, variance=sigma_sq)    
                 obj += comp_objective(model)
+                
+                # Is this correct?
                 for t in model.allmeas_times:
                     sumpen += model.Y[t, 'npen']
                 fifth_term = rho * sumpen
@@ -621,8 +655,9 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
             return obj
 
         model.objective = Objective(rule=rule_objective)
-        # print(model.objective.expr.to_string())
 
+        
+        # Add custom objective
         if hasattr(model, 'custom_obj'):
             model.objective.expr += model.custom_obj
 
@@ -632,20 +667,18 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
             else:
                 self.add_warm_start_suffixes(model)
 
-        if covariance and self.solver == 'ipopt_sens':
-            hessian = self._covariance_ipopt_sens(model, optimizer, tee, all_sigma_specified)
-            if self._concentration_given:
-                cov_mat = self._compute_covariance_C(hessian, sigma_sq)
 
-        elif covariance and self.solver == 'k_aug':
-            hessian = self._covariance_k_aug(model, optimizer, tee, all_sigma_specified, labels=True)
-            if self._concentration_given:
-                cov_mat = self._compute_covariance_C(hessian, sigma_sq)
+        self.cov = None
+        if self.solver in ['k_aug', 'ipopt_sens']:
             
-        elif self.solver == 'gams' and covariance==False:
-            ip = SolverFactory('gams')
-            solver_results = ip.solve(model, solver='conopt', tee=True)
-            
+            if self.solver == 'ipopt_sens':
+                hessian = self._covariance_ipopt_sens(model, optimizer, tee, all_sigma_specified)
+                
+            elif self.solver == 'k_aug':
+                hessian = self._covariance_k_aug(model, optimizer, tee, all_sigma_specified, labels=True)
+                
+            self.cov = pd.DataFrame(hessian, index=self.param_names, columns=self.param_names)   
+               
         else:
             solver_results = optimizer.solve(model, tee=tee, symbolic_solver_labels=True)
             self._termination_problems(solver_results, optimizer)
@@ -654,6 +687,55 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         model.del_component('objective')
         
         return obj_val, cov_mat
+    
+    def _file_output(self):
+        
+        """
+        This prepares the indecies and sizes for the reduced Hessian strucuturing.
+        
+        The variables are arranged such that the parameters need to be in the right order
+        and entered in last (for k_aug).
+        
+        The commented code lets you place the variables in any order, as long as they are
+        still located at the end (important for B and Vd matrix building.)
+        """
+        #%%
+        # self = rm.p_estimator
+        # import pandas as pd
+        # from pathlib import Path
+        
+        var_index = pd.read_csv(Path(self.stub + '.col'), sep=';', header=None)  # dummy sep
+        con_index = pd.read_csv(Path(self.stub + '.row'), sep=';', header=None)  # dummy sep
+        var_index_names = [var_name for var_name in var_index[0]]
+        con_index_names = [con_name for con_name in con_index[0].iloc[:-1]]
+        
+        # add spectral and concentration vars to the param set
+        spectral_vars = []
+        for var in ['C', 'S']: #[self.__var.concentration_spectra, self.__var.spectra_species]:
+            if hasattr(self.model, var):
+                
+                if hasattr(self, '_abs_components'):
+                    component_set = self._abs_componets
+                else:
+                    component_set = self._sublist_components
+                
+                spectral_vars += [f'{var}[{k[0]},{k[1]}]' for k in getattr(self.model, var) if k[1] in component_set]
+        
+        col_ind = [var_index_names.index(v) for v in spectral_vars + self.param_names_full]
+        col_ind_P = [k for k, v in self._idx_to_variable.items() if v.getname() in self.param_names_full]
+        col_ind_P = [var_index_names.index(name) for name in self.param_names_full]
+        col_ind_P_in_Hr = [col_ind.index(p) for p in col_ind_P]
+        
+        n = len(var_index_names)
+        m = len(con_index_names)
+        size = (m, n)
+        #%%
+        return col_ind, size, col_ind_P_in_Hr
+    
+    
+    def _covariance(self, model, optimizer, tee, all_sigma_specified):
+        pass
+        
     
     def _covariance_ipopt_sens(self, model, optimizer, tee, all_sigma_specified):
         """Generalize the covariance optimization with IPOPT Sens
@@ -670,28 +752,35 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         if self.model_variance == False:
             print("WARNING: FOR PROBLEMS WITH NO MODEL VARIANCE it is advised to use k_aug!!!")
         self._tmpfile = "ipopt_hess"
+        
+        self._define_reduce_hess_order()
+        
         solver_results = optimizer.solve(model, 
-                                         tee=tee,
+                                         tee=False,
                                          logfile=self._tmpfile,
-                                         report_timing=True)
+                                         report_timing=True,
+                                         symbolic_solver_labels=True,
+                                         keepfiles=True)
         
         print("Done solving building reduce hessian")
         output_string = ''
         with open(self._tmpfile, 'r') as f:
             output_string = f.read()
-        if os.path.exists(self._tmpfile):
-            os.remove(self._tmpfile)
-
+        
+        self.stub = output_string.split('\n')[0].split(',')[1][2:-4]
         ipopt_output, hessian_output = split_sipopt_string(output_string)
         
-        if not all_sigma_specified:
-            raise RuntimeError(
-                'All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
-
         n_vars = len(self._idx_to_variable)
         hessian = read_reduce_hessian(hessian_output, n_vars)
+               
+        self.hessian = pd.DataFrame(hessian)
+        print(hessian.shape)
         
-        return hessian
+        #_, col_ind_P_in_Hr, _ = self._file_output()
+        n_params = self._get_nparams(self.model)
+        inverse_reduced_hessian = hessian[-n_params:, :]
+        
+        return inverse_reduced_hessian
     
     def _covariance_k_aug(self, model, optimizer, tee, all_sigma_specified, labels=False):
         """Generalize the covariance optimization with IPOPT Sens
@@ -707,81 +796,97 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
 
         """
         self.add_warm_start_suffixes(model, use_k_aug=True)   
-        
-        count_vars = 1
-
-        if self._spectra_given:
-            for t in self._allmeas_times:
-                for c in self.component_set:
-                    getattr(model, self.component_var)[t, c].set_suffix_value(model.dof_v, count_vars)
-                    count_vars += 1
-        
-            for l in self._meas_lambdas:
-                for c in self.component_set:
-                    model.S[l, c].set_suffix_value(model.dof_v, count_vars)
-                    count_vars += 1
-
-        for v in model.P.values():
-            if v.is_fixed():
-                continue
-            model.P.set_suffix_value(model.dof_v, count_vars)
-            count_vars += 1
-
-        # Do the component initial values need to be considered in this matrix?
-
-        if hasattr(model,'Pinit'):
-            for k, v in self.model.Pinit.items():
-            #for v in self.model.initparameter_names:
-                model.init_conditions[k].set_suffix_value(model.dof_v, count_vars)
-                count_vars += 1
-
+    
         self._tmpfile = "k_aug_hess"
         ip = SolverFactory('ipopt')
+        
         solver_results = ip.solve(model,
                                   tee=tee,
                                   logfile=self._tmpfile,
                                   report_timing=True,
-                                  symbolic_solver_labels=labels,
+                                  symbolic_solver_labels=True,
+                                  keepfiles=True
                                   )
-        
-         
+    
         if labels:
             self._termination_problems(solver_results, optimizer)
         
         k_aug = SolverFactory('k_aug')
-        
-        model.ipopt_zL_in.display()
-        model.rh_name.display()
         self.update_warm_start(model)
-        model.ipopt_zL_in.display()
+        k_aug.options["print_kkt"] = ""
+        k_aug.options['compute_inv'] = ''
+        k_aug.solve(model, tee=True)
         
-        k_aug.solve(model, tee=tee)
-        print("Done solving building reduce hessian")
+        inverse_reduced_hessian = self.calculate_inverse_Hr()
 
-        if not all_sigma_specified:
-            raise RuntimeError(
-                'All variances must be specified to determine covariance matrix.\n Please pass variance dictionary to run_opt')
-
-        n_vars = len(self._idx_to_variable)         
-        var_loc = model.rh_name
-        for v in self._idx_to_variable.values():
-            try:
-                var_loc[v]
-            except:
-                var_loc[v] = 0
-
-        vlocsize = len(var_loc)
-        unordered_hessian = np.loadtxt('result_red_hess.txt')
-        if os.path.exists('result_red_hess.txt'):
-            os.remove('result_red_hess.txt')
+        return inverse_reduced_hessian
+    
+    def calculate_inverse_Hr(self):
+        """Calculates the inverse of the reduced Hessian using KKT info (k_aug)
         
-        hessian = self._order_k_aug_hessian(unordered_hessian, var_loc)
-        #hessian =self..order_k_aug_hessian(self, unordered_hessian, var_loc)
+        :return H_use: The inverse of the reduced Hessian (parameter rows) 
+        :rtype: numpy.ndarray
         
-        if self._estimability == True:
-            self.hessian = hessian
+        """
+        
+        from scipy.sparse import coo_matrix, csc_matrix, triu
+        from scipy.sparse.linalg import spsolve
+        from kipet.calculation_tools.reduced_hessian import SparseRowIndexer, delete_from_csr
+        
+        kaug_files = Path('GJH')
 
-        return hessian
+        with open(self._tmpfile, 'r') as f:
+            output_string = f.readline()
+
+        self.stub = output_string.split('\n')[0].split(',')[1][2:-4]
+        col_ind, size, col_ind_P_in_Hr = self._file_output()
+        m, n = size
+        
+        hess_file = kaug_files.joinpath('H_print.txt')
+        hess = pd.read_csv(hess_file, delim_whitespace=True, header=None, skipinitialspace=True)
+        hess.columns = ['irow', 'jcol', 'vals']
+        hess.irow -= 1
+        hess.jcol -= 1
+
+        jac_file = kaug_files.joinpath('A_print.txt')
+        jac = pd.read_csv(jac_file, delim_whitespace=True, header=None, skipinitialspace=True)
+        jac.columns = ['irow', 'jcol', 'vals']
+        jac.irow -= 1
+        jac.jcol -= 1
+        
+        J = coo_matrix((jac.vals, (jac.jcol, jac.irow)), shape=(m, n))
+        J_c = J.tocsc()
+        Hess_coo = coo_matrix((hess.vals, (hess.irow, hess.jcol)), shape=(n, n))
+        H = Hess_coo + triu(Hess_coo, 1).T
+        
+        row_indexer = SparseRowIndexer(J_c.T)
+        J_f = row_indexer[col_ind].T
+        J_l = delete_from_csr(J_c.tocsr(), col_indices=col_ind)
+
+        n_free = n - J_f.shape[0]
+        X = spsolve(J_l.tocsc(), -J_f.tocsc())
+        col_ind_left = list(set(range(n)).difference(set(col_ind)))
+        col_ind_left.sort()
+
+        Z = np.zeros([n, n_free])
+        Z[col_ind, :] = np.eye(n_free)
+
+        if isinstance(X, csc_matrix):
+            Z[col_ind_left, :] = X.todense()
+        else:
+            Z[col_ind_left, :] = X.reshape(-1, 1)
+
+        Z_mat = coo_matrix(np.mat(Z)).tocsr()
+        Z_mat_T = coo_matrix(np.mat(Z).T).tocsr()
+        Hess = H.tocsr()
+        reduced_hessian = Z_mat_T * Hess * Z_mat
+        inv_H_r = np.linalg.inv(reduced_hessian.todense())
+        
+        #n_params = self._get_nparams(self.model)
+        
+        H_use = inv_H_r[col_ind_P_in_Hr, :]
+
+        return H_use
     
     def _termination_problems(self, solver_results, optimizer):
         """Checks the termination conditions and will try once again if it fails
@@ -796,7 +901,7 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         if self.termination_condition != TerminationCondition.optimal:
             print("WARNING: The solution of the iteration was unsuccessful. The problem is solved with additional solver options.")
             optimizer.options["OF_start_with_resto"] = 'yes'
-            solver_results = optimizer.solve(m, tee=tee, symbolic_solver_labels=True)
+            solver_results = optimizer.solve(self.model, tee=False, symbolic_solver_labels=True)
             self.termination_condition = solver_results.solver.termination_condition
             if self.termination_condition != TerminationCondition.optimal:
                 print(
@@ -804,7 +909,7 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
                 optimizer.options["OF_start_with_resto"] = 'no'
                 # optimizer.options["OF_bound_push"] = 1E-02
                 optimizer.options["OF_bound_relax_factor"] = 1E-05
-                solver_results = optimizer.solve(m, tee=tee, symbolic_solver_labels=True)
+                solver_results = optimizer.solve(self.model, tee=False, symbolic_solver_labels=True)
                 self.termination_condition = solver_results.solver.termination_condition
                 # options["OF_bound_relax_factor"] = 1E-08
                 if self.termination_condition != TerminationCondition.optimal:
@@ -812,8 +917,9 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
                         
         return None
 
-    @staticmethod
-    def _huplc_obj_term(m, sigma_sq):
+     #For addition of huplc data and matching liquid and solid species (CS):
+        
+    def _huplc_obj_term(self, m, sigma_sq, species_list):
         """Adds the HUPLC term to the objective
 
         :param ConcreteModel m: The model used in parameter fitting
@@ -822,9 +928,17 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         :return expressions third_term: The HUPLC objective expression
 
         """
+        def rule_Dhat_bar(m, t, l):
+            list_huplcabs = [k for k in m.huplc_absorbing.value]
+            return m.Dhat_bar[t, l] == (m.Z[t, l] + m.solidvol[t, l]) / (
+                sum(m.Z[t, j] + m.solidvol[t, j] for j in list_huplcabs))
+
         third_term = 0.0
+        
+        # Arrange the HUPLC device variance
         if not 'device-huplc' in sigma_sq.keys():
             sigma_sq['device-huplc'] = 1.0
+            
         if hasattr(m, 'solid_spec_arg1') and hasattr(m, 'solid_spec_arg2'):
             solidvol_dict = dict()
             m.add_component('cons_solidvol', ConstraintList())
@@ -847,7 +961,7 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
                                         new_consolidvol.add(m.solidvol[time, l] == m.Y[time, k] / m.vol)
                                 else:
                                     new_consolidvol.add(m.solidvol[time, l] == 0.0)
-                for jk in list_components:
+                for jk in self._get_list_components(species_list):
                     for time in m.huplctime:
                         if jk == k:
                             for l in m.huplc_absorbing.value:
@@ -879,7 +993,7 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
 
     def _define_reduce_hess_order(self):
         """
-        This sets up the suffixes of the reduced hessian
+        This sets up the suffixes of the reduced hessian for use with SIpopt
 
         :return: None
 
@@ -889,9 +1003,10 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
 
         if self._spectra_given:
             if self.model_variance:
-                count_vars = self._set_up_reduced_hessian(self.model, self._meas_times, self.component_set, self.component_var, count_vars)
-                count_vars = self._set_up_reduced_hessian(self.model, self._meas_lambdas, self.component_set, 'S', count_vars)
+                count_vars = self._set_up_reduced_hessian(self.model, self.model.times_spectral, self.component_set, self.component_var, count_vars)
+                count_vars = self._set_up_reduced_hessian(self.model, self.model.meas_lambdas, self.component_set, 'S', count_vars)
                 
+        # If more parameter types are added to the model, the order here and above needs to be the same
         for v in self.model.P.values():
             if v.is_fixed():
                 print(v, end='\t')
@@ -907,44 +1022,17 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
                 self._idx_to_variable[count_vars] = v
                 self.model.red_hessian[v] = count_vars
                 count_vars += 1
+                
+        if hasattr(self.model, 'time_step_change'):
+            for k, v in self.model.time_step_change.items():
+                v = self.model.time_step_change[k]
+                self._idx_to_variable[count_vars] = v
+                self.model.red_hessian[v] = count_vars
+                count_vars += 1
                
         return None
         
-    def _confidence_interval_display(self, variances):
-        """
-        Function to display calculated confidence intervals
-
-        :param dict variances: The component variances
-
-        :return: None
-
-        """
-        number_of_stds = st.norm.ppf(1-(1-self.confidence_interval)/2)
-        #print(f'STDS: {number_of_stds}')
-        
-        print('\nConfidence intervals:')
-        i = 0
-        for k, p in self.model.P.items():
-            if p.is_fixed():
-                continue
-            print('{} ({},{})'.format(k, 
-                                      p.value - number_of_stds*(variances[i]**0.5),
-                                      p.value + number_of_stds*(variances[i]** 0.5))
-                  )
-            i += 1
-        if hasattr(self.model, 'Pinit'): 
-            for k in self.model.Pinit.keys():
-                self.model.Pinit[k] = self.model.init_conditions[k].value
-                print('{} ({},{})'.format(k, 
-                                          self.model.Pinit[k].value - number_of_stds*(variances[i]** 0.5),
-                                          self.model.Pinit[k].value + number_of_stds*(variances[i]** 0.5)
-                                          )
-                      )
-                i += 1
-        
-        return None
-
-    def _compute_covariance(self, hessian, variances):
+    def _compute_covariance(self, H, variances):
         """Computes the covariance for post calculation anaylsis
 
         :param numpy.ndarray hessian: The Hessian matrix
@@ -953,83 +1041,16 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         :return: The parameter covariances
         
         """
-        nparams = self._get_nparams(self.model)
-        self._n_params = nparams
-        variances_p, covariances_p = self._variances_p_calc(hessian, variances)
-        self._confidence_interval_display(variances_p)
-        
+        B = self._compute_B_matrix(variances)
+        Vd = self._compute_Vd_matrix(variances)
+        R = B.T @ H.T
+        A = Vd @ R
+        L = H @ B
+        V_theta = (A.T @ L.T).T
+        covariances_p = 4 * V_theta / variances['device']**2
+
         return covariances_p
 
-    def _compute_covariance_C_generic(self, hessian, variances, use_model_variance=False):
-        """
-        Generic covariance function to reduce code
-
-        :param numpy.ndarray hessian: The Hessian matrix
-        :param dict variances: Component variances
-        :param bool use_model_variance: I am not sure what this does
-
-        :return: covariances of the components (Hessian)
-        :rtype: numpy.ndarray
-
-        """
-        if use_model_variance:
-            res = self._compute_residuals(self.model)
-            nc = self._n_actual
-            varmat = np.zeros((nc, nc))
-            for c, k in enumerate(self._sublist_components):
-                varmat[c, c] = variances[k]
-        
-        nparams = self._get_nparams(self.model, isSkipFixed=False)
-        
-        all_H = hessian
-        H = all_H[-nparams:, :]
-
-        if not use_model_variance and self._eigredhess2file:
-            save_eig_red_hess(H)
-
-        covariance_C = H
-        variances_p = np.diag(covariance_C)
-        print("Parameter variances: ", variances_p)
-        self._confidence_interval_display(variances_p)
-       
-        return covariance_C
-
-    def _compute_covariance_C(self, hessian, variances):
-        """
-        Computes the covariance matrix for the paramaters taking in the Hessian
-        matrix and the variances for the problem where only C data is provided.
-        Outputs the parameter confidence intervals.
-
-        This function is not intended to be used by the users directly
-
-        :param numpy.ndarray hessian: The Hessian matrix
-        :param dict variances: Component variances
-
-        :return: The covariance matrix
-        :rtype: numpy.ndarray
-
-        """
-        cov_mat = self._compute_covariance_C_generic(hessian, variances, use_model_variance=True)
-        return cov_mat
-
-    def _compute_covariance_no_model_variance(self, hessian, variances):
-        """
-        Computes the covariance matrix for the paramaters taking in the Hessian
-        matrix and the device variance for the problem where model error is ignored.
-        Outputs the parameter confidence intervals.
-
-        This function is not intended to be used by the users directly
-
-        :param numpy.ndarray hessian: The Hessian matrix
-        :param dict variances: Component variances
-
-        :return: The covariance matrix
-        :rtype: numpy.ndarray
-
-        """
-        cov_mat = self._compute_covariance_C_generic(hessian, variances, use_model_variance=False)
-        return cov_mat
-    
     def _compute_B_matrix(self, variances, **kwds):
         """Builds B matrix for calculation of covariances
 
@@ -1040,10 +1061,10 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         :return: None
 
         """
-        nt = self._n_meas_times
-        time_set = self.model.meas_times
-        conc_data_var = 'C'
-        nw = self._n_meas_lambdas
+        nt = len(self.model.times_spectral)
+        time_set = self.model.times_spectral
+        
+        nw = len(self.model.meas_lambdas)
         nparams = self._get_nparams(self.model)
        
         if hasattr(self, '_abs_components'):
@@ -1052,19 +1073,27 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         else:
             n_val = self._n_actual
             component_set = self._sublist_components
-    
-        variance = variances['device']
+      
         ntheta = n_val * (nw + nt) + nparams
-        B_matrix = np.zeros((ntheta, nw * nt))
-
+        
+        rows = []
+        cols = []
+        data = []
+        
         for i, t in enumerate(time_set):
             for j, l in enumerate(self.model.meas_lambdas):
                 for k, c in enumerate(component_set):
                     r_idx1 = i * n_val + k
                     r_idx2 = j * n_val + k + n_val * nt
                     c_idx = i * nw + j
-                    B_matrix[r_idx1, c_idx] = -2 * self.model.S[l, c].value / variance
-                    B_matrix[r_idx2, c_idx] = -2 * getattr(self.model, conc_data_var)[t, c].value / variance
+                    rows.append(r_idx1)
+                    cols.append(c_idx)
+                    data.append(self.model.S[l, c].value)
+                    rows.append(r_idx2)
+                    cols.append(c_idx)
+                    data.append(self.model.C[t, c].value)
+                    
+        B_matrix = coo_matrix((data, (rows, cols)), shape=(ntheta, nw * nt)).tocsr()
                     
         return B_matrix
 
@@ -1078,8 +1107,8 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         :return: None
 
         """
-        nt = self._n_meas_times
-        nw = self._n_meas_lambdas
+        nt = len(self.model.times_spectral)
+        nw = len(self.model.meas_lambdas)
         row = []
         col = []
         data = []
@@ -1238,31 +1267,43 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         :return float lack of fit: percentage lack of fit
 
         """
-        nt = self._n_meas_times
-        nw = self._n_meas_lambdas
-        sum_e = 0
-        sum_d = 0
-        C = np.zeros((nt, self.n_val))
-        S = np.zeros((nw, self.n_val))
         
-        for c_count, c in enumerate(self.component_set):
-            for t_count, t in enumerate(self._meas_times):
-                C[t_count, c_count] = getattr(self.model, self.component_var)[t, c].value
-
-        for c_count, c in enumerate(self.component_set):
-            for l_count, l in enumerate(self._meas_lambdas):
-                S[l_count, c_count] = self.model.S[l, c].value
-             
-        D_model = C.dot(S.T)
+        if self._spectra_given:
         
-        for t_count, t in enumerate(self._meas_times):
-            for l_count, l in enumerate(self._meas_lambdas):
-                sum_e += (D_model[t_count, l_count] - self.model.D[t, l]) ** 2
-                sum_d += (self.model.D[t, l]) ** 2
-  
-        lof = np.sqrt(sum_e/sum_d)*100
+            sum_e = 0
+            sum_d = 0
+            C = np.zeros((len(self.model.times_spectral), self.n_val))
+            S = np.zeros((len(self.model.meas_lambdas), self.n_val))
+            
+            for c_count, c in enumerate(self.component_set):
+                for t_count, t in enumerate(self.model.times_spectral):
+                    C[t_count, c_count] = getattr(self.model, self.component_var)[t, c].value
+    
+            for c_count, c in enumerate(self.component_set):
+                for l_count, l in enumerate(self.model.meas_lambdas):
+                    S[l_count, c_count] = self.model.S[l, c].value
+                 
+            D_model = C.dot(S.T)
+            
+            for t_count, t in enumerate(self.model.times_spectral):
+                for l_count, l in enumerate(self.model.meas_lambdas):
+                    sum_e += (D_model[t_count, l_count] - self.model.D[t, l]) ** 2
+                    sum_d += (self.model.D[t, l]) ** 2
+      
+            lof = np.sqrt(sum_e/sum_d)*100
+            
+        elif self._concentration_given:
+            
+            sum_e = 0
+            sum_d = 0
+           
+            for index, values in self.model.Cm.items():
+                sum_e += (self.model.Z[index].value - self.model.Cm[index].value) ** 2
+                sum_d += (self.model.Cm[index].value) ** 2
 
-        print(f'The lack of fit is {lof:0.6f} %')
+            lof = np.sqrt(sum_e/sum_d)*100
+            
+        #print(f'The lack of fit is {lof:0.2f}%')
         return lof
 
     def wavelength_correlation(self):
@@ -1273,15 +1314,15 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         :return dict: dictionary of correlations with wavelength
 
         """
-        nt = self._n_meas_times
+        nt = len(self.model.allmeas_times)
 
         cov_d_l = dict()
         for c in self._sublist_components:
-            for l in self._meas_lambdas:
-                mean_d = (sum(self.model.D[t, l] for t in self._meas_times) / nt)
-                mean_c = (sum(self.model.C[t, c].value for t in self._meas_times) / nt)
+            for l in self.model.meas_lambdas:
+                mean_d = (sum(self.model.D[t, l] for t in self.model.times_spectral) / nt)
+                mean_c = (sum(self.model.C[t, c].value for t in self.model.times_spectral) / nt)
                 cov_d_l[l, c] = 0
-                for t in self._meas_times:
+                for t in self.model.times_spectral:
                     cov_d_l[l, c] += (self.model.D[t, l] - mean_d) * (self.model.C[t, c].value - mean_c)
 
                 cov_d_l[l, c] = cov_d_l[l, c] / (nt - 1)
@@ -1289,11 +1330,11 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         # calculating the standard devs for dl and ck over time
         s_dl = dict()
 
-        for l in self._meas_lambdas:
+        for l in self.model.meas_lambdas:
             s_dl[l] = 0
-            mean_d = (sum(self.model.D[t, l] for t in self._meas_times) / nt)
+            mean_d = (sum(self.model.D[t, l] for t in self.model.times_spectral) / nt)
             error = 0
-            for t in self._meas_times:
+            for t in self.model.times_spectral:
                 error += (self.model.D[t, l] - mean_d) ** 2
             s_dl[l] = (error / (nt - 1)) ** 0.5
 
@@ -1301,20 +1342,20 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
 
         for c in self._sublist_components:
             s_ck[c] = 0
-            mean_c = (sum(self.model.C[t, c].value for t in self._meas_times) / nt)
+            mean_c = (sum(self.model.C[t, c].value for t in self.model.times_spectral) / nt)
             error = 0
-            for t in self._meas_times:
+            for t in self.model.times_spectral:
                 error += (self.model.C[t, c].value - mean_c) ** 2
             s_ck[c] = (error / (nt - 1)) ** 0.5
 
         cor_lc = dict()
 
         for c in self._sublist_components:
-            for l in self._meas_lambdas:
+            for l in self.model.meas_lambdas:
                 cor_lc[l, c] = cov_d_l[l, c] / (s_ck[c] * s_dl[l])
 
         cor_l = dict()
-        for l in self._meas_lambdas:
+        for l in self.model.meas_lambdas:
             cor_l[l] = max(cor_lc[l, c] for c in self._sublist_components)
 
         return cor_l
@@ -1325,14 +1366,12 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
         :return float lack of fit: percentage lack of fit
 
         """
-        nt = self._n_huplcmeas_times
-        nc = self._n_huplc
+        nc = len(self.model.huplc_absorbing)
         sum_e = 0
         sum_d = 0
-        D_model = np.zeros((nt, nc))
-        C = np.zeros((nt, nc))
+        D_model = np.zeros((len(self.model.huplcmeas_times), nc))
         
-        for t_count, t in enumerate(self._huplcmeas_times):
+        for t_count, t in enumerate(self.model.huplcmeas_times):
             for l_count, l in enumerate(self._list_huplcabs):
                 
                 if hasattr(self.model, 'solidvol'):
@@ -1347,7 +1386,7 @@ class ParameterEstimator(PEMixins, PyomoSimulator):
 
         lof = np.sqrt((sum_e/sum_d))*100
 
-        print("The lack of fit for the huplc data is ", lof, " %")
+        print(f"The lack of fit for the huplc data is {lof:0.2f}%")
         return lof
     
     def g_handling_status_messages(self):
@@ -1438,6 +1477,8 @@ def construct_model_from_reduced_set(builder_clone, end_time, D):
     :return TemplateBuilder opt_mode: new Pyomo model from TemplateBuilder, ready for parameter estimation
 
     """
+    import pandas as pd
+    from kipet.model_tools.template_builder import TemplateBuilder
     if not isinstance(builder_clone, TemplateBuilder):
         raise RuntimeError('builder_clone needs to be of type TemplateBuilder')
 
@@ -1465,6 +1506,8 @@ def run_param_est(opt_model, nfe, ncp, sigmas, solver='ipopt'):
     p_estimator = ParameterEstimator(opt_model)
     p_estimator.apply_discretization('dae.collocation', nfe=nfe, ncp=ncp, scheme='LAGRANGE-RADAU')
     options = dict()
+
+    
 
     # These may not always solve, so we need to come up with a decent initialization strategy here
     if solver == 'ipopt':
