@@ -13,9 +13,6 @@ from pyomo.environ import ConcreteModel, Var
 from scipy.optimize import least_squares
 from scipy.sparse import coo_matrix
 
-# KIPET library imports
-# from kipet.core_methods.data_tools import stdout_redirector
-
 def build_s_model(var_est_object):
     """Builds s_model to solve formulation 22 with ipopt
 
@@ -25,19 +22,20 @@ def build_s_model(var_est_object):
 
     """
     var_est_object.S_model = ConcreteModel()
+    
     if var_est_object._is_D_deriv:
         lower_bound = 0.0
     else:
         lower_bound = None
         
     var_est_object.S_model.S = Var(
-        var_est_object._meas_lambdas,
+        var_est_object.model.meas_lambdas,
         var_est_object.component_set,
         bounds=(lower_bound, None),
         initialize=1.0
     )
 
-    for l in var_est_object._meas_lambdas:
+    for l in var_est_object.model.meas_lambdas:
         for k in var_est_object.component_set:
             var_est_object.S_model.S[l, k].value = var_est_object.model.S[l, k].value
             if hasattr(var_est_object.model, 'known_absorbance'):
@@ -96,14 +94,14 @@ def solve_s_scipy(var_est_object, **kwds):
     else:
         n = var_est_object._n_components
 
-    for j, l in enumerate(var_est_object._meas_lambdas):
+    for j, l in enumerate(var_est_object.model.meas_lambdas):
         for k, c in enumerate(var_est_object.component_set):
             if var_est_object.model.S[l, c].value < 0.0 and var_est_object._is_D_deriv == False:  #: only less thant zero for non-absorbing
                 var_est_object._s_array[j * n + k] = 1e-2
             else:
                 var_est_object._s_array[j * n + k] = var_est_object.model.S[l, c].value
 
-    for j, t in enumerate(var_est_object._allmeas_times):
+    for j, t in enumerate(var_est_object.model.times_spectral):
         for k, c in enumerate(var_est_object.component_set):
             var_est_object._z_array[j * n + k] = var_est_object.model.Z[t, c].value
 
@@ -149,8 +147,8 @@ def solve_s_scipy(var_est_object, **kwds):
                             verbose=verbose,
                             args=(var_est_object._z_array,
                                   var_est_object._d_array,
-                                  var_est_object._n_meas_lambdas,
-                                  var_est_object._n_allmeas_times,
+                                  len(var_est_object.model.meas_lambdas),
+                                  len(var_est_object.model.times_spectral),
                                   n)
                             )
         
@@ -172,8 +170,8 @@ def solve_s_scipy(var_est_object, **kwds):
                                 verbose=verbose,
                                 args=(var_est_object._z_array,
                                       var_est_object._d_array,
-                                      var_est_object._n_meas_lambdas,
-                                      var_est_object._n_allmeas_times,
+                                      len(var_est_object.model.meas_lambdas),
+                                      len(var_est_object.model.times_spectral),
                                       n)
                                 )
             
@@ -184,7 +182,7 @@ def solve_s_scipy(var_est_object, **kwds):
         t1 = time.time()
         print("Scipy.optimize.least_squares time={:.3f} seconds".format(t1-t0))
 
-    for j, l in enumerate(var_est_object._meas_lambdas):
+    for j, l in enumerate(var_est_object.model.meas_lambdas):
         for k, c in enumerate(var_est_object.component_set):
             var_est_object.model.S[l, c].value = res.x[j * n + k]
             if hasattr(var_est_object.model, 'known_absorbance'):
@@ -205,13 +203,13 @@ def build_c_model(var_est_object):
     var_est_object.C_model = ConcreteModel()
     
     var_est_object.C_model.C = Var(
-        var_est_object._allmeas_times,
+        var_est_object.model.times_spectral,
         var_est_object._sublist_components,
         bounds=(0.0, None),
         initialize=1.0
     )
 
-    for l in var_est_object._allmeas_times:
+    for l in var_est_object.model.times_spectral:
         for k in var_est_object._sublist_components:
             var_est_object.C_model.C[l, k].value = var_est_object.model.C[l, k].value
             if hasattr(var_est_object.model, 'non_absorbing'):
@@ -266,14 +264,14 @@ def solve_c_scipy(var_est_object, **kwds):
     else:
         n = var_est_object._n_components
         
-    for i, t in enumerate(var_est_object._allmeas_times):
+    for i, t in enumerate(var_est_object.model.times_spectral):
         for k, c in enumerate(var_est_object.component_set):
             if getattr(var_est_object.model, var_est_object.component_var)[t, c].value <= 0.0:
                 var_est_object._c_array[i * n + k] = 1e-15
             else:
                 var_est_object._c_array[i * n + k] = getattr(var_est_object.model, var_est_object.component_var)[t, c].value
 
-    for j, l in enumerate(var_est_object._meas_lambdas):
+    for j, l in enumerate(var_est_object.model.meas_lambdas):
         for k, c in enumerate(var_est_object.component_set):
             var_est_object._s_array[j * n + k] = var_est_object.model.S[l, c].value
 
@@ -315,8 +313,8 @@ def solve_c_scipy(var_est_object, **kwds):
                             verbose=verbose,
                             args=(var_est_object._s_array,
                                   var_est_object._d_array,
-                                  var_est_object._n_meas_lambdas,
-                                  var_est_object._n_allmeas_times,
+                                  len(var_est_object.model.meas_lambdas),
+                                  len(var_est_object.model.times_spectral),
                                   n)
                             )
         
@@ -338,8 +336,8 @@ def solve_c_scipy(var_est_object, **kwds):
                                 verbose=verbose,
                                 args=(var_est_object._s_array,
                                       var_est_object._d_array,
-                                      var_est_object._n_meas_lambdas,
-                                      var_est_object._n_allmeas_times,
+                                      len(var_est_object.model.meas_lambdas),
+                                      len(var_est_object.model.times_spectral),
                                       n)
                                 )
                 
@@ -350,7 +348,7 @@ def solve_c_scipy(var_est_object, **kwds):
         t1 = time.time()
         print("Scipy.optimize.least_squares time={:.3f} seconds".format(t1-t0))
 
-    for j, t in enumerate(var_est_object._allmeas_times):
+    for j, t in enumerate(var_est_object.model.times_spectral):
         for k,c in enumerate(var_est_object.component_set):
             getattr(var_est_object.model, var_est_object.component_var)[t,c].value = res.x[j*n+k]
    

@@ -50,7 +50,7 @@ def run_method(var_est_object, solver, run_opt_kwargs):
                             solver_opts=solver_opts,
                             tee=tee)
     else:
-        for t in var_est_object._allmeas_times:
+        for t in var_est_object.model.times_spectral:
             for k in var_est_object._mixture_components:
                 var_est_object.model.C[t, k].value = init_C[k][t]
                 var_est_object.model.Z[t, k].value = init_C[k][t]
@@ -166,7 +166,7 @@ def solve_initalization(var_est_object, solver, **kwds):
     sigmas_sq = kwds.pop('variances', dict())
 
     if not set_A:
-        set_A = var_est_object._meas_lambdas
+        set_A = var_est_object.model.meas_lambdas
 
     keys = sigmas_sq.keys()
     # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
@@ -181,7 +181,7 @@ def solve_initalization(var_est_object, solver, **kwds):
     var_est_object._warn_if_D_negative()
 
     obj = 0.0
-    for t in var_est_object._meas_times:
+    for t in var_est_object.model.times_spectral:
         for l in set_A:
             D_bar = sum(
                 var_est_object.model.Z[t, k] * var_est_object.model.S[l, k] for k in var_est_object.component_set)
@@ -197,7 +197,7 @@ def solve_initalization(var_est_object, solver, **kwds):
                                tee=tee,
                                report_timing=profile_time)
 
-    for t in var_est_object._allmeas_times:
+    for t in var_est_object.model.times_spectral:
         for k in var_est_object._mixture_components:
             if k in sigmas_sq and sigmas_sq[k] > 0.0:
                 var_est_object.model.C[t, k].value = np.random.normal(var_est_object.model.Z[t, k].value, sigmas_sq[k])
@@ -245,8 +245,8 @@ def _solve_variances(var_est_object, results, fixed_dev_var=None):
     :rtype: bool
 
     """
-    nl = var_est_object._n_meas_lambdas
-    nt = var_est_object._n_meas_times
+    nl = len(var_est_object.model.meas_lambdas)
+    nt = len(var_est_object.model.times_spectral)
     b = np.zeros((nl, 1))
 
     variance_dict = dict()
@@ -254,8 +254,8 @@ def _solve_variances(var_est_object, results, fixed_dev_var=None):
 
     A = np.ones((nl, n_val + 1))
     reciprocal_nt = 1.0 / nt
-    for i, l in enumerate(var_est_object._meas_lambdas):
-        for j, t in enumerate(var_est_object._meas_times):
+    for i, l in enumerate(var_est_object.model.meas_lambdas):
+        for j, t in enumerate(var_est_object.model.times_spectral):
             D_bar = 0.0
             for w, k in enumerate(var_est_object.component_set):
                 A[i, w] = results.S[k][l] ** 2
@@ -305,11 +305,10 @@ def _solve_variances(var_est_object, results, fixed_dev_var=None):
 
     if fixed_dev_var:
         bp = np.zeros((nl, 1))
-        for i, l in enumerate(var_est_object._meas_lambdas):
-            bp[i] = b[i] - fixed_dev_var
         Ap = np.zeros((nl, n_val))
-        for i, l in enumerate(var_est_object._meas_lambdas):
-            for j, t in enumerate(var_est_object._meas_times):
+        for i, l in enumerate(var_est_object.model.meas_lambdas):
+            bp[i] = b[i] - fixed_dev_var
+            for j, t in enumerate(var_est_object.model.times_spectral):
                 for w, k in enumerate(var_est_object.component_set):
                     Ap[i, w] = results.S[k][l] ** 2
 
@@ -340,9 +339,9 @@ def build_scipy_lsq_arrays(var_est_object):
     :return: None
 
     """
-    var_est_object._d_array = np.zeros((var_est_object._n_meas_times, var_est_object._n_meas_lambdas))
-    for i, t in enumerate(var_est_object._meas_times):
-        for j, l in enumerate(var_est_object._meas_lambdas):
+    var_est_object._d_array = np.zeros((len(var_est_object.model.times_spectral), len(var_est_object.model.meas_lambdas)))
+    for i, t in enumerate(var_est_object.model.times_spectral):
+        for j, l in enumerate(var_est_object.model.meas_lambdas):
             var_est_object._d_array[i, j] = var_est_object.model.D[t, l]
 
     if hasattr(var_est_object, '_abs_components'):
@@ -350,9 +349,9 @@ def build_scipy_lsq_arrays(var_est_object):
     else:
         n_val = var_est_object._n_components
 
-    var_est_object._s_array = np.ones(var_est_object._n_meas_lambdas * n_val)
-    var_est_object._z_array = np.ones(var_est_object._n_allmeas_times * n_val)
-    var_est_object._c_array = np.ones(var_est_object._n_allmeas_times * n_val)
+    var_est_object._s_array = np.ones(len(var_est_object.model.meas_lambdas) * n_val)
+    var_est_object._z_array = np.ones(len(var_est_object.model.times_spectral) * n_val)
+    var_est_object._c_array = np.ones(len(var_est_object.model.times_spectral) * n_val)
 
     return None
 
@@ -387,9 +386,9 @@ def compute_D_given_SC(var_est_object, results, sigma_d=0):
     d_results = []
 
     if hasattr(var_est_object, '_abs_components'):  # added for removing non_abs ones from first term in obj CS
-        for i, t in enumerate(var_est_object._allmeas_times):
-            if t in var_est_object._meas_times:
-                for j, l in enumerate(var_est_object._meas_lambdas):
+        for i, t in enumerate(var_est_object.model.times_spectral):
+            if t in var_est_object.model.times_spectral:
+                for j, l in enumerate(var_est_object.model.meas_lambdas):
                     suma = 0.0
                     for w, k in enumerate(var_est_object._abs_components):
                         Cs = results.Cs[k][t]  # just the absorbing ones
@@ -400,9 +399,9 @@ def compute_D_given_SC(var_est_object, results, sigma_d=0):
                     d_results.append(suma)
 
     else:
-        for i, t in enumerate(var_est_object._allmeas_times):
-            if t in var_est_object._meas_times:
-                for j, l in enumerate(var_est_object._meas_lambdas):
+        for i, t in enumerate(var_est_object.model.times_spectral):
+            if t in var_est_object.model.times_spectral:
+                for j, l in enumerate(var_est_object.model.meas_lambdas):
                     suma = 0.0
                     for w, k in enumerate(var_est_object._mixture_components):
                         C = results.C[k][t]
@@ -412,9 +411,9 @@ def compute_D_given_SC(var_est_object, results, sigma_d=0):
                         suma += np.random.normal(0.0, sigma_d)
                     d_results.append(suma)
 
-    d_array = np.array(d_results).reshape((var_est_object._n_meas_times, var_est_object._n_meas_lambdas))
+    d_array = np.array(d_results).reshape((len(var_est_object.model.times_spectral), len(var_est_object.model.meas_lambdas)))
     results.D = pd.DataFrame(data=d_array,
-                             columns=var_est_object._meas_lambdas,
-                             index=var_est_object._meas_times)
+                             columns=var_est_object.model.meas_lambdas,
+                             index=var_est_object.model.times_spectral)
 
     return None
