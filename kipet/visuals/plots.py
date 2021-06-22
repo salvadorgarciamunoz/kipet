@@ -1,15 +1,17 @@
 """
 Plotting class for KIPET
 """
-import os
-import sys
-import time
 # Standard library imports
 from pathlib import Path
+import os
+import sys
 
-# Thirdparty library imports 
+# Third party imports 
+import pandas as pd
 import plotly.graph_objects as go
 import plotly.io as pio
+
+pio.templates.default = "plotly_white"
 
 # Kipet library imports
 """
@@ -32,15 +34,29 @@ colors += ['#4285F4', '#DB4437', '#F4B400', '#0F9D58',
                      '#185ABC', '#B31412', '#EA8600', '#137333',
                      '#d2e3fc', '#ceead6']
 
+# Use for making SVGs
+
+# plot_options = {
+#     'label_font': dict(
+#             size=32,
+#         ),
+#     'title_font': dict(
+#             size=32,
+#         ),
+#     'tick_font': dict(
+#             size=24,
+#         ),
+#     }
+
 plot_options = {
     'label_font': dict(
-            size=32,
+            size=14,
         ),
     'title_font': dict(
-            size=32,
+            size=18,
         ),
     'tick_font': dict(
-            size=24,
+            size=14,
         ),
     }
 
@@ -55,7 +71,7 @@ class PlotObject:
     :param bool jupyter: Indicates if the user is using a Jupyter notebook
     :param str filename: Optional file name for the plot
     """
-    def __init__(self, reaction_model=None, jupyter=False, filename=None):
+    def __init__(self, reaction_model=None, jupyter=False, filename=None, show=False):
         """Initialization of the PlotObject instance
 
         :param ReactionModel reaction_model: A ReactionModel instance
@@ -68,10 +84,11 @@ class PlotObject:
         self.color_num = 0
         self.filename = filename
         self.jupyter = jupyter
+        self.show = show
         
-        t = time.localtime()
-        date = f'{t.tm_year}-{t.tm_mon:02}-{t.tm_mday:02}-{t.tm_hour:02}-{t.tm_min:02}-{t.tm_sec:02}'
-        self.timestamp = date
+        self.folder_name = self.reaction_model.timestamp
+        if self.filename is not None:
+            self.folder_name = self.filename
 
     @staticmethod
     def _make_line_trace(fig, x, y, name, color):
@@ -86,7 +103,7 @@ class PlotObject:
         :return: None
         
         """
-        line = dict(color=colors[color], width=4)
+        line = dict(color=colors[color], width=2)
         fig.add_trace(
             go.Scatter(x=x,
                        y=y,
@@ -141,17 +158,13 @@ class PlotObject:
         fig.update_layout(title_font=plot_options['title_font'])
         fig.update_layout(legend_font=plot_options['label_font'])
         
-        use_timestamp = True
-
         filename = f'{plot_name}.html'
         # Change the folder directory
-        folder_name = self.timestamp
-        if self.filename is not None:
-            use_timestamp = False
-            folder_name = self.filename
             
+        stem = self.reaction_model.file.stem
+        
         if self.jupyter:
-            chart_dir = Path.cwd().joinpath('charts', f'{self.name}-{folder_name}')
+            chart_dir = Path.cwd().joinpath('results', f'{stem}-{self.folder_name}' , 'charts', f'{self.name}')
             plot_method = pio.show
             fig.update_layout(         
                 autosize=False,
@@ -168,21 +181,21 @@ class PlotObject:
         else:
         
             calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
-            chart_dir = Path(calling_file_name).joinpath('charts', f'{self.name}-{folder_name}')
+            chart_dir = Path(calling_file_name).joinpath('results', f'{stem}-{self.folder_name}', 'charts', f'{self.name}')
             plot_method = pio.write_html
         
         chart_dir.mkdir(parents=True, exist_ok=True)
         filename = chart_dir.joinpath(filename)
-        if not self.jupyter:
-           print(f'Plot saved as: {filename}')
+        #if not self.jupyter:
+        #   print(f'Plot saved as: {filename}')
            
         self.save_static_image = True
         if self.save_static_image:
             fig.write_image(f'{filename}.svg', width=1400, height=900)
 
-        plot_method(fig, file=filename.as_posix(), auto_open=True)
+        plot_method(fig, file=filename.as_posix(), auto_open=self.show)
     
-        return None
+        return filename
 
     def _state_plot(self, fig, var, pred, exp, use_spectral_format=False):
         """Generic method to plot state profiles
@@ -202,12 +215,12 @@ class PlotObject:
                               name=var,
                               color=self.color_num,
                               )
-        marker_options = {'size': 15,
-                          'opacity': 0.75,
+        marker_options = {'size': 8,
+                          'opacity': 0.5,
                           }
         label = 'exp.'   
         if use_spectral_format:
-            marker_options = {'size': 10,
+            marker_options = {'size': 8,
                               'opacity': 0.5,
                              }
             label = 'spectral'         
@@ -221,6 +234,46 @@ class PlotObject:
                                     )
         return None
 
+
+    def _plot_input_D_data(self):
+        """Plot all input data concentration profiles
+        
+        """
+        data = self.reaction_model.spectra.data
+
+        fig = go.Figure()
+        fig.add_trace(go.Surface(x=data.columns,
+                                 y=data.index,
+                                 z=data.values,
+                                 ))
+
+        fig.update_layout(scene=dict(
+            xaxis_title='Wavelength',
+            yaxis_title='Time',
+            zaxis_title='Absorbance'),
+            margin=dict(r=100, b=50, l=100, t=50),
+            #title_text=f'{self.name}: Spectral Data',
+            #title_font_size=plot_options['title_font']['size'],
+            )
+
+        calling_file_name = os.path.dirname(os.path.realpath(sys.argv[0]))
+        chart_dir = Path(calling_file_name).joinpath('results', f'{self.reaction_model.file.stem}-{self.folder_name}', 'charts', f'{self.name}')
+        plot_method = pio.write_html
+        
+        chart_dir.mkdir(parents=True, exist_ok=True)
+        filename = chart_dir.joinpath('spectral_data.html')
+        if not self.jupyter:
+           print(f'Plot saved as: {filename}')
+           
+        self.save_static_image = True
+        #if self.save_static_image:
+        #    fig.write_image(f'{filename.as_posix()[:-5]}.svg', width=1400, height=900)
+
+        plot_method(fig, file=filename.as_posix(), auto_open=False)
+        
+        return filename
+
+
     def _plot_all_Z(self):
         """Plot all concentration profiles
         
@@ -231,7 +284,7 @@ class PlotObject:
         if hasattr(self.reaction_model.results, 'Cm'):
             exp = getattr(self.reaction_model.results, 'Cm')
         elif hasattr(self.reaction_model.results, 'C'):
-            if self.reaction_model.models['s_model'] and not self.reaction_model.models['v_model'] and not self.reaction_model.models['p_model']:
+            if self.reaction_model.models['_s_model'] and not self.reaction_model.models['v_model'] and not self.reaction_model.models['p_model']:
                 exp = None
             else:
                 exp = getattr(self.reaction_model.results, 'C')
@@ -248,7 +301,6 @@ class PlotObject:
         time_scale = f'Time [{self.reaction_model.unit_base.time}]'
 
         state_units = self._get_proper_unit_str(var_data)
-        # state_units = var_data.units.u
         fig.update_layout(
                 title=title,
                 xaxis_title=f'{time_scale}',
@@ -281,7 +333,6 @@ class PlotObject:
         description = f'| Description: {var_data.description}' if var_data.description is not None else ''
         title = f'Model: {self.reaction_model.name} | Variable: {var_data.name} {description}'
         time_scale = f'Time [{self.reaction_model.unit_base.time}]'
-        # state_units = var_data.units.u
         state_units = self._get_proper_unit_str(var_data)
         fig.update_layout(
                 title=title,
@@ -308,7 +359,6 @@ class PlotObject:
         description = f'| Description: {var_data.description}' if var_data.description is not None else ''
         title = f'Model: {self.reaction_model.name} | Variable: {var_data.name} {description}'
         time_scale = f'Time [{self.reaction_model.unit_base.time}]'
-        # state_units = var_data.units
         state_units = self._get_proper_unit_str(var_data, check_expr=True)
         fig.update_layout(
             title=title,
@@ -337,7 +387,6 @@ class PlotObject:
         title = f'Model: {self.reaction_model.name} | Variable: {var_data.name} {description}'
         time_scale = f'Time [{self.reaction_model.unit_base.time}]'
         state = f'{var_data.description}'.capitalize() if var_data.description is not None else 'State' 
-        # state_units = var_data.units
         state_units = self._get_proper_unit_str(var_data)
         fig.update_layout(
                 title=title,
@@ -369,9 +418,9 @@ class PlotObject:
                 xaxis_title=f'{time_scale}',
                 yaxis_title=f'{state} [{state_units}]',
                 )
-        self._fig_finishing(fig, pred, plot_name='all-absorbance-spectra')
+        self._fig_finishing(fig, pred, plot_name='absorbance-spectra-all')
 
-    def _plot_S(self, var):
+    def _plot_S(self, var, orig=False):
         """Plot individual S profile
 
         :param str var: component name
@@ -380,7 +429,10 @@ class PlotObject:
 
         """
         fig = go.Figure()
-        pred = getattr(self.reaction_model.results, 'S')
+        if not orig:
+            pred = getattr(self.reaction_model.results, 'S')
+        else:
+            pred = self.reaction_model.components[var].S
         exp = None
         self._state_plot(fig, var, pred, exp)
         var_data = self.reaction_model.results.S[var]
@@ -412,11 +464,100 @@ class PlotObject:
         fig.update_layout(
             title=title,
             xaxis_title=f'{time_scale}',
-            yaxis_title=f'[dimensionless]',
+            yaxis_title=f'[ - ]',
             )
         self._fig_finishing(fig, pred, plot_name=f'{var}-step-profile')
 
         return None
+
+
+    def _residual_plot(self, fig, var, pred, exp, use_spectral_format=False):
+        """Generic method to plot state profiles
+
+        :param go.Figure fig: The figure object
+        :param str var: The variable to plot
+        :param pandas.DataFrame pred: The predicted data from the model
+        :param pandas.DataFrame exp: The experimental data
+        :param bool use_spectral_format: For absorbance profiles True, otherwise False
+
+        :return: None
+
+        """
+        marker_options = {'size': 10,
+                          'opacity': 0.9,
+                          }
+        label = 'res.'   
+            
+        residuals = exp - pred
+        residuals = residuals.dropna()
+        
+        self._make_marker_trace(fig=fig,
+                                x=residuals.index,
+                                y=residuals[var],
+                                name=f'{var} ({label})',
+                                color=self.color_num,
+                                marker_options=marker_options,
+                                )
+        return None
+
+    def _plot_Z_residuals(self):
+        """Plot state profiles
+
+        :param str var: concentration variable
+        
+        """
+        fig = go.Figure()
+        use_spectral_format = False
+        pred = getattr(self.reaction_model.results, 'Z')
+        if hasattr(self.reaction_model.results, 'Cm'):
+            exp = getattr(self.reaction_model.results, 'Cm')
+        elif hasattr(self.reaction_model.results, 'C'):
+            exp = getattr(self.reaction_model.results, 'C')
+        else:
+            exp = None
+            
+        for i, col in enumerate(pred.columns):
+            self._residual_plot(fig, col, pred, exp)
+            self.color_num += 1
+        self.color_num = 0
+            
+        title = f'Model: {self.reaction_model.name} | Concentration Residuals'
+        time_scale = f'Time [{self.reaction_model.unit_base.time}]'
+
+        fig.update_layout(
+                title=title,
+                xaxis_title=f'{time_scale}',
+                yaxis_title='Residuals',
+                )
+        
+        filename = self._fig_finishing(fig, pred, plot_name=f'concentration-residuals')
+        return filename
+        
+    def _plot_X_residuals(self, var):
+        """Plot state profiles
+
+        :param str var: concentration variable
+        
+        """
+        fig = go.Figure()
+        
+        pred = getattr(self.reaction_model.results, 'X')
+        if hasattr(self.reaction_model.results, 'U'):
+            exp = getattr(self.reaction_model.results, 'U')
+        else:
+            exp = None
+        
+        self._residual_plot(fig, var, pred, exp)
+        title = f'Model: {self.reaction_model.name} | State Residuals'
+        time_scale = f'Time [{self.reaction_model.unit_base.time}]'
+        fig.update_layout(
+                title=title,
+                xaxis_title=f'{time_scale}',
+                yaxis_title='Residuals',
+                )
+        
+        filename = self._fig_finishing(fig, pred, plot_name=f'{var}-state-residuals')
+        return filename
 
     def _get_proper_unit_str(self, var_data, check_expr=False):
         """Gets the proper units for the charts labels
