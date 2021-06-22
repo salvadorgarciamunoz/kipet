@@ -3,6 +3,7 @@ The core methods used to estimate variances are maintained here.
 """
 # Standard library imports
 import copy
+import itertools
 import time
 import warnings
 
@@ -92,45 +93,21 @@ class VarianceEstimator(PyomoSimulator):
 
         """
         run_opt_kwargs = copy.copy(kwds)
-        
-        solver_opts = kwds.pop('solver_opts', dict())
-        sigma_sq = kwds.pop('variances', dict())
-        init_sigmas = kwds.pop('initial_sigmas', float())
-        tee = kwds.pop('tee', False)
-        method = kwds.pop('method', str())
-        norm_order = kwds.pop('norm',np.inf)
-        max_iter = kwds.pop('max_iter', 400)
-        tol = kwds.pop('tolerance', 5.0e-5)
-        A = kwds.pop('subset_lambdas', None)
-        lsq_ipopt = kwds.pop('lsq_ipopt', False)
-        init_C = kwds.pop('init_C', None)
-        report_time = kwds.pop('report_time', False)
-        individual_species = kwds.pop('individual_species', False)
 
-        # additional arguments for inputs CS
-        inputs = kwds.pop("inputs", None)
+        method = kwds.pop('method', str())
+        report_time = kwds.pop('report_time', False)
+    
         inputs_sub = kwds.pop("inputs_sub", None)
         trajectories = kwds.pop("trajectories", None)
         fixedtraj = kwds.pop('fixedtraj', False)
         fixedy = kwds.pop('fixedy', False)
         yfix = kwds.pop("yfix", None)
         yfixtraj = kwds.pop("yfixtraj", None)
-
         jump = kwds.pop("jump", False)
-        var_dic = kwds.pop("jump_states", None)
-        jump_times = kwds.pop("jump_times", None)
-        feed_times = kwds.pop("feed_times", None)
-
+        
         species_list = kwds.pop('subset_components', None)
         
-        # Modified variance estimation procedures arguments
-        fixed_device_var = kwds.pop('fixed_device_variance', None)
-        device_range = kwds.pop('device_range', None)
-        secant_point2 = kwds.pop('secant_point', None)
-        num_points = kwds.pop('num_points', None)
-        with_plots = kwds.pop('with_plots', False)
-        
-        methods_available = ['originalchenetal', "direct_sigmas", "alternate"]
+        methods_available = ['originalchenetal', "direct_sigmas", "alternate", "fixed"]
         
         if method not in methods_available:
             method = 'originalchenetal'
@@ -213,6 +190,10 @@ class VarianceEstimator(PyomoSimulator):
             from kipet.variance_methods.alternate_method import run_direct_sigmas_method
             results = run_direct_sigmas_method(self, solver, run_opt_kwargs)
             
+        # elif method == 'fixed':
+        #     from kipet.variance_methods.alternate_method import run_direct_sigmas_method
+        #     results = run_direct_sigmas_method(self, solver, run_opt_kwargs, fixed=True)
+            
         # Report time
         if report_time:
             end = time.time()
@@ -226,12 +207,12 @@ class VarianceEstimator(PyomoSimulator):
         :return: None
 
         """
-        for t in self._meas_times:
-            for l in self._meas_lambdas:
-                if self.model.D[t, l] >= 0:
-                    pass
-                else:
-                    self._is_D_deriv = True
+        index = itertools.product(self.model.times_spectral, self.model.meas_lambdas)
+        for key in index:
+            if self.model.D[key] >= 0:
+                pass
+            else:
+                self._is_D_deriv = True
 
         if self._is_D_deriv == True:
             print("Warning! Since D-matrix contains negative values Kipet is relaxing non-negativity on S")
@@ -273,7 +254,8 @@ class VarianceEstimator(PyomoSimulator):
             - subset_lambdas (array_like,optional): Set of wavelengths to used in initialization problem
             (Weifeng paper). Default all wavelengths.
 
-        :return float delta_sq: Value of the max device variance
+        :return: Value of the max device variance
+        :rtype: float
     
         """   
         solver_opts = kwds.pop('solver_opts', dict())
@@ -281,7 +263,7 @@ class VarianceEstimator(PyomoSimulator):
         set_A = kwds.pop('subset_lambdas', list())
     
         if not set_A:
-            set_A = self._meas_lambdas
+            set_A = self.model.meas_lambdas
     
         list_components = [k for k in self._mixture_components]
                     
@@ -298,15 +280,15 @@ class VarianceEstimator(PyomoSimulator):
         
         self._warn_if_D_negative()
         obj = 0.0
-        ntp = len(self._meas_times)
-        nwp = len(self._meas_lambdas)
+        ntp = len(self.model.times_spectral)
+        nwp = len(self.model.meas_lambdas)
         
         if hasattr(self, '_abs_components'):
             self.component_set = self._abs_components
         else:
             self.component_set = self._sublist_components
         
-        for t in self._meas_times:
+        for t in self.model.times_spectral:
             for l in set_A:
                 D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self.component_set)
                 obj += (self.model.D[t, l] - D_bar)**2
@@ -325,7 +307,7 @@ class VarianceEstimator(PyomoSimulator):
             print(k, v.value)
         
         etaTeta = 0
-        for t in self._meas_times:
+        for t in self.model.times_spectral:
             for l in set_A:
                 D_bar = sum(value(self.model.Z[t, k]) * value(self.model.S[l, k]) for k in self.component_set)
                 etaTeta += (value(self.model.D[t, l])- D_bar)**2
@@ -334,7 +316,6 @@ class VarianceEstimator(PyomoSimulator):
         deltasq = etaTeta/(ntp*nwp)
         
         self.model.del_component('init_objective')
-        print("Worst case delta^2: ", deltasq)
     
         return deltasq
     
@@ -351,7 +332,7 @@ class VarianceEstimator(PyomoSimulator):
         Args:
             solver (str): solver to use to solve the problems (recommended "ipopt")
             
-            delta (float): the device variance squared 
+            delta (float): the device variance
         
             tee (bool,optional): flag to tell the optimizer whether to stream output
             to the terminal or not
@@ -371,12 +352,14 @@ class VarianceEstimator(PyomoSimulator):
         set_A = kwds.pop('subset_lambdas', list())
         delta = kwds.pop('delta', dict())
         
-        residuals, sigma_vals, stop_it, results = _solve_sigma_given_delta(self, 
-                                                                           solver, 
-                                                                           subset_lambdas=set_A, 
-                                                                           solver_opts=solver_opts, 
-                                                                           tee=tee, 
-                                                                           delta=delta)
+        residuals, sigma_vals, stop_it, results = _solve_sigma_given_delta(
+            self, 
+            solver, 
+            subset_lambdas=set_A, 
+            solver_opts=solver_opts, 
+            tee=tee, 
+            delta=delta
+        )
         all_variances = sigma_vals
         all_variances['device'] = delta
         return all_variances
