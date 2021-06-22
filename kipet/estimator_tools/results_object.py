@@ -26,7 +26,7 @@ class ResultsObject(object):
         likely change in the near future.
         
         """
-        pass
+        self.parameter_covariance = None
 
     def __str__(self):
         string = "\nRESULTS\n"
@@ -43,7 +43,62 @@ class ResultsObject(object):
         return string
     
     def __repr__(self):
+        
         return self.__str__()
+
+    def _confidence_interval_display(self, interval=0.95):
+        """
+        Function to display calculated confidence intervals
+
+        :param dict variances: The component variances
+
+        :return: None
+
+        """
+        margin = 15
+        if self.parameter_covariance is not None:
+            deviations = self.deviations(interval)
+            
+            print(f'\n# Parameter Values with confidence: ({int(interval*100)}%)')
+            for k, p in self.P.items():
+                if k in self.variances:
+                    print(f'{k.rjust(margin)} = {p:0.4e} +/- {deviations[k]:0.4e}') 
+            if hasattr(self, 'Pinit'):
+                for k, p in self.Pinit.items():
+                    print(f'{k.rjust(margin)} = {p:0.4e} +/- {deviations[k]:0.4e}') 
+            if hasattr(self, 'time_step_change'):
+                for k, p in self.time_step_change.items():
+                    if k in self.variances:
+                        print(f'{k.rjust(margin)} = {p:0.4e} +/- {deviations[k]:0.4e}') 
+        else:
+            print(f'\n# Parameter Values')
+            for k, p in self.P.items():
+                print(f'{k.rjust(margin)} = {p:0.4e}')
+            if hasattr(self, 'Pinit'):
+                for k, p in self.Pinit.items():
+                    print(f'{k.rjust(margin)} = {p:0.4e}') 
+            if hasattr(self, 'time_step_change'):
+                for k, p in self.time_step_change.items():
+                    print(f'{k.rjust(margin)} = {p:0.4e}') 
+            
+        return None
+
+    def deviations(self, interval=0.95):
+        """Calculates bounds for the parameters based on STD and condifence
+        interval provided
+        
+        :param float interval: The confidence interval
+        
+        """
+        if not hasattr(self, 'parameter_covariance') or self.parameter_covariance is None:
+            return None
+        
+        import scipy.stats as st
+        dev = st.norm.ppf(1-(1-interval)/2)
+        
+        deviations = {k: dev*v**0.5 for k, v in self.variances.items()}
+        
+        return deviations
 
     def compute_var_norm(self, variable_name, norm_type=np.inf):
         var = getattr(self, variable_name)
@@ -73,26 +128,24 @@ class ResultsObject(object):
             var_data = convert(var)
             setattr(self, name, var_data)
                 
-    @property
-    def parameters(self):
+
+    def parameters(self, interval=0.95):
         """Returns the parameter dictionary
         
         :return: The parameter values from the model
         :rtype: dict
         
         """
-        return self.P
+        return self._confidence_interval_display(interval)
             
-    @property
-    def show_parameters(self):
+
+    def show_parameters(self, interval=0.95):
         """Displays the parameter values in a convenient manner
         
         :return: None
         
         """
-        print('\nThe estimated parameters are:')
-        for k, v in self.P.items():
-            print(k, v)
+        return self._confidence_interval_display(interval)
             
     @property
     def variances(self):
@@ -101,6 +154,11 @@ class ResultsObject(object):
         :return: None
         
         """
-        print('\nThe estimated variances are:')
-        for k, v in self.sigma_sq.items():
-            print(k, v)
+        if not hasattr(self, 'parameter_covariance') or self.parameter_covariance is None:
+            return None
+        
+        var = dict(zip(self.parameter_covariance.columns, 
+                       np.diag(self.parameter_covariance.values)
+            ))
+        
+        return var
