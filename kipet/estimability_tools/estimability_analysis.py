@@ -1,10 +1,12 @@
-# -*- coding: utf-8 -*-
+# Standard library imports
+import warnings
 
-from __future__ import division, print_function
+# Third party imports
+import numpy as np
+from pyomo.environ import Constraint, Objective, Param, Set, SolverFactory, Suffix, value, Var
 
-from kipet.estimator_tools.parameter_estimator import *
-
-__author__ = 'Michael Short'  #: November 2018
+# KIPET library imports
+from kipet.estimator_tools.parameter_estimator import ParameterEstimator
 
 
 class EstimabilityAnalyzer(ParameterEstimator):
@@ -26,12 +28,6 @@ class EstimabilityAnalyzer(ParameterEstimator):
         super(EstimabilityAnalyzer, self).__init__(model)
         self.param_ranks = dict()
         
-    def run_sim(self, solver, **kdws):
-        raise NotImplementedError("EstimabilityAnalyzer object does not have run_sim method. Call run_analyzer")
-
-    def run_opt(self, solver, **kdws):
-        raise NotImplementedError("EstimabilityAnalyzer object does not have run_opt method. Call run_analyzer")
-
     def get_sensitivities_for_params(self, **kwds):
         """ Obtains the sensitivities (dsdp) using k_aug. This function only works for
         concentration-only problems and obtains the sensitivities based on the initial parameter
@@ -97,7 +93,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         paramlist=list()
         varcount = 0
         varlist = list()
-        for k,v in six.iteritems(m.P):
+        for k,v in m.P.items():
             if v.is_fixed():
                 paramcount +=1
                 paramlist.append(k)
@@ -129,6 +125,9 @@ class EstimabilityAnalyzer(ParameterEstimator):
            
         m.dummyC = Constraint(m.parameter_names, rule=dummy_constraints)     
         
+        
+        if hasattr(m, 'dual'):
+            print('The model has duals already...')
         #set up suffixes for Ipopt that are required for k_aug
         m.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
         m.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
@@ -139,6 +138,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         #: K_AUG SUFFIXES  
         m.dcdp = Suffix(direction=Suffix.EXPORT)  #: the dummy constraints
         m.var_order = Suffix(direction=Suffix.EXPORT)  #: Important variables (primal)
+        m.rh_name = Suffix(direction=Suffix.IMPORT)
         
         # set which are the variables and which are the parameters for k_aug       
         count_vars = 1
@@ -146,7 +146,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         if not self._spectra_given:
             pass
         else:
-            for t in self._allmeas_times:
+            for t in self.model.times_spectra:
                 for c in self._sublist_components:
                     m.C[t, c].set_suffix_value(m.var_order,count_vars)
                     count_vars += 1
@@ -154,13 +154,17 @@ class EstimabilityAnalyzer(ParameterEstimator):
         if not self._spectra_given:
             pass
         else:
-            for l in self._meas_lambdas:
+            for l in self.model.meas_lambdas:
                 for c in self._sublist_components:
                     m.S[l, c].set_suffix_value(m.var_order,count_vars)
                     count_vars += 1
                         
+        for index, value in self.model.Z.items():
+            m.Z[index].set_suffix_value(m.var_order, count_vars)
+            count_vars += 1
+                    
         if self._concentration_given:
-            for t in self._allmeas_times:
+            for t in self.model.times_concentration:
                 for c in self._sublist_components:
                     m.Z[t, c].set_suffix_value(m.var_order,count_vars)
                     count_vars += 1
@@ -182,7 +186,10 @@ class EstimabilityAnalyzer(ParameterEstimator):
                 
         #first solve with Ipopt
         ip = SolverFactory('ipopt')
-        solver_results = ip.solve(m, tee=False,
+        solver_results = ip.solve(m, 
+                                  symbolic_solver_labels=True,
+                                  keepfiles=True,
+                                  tee=True,
                                   report_timing=False)
 
         m.ipopt_zL_in.update(m.ipopt_zL_out)
@@ -274,7 +281,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         dsdp, idx_to_param = self.get_sensitivities_for_params(tee=True, sigmasq=sigmas)
         nvars = np.size(dsdp,0)
         nparams = 0
-        for v in six.itervalues(self.model.P):
+        for v in self.model.P.items():
             if v.is_fixed():
                 print(v, end='\t')
                 print("is fixed")
@@ -349,8 +356,8 @@ class EstimabilityAnalyzer(ParameterEstimator):
                     paramhere = self.param_ranks[(x+1)]
                     #print(paramhere)
 
-                for key, value in six.iteritems(self.param_ranks):
-                    for idx, val in six.iteritems(idx_to_param):
+                for key, value in self.param_ranks.items():
+                    for idx, val in idx_to_param.items():
                         if value ==paramhere:
                             if value == val:
                                 #print(key, val, idx)
@@ -431,7 +438,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         #NOTE: if param appears here then it was not evaluated (i.e. it was the least estimable)
         count = 0
         self.unranked_params = {}
-        for v,p in six.iteritems(self.model.P):
+        for v,p in self.model.P.items():
             if p.is_fixed():
                 print(v, end='\t')
                 print("is fixed")
@@ -475,7 +482,6 @@ class EstimabilityAnalyzer(ParameterEstimator):
         analysis tools will be added in time. The parameter rankings need to be included as well and 
         this can be done using various methods, however for now, only the Yao (2003) method is used.
 
-
         :param str method: The estimability method to be used. Default is Wu, et al (2011) for concentrations. Others
              to be added
         :param list parameter_rankings: A list containing the parameter rankings in order from most estimable to least
@@ -503,7 +509,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
             if type(parameter_rankings) is not list:
                 raise RuntimeError('The parameter_rankings must be type dict')   
                 
-        for v,k in six.iteritems(self.model.P): 
+        for v,k in self.model.P.items(): 
             if v in parameter_rankings:
                 continue
             else:
@@ -571,7 +577,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         for p in parameter_rankings:
             params_estimated.append(p)            
             #print("performing parameter estimation for: ", params_estimated)
-            for v,k in six.iteritems(cloned_full_model[count].P):
+            for v,k in cloned_full_model[count].P.items():
                 if v in params_estimated:
                     continue
                 else:
@@ -611,7 +617,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
             # print('TC',TerminationCondition.optimal)
             # print('selfterm',self.termination_condition)
 
-            for v,k in six.iteritems(results[count].P):
+            for v,k in results[count].P.items():
                 print(v,k)
             # Then compute the scaled residuals to obtain the Jk in the Wu et al paper   
             J [count] = self._compute_scaled_residuals(results[count], meas_scaling)
@@ -649,7 +655,7 @@ class EstimabilityAnalyzer(ParameterEstimator):
         # first we need the total number of responses
         N = 0
         for c in self._sublist_components:
-            for t in self._allmeas_times:
+            for t in self.model.allmeas_times:
                 N += 1 
                 
         crit_rat = dict()
@@ -685,22 +691,42 @@ class EstimabilityAnalyzer(ParameterEstimator):
         :return: Value of sum of squared scaled residuals
 
         """
-        nt = self._n_allmeas_times
-        nc = self._n_actual
         self.residuals = dict()
-        count_c = 0
+        
+        E = 0
         for c in self._sublist_components:
-            count_t = 0
-            for t in self._allmeas_times:
+            for t in self.model.allmeas_times:
                 a = model.Cm[c][t]
                 b = model.Z[c][t]
                 r = ((a - b) ** 2)
                 self.residuals[t, c] = r
-                count_t += 1
-            count_c += 1
-        E = 0           
+                   
+        
         for c in self._sublist_components:
-            for t in self._allmeas_times:
+            for t in self.model.allmeas_times:
                 E += self.residuals[t, c] / (meas_scaling ** 2)
 
+        # print(E)
+        # print(self.residuals)
+        # import pandas as pd
+
+
+        # residuals = pd.DataFrame(
+        #     np.zeros((len(self.model.allmeas_times), len(self._sublist_components))),
+        #     columns=self._sublist_components,
+        #     index=self.model.allmeas_times
+        #     )
+        
+        # for index, values in self.model.Cm.items():
+        #     residuals.loc[index] = (model.Z[index].value - model.Cm[index].value) ** 2 / meas_scaling ** 2
+
+        # print(index)
+        # print(residuals.loc[index])
+
+        # print(residuals.tail())
+        # E2 = sum(sum(residuals.values))
+        # print(E2)
         return E
+
+
+
