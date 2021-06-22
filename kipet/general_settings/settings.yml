@@ -4,7 +4,6 @@ collocation:
   nfe: 50
   scheme: LAGRANGE-RADAU
 general:
-  confidence: 1
   initialize_pe: true
   no_user_scaling: true
   scale_parameters: false
@@ -12,8 +11,9 @@ general:
   scale_variances: false
   simulation_times: null
   add_volume_terms: true
+  save_output: true
 parameter_estimator:
-  confidence: null
+  confidence: 0.95
   covariance: false
   estimability: false
   model_variance: true
@@ -31,25 +31,19 @@ solver:
   linear_solver: ma57
   nlp_scaling_method: gradient-based
   max_iter: 15000
-units:
-  concentration: M
-  time: hr
-  volume: L
 variance_estimator:
   best_accuracy: null
-  delta: 1.0e-07
+  fixed_device_variance: null
   device_range: null
   fixed_device_variance: null
-  freq_subset_lambdas: null
   individual_species: false
-  initial_sigmas: 1.0e-10
+  initial_sigmas: 1.0e-5
   max_device_variance: false
   max_iter: 15
   method: originalchenetal
-  num_points: null
-  secant_point: 1.0e-11
+  num_points: 10
+  secant_point: 5.0e-4
   solver: ipopt
   tee: true
   tolerance: 1.0e-05
-  use_delta: false
   with_plots: false
