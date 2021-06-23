@@ -124,10 +124,7 @@ def run_method(var_est_object, solver, run_opt_kwargs):
 
     results = ResultsObject()
 
-    vars_to_load = ['Z', 'dZdt', 'X', 'dXdt', 'C', 'Cs', 'S', 'Y']
-    if not hasattr(var_est_object, '_abs_components'):
-        vars_to_load.remove('Cs')
-    results.load_from_pyomo_model(var_est_object.model, to_load=vars_to_load)
+    results.load_from_pyomo_model(var_est_object.model)
 
     print('Iterative optimization converged. Estimating variances now')
     solved_variances = _solve_variances(var_est_object,
