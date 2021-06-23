@@ -1674,33 +1674,22 @@ class TemplateBuilder(object):
         self._non_absorbing = non_abs_list
         model.add_component('non_absorbing', Set(initialize=self._non_absorbing))
 
-        C = getattr(model, self.__var.concentration_spectra)
-        Z = getattr(model, self.__var.concentration_model)
-
-        times = getattr(model, 'times_spectral')
-        alltimes = getattr(model, 'allmeas_times')
-        allcomps = getattr(model, 'mixture_components')
-
-        model.add_component('fixed_C', ConstraintList())
-        new_con = getattr(model, 'fixed_C')
-
-        # Exclude non absorbing species from S matrix and create subset Cs of C (CS):
+        # Exclude non absorbing species from S matrix and create subset Cs of C:
         model.add_component('abs_components_names', Set())
-        abscompsnames = [name for name in set(sorted(set(allcomps) - set(self._non_absorbing)))]
-        model.add_component('abs_components', Set(initialize=abscompsnames))
-        abscomps = getattr(model, 'abs_components')
-
-        model.add_component('Cs', Var(times, abscompsnames))
-        Cs = getattr(model, 'Cs')
-        model.add_component('matchCsC', ConstraintList())
-        matchCsC_con = getattr(model, 'matchCsC')
-
-        for time in alltimes:
-            for component in allcomps:
-                new_con.add(C[time, component] == Z[time, component])
-            for componenta in abscomps:
-                if time in times:
-                    matchCsC_con.add(Cs[time, componenta] == C[time, componenta])
+        
+        set_all_components = set(model.mixture_components)
+        set_non_abs_components = set(self._non_absorbing)
+        set_abs_components = set_all_components.difference(set_non_abs_components)
+        
+        list_abs_components = sorted(list(set_abs_components))
+        
+        model.add_component('abs_components', Set(initialize=list_abs_components))
+        model.add_component('Cs', Var(model.times_spectral, list_abs_components))
+        model.add_component('abs_subset_contraint', ConstraintList())
+        
+        for time in model.times_spectral:
+            for comp in model.abs_components:
+                model.abs_subset_contraint.add(model.Cs[time, comp] == model.C[time, comp])
                     
         return None
 
