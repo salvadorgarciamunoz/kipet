@@ -7,9 +7,12 @@ import os
 import sys
 
 # Third party imports 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.io as pio
+
+from kipet.model_tools.pyomo_model_tools import convert
 
 pio.templates.default = "plotly_white"
 
@@ -135,7 +138,7 @@ class PlotObject:
                     )
         return None
 
-    def _fig_finishing(self, fig, pred, plot_name='Z'):
+    def _fig_finishing(self, fig, pred, plot_name='Z', use_index=True, exp=None):
         """Finish the plots before showing.
 
         This method creates the plots and opens the browser to show them. It also saves the plots as SVGs in the
@@ -148,7 +151,18 @@ class PlotObject:
         :return: None
 
         """
-        x_data = [t for t in pred.index]
+        if use_index:
+            x_data = [t for t in pred.index]
+        else:
+            if isinstance(pred, np.ndarray):
+                 x_data = (np.min(pred), np.max(pred))
+                 y_data = (np.min(exp), np.max(exp)) 
+            else:
+                x_data = (np.min(pred.values), np.max(pred.values))
+                y_data = (np.min(exp.values), np.max(exp.values)) 
+            y_axis_mod = 0.025*(float(y_data[-1]) - float(y_data[0]))
+            fig.update_yaxes(range=[float(y_data[0])-y_axis_mod, float(y_data[-1])+y_axis_mod])
+
         x_axis_mod = 0.025*(float(x_data[-1]) - float(x_data[0]))
         fig.update_xaxes(range=[float(x_data[0])-x_axis_mod, float(x_data[-1])+x_axis_mod])
         
@@ -193,7 +207,10 @@ class PlotObject:
         if self.save_static_image:
             fig.write_image(f'{filename}.svg', width=1400, height=900)
 
-        plot_method(fig, file=filename.as_posix(), auto_open=self.show)
+        plot_method(fig,
+                    file=filename.as_posix(),
+                    auto_open=self.show,
+                    include_plotlyjs='cdn')
     
         return filename
 
@@ -484,16 +501,19 @@ class PlotObject:
 
         """
         marker_options = {'size': 10,
-                          'opacity': 0.9,
+                          'opacity': 0.8,
                           }
+        if use_spectral_format:
+            marker_options = {'size': 6,
+                              'opacity': 0.4,
+                          }    
+        
         label = 'res.'   
-            
         residuals = exp - pred
-        residuals = residuals.dropna()
         
         self._make_marker_trace(fig=fig,
                                 x=residuals.index,
-                                y=residuals[var],
+                                y=residuals,
                                 name=f'{var} ({label})',
                                 color=self.color_num,
                                 marker_options=marker_options,
@@ -509,15 +529,10 @@ class PlotObject:
         fig = go.Figure()
         use_spectral_format = False
         pred = getattr(self.reaction_model.results, 'Z')
-        if hasattr(self.reaction_model.results, 'Cm'):
-            exp = getattr(self.reaction_model.results, 'Cm')
-        elif hasattr(self.reaction_model.results, 'C'):
-            exp = getattr(self.reaction_model.results, 'C')
-        else:
-            exp = None
-            
-        for i, col in enumerate(pred.columns):
-            self._residual_plot(fig, col, pred, exp)
+        exp = getattr(self.reaction_model.results, 'Cm')
+        
+        for i, col in enumerate(exp.columns):
+            self._residual_plot(fig, col, pred[col], exp[col])
             self.color_num += 1
         self.color_num = 0
             
@@ -531,6 +546,150 @@ class PlotObject:
                 )
         
         filename = self._fig_finishing(fig, pred, plot_name=f'concentration-residuals')
+        return filename
+    
+    def _plot_D_residuals(self):
+        """Plot state profiles
+
+        :param str var: concentration variable
+        
+        """
+        fig = go.Figure()
+        use_spectral_format = False
+        
+        exp = convert(self.reaction_model.p_model.D)
+        C = getattr(self.reaction_model.results, 'C')
+        S = getattr(self.reaction_model.results, 'S')
+        C = C.loc[:, S.columns]
+        pred = C.dot(S.T)
+        
+        for i, col in enumerate(exp.columns):
+            self._residual_plot(fig, col, pred[col], exp[col], use_spectral_format=True)
+            #self.color_num += 1
+        self.color_num = 0
+            
+        title = f'Model: {self.reaction_model.name} | Spectral Residuals'
+        time_scale = f'Time [{self.reaction_model.unit_base.time}]'
+
+        fig.update_layout(
+                title=title,
+                xaxis_title=f'{time_scale}',
+                yaxis_title='Residuals',
+                showlegend=False,
+                )
+        
+        filename = self._fig_finishing(fig, pred, plot_name=f'spectral-residuals')
+        return filename
+        
+        
+    def _parity_plot(self, fig, var, pred, exp, use_spectral_format=False):
+        """Generic method to plot state profiles
+
+        :param go.Figure fig: The figure object
+        :param str var: The variable to plot
+        :param pandas.DataFrame pred: The predicted data from the model
+        :param pandas.DataFrame exp: The experimental data
+        :param bool use_spectral_format: For absorbance profiles True, otherwise False
+
+        :return: None
+
+        """
+        marker_options = {'size': 8,
+                          'opacity': 0.6,
+                          }
+        
+        self._make_marker_trace(fig=fig,
+                                x=pred,
+                                y=exp,
+                                name=f'{var}',
+                                color=self.color_num,
+                                marker_options=marker_options,
+                                )
+        
+        return None
+        
+    def _plot_Z_parity(self):
+        """Plot state profiles
+
+        :param str var: concentration variable
+        
+        """
+        fig = go.Figure()
+        pred_raw = getattr(self.reaction_model.results, 'Z')
+        exp = getattr(self.reaction_model.results, 'Cm')
+        pred = pred_raw.loc[exp.index]
+            
+        line = dict(color='gray', width=2, dash='dash')
+        fig.add_trace(
+            go.Scatter(x=[0, np.max(pred.values)],
+                       y=[0, np.max(pred.values)],
+                       line=line,
+               )
+            )
+            
+        for i, col in enumerate(pred.columns):
+            if col not in exp.columns:
+                self.color_num += 1
+                continue
+            self._parity_plot(fig, col, pred[col], exp[col])
+            self.color_num += 1
+        self.color_num = 0
+
+        title = f'Model: {self.reaction_model.name} | Concentration Parity'
+
+        fig.update_layout(
+                title=title,
+                xaxis_title='Model Prediction',
+                yaxis_title='Measured',
+                autosize=False,
+                width=550,
+                height=550,
+                )
+        filename = self._fig_finishing(fig, pred, plot_name='concentration-parity', use_index=False, exp=exp)
+        return filename
+    
+    def _plot_D_parity(self):
+        """Plot state profiles
+
+        :param str var: concentration variable
+        
+        """
+        fig = go.Figure()
+        use_spectral_format = False
+       
+        exp = convert(self.reaction_model.p_model.D)
+        
+        C = getattr(self.reaction_model.results, 'C')
+        S = getattr(self.reaction_model.results, 'S')
+        C = C.loc[:, S.columns]
+        pred = C.dot(S.T)
+        
+        exp = exp.values.flatten()
+        pred = pred.values.flatten()
+        
+        line = dict(color='gray', width=2, dash='dash')
+        fig.add_trace(
+            go.Scatter(x=[0, np.max(pred)],
+                       y=[0, np.max(pred)],
+                       line=line,
+               )
+            )
+            
+        self.color_num = 0
+        self._parity_plot(fig, 'D', pred, exp)            
+        
+        title = f'Model: {self.reaction_model.name} | Spectral Parity'
+        time_scale = f'Time [{self.reaction_model.unit_base.time}]'
+        
+        fig.update_layout(
+                title=title,
+                xaxis_title=f'Model Prediction',
+                yaxis_title='Measured',
+                autosize=False,
+                width=550,
+                height=550,
+                )
+        filename = self._fig_finishing(fig, pred, plot_name=f'spectral-parity', use_index=False, exp=exp)
         return filename
         
     def _plot_X_residuals(self, var):
