@@ -123,7 +123,8 @@ a.external::after {
 }
 
 a.file {
-  padding: 10px;
+  margin: 10px;
+  margin-bottom: 10px;
 }
 
 a.toggle {
@@ -239,6 +240,8 @@ a.side-bar-right:hover {
     border-radius: 12px;
     margin-top: 10px;
     margin-bottom: 10px;
+    height: 550px;
+    position: relative;
 }
 
 .modal-dialog {
@@ -254,4 +257,14 @@ a.side-bar-right:hover {
     padding:16px 16px;
     color:black;
  
- }
+}
+ 
+iframe {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 100%;
+    width: 100%;
+}
