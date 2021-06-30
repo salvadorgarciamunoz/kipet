@@ -17,7 +17,6 @@ from kipet.model_components.objectives import comp_objective, conc_objective
 from kipet.estimability_tools.parameter_handling import (check_initial_parameter_values,
                                                        set_scaled_parameter_bounds)
 from kipet.estimability_tools.parameter_ranking import parameter_ratios, rank_parameters
-from kipet.calculation_tools.reduced_hessian import ReducedHessian
 from kipet.estimator_tools.parameter_estimator import ParameterEstimator
 from kipet.estimator_tools.results_object import ResultsObject
 from kipet.model_tools.scaling import (scale_parameters,
@@ -527,17 +526,14 @@ class EstimationPotential():
         """
         rh_model = copy.deepcopy(self.model)
         
-        rh = ReducedHessian(rh_model,
-                            parameter_set=Se,
-                            rho=self.rho,
-                            scaled=self.scaled,
-                            param_con_method=self.rh_method,
-                            kkt_method=self.method,
-                            set_param_bounds = True,
-                            )
+        from kipet.estimator_tools.reduced_hessian_methods import calculate_reduced_hessian
         
-        reduced_hessian = rh.calculate_reduced_hessian(optimize=True)
-        
+        reduced_hessian = calculate_reduced_hessian(
+            rh_model, 
+            optimize=True, 
+            parameter_set=Se, 
+            fix_method=self.rh_method,
+        )
         return reduced_hessian
 
 
