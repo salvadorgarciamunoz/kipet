@@ -2,23 +2,20 @@
 
 # Standard library imports
 import copy
-import os
 
 # Third party imports
 import numpy as np
+import pandas as pd
 from pyomo.environ import (Block, ConcreteModel, Constraint, minimize, 
-                           Objective, SolverFactory, Suffix, Var)
-from scipy.sparse import coo_matrix
+                           Objective, SolverFactory, Var)
 
 # KIPET library imports
 from kipet.model_components.objectives import (absorption_objective, comp_objective,
                                                conc_objective)
-from kipet.input_output.read_hessian import split_sipopt_string
+from kipet.estimator_tools.reduced_hessian_methods import define_free_parameters
 from kipet.estimator_tools.results_object import ResultsObject
 from kipet.mixins.parameter_estimator_mixins import PEMixins
 from kipet.general_settings.variable_names import VariableNames
-
-__author__ = 'Kevin McBride, Michael Short'  #: February 2019 - June 2021
 
 
 class MultipleExperimentsEstimator(PEMixins, object):
@@ -33,131 +30,17 @@ class MultipleExperimentsEstimator(PEMixins, object):
     """
     def __init__(self, reaction_models):
         
-        #super(MultipleExperimentsEstimator, self).__init__()
         self.reaction_models = reaction_models
+        
         self.experiments = list(self.reaction_models.keys())
-        self._idx_to_variable = dict()
-        
         self.variances = {name: model.variances for name, model in self.reaction_models.items()}
-        self.make_sublist()
-        
-        self._n_meas_times = 0
-        self._n_meas_lambdas = 0
-        self._n_actual = 0
-        self._n_params = 0
-        
-        self._spectra_given = True
-        self._concentration_given = False
-        
         self.global_params = None
         self.parameter_means = False
-        
+        self.rm_cov = None
         self.__var = VariableNames()
-        #self._add_basic_models()
-  
-    def _add_basic_models(self):
-        """Creates a Pyomo model for the ReactionModel if not already done
 
-        :return: None
-
-        """
-        for name, model in self.reaction_models.items():
-            print(f'Checking for basic model in {name}')
-            if model.model is None:
-                model.model = model.create_pyomo_model
-            print('Finished creating model')
-
-        return None
-
-    def make_sublist(self):
-        """Make a list of components that are concentration based (may not be needed anymore
-
-        :return: None
-
-        """
-        self._sublist_components = {}        
-        for name, model in self.reaction_models.items():
-            self._sublist_components[name] = [comp.name for comp in model.components if comp.state == 'concentration']
-        return None
-        
-    def _define_reduce_hess_order_mult(self):
-        """This function is used to link the variables to the columns in the reduced
-            hessian for multiple experiments.   
-           
-        :return: None
-
-        """
-        self.model.red_hessian = Suffix(direction=Suffix.IMPORT_EXPORT)
-        count_vars = 1
-        model_obj = self.model.experiment
-
-        for i in self.experiments:
-            if hasattr(self.reaction_models[i].p_model, 'C'):
-            #if self._spectra_given:
-                if hasattr(self, 'model_variance') and self.model_variance or not hasattr(self, 'model_variance'):
-                    count_vars = self._set_up_reduced_hessian(model_obj[i], self.model.experiment[i].meas_times, self._sublist_components[i], 'C', count_vars)
-        
-        for i in self.experiments:
-            if hasattr(self.reaction_models[i].p_model, 'S'):
-            #if self._spectra_given:
-                if hasattr(self, 'model_variance') and self.model_variance or not hasattr(self, 'model_variance'):       
-                    count_vars = self._set_up_reduced_hessian(model_obj[i], self.model.experiment[i].meas_lambdas, self._sublist_components[i], 'S', count_vars)
-                
-        for i in self.experiments:
-            for v in model_obj[i].P.values():
-                if v.is_fixed():
-                    print(v, end='\t')
-                    print("is fixed")
-                    continue
-                self._idx_to_variable[count_vars] = v
-                self.model.red_hessian[v] = count_vars
-                count_vars += 1
-        return None
-           
-    def _set_up_marks(self, conc_only=True):
-        """Set up the data based on the number of species and measurements.
-
-        :param bool conc_only: Indicates if this problem is only for concentration data
-
-        :return: None
-        
-        """    
-        nt = np.cumsum(np.array([len(self.model.experiment[exp].meas_times) for i, exp in enumerate(self.experiments)]))
-        self.t_mark = {i: n for i, n in enumerate(nt)}
-        nt = nt[-1]
-        self._n_meas_times = nt
-        
-        #nc = np.cumsum(np.array([len(self._sublist_components[exp]) for i, exp in enumerate(self.experiments)]))
-        nc = np.cumsum([len(self.reaction_models[k].components) for k in self.reaction_models.keys()])
-        
-        self.n_mark = {i: n for i, n in enumerate(nc)}
-        nc = nc[-1]
-        self._n_actual = nc
-        
-        #nparams = np.cumsum(np.array([self._get_nparams(self.model.experiment[exp]) for i, exp in enumerate(self.experiments)]))
-        nparams = np.cumsum([len(self.reaction_models[k].parameters) for k in self.reaction_models.keys()])
-         
-        self.p_mark = {i: n for i, n in enumerate(nparams)}
-        nparams = nparams[-1]
-        self._n_params = nparams
-        
-        if not conc_only:
-            
-            nw = np.cumsum(np.array([len(self.model.experiment[exp].meas_lambdas) for i, exp in enumerate(self.experiments)]))
-            self.l_mark = {i: n for i, n in enumerate(nw)}
-            nw = nw[-1]
-            self._n_meas_lambdas = nw
-            
-        else:
-            self.l_mark = {}
-            self._n_meas_lambdas = 0
-        
-        print(self.t_mark, self.n_mark, self.p_mark, self.l_mark)
-        print(self._n_meas_times, self._n_actual, self._n_params, self._n_meas_lambdas)
-        
-        return None
     
-    def _display_covariance(self, variances_p):
+    def _display_covariance(self):
         """Displays the covariance results to the console
 
         :param dict variances_p: The dict of parameter variances to display
@@ -165,219 +48,74 @@ class MultipleExperimentsEstimator(PEMixins, object):
         :return: None
 
         """
-        #print(self.confidence_interval)
-        number_of_stds = 1 #st.norm.ppf(1-(1-self.confidence_interval)/2)
+        import scipy.stats as st
         
-        print(number_of_stds)
+        if not hasattr(self, 'confidence') or self.confidence is None:
+            confidence = 0.95 # just because
         
-        print('\nParameters:')
+        number_of_stds = st.norm.ppf(1 - (1 - confidence)/2)
+        margin = 15
+        variances_p = self.p_variances
+        
+        # print('\nParameters:')
+        # for exp in self.experiments:
+        #     print(f'\nExperiment - {exp}:')
+        #     for k, p in self.model.experiment[exp].P.items():
+        #         if p.is_fixed():
+        #             continue
+        #         is_global = '(local)'
+        #         if k in self.global_params:
+        #             is_global = '(global)'
+        #         print(f'{k.rjust(margin)} = {p.value:0.4e} {is_global}')
+                
+        #     if hasattr(self.model.experiment[exp], 'Pinit'):
+        #         for k in self.model.experiment[exp].Pinit.keys():
+        #             self.model.experiment[exp].Pinit[k] = self.model.experiment[exp].init_conditions[k].value
+        #             print_name = f'{k} (init)'
+        #             print(f'{print_name.rjust(margin)} = {self.model.experiment[exp].Pinit[k].value:0.4e} (local)')
+                    
+        #     if hasattr(self.model.experiment[exp], 'time_step_change'):
+        #         for k, p in self.time_step_change.items():
+        #             print(f'{k.rjust(margin)} = {p:0.4e} (local)') 
+                        
+        print(f'\n# Parameter Values (Confidence: {int(confidence*100)}%)')
         for exp in self.experiments:
-            for k, p in self.model.experiment[exp].P.items():
-                if p.is_fixed():
-                    continue
-                print('{}, {}'.format(k, p.value))
-        print('\nConfidence intervals:')
-        for exp in self.experiments:
+            print(f'\nExperiment - {exp}:\n')
             for i, (k, p) in enumerate(self.model.experiment[exp].P.items()):
                 if p.is_fixed():
                     continue
-                std = (self.variance_scale*variances_p[i])** 0.5
-                print('{} ({},{})'.format(k, p.value - number_of_stds*std, p.value + number_of_stds*std))
+                is_global = '(local)'
+                if k in self.global_params:
+                    is_global = '(global)'
                 
-        if hasattr(self.model.experiment[exp], 'Pinit'):
-            print('\nLocal Parameters:')
-            for exp in self.experiments:
-                for k in self.model.experiment[exp].Pinit.keys():
-                    self.model.experiment[exp].Pinit[k] = self.model.experiment[exp].init_conditions[k].value
-                    print('{}, {}'.format(k, self.model.experiment[exp].Pinit[k].value))
-            print('\nConfidence intervals:')
-            for exp in self.experiments:
+                key = f'P[{k}]'
+                variance = self.rm_variances[exp][k]
+                if k in self.global_params:
+                    print(f'{k.rjust(margin)} = {p.value:0.4e} +/- {number_of_stds*(variance**0.5):0.4e}    {is_global}')
+                
+            # These need to be set equal to the local values
+            if hasattr(self.model.experiment[exp], 'Pinit'):
                 for i, k in enumerate(self.model.experiment[exp].Pinit.keys()):
                     self.model.experiment[exp].Pinit[k] = self.model.experiment[exp].init_conditions[k].value
-                    #std = (self.variance_scale*variances_p[i])** 0.5
-                    print('{} ({},{})'.format(k, 
-                                              self.model.experiment[exp].Pinit[k].value - (number_of_stds*variances_p[i]**0.5), 
-                                              self.model.experiment[exp].Pinit[k].value + (number_of_stds*variances_p[i]**0.5)))
-                            
+                    key = f'Pinit[{k}]'
+                    value = self.model.experiment[exp].Pinit[k].value
+                    variance = self.rm_variances[exp][k]
+                    print_name = f'{k} (init)'
+                    print(f'{print_name.rjust(margin)} = {value:0.4e} +/- {number_of_stds*(variance)**0.5:0.4e}    (local)')
+                        
+            # These need to be set equal to the local values
+            if hasattr(self.model.experiment[exp], 'time_step_change'):
+                for i, k in enumerate(self.model.experiment[exp].time_step_change.keys()):
+                    self.model.experiment[exp].time_step_change[k] = self.model.experiment[exp].time_step_change[k].value
+                    key = f'time_step_change[{k}]'
+                    value = self.model.experiment[exp].time_step_change[k].value
+                    variance = self.rm_variances[exp][k]
+                    print(f'{k.rjust(margin)} = {value:0.4e} +/- {number_of_stds*(variance)**0.5:0.4e}    (local)')
+                          
         return None
-        
-    def _compute_covariance(self, hessian, variances):
-        """
-        Computes the covariance matrix for the paramaters taking in the Hessian matrix and the variances.
-        Outputs the parameter confidence intervals.
-
-        :param numpy.ndarray hessian: The Hessian matrix
-        :param dict variances: The parameter variances
-
-        :return: None
-
-        """
-        if not self.spectra_problem:
-            self._set_up_marks()
-            res = {}
-            for exp in self.experiments:
-                res.update(self._compute_residuals(self.model.experiment[exp], exp_index=exp))
-
-            H = hessian[-self._n_params:, :]
-            variances_p = np.diag(H)
-
-        else:         
-            self._set_up_marks(conc_only=False) 
-            variances_p, covariances_p = self._variances_p_calc(hessian, variances)   
-        
-        print(f'VP: {variances_p}')
-        self._display_covariance(variances_p)
-        
-        return None
-        
-    def _compute_B_matrix(self):
-        """Builds B matrix for calculation of covariances
-
-        :return numpy.ndarray B_matrix: The B matrix usd in the covariance calculation
-
-        """
-        nt = self._n_meas_times
-        nw = self._n_meas_lambdas
-
-        npn = np.r_[self.n_mark[0], np.diff(list(self.n_mark.values()))]
-        npt = np.r_[self.t_mark[0], np.diff(list(self.t_mark.values()))]
-        npl = np.r_[self.l_mark[0], np.diff(list(self.l_mark.values()))]
-        npp = np.r_[self.p_mark[0], np.diff(list(self.p_mark.values()))]
-        exp_lookup = {i: exp for i, exp in enumerate(self.experiments)}
-        ntheta = sum(npn*(npt + npl) + npp)
-        
-        exp_count = 0
-        timeshift = 0 
-        waveshift = 0
-        
-        rows = []
-        cols = []
-        data = []
-        
-        meas_times = {exp : {indx: time for indx, time in enumerate(self.model.experiment[exp].meas_times)} for exp in self.experiments}
-        meas_lambdas = {exp : {indx: wave for indx, wave in enumerate(self.model.experiment[exp].meas_lambdas)} for exp in self.experiments}
-        
-        for i in range(nt):
-            for j in range(nw):
-            
-                nc = npn[exp_count]
-                if i == self.t_mark[exp_count] and j == self.l_mark[exp_count]:
-                    exp_count += 1
-                    timeshift = i
-                    waveshift = j    
-           
-                exp = exp_lookup[exp_count]
-                
-                for comp_num, comp in enumerate(self._sublist_components[exp]):
-                    
-                    if i - timeshift in list(range(npt[exp_count])):
-                        time = meas_times[exp][i - timeshift]
-                    
-                    if j - waveshift in list(range(npl[exp_count])):
-                        wave = meas_lambdas[exp][j - waveshift]
-   
-                    r_idx1 = i*nc + comp_num
-                    r_idx2 = j*nc + comp_num + nc*nt
-                    c_idx =  i*nw + j
-                    
-                    rows.append(r_idx1)
-                    cols.append(c_idx)
-                    data.append(-2 * self.model.experiment[exp].S[wave, comp].value / (self.variances[exp]['device']))
-  
-                    rows.append(r_idx2)
-                    cols.append(c_idx)
-                    data.append(-2 * self.model.experiment[exp].C[time, comp].value / (self.variances[exp]['device']))
-                         
-        B_matrix = coo_matrix((data, (rows, cols)), shape=(ntheta, nw * nt)).tocsr()
-        self.B_matrix = B_matrix
-        
-        return B_matrix
-        
-    def _compute_Vd_matrix(self, variances):
-        """Builds Vd covariance matrix
-
-        This method is not intended to be used by users directly
-
-        :param dict variances: variances
-
-        :return numpy.ndarray Vd_matrix: The Vd_matrix used in covariance calculations
-
-        """
-        nw = self._n_meas_lambdas
-        nc = self._n_actual
-        v_array = np.zeros(nc)
-        s_array = np.zeros(nw * nc)
-        
-        count = 0
-        for x in self.experiments:
-            for k, c in enumerate(self._sublist_components[x]):
-                v_array[count] = variances[x][c]
-                count += 1
-        
-        kshift = 0
-        jshift = 0
-        knum = 0
-        jnum=0
-        count=0
-        exp_count = 0
-        
-        for x in self.experiments:
-            kshift += knum
-            jshift += jnum
-            if exp_count != 0:
-                kshift+=1
-
-            for j, l in enumerate(self.model.experiment[x].meas_lambdas):
-                for k, c in enumerate(self._sublist_components[x]):
-                    
-                    if exp_count == 0:
-                        nc = self.n_mark[exp_count]
-
-                    s_array[(j+jshift) * nc + (k+kshift)] = self.model.experiment[x].S[l, c].value
-                    knum = max(knum,k)
-                    count += 1
-                
-                jnum = max(jnum,j)
-            exp_count += 1
-
-        row = []
-        col = []
-        data = []
-        nt = self._n_meas_times
-        nw = self._n_meas_lambdas
-        nd = nt * nw
-        v_device = list()
-        
-        for x in self.experiments:
-            if 'device' in variances[x]:
-                v_device.append(variances[x]['device']) 
-        
-        exp_count = 0
-        v_device_exp = v_device[exp_count]
-        for i in range(nt):
-            for j in range(nw):
-                if i == self.t_mark[exp_count] and j == self.l_mark[exp_count]:
-                    exp_count += 1
-                    v_device_exp = v_device[exp_count]
-                    
-                val = sum(v_array[k] * s_array[j * nc + k] ** 2 for k in range(nc)) + v_device_exp
-                row.append(i * nw + j)
-                col.append(i * nw + j)
-                data.append(val)
-                for p in range(nw):
-                    if j != p:
-                        val = sum(v_array[k] * s_array[j * nc + k] * s_array[p * nc + k] for k in range(nc))
-                        row.append(i * nw + j)
-                        col.append(i * nw + p)
-                        data.append(val)
-
-        Vd_matrix = coo_matrix((data, (row, col)), shape=(nd, nd)).tocsr()
-        
-        self.Vd_matrix = Vd_matrix
     
-        return Vd_matrix
     
-    def solve_hessian(self, solver, **kwargs):
+    def covariance(self, solver, solver_factory):
         """Solves for the Hessian regardless of data source - only uses ipopt_sens
 
         :param str solver: The name of the solver
@@ -393,41 +131,92 @@ class MultipleExperimentsEstimator(PEMixins, object):
         :return numpy.ndarray hessian: The hessian matrix for covariance calculations
             
         """
-        tee = kwargs.pop('tee', True)
-        solver_opts = kwargs.pop('solver_opts', dict())
-        
-        if solver == 'k_aug':
-            solver = 'ipopt_sens'
+        components = self.reaction_models[self.experiments[0]].p_estimator.comps['unknown_absorbance']
+        parameters = self.param_names_full
+        models_dict = {k: v.p_model for k, v in self.reaction_models.items()}
         
         if solver == 'ipopt_sens':
-            if not 'compute_red_hessian' in solver_opts.keys():
-                solver_opts['compute_red_hessian'] = 'yes'
-                
-        # Create the optimizer
-        optimizer = SolverFactory(solver)
-        for key, val in solver_opts.items():
-            optimizer.options[key] = val
+            from kipet.estimator_tools.reduced_hessian_methods import covariance_sipopt
+            covariance_matrix, covariance_matrix_reduced = covariance_sipopt(
+                models_dict, 
+                solver_factory,
+                components, 
+                parameters, 
+                mee_obj=self.model,
+            )
+        
+        else:
+            from kipet.estimator_tools.reduced_hessian_methods import covariance_k_aug
+            covariance_matrix, covariance_matrix_reduced = covariance_k_aug(
+                models_dict, 
+                None,
+                components,
+                parameters, 
+                mee_obj=self.model,
+            )
             
-        # Declare the model
-        m = self.model
-        self._define_reduce_hess_order_mult()
+            #%%
+            
+        # self = lab.mee
+        index = []
+        for name in self.param_names_full:
+            
+            sep = name.split('[', 1)[1].split(']')
+            exp = sep[0]
+            kind = sep[1][1:].split('[')[0]
+            var = sep[1][1:].split('[')[1]
+            
+            if var not in self.global_params:
+                index.append(f'{kind}[{var}] {exp}')
+            else:
+                index.append(f'{kind}[{var}] {exp}')
+            
+        H = covariance_matrix_reduced
+        if not hasattr(self.reaction_models[self.experiments[0]].p_model, 'C'):
+            self.cov = pd.DataFrame(H, index=index, columns=index)  
+        else:  
+            from kipet.estimator_tools.reduced_hessian_methods import compute_covariance
+            models_dict = {k: v.p_model for k, v in self.reaction_models.items()}
+            free_params = len(self.param_names)
+            all_variances = self.variances
+            V_theta = compute_covariance(models_dict, H, free_params, all_variances)
+            self.cov = pd.DataFrame(V_theta, index=index, columns=index)  
         
-        # Solve
-        self._tmpfile = "ipopt_hess"
-        solver_results = optimizer.solve(m, 
-                                          tee=tee,
-                                          logfile=self._tmpfile,
-                                          report_timing=True)
+        #%%
+        self.rm_variances = {}
+        self.rm_cov = {}
+        for name, rm in self.reaction_models.items():
+            self.rm_variances[name] = {}
+            
+            col = []
+            for i in index:
+                if i.split(' ')[1] == name or i.split(' ')[0] in self.global_params_full:
+                    
+                    col.append(i)
+                    param_name = i.split('[', 1)[1].split(']')[0]
+                    self.rm_variances[name][param_name] = self.cov.loc[i, i]
+            
+            rm_cov = self.cov.loc[col, col]
+            rm_cov.columns = [c.split('[', 1)[1].split(']')[0] for c in col]
+            
+            print(self.rm_variances)
+            
+            c = self.cov
+            c = c.loc[col, col]
+            new_cols = [c.split('[', 1)[1].split(']')[0] for c in col]
+            
+            c.columns = new_cols
+            c.index = new_cols
+            
+            self.rm_cov[name] = c
         
-        with open(self._tmpfile, 'r') as f:
-            output_string = f.read()
-        if os.path.exists(self._tmpfile):
-            os.remove(self._tmpfile)
-
-        ipopt_output, hessian_output = split_sipopt_string(output_string)
-        hessian = read_reduce_hessian(hessian_output, len(self._idx_to_variable))
+        #%%
         
-        return hessian
+        self.p_variances = np.diag(self.cov.values)
+        print(f'VP: {self.p_variances}')
+        self._display_covariance()
+        
+        return None
         
     def _scale_variances(self,):
         """Option to scale the variances for MEE
@@ -447,6 +236,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
         
         return None
 
+
     def solve_consolidated_model(self, 
                                  global_params=None,
                                  **kwargs):
@@ -459,13 +249,24 @@ class MultipleExperimentsEstimator(PEMixins, object):
         
         """
         solver_opts = kwargs.get('solver_opts', {'linear_solver': 'ma57'})
-        tee = kwargs.get('tee', False)
+        tee = kwargs.get('tee', True)
         scaled_variance = kwargs.get('scaled_variance', False)
         shared_spectra = kwargs.get('shared_spectra', True)
         solver = kwargs.get('solver', 'ipopt')
         parameter_means = kwargs.get('mean_start', True)
         
-        print("\nSOLVING PARAMETER ESTIMATION FOR MULTIPLE DATASETS\n")
+        covariance = kwargs.get('covariance', None)
+        
+        from kipet import __version__ as version_number
+        
+        print('#' * 40)
+        print(f'# KIPET version {version_number}')
+        print(f'# Date: {list(self.reaction_models.values())[0].timestamp}')
+        print(f'# Date: {list(self.reaction_models.values())[0].file.stem}')
+        print(f'# ReactionModel instances: {", ".join(list(self.reaction_models.keys()))}')
+        print('#' * 40)
+        
+        print("\n# Multiple Experiments: Starting parameter estimation \n")
        
         combined_model = ConcreteModel()
         
@@ -474,7 +275,13 @@ class MultipleExperimentsEstimator(PEMixins, object):
             self._scale_variances()
 
         if global_params is None:
-            global_params = self.all_params
+            # This needs to be a global attr
+            self.global_params = self.all_params
+        else:
+            self.global_params = global_params
+            
+        # Parameter name list
+        self.global_params_full = [f'P[{p}]' for p in self.global_params]
         
         def build_individual_blocks(m, exp):
             """This function forms the rule for the construction of the individual blocks 
@@ -494,16 +301,18 @@ class MultipleExperimentsEstimator(PEMixins, object):
             # Quick fix - I don't know what is causing this
             if hasattr(m, 'alltime_domain'):
                 m.del_component('alltime_domain')
+            if hasattr(m, 'huplctime_domain'):
+                m.del_component('huplctime_domain')
             
             if with_d_vars and hasattr(m, 'D'):
               
-                m.D_bar = Var(m.meas_times,
+                m.D_bar = Var(m.times_spectral,
                               m.meas_lambdas)
     
                 def rule_D_bar(m, t, l):   
-                    return m.D_bar[t, l] == sum(getattr(m, self.__var.concentration_spectra)[t, k] * getattr(m, self.__var.spectra_species)[l, k] for k in self.reaction_models[exp].p_estimator._sublist_components)
+                    return m.D_bar[t, l] == sum(getattr(m, self.__var.concentration_spectra)[t, k] * getattr(m, self.__var.spectra_species)[l, k] for k in self.reaction_models[exp].p_estimator.comps['unknown_absorbance'])
     
-                m.D_bar_constraint = Constraint(m.meas_times,
+                m.D_bar_constraint = Constraint(m.times_spectral,
                                                 m.meas_lambdas,
                                                 rule=rule_D_bar)
             
@@ -558,7 +367,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
                 for key, val in combined_model.map_exp_to_count.items():
                     if val == exp:
                         prev_exp = combined_model.map_exp_to_count[key-1]
-                if param in global_params and prev_exp != None:
+                if param in self.global_params and prev_exp != None:
                     return getattr(combined_model.experiment[exp], self.__var.model_parameter)[param] == getattr(combined_model.experiment[prev_exp], self.__var.model_parameter)[param]
                 else:
                     return Constraint.Skip
@@ -569,8 +378,9 @@ class MultipleExperimentsEstimator(PEMixins, object):
             for param, param_obj in getattr(combined_model.experiment[exp], self.__var.model_parameter).items():
                 if param_obj.is_fixed():
                     set_fixed_params.add(param)
-                    
-        print("Fixed parameters are: ", set_fixed_params)
+            
+        if len(set_fixed_params) > 0:
+            print(f'# Multiple Experiments: The fixed parameters are:\n{set_fixed_params}')
         
         set_params_across_blocks = self.all_params.difference(set_fixed_params)
         combined_model.parameter_linking = Constraint(self.experiments, set_params_across_blocks, rule = param_linking_rule)
@@ -600,10 +410,31 @@ class MultipleExperimentsEstimator(PEMixins, object):
         
         self.model = combined_model
         
-        if solver in ['k_aug', 'ipopt_sens']:
-            covariance = True
-            hessian = self.solve_hessian(solver, tee=tee, solver_opts=solver_opts)
-            self._compute_covariance(hessian, self.variances)
+        models = {k: v.p_model for k, v in self.reaction_models.items()}
+        self.param_names = define_free_parameters(models, self.global_params_full, kind='variable')
+        self.param_names_full = define_free_parameters(models, self.global_params_full, kind='full')
+        
+        if covariance in ['k_aug', 'ipopt_sens']:
+            
+            tee = kwargs.pop('tee', False)
+            solver_opts = kwargs.pop('solver_opts', dict())
+            optimizer = None
+            
+            # At the moment k_aug is not working for this
+            if covariance == 'k_aug':
+                covariance = 'ipopt_sens'
+            
+            if covariance == 'ipopt_sens':
+                if not 'compute_red_hessian' in solver_opts.keys():
+                    solver_opts['compute_red_hessian'] = 'yes'
+                    
+                # Create the optimizer
+                optimizer = SolverFactory(covariance)
+                for key, val in solver_opts.items():
+                    optimizer.options[key] = val
+            
+            self.covariance(covariance, optimizer)
+            
         else:
             optimizer = SolverFactory('ipopt')
             optimizer.solve(combined_model, options=solver_opts, tee=True)            
@@ -613,7 +444,14 @@ class MultipleExperimentsEstimator(PEMixins, object):
         for i in combined_model.experiment:
             solver_results[i] = ResultsObject()
             solver_results[i].load_from_pyomo_model(combined_model.experiment[i])
-                                            
+            if self.rm_cov is not None:
+                solver_results[i].parameter_covariance = self.rm_cov[i]
+            
+            #setattr(solver_results[i], 'variances', self.rm_variances[i])
+            
+        self.results = solver_results                     
+        print('\n# Multiple Experiments: Parameter estimation complete\n')
+                
         return solver_results
     
     @property
@@ -652,4 +490,3 @@ class MultipleExperimentsEstimator(PEMixins, object):
         for name, model in self.reaction_models.items():
             set_of_all_species = set_of_all_species.union(model.components.names)
         return set_of_all_species
-
