@@ -55,7 +55,7 @@ def conc_objective(model, *args, **kwargs):
 
 
 def comp_objective(model, *args, **kwargs):
-    """Method to build individual concentration terms in the objective function
+    """Method to build individual complementary state terms in the objective function
 
     :param Pyomo ConcreteModel model: This is the current model used in parameter fitting
     :param tuple args: Arguments to be passed
