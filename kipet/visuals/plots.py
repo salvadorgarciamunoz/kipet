@@ -92,6 +92,12 @@ class PlotObject:
         self.folder_name = self.reaction_model.timestamp
         if self.filename is not None:
             self.folder_name = self.filename
+            
+        if self.reaction_model.models['p_model']:
+            self.results = self.reaction_model.results
+        else:
+            self.results = self.reaction_model.results_dict['simulator']
+            
 
     @staticmethod
     def _make_line_trace(fig, x, y, name, color):
@@ -297,14 +303,14 @@ class PlotObject:
         """
         fig = go.Figure()
         use_spectral_format = False
-        pred = getattr(self.reaction_model.results, 'Z')
-        if hasattr(self.reaction_model.results, 'Cm'):
-            exp = getattr(self.reaction_model.results, 'Cm')
-        elif hasattr(self.reaction_model.results, 'C'):
+        pred = getattr(self.results, 'Z')
+        if hasattr(self.results, 'Cm'):
+            exp = getattr(self.results, 'Cm')
+        elif hasattr(self.results, 'C'):
             if self.reaction_model.models['_s_model'] and not self.reaction_model.models['v_model'] and not self.reaction_model.models['p_model']:
                 exp = None
             else:
-                exp = getattr(self.reaction_model.results, 'C')
+                exp = getattr(self.results, 'C')
                 use_spectral_format = True
         else:
             exp = None
@@ -335,12 +341,12 @@ class PlotObject:
         """
         fig = go.Figure()
         use_spectral_format = False
-        pred = getattr(self.reaction_model.results, 'Z')
-        if hasattr(self.reaction_model.results, 'Cm'):
-            exp = getattr(self.reaction_model.results, 'Cm')
+        pred = getattr(self.results, 'Z')
+        if hasattr(self.results, 'Cm'):
+            exp = getattr(self.results, 'Cm')
             self._state_plot(fig, var, pred, exp)
-        elif hasattr(self.reaction_model.results, 'C'):
-            exp = getattr(self.reaction_model.results, 'C')
+        elif hasattr(self.results, 'C'):
+            exp = getattr(self.results, 'C')
             use_spectral_format = True
             self._state_plot(fig, var, pred, exp, use_spectral_format=use_spectral_format)
         else:
@@ -366,9 +372,9 @@ class PlotObject:
         :return: None
         """
         fig = go.Figure()
-        pred = self.reaction_model.results.Y
-        if hasattr(self.reaction_model.results, 'UD'):
-            exp = self.reaction_model.results.UD
+        pred = self.results.Y
+        if hasattr(self.results, 'UD'):
+            exp = self.results.UD
         else:
             exp = None
         self._state_plot(fig, var, pred, exp)
@@ -393,9 +399,9 @@ class PlotObject:
 
         """
         fig = go.Figure()
-        pred = getattr(self.reaction_model.results, 'X')
-        if hasattr(self.reaction_model.results, 'U'):
-            exp = getattr(self.reaction_model.results, 'U')
+        pred = getattr(self.results, 'X')
+        if hasattr(self.results, 'U'):
+            exp = getattr(self.results, 'U')
         else:
             exp = None
         self._state_plot(fig, var, pred, exp)
@@ -419,7 +425,7 @@ class PlotObject:
 
         """
         fig = go.Figure()
-        pred = getattr(self.reaction_model.results, 'S')
+        pred = getattr(self.results, 'S')
         exp = None
         for i, col in enumerate(pred.columns):
             self._state_plot(fig, col, pred, exp)
@@ -447,12 +453,12 @@ class PlotObject:
         """
         fig = go.Figure()
         if not orig:
-            pred = getattr(self.reaction_model.results, 'S')
+            pred = getattr(self.results, 'S')
         else:
             pred = self.reaction_model.components[var].S
         exp = None
         self._state_plot(fig, var, pred, exp)
-        var_data = self.reaction_model.results.S[var]
+        var_data = self.results.S[var]
         description = f'| Description: Single species absorbance profiles'
         title = f'Model: {self.reaction_model.name} | Variable: {var} {description}'
         time_scale = f"Wavelength [centimeter]"
@@ -474,7 +480,7 @@ class PlotObject:
 
         """
         fig = go.Figure()
-        pred = self.reaction_model.results.step
+        pred = self.results.step
         self._state_plot(fig, var, pred, None)
         title = f'Model: {self.reaction_model.name} | Variable: {var} | Step Function'
         time_scale = f'Time [{self.reaction_model.unit_base.time}]'
@@ -528,8 +534,8 @@ class PlotObject:
         """
         fig = go.Figure()
         use_spectral_format = False
-        pred = getattr(self.reaction_model.results, 'Z')
-        exp = getattr(self.reaction_model.results, 'Cm')
+        pred = getattr(self.results, 'Z')
+        exp = getattr(self.results, 'Cm')
         
         for i, col in enumerate(exp.columns):
             self._residual_plot(fig, col, pred[col], exp[col])
@@ -558,8 +564,8 @@ class PlotObject:
         use_spectral_format = False
         
         exp = convert(self.reaction_model.p_model.D)
-        C = getattr(self.reaction_model.results, 'C')
-        S = getattr(self.reaction_model.results, 'S')
+        C = getattr(self.results, 'C')
+        S = getattr(self.results, 'S')
         C = C.loc[:, S.columns]
         pred = C.dot(S.T)
         
@@ -615,8 +621,8 @@ class PlotObject:
         
         """
         fig = go.Figure()
-        pred_raw = getattr(self.reaction_model.results, 'Z')
-        exp = getattr(self.reaction_model.results, 'Cm')
+        pred_raw = getattr(self.results, 'Z')
+        exp = getattr(self.results, 'Cm')
         pred = pred_raw.loc[exp.index]
             
         line = dict(color='gray', width=2, dash='dash')
@@ -659,8 +665,8 @@ class PlotObject:
        
         exp = convert(self.reaction_model.p_model.D)
         
-        C = getattr(self.reaction_model.results, 'C')
-        S = getattr(self.reaction_model.results, 'S')
+        C = getattr(self.results, 'C')
+        S = getattr(self.results, 'S')
         C = C.loc[:, S.columns]
         pred = C.dot(S.T)
         
@@ -700,9 +706,9 @@ class PlotObject:
         """
         fig = go.Figure()
         
-        pred = getattr(self.reaction_model.results, 'X')
-        if hasattr(self.reaction_model.results, 'U'):
-            exp = getattr(self.reaction_model.results, 'U')
+        pred = getattr(self.results, 'X')
+        if hasattr(self.results, 'U'):
+            exp = getattr(self.results, 'U')
         else:
             exp = None
         
