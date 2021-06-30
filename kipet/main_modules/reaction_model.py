@@ -253,7 +253,7 @@ class ReactionModel(WavelengthSelectionMixins):
         kipet_str += '\n'
         
         kipet_str += f'{self.components}\n'
-        kipet_str += f'Algebraic Variables:\n{", ".join([str(av) for av in self.algebraic_variables])}\n\n'
+        #kipet_str += f'Algebraic Variables:\n{", ".join([str(av) for av in self.algebraic_variables])}\n\n'
         kipet_str += f'{self.parameters}\n'
         kipet_str += f'{self.datasets}\n'
     
@@ -1673,14 +1673,15 @@ class ReactionModel(WavelengthSelectionMixins):
         
         """
         # Start with what is known
-        if self.settings.parameter_estimator['covariance']:
-            if self.settings.parameter_estimator['solver'] not in ['k_aug', 'ipopt_sens']:
-                raise ValueError('Solver must be k_aug or ipopt_sens for covariance matrix')
+        cov = self.settings.parameter_estimator['covariance']
+        
+        if cov and cov not in ['k_aug', 'ipopt_sens']:
+            raise ValueError('Solver must be k_aug or sipopt for covariance matrix')
         
         # If using sensitivity
         # solvers switch covariance to True
-        if self.settings.parameter_estimator['solver'] in ['k_aug', 'ipopt_sens']:
-            self.settings.parameter_estimator['covariance'] = True
+        # if cov in ['k_aug', 'sipopt']:
+        #     self.settings.parameter_estimator['covariance'] = True
         
         #Subset of lambdas
         # if self.settings.variance_estimator['freq_subset_lambdas'] is not None:
