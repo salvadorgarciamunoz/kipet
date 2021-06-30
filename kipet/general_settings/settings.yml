@@ -14,7 +14,7 @@ general:
   save_output: true
 parameter_estimator:
   confidence: 0.95
-  covariance: false
+  covariance: null
   estimability: false
   model_variance: true
   report_time: false
