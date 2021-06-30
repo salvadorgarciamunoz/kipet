@@ -292,6 +292,8 @@ class Report:
         
         for reaction_model in self.reactions:
             
+            print(self.reactions)
+            
             name = reaction_model.name
             model_dict[name] = {}
             model_dict[name]['time'] = reaction_model.timestamp
@@ -410,24 +412,32 @@ class Report:
             
             model_dict[name]['age_data'] = age_data
             
+            from kipet.model_tools.diagnostics import model_fit
+            diags = model_fit(reaction_model.p_estimator)
+            
             diagnostics = []
             if final_estimator == 'parameter estimation':
-                stat = {}
-                stat['name'] = 'lack of fit'
-                stat['value'] = reaction_model.p_estimator.lack_of_fit()
-                stat['description'] = 'Percentage lack of fit for the model fit'
-                diagnostics.append(stat)
+                for k, v in diags.items():
+                    stat = {}
+                    stat['name'] = k
+                    stat['value'] = v[0]
+                    stat['description'] = v[1]
+                    diagnostics.append(stat)
                 
             model_dict[name]['diagnostics'] = diagnostics
                 
             res_chart_files = None
+            par_chart_files = None
             if reaction_model._builder._concentration_data is not None:
                 res_chart_files = reaction_model._plot_object._plot_Z_residuals()
+                par_chart_files = reaction_model._plot_object._plot_Z_parity()
+                
+            if reaction_model._builder._spectral_data is not None:
+                res_chart_files = reaction_model._plot_object._plot_D_residuals()
+                par_chart_files = reaction_model._plot_object._plot_D_parity()
                 
             model_dict[name]['res_chart'] = res_chart_files
-            
-            
-            
+            model_dict[name]['par_chart'] = par_chart_files
             
             feeds = None
             dosing_dict = reaction_model._dosing_points
