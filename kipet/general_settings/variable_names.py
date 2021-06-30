@@ -21,7 +21,7 @@ class VariableNames(object):
         self.model_parameter_scaled = 'K'
         self.concentration_measured = 'Cm'
         self.concentration_spectra = 'C'
-        self.concentration_spectra_abs = 'Cs'
+        #self.concentration_spectra_abs = 'Cs'
         self.concentration_model = 'Z'
         self.concentration_model_rate = f'd{self.concentration_model}dt'
         self.state = 'U'
