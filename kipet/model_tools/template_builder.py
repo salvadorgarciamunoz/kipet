@@ -1079,8 +1079,11 @@ class TemplateBuilder(object):
             s_bounds = (0.0, None)
         
         if self.has_spectral_data():    
+            
+            self.set_non_absorbing_species(model, self._non_absorbing, check=False)
+            
             if self._is_non_abs_set:
-                self.set_non_absorbing_species(model, self._non_absorbing, check=False)
+                
                 setattr(model, self.__var.spectra_species, Var(model.meas_lambdas,
                                                                model.abs_components,
                                                                bounds=s_bounds,
@@ -1523,11 +1526,11 @@ class TemplateBuilder(object):
         if not is_simulation:
         
             known_abs = []
-            known_abs_data = []
+            known_abs_data = {}
             for comp in self.template_component_data:
                 if comp.S is not None:
                     known_abs.append(comp.name)
-                    known_abs_data.append(comp.S)
+                    known_abs_data[comp.name] = comp.S
             
             self._known_absorbance = known_abs
             self._known_absorbance_data = known_abs_data
@@ -1655,6 +1658,11 @@ class TemplateBuilder(object):
 
     def set_non_absorbing_species(self, model, non_abs_list, check=True):
         """Sets the non absorbing component of the model.
+        
+        .. note::
+            
+            This could be simplified by making Cs always exist. This would
+            remove quite a few if statements throughout the code.
 
         :param list non_abs_list: List of non absorbing components.
         :param ConcreteModel model: The corresponding model.
@@ -1663,19 +1671,21 @@ class TemplateBuilder(object):
         :return: None
 
         """
-        if hasattr(model, 'non_absorbing'):
-            print("non-absorbing species were already set up before.")
-            return
+        # if hasattr(model, 'non_absorbing'):
+        #     print("non-absorbing species were already set up before.")
+        #     return
 
-        if (self._is_non_abs_set and check):
-            raise RuntimeError('Non absorbing species have been already set up.')
-
+        # if (self._is_non_abs_set and check):
+        #     raise RuntimeError('Non absorbing species have been already set up.')
+        if hasattr(model, 'abs_components'):
+            model.del_component('abs_components')
+        
         self._is_non_abs_set = True
-        self._non_absorbing = non_abs_list
-        model.add_component('non_absorbing', Set(initialize=self._non_absorbing))
+        self._non_absorbing = [] if non_abs_list is None else non_abs_list
+        #model.add_component('non_absorbing', Set(initialize=self._non_absorbing))
 
         # Exclude non absorbing species from S matrix and create subset Cs of C:
-        model.add_component('abs_components_names', Set())
+        #model.add_component('abs_components_names', Set())
         
         set_all_components = set(model.mixture_components)
         set_non_abs_components = set(self._non_absorbing)
@@ -1684,12 +1694,12 @@ class TemplateBuilder(object):
         list_abs_components = sorted(list(set_abs_components))
         
         model.add_component('abs_components', Set(initialize=list_abs_components))
-        model.add_component('Cs', Var(model.times_spectral, list_abs_components))
-        model.add_component('abs_subset_contraint', ConstraintList())
+        #model.add_component('Cs', Var(model.times_spectral, list_abs_components))
+        #model.add_component('abs_subset_contraint', ConstraintList())
         
-        for time in model.times_spectral:
-            for comp in model.abs_components:
-                model.abs_subset_contraint.add(model.Cs[time, comp] == model.C[time, comp])
+        # for time in model.times_spectral:
+        #     for comp in model.abs_components:
+        #         model.abs_subset_contraint.add(model.Cs[time, comp] == model.C[time, comp])
                     
         return None
 
@@ -1716,9 +1726,10 @@ class TemplateBuilder(object):
         S = getattr(model, self.__var.spectra_species)
         lambdas = getattr(model, 'meas_lambdas')
         model.known_absorbance_data = self._known_absorbance_data
+        
         for component in self._known_absorbance:
             for l in lambdas:
-                S[l, component].set_value(self._known_absorbance_data[0].loc[l, component])
+                S[l, component].set_value(self._known_absorbance_data[component].loc[l, component])
                 S[l, component].fix()
                 
         return None
