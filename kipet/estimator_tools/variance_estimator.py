@@ -119,39 +119,13 @@ class VarianceEstimator(PyomoSimulator):
 
         self._create_tmp_outputs()
         
-        objectives_map = self.model.component_map(ctype=Objective, active=True)
-        active_objectives_names = []
-        for obj in objectives_map.values():
-            active_objectives_names.append(obj.cname())
-            obj.deactivate()
+        # objectives_map = self.model.component_map(ctype=Objective, active=True)
+        # active_objectives_names = []
+        # for obj in objectives_map.values():
+        #     active_objectives_names.append(obj.cname())
+        #     obj.deactivate()
             
-        list_components = []
-        if species_list is None:
-            list_components = [k for k in self._mixture_components]
-        else:
-            for k in species_list:
-                if k in self._mixture_components:
-                    list_components.append(k)
-                else:
-                    warnings.warn("Ignored {} since is not a mixture component of the model".format(k))
-
-        # Set up the correct components based on absorption
-        if hasattr(self.model, 'non_absorbing'):
-            warnings.warn("Overriden by non_absorbing")
-            list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
-        
-        if hasattr(self.model, 'known_absorbance'):
-            warnings.warn("Overriden by species with known absorbance")
-            list_components = [k for k in self._mixture_components if k not in self._known_absorbance]
-        
-        self._sublist_components = list_components
-        
-        if hasattr(self, '_abs_components'):
-            self.component_set = self._abs_components
-            self.component_var = 'Cs'
-        else:
-            self.component_set = self._sublist_components
-            self.component_var = 'C'
+        #self.component_var = 'C'  
         
         # Fixed imputs and trajectory section
         if inputs_sub is not None:
@@ -264,18 +238,7 @@ class VarianceEstimator(PyomoSimulator):
     
         if not set_A:
             set_A = self.model.meas_lambdas
-    
-        list_components = [k for k in self._mixture_components]
-                    
-        if hasattr(self.model, 'non_absorbing'):
-            warnings.warn("Overriden by non_absorbing")
-            list_components = [k for k in self._mixture_components if k not in self._non_absorbing]
         
-        if hasattr(self.model, 'known_absorbance'):
-            warnings.warn("Overriden by species with known absorbance")
-            list_components = [k for k in self._mixture_components if k not in self._known_absorbance]
-        
-        self._sublist_components = list_components
         print("Solving For the worst possible device variance\n")
         
         self._warn_if_D_negative()
@@ -283,14 +246,9 @@ class VarianceEstimator(PyomoSimulator):
         ntp = len(self.model.times_spectral)
         nwp = len(self.model.meas_lambdas)
         
-        if hasattr(self, '_abs_components'):
-            self.component_set = self._abs_components
-        else:
-            self.component_set = self._sublist_components
-        
         for t in self.model.times_spectral:
             for l in set_A:
-                D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self.component_set)
+                D_bar = sum(self.model.Z[t, k] * self.model.S[l, k] for k in self.comps['unknown_absorbance'])
                 obj += (self.model.D[t, l] - D_bar)**2
        
         self.model.init_objective = Objective(expr=obj)
@@ -309,10 +267,9 @@ class VarianceEstimator(PyomoSimulator):
         etaTeta = 0
         for t in self.model.times_spectral:
             for l in set_A:
-                D_bar = sum(value(self.model.Z[t, k]) * value(self.model.S[l, k]) for k in self.component_set)
+                D_bar = sum(value(self.model.Z[t, k]) * value(self.model.S[l, k]) for k in self.comps['unknown_absorbance'])
                 etaTeta += (value(self.model.D[t, l])- D_bar)**2
     
-        # etaTeta = self.model.obj?
         deltasq = etaTeta/(ntp*nwp)
         
         self.model.del_component('init_objective')
