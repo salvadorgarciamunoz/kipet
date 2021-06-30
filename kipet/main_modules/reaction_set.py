@@ -376,6 +376,7 @@ class ReactionSet:
         
         consolidated_settings = self.settings.general
         consolidated_settings.solver_opts = self.settings.solver
+        consolidated_settings.covariance = self.settings.parameter_estimator.covariance
 
         results = self.mee.solve_consolidated_model(
             self.global_parameters, **consolidated_settings
@@ -499,5 +500,5 @@ class ReactionSet:
         from kipet.visuals.reports import Report
         for reaction in self.reaction_models.values():
             reaction.plot()
-        report = Report(list(self.reaction_models.values()))
-        report.generate_report()
+        self.report_object = Report(list(self.reaction_models.values()))
+        self.report_object.generate_report()
