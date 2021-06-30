@@ -45,20 +45,21 @@ def run_method(var_est_object, solver, run_opt_kwargs):
     fixed_device_var = run_opt_kwargs.pop('fixed_device_variance', None)
 
     if init_C is None:
-        solve_initalization(var_est_object, solver,
+        solve_initalization(var_est_object, 
+                            solver,
                             subset_lambdas=A,
                             solver_opts=solver_opts,
                             tee=tee)
     else:
         for t in var_est_object.model.times_spectral:
-            for k in var_est_object._mixture_components:
+            for k in var_est_object.comps['unknown_absorbance']:
                 var_est_object.model.C[t, k].value = init_C[k][t]
                 var_est_object.model.Z[t, k].value = init_C[k][t]
 
         # This comes from Optimizer
         s_array = S_from_DC(var_est_object.model, init_C)
         S_frame = pd.DataFrame(data=s_array,
-                               columns=var_est_object._mixture_components,
+                               columns=var_est_object.comps['unknown_absorbance'],
                                index=var_est_object._meas_lambdas)
 
         if hasattr(var_est_object, '_abs_components'):
@@ -93,10 +94,10 @@ def run_method(var_est_object, solver, run_opt_kwargs):
 
         rb = ResultsObject()
 
-        vars_to_load = ['Z', 'C', 'Cs', 'S', 'Y']
-        if not hasattr(var_est_object, '_abs_components'):
-            vars_to_load.remove('Cs')
-        rb.load_from_pyomo_model(var_est_object.model, to_load=vars_to_load)
+        # vars_to_load = ['Z', 'C', 'Cs', 'S', 'Y']
+        # if not hasattr(var_est_object, '_abs_components'):
+        #     vars_to_load.remove('Cs')
+        rb.load_from_pyomo_model(var_est_object.model)#, to_load=vars_to_load)
 
         solve_Z(var_est_object, solver)
 
@@ -108,10 +109,7 @@ def run_method(var_est_object, solver, run_opt_kwargs):
             solved_c = solve_c_scipy(var_est_object)
 
         ra = ResultsObject()
-        vars_to_load = ['Z', 'C', 'Cs', 'S']
-        if not hasattr(var_est_object, '_abs_components'):
-            vars_to_load.remove('Cs')
-        ra.load_from_pyomo_model(var_est_object.model, to_load=vars_to_load)
+        ra.load_from_pyomo_model(var_est_object.model)#, to_load=vars_to_load)
 
         r_diff = compute_diff_results(rb, ra)
         Z_norm = r_diff.compute_var_norm('Z', norm_order)
@@ -168,7 +166,7 @@ def solve_initalization(var_est_object, solver, **kwds):
     keys = sigmas_sq.keys()
     # added due to new structure for non_abs species, non-absorbing species not included in S and Cs as subset of C (CS):
 
-    for k in var_est_object.component_set:
+    for k in var_est_object.comps['unknown_absorbance']:
         if k not in keys:
             sigmas_sq[k] = 0.0
 
@@ -181,7 +179,7 @@ def solve_initalization(var_est_object, solver, **kwds):
     for t in var_est_object.model.times_spectral:
         for l in set_A:
             D_bar = sum(
-                var_est_object.model.Z[t, k] * var_est_object.model.S[l, k] for k in var_est_object.component_set)
+                var_est_object.model.Z[t, k] * var_est_object.model.S[l, k] for k in var_est_object.comps['unknown_absorbance'])
             obj += (var_est_object.model.D[t, l] - D_bar) ** 2
 
     var_est_object.model.init_objective = Objective(expr=obj)
@@ -247,14 +245,14 @@ def _solve_variances(var_est_object, results, fixed_dev_var=None):
     b = np.zeros((nl, 1))
 
     variance_dict = dict()
-    n_val = len(var_est_object.component_set)
+    n_val = len(var_est_object.comps['unknown_absorbance'])
 
     A = np.ones((nl, n_val + 1))
     reciprocal_nt = 1.0 / nt
     for i, l in enumerate(var_est_object.model.meas_lambdas):
         for j, t in enumerate(var_est_object.model.times_spectral):
             D_bar = 0.0
-            for w, k in enumerate(var_est_object.component_set):
+            for w, k in enumerate(var_est_object.comps['unknown_absorbance']):
                 A[i, w] = results.S[k][l] ** 2
                 D_bar += results.S[k][l] * results.Z[k][t]
             b[i] += (var_est_object.model.D[t, l] - D_bar) ** 2
@@ -288,14 +286,14 @@ def _solve_variances(var_est_object, results, fixed_dev_var=None):
             res_lsq = least_squares(F, x0, JF,
                                     bounds=(0.0, np.inf),
                                     verbose=2, args=(A, bb))
-            for i, k in enumerate(var_est_object.component_set):
+            for i, k in enumerate(var_est_object.comps['unknown_absorbance']):
                 variance_dict[k] = res_lsq.x[i]
             variance_dict['device'] = res_lsq.x[n_val]
             results.sigma_sq = variance_dict
             return res_lsq.success
 
         else:
-            for i, k in enumerate(var_est_object.component_set):
+            for i, k in enumerate(var_est_object.comps['unknown_absorbance']):
                 variance_dict[k] = res_lsq[0][i][0]
             variance_dict['device'] = res_lsq[0][n_val][0]
             results.sigma_sq = variance_dict
@@ -306,7 +304,7 @@ def _solve_variances(var_est_object, results, fixed_dev_var=None):
         for i, l in enumerate(var_est_object.model.meas_lambdas):
             bp[i] = b[i] - fixed_dev_var
             for j, t in enumerate(var_est_object.model.times_spectral):
-                for w, k in enumerate(var_est_object.component_set):
+                for w, k in enumerate(var_est_object.comps['unknown_absorbance']):
                     Ap[i, w] = results.S[k][l] ** 2
 
         res_lsq = np.linalg.lstsq(Ap, bp, rcond=None)
@@ -320,7 +318,7 @@ def _solve_variances(var_est_object, results, fixed_dev_var=None):
                     res_lsq[0][i] = abs(res_lsq[0][i])
             res_lsq[0][i]
 
-        for i, k in enumerate(var_est_object.component_set):
+        for i, k in enumerate(var_est_object.comps['unknown_absorbance']):
             variance_dict[k] = res_lsq[0][i][0]
         variance_dict['device'] = fixed_dev_var
         results.sigma_sq = variance_dict
@@ -341,10 +339,10 @@ def build_scipy_lsq_arrays(var_est_object):
         for j, l in enumerate(var_est_object.model.meas_lambdas):
             var_est_object._d_array[i, j] = var_est_object.model.D[t, l]
 
-    if hasattr(var_est_object, '_abs_components'):
-        n_val = var_est_object._nabs_components
-    else:
-        n_val = var_est_object._n_components
+    #if hasattr(var_est_object, '_abs_components'):
+    #    n_val = var_est_object._nabs_components
+    #else:
+    n_val = len(var_est_object.comps['unknown_absorbance'])
 
     var_est_object._s_array = np.ones(len(var_est_object.model.meas_lambdas) * n_val)
     var_est_object._z_array = np.ones(len(var_est_object.model.times_spectral) * n_val)
@@ -381,32 +379,44 @@ def compute_D_given_SC(var_est_object, results, sigma_d=0):
 
     """
     d_results = []
+    
+    for i, t in enumerate(var_est_object.model.times_spectral):
+        if t in var_est_object.model.times_spectral:
+            for j, l in enumerate(var_est_object.model.meas_lambdas):
+                suma = 0.0
+                for w, k in enumerate(var_est_object.comps['unknown_absorbance']):
+                    Cs = results.C[k][t]  # just the absorbing ones
+                    Ss = results.S[k][l]
+                    suma += Cs * Ss
+                if sigma_d:
+                    suma += np.random.normal(0.0, sigma_d)
+                d_results.append(suma)
 
-    if hasattr(var_est_object, '_abs_components'):  # added for removing non_abs ones from first term in obj CS
-        for i, t in enumerate(var_est_object.model.times_spectral):
-            if t in var_est_object.model.times_spectral:
-                for j, l in enumerate(var_est_object.model.meas_lambdas):
-                    suma = 0.0
-                    for w, k in enumerate(var_est_object._abs_components):
-                        Cs = results.Cs[k][t]  # just the absorbing ones
-                        Ss = results.S[k][l]
-                        suma += Cs * Ss
-                    if sigma_d:
-                        suma += np.random.normal(0.0, sigma_d)
-                    d_results.append(suma)
+    # if hasattr(var_est_object, '_abs_components'):  # added for removing non_abs ones from first term in obj CS
+    #     for i, t in enumerate(var_est_object.model.times_spectral):
+    #         if t in var_est_object.model.times_spectral:
+    #             for j, l in enumerate(var_est_object.model.meas_lambdas):
+    #                 suma = 0.0
+    #                 for w, k in enumerate(var_est_object._abs_components):
+    #                     Cs = results.C[k][t]  # just the absorbing ones
+    #                     Ss = results.S[k][l]
+    #                     suma += Cs * Ss
+    #                 if sigma_d:
+    #                     suma += np.random.normal(0.0, sigma_d)
+    #                 d_results.append(suma)
 
-    else:
-        for i, t in enumerate(var_est_object.model.times_spectral):
-            if t in var_est_object.model.times_spectral:
-                for j, l in enumerate(var_est_object.model.meas_lambdas):
-                    suma = 0.0
-                    for w, k in enumerate(var_est_object._mixture_components):
-                        C = results.C[k][t]
-                        S = results.S[k][l]
-                        suma += C * S
-                    if sigma_d:
-                        suma += np.random.normal(0.0, sigma_d)
-                    d_results.append(suma)
+    # else:
+    #     for i, t in enumerate(var_est_object.model.times_spectral):
+    #         if t in var_est_object.model.times_spectral:
+    #             for j, l in enumerate(var_est_object.model.meas_lambdas):
+    #                 suma = 0.0
+    #                 for w, k in enumerate(var_est_object._mixture_components):
+    #                     C = results.C[k][t]
+    #                     S = results.S[k][l]
+    #                     suma += C * S
+    #                 if sigma_d:
+    #                     suma += np.random.normal(0.0, sigma_d)
+    #                 d_results.append(suma)
 
     d_array = np.array(d_results).reshape((len(var_est_object.model.times_spectral), len(var_est_object.model.meas_lambdas)))
     results.D = pd.DataFrame(data=d_array,

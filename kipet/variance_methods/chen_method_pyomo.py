@@ -23,7 +23,7 @@ def solve_C(var_est_object, solver, **kwds):
     obj = 0.0
     for t in var_est_object.model.times_spectral:
         for l in var_est_object._meas_lambdas:
-            D_bar = sum(var_est_object.model.S[l, k].value*var_est_object.C_model.C[t, k] for k in var_est_object.component_set)
+            D_bar = sum(var_est_object.model.S[l, k].value*var_est_object.C_model.C[t, k] for k in var_est_object.comps['absorbing'])
             obj += (var_est_object.model.D[t, l]-D_bar)**2
      
     var_est_object.C_model.objective = Objective(expr=obj)
@@ -45,7 +45,7 @@ def solve_C(var_est_object, solver, **kwds):
     var_est_object.C_model.del_component('objective')
      
     for t in var_est_object.model.allmeas_times:
-        for c in var_est_object.component_set:
+        for c in var_est_object.comps['absorbing']:
             var_est_object.model.C[t, c].value = var_est_object.C_model.C[t, c].value
 
     return None
@@ -67,7 +67,7 @@ def solve_S(var_est_object, solver, **kwds):
     profile_time = kwds.pop('profile_time', False)
         
     for l in var_est_object._meas_lambdas:
-        for c in var_est_object.component_set:
+        for c in var_est_object.comps['unknown_absorbance']:
             var_est_object.S_model.S[l, c].value = var_est_object.model.S[l, c].value
             if hasattr(var_est_object.model, 'known_absorbance'):
                 if c in var_est_object.model.known_absorbance:
@@ -79,7 +79,7 @@ def solve_S(var_est_object, solver, **kwds):
     obj = 0.0
     for t in var_est_object.model.times_spectral:
         for l in var_est_object._meas_lambdas:
-            D_bar = sum(var_est_object.S_model.S[l, k] * var_est_object.model.Z[t, k].value for k in var_est_object.component_set)
+            D_bar = sum(var_est_object.S_model.S[l, k] * var_est_object.model.Z[t, k].value for k in var_est_object.comps['unknown_absorbance'])
             obj += (D_bar - var_est_object.model.D[t, l]) ** 2
                 
     var_est_object.S_model.objective = Objective(expr=obj)
@@ -101,7 +101,7 @@ def solve_S(var_est_object, solver, **kwds):
     var_est_object.S_model.del_component('objective')
     
     for l in var_est_object._meas_lambdas:
-        for c in var_est_object.component_set:
+        for c in var_est_object.comps['unknown_absorbance']:
             var_est_object.model.S[l, c].value = var_est_object.S_model.S[l, c].value
             if hasattr(var_est_object.model, 'known_absorbance'):
                 if c in var_est_object.model.known_absorbance:
@@ -135,7 +135,7 @@ def solve_Z(var_est_object, solver, **kwds):
     profile_time = kwds.pop('profile_time', False)
     
     for t in var_est_object.model.allmeas_times:
-        for k in var_est_object._sublist_components:
+        for k in var_est_object.comps['unknown_absorbance']:
             if hasattr(var_est_object.model, 'non_absorbing'):
                 if k not in var_est_object.model.non_absorbing:
                     pass
@@ -145,7 +145,7 @@ def solve_Z(var_est_object, solver, **kwds):
     obj = 0.0
     
     # Conc obj no sigma - will this work with missing data?
-    for k in var_est_object._sublist_components:
+    for k in var_est_object.comps['unknown_absorbance']:
         obj += sum((var_est_object.model.C[t, k]-var_est_object.model.Z[t, k])**2 for t in var_est_object.model.times_spectral)
         
 

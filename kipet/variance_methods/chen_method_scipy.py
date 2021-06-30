@@ -30,13 +30,13 @@ def build_s_model(var_est_object):
         
     var_est_object.S_model.S = Var(
         var_est_object.model.meas_lambdas,
-        var_est_object.component_set,
+        var_est_object.comps['unknown_absorbance'],
         bounds=(lower_bound, None),
         initialize=1.0
     )
 
     for l in var_est_object.model.meas_lambdas:
-        for k in var_est_object.component_set:
+        for k in var_est_object.comps['unknown_absorbance']:
             var_est_object.S_model.S[l, k].value = var_est_object.model.S[l, k].value
             if hasattr(var_est_object.model, 'known_absorbance'):
                 if k in var_est_object.model.known_absorbance:
@@ -89,20 +89,17 @@ def solve_s_scipy(var_est_object, **kwds):
         print('-----------------Solve_S--------------------')
         t0 = time.time()
 
-    if hasattr(var_est_object, '_abs_components'):
-        n = var_est_object._nabs_components
-    else:
-        n = var_est_object._n_components
+    n = len(var_est_object.comps['unknown_absorbance'])
 
     for j, l in enumerate(var_est_object.model.meas_lambdas):
-        for k, c in enumerate(var_est_object.component_set):
+        for k, c in enumerate(var_est_object.comps['unknown_absorbance']):
             if var_est_object.model.S[l, c].value < 0.0 and var_est_object._is_D_deriv == False:  #: only less thant zero for non-absorbing
                 var_est_object._s_array[j * n + k] = 1e-2
             else:
                 var_est_object._s_array[j * n + k] = var_est_object.model.S[l, c].value
 
     for j, t in enumerate(var_est_object.model.times_spectral):
-        for k, c in enumerate(var_est_object.component_set):
+        for k, c in enumerate(var_est_object.comps['unknown_absorbance']):
             var_est_object._z_array[j * n + k] = var_est_object.model.Z[t, c].value
 
     def F(x, z_array, d_array, nl, nt, nc):
@@ -183,11 +180,11 @@ def solve_s_scipy(var_est_object, **kwds):
         print("Scipy.optimize.least_squares time={:.3f} seconds".format(t1-t0))
 
     for j, l in enumerate(var_est_object.model.meas_lambdas):
-        for k, c in enumerate(var_est_object.component_set):
+        for k, c in enumerate(var_est_object.comps['unknown_absorbance']):
             var_est_object.model.S[l, c].value = res.x[j * n + k]
             if hasattr(var_est_object.model, 'known_absorbance'):
                 if c in var_est_object.model.known_absorbance:
-                    var_est_object.model.S[l, c].set_value(var_est_object.model.known_absorbance_data[c][l])
+                    var_est_object.model.S[l, c].set_value(var_est_object.model.known_absorbance_data[c][c][l])
 
     return res.success
 
@@ -204,13 +201,13 @@ def build_c_model(var_est_object):
     
     var_est_object.C_model.C = Var(
         var_est_object.model.times_spectral,
-        var_est_object._sublist_components,
+        var_est_object.comps['unknown_absorbance'],
         bounds=(0.0, None),
         initialize=1.0
     )
 
     for l in var_est_object.model.times_spectral:
-        for k in var_est_object._sublist_components:
+        for k in var_est_object.comps['unknown_absorbance']:
             var_est_object.C_model.C[l, k].value = var_est_object.model.C[l, k].value
             if hasattr(var_est_object.model, 'non_absorbing'):
                 var_est_object.C_model.C[l, k].fix()
@@ -259,34 +256,37 @@ def solve_c_scipy(var_est_object, **kwds):
         print('-----------------Solve_C--------------------')
         t0 = time.time()
    
-    if hasattr(var_est_object, '_abs_components'):
-        n = var_est_object._nabs_components
-    else:
-        n = var_est_object._n_components
+    n = len(var_est_object.comps['unknown_absorbance'])
         
+    count = 0
     for i, t in enumerate(var_est_object.model.times_spectral):
-        for k, c in enumerate(var_est_object.component_set):
-            if getattr(var_est_object.model, var_est_object.component_var)[t, c].value <= 0.0:
+        for k, c in enumerate(var_est_object.comps['unknown_absorbance']):
+
+            if getattr(var_est_object.model, 'C')[t, c].value <= 0.0:
                 var_est_object._c_array[i * n + k] = 1e-15
             else:
-                var_est_object._c_array[i * n + k] = getattr(var_est_object.model, var_est_object.component_var)[t, c].value
+                var_est_object._c_array[i * n + k] = getattr(var_est_object.model, 'C')[t, c].value
 
+        count += 1
+    
+    count = 0
     for j, l in enumerate(var_est_object.model.meas_lambdas):
-        for k, c in enumerate(var_est_object.component_set):
+        for k, c in enumerate(var_est_object.comps['unknown_absorbance']):
             var_est_object._s_array[j * n + k] = var_est_object.model.S[l, c].value
+            count += 1
 
-
-    def F(x,s_array,d_array,nl,nt,nc):
-        diff = np.zeros(nt*nl)
+    def F(x, s_array, d_array, nl, nt, nc):
+        diff = np.zeros(nt * nl)
         for i in range(nt):
             for j in range(nl):
-                diff[i*nl+j]=d_array[i,j]-sum(s_array[j*nc+k]*x[i*nc+k] for k in range(nc))
+                diff[i * nl + j] = d_array[i, j] - sum(s_array[j * nc + k] * x[i * nc + k] for k in range(nc))
         return diff
 
-    def JF(x,s_array,d_array,nl,nt,nc):
+    def JF(x, s_array, d_array, nl, nt, nc):
         row = []
         col = []
         data = []
+        
         for i in range(nt):
             for j in range(nl):
                 for k in range(nc):
@@ -349,8 +349,8 @@ def solve_c_scipy(var_est_object, **kwds):
         print("Scipy.optimize.least_squares time={:.3f} seconds".format(t1-t0))
 
     for j, t in enumerate(var_est_object.model.times_spectral):
-        for k,c in enumerate(var_est_object.component_set):
-            getattr(var_est_object.model, var_est_object.component_var)[t,c].value = res.x[j*n+k]
+        for k,c in enumerate(var_est_object.comps['unknown_absorbance']):
+            getattr(var_est_object.model, 'C')[t,c].value = res.x[j*n+k]
    
     return res.success
 

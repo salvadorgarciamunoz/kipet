@@ -81,7 +81,7 @@ def run_alternate_method(var_est_object, solver, run_opt_kwargs):
             sigmult = 0
             nwp = len(var_est_object.model.meas_lambdas)
             for l in var_est_object.model.meas_lambdas:
-                for k in var_est_object.component_set:
+                for k in var_est_object.comps['unknown_absorbance']:
                    sigmult += value(var_est_object.model.S[l, k])
             funcval = nu_squared - new_delta - init_sigmas*(sigmult/nwp)
             return funcval, sigmult
@@ -111,7 +111,7 @@ def run_alternate_method(var_est_object, solver, run_opt_kwargs):
         print("The overall model variance is: ", itersigma[count])
         
         sigma_vals = {}
-        for k in var_est_object.component_set:
+        for k in var_est_object.comps['unknown_absorbance']:
             sigma_vals[k] = abs(itersigma[count])
         
     print(f'sigma_vals: {sigma_vals}')
@@ -271,12 +271,12 @@ def _solve_delta_given_sigma(var_est_object, solver, **kwds):
         set_A = var_est_object.model.meas_lambdas
     
     if isinstance(sigmas, float):
-        for k in var_est_object.component_set:
+        for k in var_est_object.comps['unknown_absorbance']:
             sigmas_sq[k] = sigmas
     
     elif isinstance(sigmas, dict):
         keys = sigmas.keys()
-        for k in var_est_object.component_set:
+        for k in var_est_object.comps['unknown_absorbance']:
             if k not in keys:
                 sigmas_sq[k] = sigmas
        
@@ -289,10 +289,10 @@ def _solve_delta_given_sigma(var_est_object, solver, **kwds):
     ntp = len(var_est_object.model.times_spectral)
     nwp = len(var_est_object.model.meas_lambdas) 
     inlog = 0
-    nc = len(var_est_object.component_set)
+    nc = len(var_est_object.comps['unknown_absorbance'])
     for t in var_est_object.model.times_spectral:
         for l in set_A:
-            D_bar = sum(var_est_object.model.C[t, k] * var_est_object.model.S[l, k] for k in var_est_object.component_set)
+            D_bar = sum(var_est_object.model.C[t, k] * var_est_object.model.S[l, k] for k in var_est_object.comps['unknown_absorbance'])
             #D_bar = sum(var_est_object.model.C[t, k] * var_est_object.model.S[l, k] for k in var_est_object._sublist_components)
             inlog += (var_est_object.model.D[t, l] - D_bar)**2
     # Orig had sublist in both parts - is this an error?
@@ -300,7 +300,7 @@ def _solve_delta_given_sigma(var_est_object, solver, **kwds):
     # Concentration - correct
     # Move this to objectives module
     for t in var_est_object.model.times_spectral:
-        for k in var_est_object._sublist_components:
+        for k in var_est_object.comps['unknown_absorbance']:
             #obj += conc_objective(var_est_object.model, sigma=sigmas_sq)
             obj += 0.5*((var_est_object.model.C[t, k] - var_est_object.model.Z[t, k])**2)/(sigmas_sq[k])
             
@@ -324,7 +324,7 @@ def _solve_delta_given_sigma(var_est_object, solver, **kwds):
     etaTeta = 0
     for t in var_est_object.model.times_spectral:
         for l in set_A:
-            D_bar = sum(value(var_est_object.model.C[t, k]) * value(var_est_object.model.S[l, k]) for k in var_est_object.component_set)
+            D_bar = sum(value(var_est_object.model.C[t, k]) * value(var_est_object.model.S[l, k]) for k in var_est_object.comps['unknown_absorbance'])
             etaTeta += (value(var_est_object.model.D[t, l]) - D_bar)**2
     
     deltasq = etaTeta/(ntp*nwp)  
@@ -360,26 +360,26 @@ def _solve_sigma_given_delta(var_est_object, solver, **kwds):
     set_A = kwds.pop('subset_lambdas', list())
     profile_time = kwds.pop('profile_time', False)
     delta_sq = kwds.pop('delta', dict())
-    species_list = kwds.pop('subset_components', None)
+    #species_list = kwds.pop('subset_components', None)
 
     model = var_est_object.model.clone()
 
     if not set_A:
         set_A = var_est_object.model.meas_lambdas
         
-    if not hasattr(var_est_object, '_sublist_components'):
-        list_components = []
-        if species_list is None:
-            list_components = [k for k in var_est_object._mixture_components]
+    # if not hasattr(var_est_object, '_sublist_components'):
+    #     list_components = []
+    #     if species_list is None:
+    #         list_components = [k for k in var_est_object._mixture_components]
             
-        else:
-            for k in species_list:
-                if k in var_est_object._mixture_components:
-                    list_components.append(k)
-                else:
-                    warnings.warn("Ignored {} since is not a mixture component of the model".format(k))
+    #     else:
+    #         for k in species_list:
+    #             if k in var_est_object._mixture_components:
+    #                 list_components.append(k)
+    #             else:
+    #                 warnings.warn("Ignored {} since is not a mixture component of the model".format(k))
 
-        var_est_object._sublist_components = list_components
+    #     var_est_object._sublist_components = list_components
     
     var_est_object._warn_if_D_negative()  
     ntp = len(var_est_object.model.times_spectral)
@@ -387,19 +387,19 @@ def _solve_sigma_given_delta(var_est_object, solver, **kwds):
    
     for t in var_est_object.model.times_spectral:
         for l in set_A:
-            D_bar = sum(var_est_object.model.C[t, k] * var_est_object.model.S[l, k] for k in var_est_object.component_set)
+            D_bar = sum(var_est_object.model.C[t, k] * var_est_object.model.S[l, k] for k in var_est_object.comps['unknown_absorbance'])
             obj += 0.5/delta_sq*(var_est_object.model.D[t, l] - D_bar)**2
 
-    inlog = {k: 0 for k in var_est_object.component_set}
+    inlog = {k: 0 for k in var_est_object.comps['unknown_absorbance']}
     var_est_object.model.eps = Param(initialize = 1e-8)  
     
-    variances_dict = {k: 0 for k in var_est_object.component_set}
+    variances_dict = {k: 0 for k in var_est_object.comps['unknown_absorbance']}
             
     for t in var_est_object.model.times_spectral:
-        for k in var_est_object.component_set:
+        for k in var_est_object.comps['unknown_absorbance']:
             inlog[k] += ((var_est_object.model.C[t, k] - var_est_object.model.Z[t, k])**2)
     
-    for k in var_est_object.component_set:
+    for k in var_est_object.comps['unknown_absorbance']:
         obj += 0.5*ntp*log(inlog[k]/ntp + var_est_object.model.eps)
     
     var_est_object.model.init_objective = Objective(expr=obj)
@@ -415,11 +415,11 @@ def _solve_sigma_given_delta(var_est_object, solver, **kwds):
 
         residuals = (value(var_est_object.model.init_objective))
         for t in var_est_object.model.times_spectral:
-            for k in var_est_object.component_set:
+            for k in var_est_object.comps['unknown_absorbance']:
                 variances_dict[k] += 1 / ntp*((value(var_est_object.model.C[t, k]) - value(var_est_object.model.Z[t, k]))**2)
         
         print("Variances")
-        for k in var_est_object.component_set:
+        for k in var_est_object.comps['unknown_absorbance']:
             print(k, variances_dict[k])
         
         print("Parameter estimates")
