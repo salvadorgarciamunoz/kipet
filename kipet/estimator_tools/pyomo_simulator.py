@@ -41,6 +41,19 @@ class PyomoSimulator:
         # Creates a scaling factor suffix
         if not hasattr(self.model, 'scaling_factor'):
             self.model.scaling_factor = Suffix(direction=Suffix.EXPORT)
+            
+        self.comps = {}
+        if hasattr(self.model, 'abs_components'):
+            self.comps['absorbing'] = [k for k in self.model.abs_components] # all that absorb
+        else:
+            self.comps['absorbing'] = []
+        if hasattr(self.model, 'known_absorbance'):
+            self.comps['known_absorbance'] = [k for k in self.model.known_absorbance] # all that are known
+        else:
+            self.comps['known_absorbance'] = []
+        
+        self.comps['all'] = [k for k in self.model.mixture_components] # all species
+        self.comps['unknown_absorbance'] = [k for k in self.comps['absorbing'] if k not in self.comps['known_absorbance']]
 
     def apply_discretization(self, transformation, **kwargs):
         """Discretizes the model.
