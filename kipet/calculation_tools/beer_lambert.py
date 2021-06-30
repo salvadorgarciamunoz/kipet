@@ -20,10 +20,9 @@ def D_from_SC(model, results, sigma_d=0):
     :rtype: np.ndarray
 
     """
-    if hasattr(model, 'Cs'):
-        C = convert(model.Cs)
-    else:
-        C = convert(model.C)
+    
+    C = convert(model.C)
+    C = C.loc[:, [c for c in model.abs_components]]
     
     S = convert(model.S)
     D = C @ S.T
