@@ -328,9 +328,9 @@ class ReactionSet:
 
                 results_dir = pathlib.Path.cwd().joinpath(self.file.parent, 'results', f'{self.file.stem}-{self.timestamp}')
                 if not results_dir.is_dir():
-                    pathlib.Path.mkdir(results_dir)
+                    results_dir.mkdir(parents=True)
 
-                filename = pathlib.Path.cwd().joinpath(self.file.parent, 'results', f'{self.file.stem}-{self.timestamp}', 'log.txt') 
+                filename = results_dir.joinpath('log.txt') 
 
                 with Tee(filename): 
                     self._run_full_model()
