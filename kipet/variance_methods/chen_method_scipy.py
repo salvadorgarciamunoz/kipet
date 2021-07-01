@@ -53,6 +53,7 @@ def solve_s_scipy(var_est_object, **kwds):
     :param VarianceEstimator var_est_object: The variance estimation object
 
     :Keyword Args:
+
         - tee (bool,optional): flag to tell the optimizer whether to stream output
           to the terminal or not
         - profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model.
@@ -61,6 +62,7 @@ def solve_s_scipy(var_est_object, **kwds):
         - xtol (float, optional): Tolerance for termination by the change of the independent variables. Default is 1e-8
         - gtol (float, optional): Tolerance for termination by the norm of the gradient. Default is 1e-8.
         - loss (str, optional): Determines the loss function. The following keyword values are allowed:
+        
             - 'linear' (default) : rho(z) = z. Gives a standard least-squares problem.
             - 'soft_l1' : rho(z) = 2 * ((1 + z)**0.5 - 1). The smooth approximation of l1 (absolute value) loss. Usually a good choice for robust least squares.
             - 'huber' : rho(z) = z if z <= 1 else 2*z**0.5 - 1. Works similarly to 'soft_l1'.
@@ -219,7 +221,7 @@ def solve_c_scipy(var_est_object, **kwds):
     :param VarianceEstimator var_est_object: The variance estimation object
 
     :Keyword Args:
-        :Keyword Args:
+
         - tee (bool,optional): flag to tell the optimizer whether to stream output
           to the terminal or not
         - profile_time (bool,optional): flag to tell pyomo to time the construction and solution of the model.
@@ -228,6 +230,7 @@ def solve_c_scipy(var_est_object, **kwds):
         - xtol (float, optional): Tolerance for termination by the change of the independent variables. Default is 1e-8
         - gtol (float, optional): Tolerance for termination by the norm of the gradient. Default is 1e-8.
         - loss (str, optional): Determines the loss function. The following keyword values are allowed:
+
             - 'linear' (default) : rho(z) = z. Gives a standard least-squares problem.
             - 'soft_l1' : rho(z) = 2 * ((1 + z)**0.5 - 1). The smooth approximation of l1 (absolute value) loss. Usually a good choice for robust least squares.
             - 'huber' : rho(z) = z if z <= 1 else 2*z**0.5 - 1. Works similarly to 'soft_l1'.
