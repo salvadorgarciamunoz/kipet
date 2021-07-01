@@ -1,7 +1,7 @@
-from .top_level.settings import Settings
+__version__ = "1.0.0"
 import kipet
+from kipet.general_settings.settings import Settings
+from kipet.main_modules.reaction_set import ReactionSet
+from kipet.main_modules.reaction_model import ReactionModel
+from kipet.input_output.kipet_io import *
 kipet.settings = Settings()
-
-from .kipet_model import KipetModel
-from .core_methods.data_tools import *
-

@@ -1,7 +1,7 @@
 [tool.poetry]
 
 name = "kipet"
-version = "0.2.0"
+version = "1.0.2"
 description = "An all-in-one tool for fitting kinetic models using spectral and other state data"
 authors = ["Kevin McBride <kevin.w.mcbride.86@gmail.com>"]
 maintainers = ["Kevin McBride <kevin.w.mcbride.86@gmail.com>"]
@@ -18,18 +18,26 @@ numpy = "^1.20.1"
 scipy = "^1.6.0"
 plotly = "^4.14.3"
 Pint = "^0.16.1"
-ipopt = "^0.3.0"
 matplotlib = "^3.3.4"
 PyYAML = "^5.4.1"
 Pyomo = "^5.7.3"
 attrs = "^20.3.0"
 six = "^1.15.0"
+scikit-learn = "^0.24.1"
+Sphinx = "^4.0.1"
+kaleido = "0.2.1"
+Jinja2 = "^3.0.1"
+pytexit = "^0.3.4"
+Pygments = "^2.9.0"
 
 
 [tool.poetry.dev-dependencies]
 
 pytest = "^5.2"
 spyder = "^4.2.2"
+isort = "^5.8.0"
+mypy = "^0.812"
+sphinx-rtd-theme = "^0.5.2"
 
 [build-system]
 

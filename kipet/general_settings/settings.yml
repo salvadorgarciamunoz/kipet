@@ -1,0 +1,49 @@
+collocation:
+  method: dae.collocation
+  ncp: 3
+  nfe: 50
+  scheme: LAGRANGE-RADAU
+general:
+  initialize_pe: true
+  no_user_scaling: true
+  scale_parameters: false
+  scale_pe: true
+  scale_variances: false
+  simulation_times: null
+  add_volume_terms: true
+  save_output: true
+parameter_estimator:
+  confidence: 0.95
+  covariance: null
+  estimability: false
+  model_variance: true
+  report_time: false
+  sim_init: false
+  solver: ipopt
+  symbolic_solver_labels: false
+  tee: true
+  with_d_vars: false
+simulator:
+  method: fe
+  solver: ipopt
+  tee: false
+solver:
+  linear_solver: ma57
+  nlp_scaling_method: gradient-based
+  max_iter: 15000
+variance_estimator:
+  best_accuracy: null
+  fixed_device_variance: null
+  device_range: null
+  fixed_device_variance: null
+  individual_species: false
+  initial_sigmas: 1.0e-5
+  max_device_variance: false
+  max_iter: 15
+  method: originalchenetal
+  num_points: 10
+  secant_point: 5.0e-4
+  solver: ipopt
+  tee: true
+  tolerance: 1.0e-05
+  with_plots: false

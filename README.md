@@ -81,6 +81,16 @@ Naturally you can simply clone or download the repository if you wish.
     cd kipet
     python setup.py install
 
+### Ipopt and k_aug
+
+To use KIPET to its full potential, you should install Ipopt and k_aug. Ipopt is 
+a popular solver for non-linear programs and k_aug is a new method to calculate sensitivities
+from the KKT matrix. The latter is required if covariances are to be calculated.
+
+TODO: add links to the installation of each here.
+
+To help ease the installation of these software tools, there are two scripts written for
+Linux OS (Debian) for installing Ipopt and k_aug. These are available here https://github.com/kwmcbride/Linux-Setup-Scripts
 
 ### Examples and Tutorials
 

@@ -1,0 +1,53 @@
+.. KIPET documentation master file, created by
+   sphinx-quickstart on Thu May  6 10:09:40 2021.
+   You can adapt this file completely to your liking, but it should at least
+   contain the root `toctree` directive.
+
+Kinetic Parameter Estimation Toolbox (KIPET)
+********************************************
+
+KIPET is the one-stop shop for kinetic parameter estimation from batch and fed-batch reactor systems using spectroscopic or concentration data. KIPET is a Python-based package using maximum-likelihood statistics, large-scale nonlinear programming optimization, and finite element discretization in a unified framework to solve a variety of parameter estimation problems. Use KIPET to:
+
+* Simulate reactive system described with DAEs  
+* Solve DAE systems with collocation methods
+* Pre-process data
+* Perform estimability analysis
+* Estimate data variances
+* Estimate kinetic parameters
+* Estimate confidence intervals of the estimated parameters
+* Estimate parameters from multiple datasets with different experimental conditions
+* Obtain the most informative wavelength set to obtain minimal lack-of-fit
+* Analyze your system (SVD, PCA, lack of fit, etc.)
+* Visualize results
+
+Table of Contents
+=================
+.. toctree::
+   :maxdepth: 1
+
+   content/pages/installation
+   content/pages/introduction
+   content/pages/background
+   content/pages/start
+   content/pages/tutorials
+   content/pages/citing
+   content/pages/references
+   code
+
+
+Indices and tables
+==================
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`
+
+KIPET Resources
+===============
+KIPET development is hosted on GitHub and we welcome feedback and questions there:
+
+https://github.com/salvadorgarciamunoz/KIPET
+
+KIPET makes use of Pyomo as the algebraic modeling language and much of the syntax can be found here:
+
+https://pyomo.readthedocs.io/en/stable/
