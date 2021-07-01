@@ -1277,7 +1277,14 @@ class ReactionModel(WavelengthSelectionMixins):
             self._simulate_core(parameters)
         else:
             from kipet.input_output.kipet_io import Tee
-            with Tee(f'log-{self.file.stem}-{self.timestamp}.txt'):   
+
+            results_dir = pathlib.Path.cwd().joinpath(self.file.parent, 'results', f'{self.file.stem}-{self.timestamp}')
+            if not results_dir.is_dir():
+                pathlib.Path.mkdir(results_dir)
+
+            filename = pathlib.Path.cwd().joinpath(self.file.parent, 'results', f'{self.file.stem}-{self.timestamp}', 'log.txt') 
+
+            with Tee(filename):   
                 self._simulate_core(parameters)
            
         return None
@@ -1744,7 +1751,14 @@ class ReactionModel(WavelengthSelectionMixins):
         if self.settings.general.save_output:
         
             from kipet.input_output.kipet_io import Tee
-            with Tee(f'log-{self.file.stem}-{self.timestamp}.txt'):   
+
+            results_dir = pathlib.Path.cwd().joinpath(self.file.parent, 'results', f'{self.file.stem}-{self.timestamp}')
+            if not results_dir.is_dir():
+                pathlib.Path.mkdir(results_dir)
+
+            filename = pathlib.Path.cwd().joinpath(self.file.parent, 'results', f'{self.file.stem}-{self.timestamp}', 'log.txt') 
+
+            with Tee(filename):     
                 results = self._run_opt_core()
             
         else:
@@ -2114,7 +2128,14 @@ class ReactionModel(WavelengthSelectionMixins):
         
         """
         from kipet.input_output.kipet_io import Tee
-        with Tee(f'log-{self.file.stem}-{self.timestamp}.txt'):   
+
+        results_dir = pathlib.Path.cwd().joinpath(self.file.parent, 'results', f'{self.file.stem}-{self.timestamp}')
+        if not results_dir.is_dir():
+            pathlib.Path.mkdir(results_dir)
+
+        filename = pathlib.Path.cwd().joinpath(self.file.parent, 'results', f'{self.file.stem}-{self.timestamp}', 'log.txt') 
+
+        with Tee(filename):
         
             if self._model is None:
                 self._model = self._create_pyomo_model()
@@ -2508,6 +2529,15 @@ class ReactionModel(WavelengthSelectionMixins):
         return hasattr(self.p_model, 'objective')
 
 
+    def run_lof_analysis(self, *args, **kwargs):
+        """Performs the LoF analysis for the PE models
+        
+        """
+        
+
+
+
+
     # def check_component_units(self):
     #     """Method to check whether the units provided are consistent with the
     #     base units.
@@ -2711,6 +2741,12 @@ class ReactionModel(WavelengthSelectionMixins):
         """
         from kipet.visuals.plots import PlotObject
         
+        
+        if self.models['_s_model'] and not self.models['p_model']:
+            results_obj = self.results_dict['simulator']
+        else:
+            results_obj = self.results
+        
         if not hasattr(self, '_plot_object'):
             self._plot_object = PlotObject(reaction_model=self, jupyter=jupyter, filename=filename, show=show)
         
@@ -2732,7 +2768,7 @@ class ReactionModel(WavelengthSelectionMixins):
         elif var is None:
             self._plot_object._plot_all_Z()
             
-            if hasattr(self.results, 'S'):
+            if hasattr(results_obj, 'S'):
                 self._plot_object._plot_all_S()
             
             for var in self.states.names:
@@ -2741,8 +2777,8 @@ class ReactionModel(WavelengthSelectionMixins):
             for var in self.algebraics.names:
                 self._plot_object._plot_Y(var)  
                 
-            if hasattr(self.results, 'step'):
-                for var in self.results.step:
+            if hasattr(results_obj, 'step'):
+                for var in results_obj.step:
                     self._plot_object._plot_step(var)
                 
         return None
