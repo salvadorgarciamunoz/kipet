@@ -99,13 +99,18 @@ class Report:
         
         """
         params = []
-        
+
+        if reaction_model.models['p_model']:
+            results_obj = reaction_model.results
+        else:
+            results_obj = reaction_model.results_dict['simulator']
+
         for param in reaction_model.parameters:
             param_data = {}
             param_data['name'] = param.name
             param_data['units'] = dimensionless_check(param.units)
             param_data['initial'] = param.value
-            param_data['value'] = reaction_model.results.P[param.name]
+            param_data['value'] = results_obj.P[param.name]
             param_data['lb'] = param.bounds[0]
             param_data['ub'] = param.bounds[1]
             param_data['description'] = 'Not provided' if param.description is None else param.description
@@ -114,8 +119,8 @@ class Report:
             if hasattr(reaction_model, 'p_model'):
                 param_data['fixed'] = reaction_model.p_model.P[param.name].fixed
             
-        if hasattr(reaction_model.results, 'time_step_change'):
-            for indx, param in pd.DataFrame(reaction_model.results.time_step_change).iterrows():
+        if hasattr(results_obj, 'time_step_change'):
+            for indx, param in pd.DataFrame(results_obj.time_step_change).iterrows():
                
                 param_data = {}
                 param_data['name'] = indx
@@ -131,8 +136,8 @@ class Report:
     
                 params.append(param_data)
                 
-        if hasattr(reaction_model.results, 'Pinit'):
-            for indx, param in pd.DataFrame(reaction_model.results.Pinit).iterrows():
+        if hasattr(results_obj, 'Pinit'):
+            for indx, param in pd.DataFrame(results_obj.Pinit).iterrows():
                
                 param_data = {}
                 param_data['name'] = f'{indx}'
@@ -344,8 +349,15 @@ class Report:
             model_dict[name]['state_data'] = self.state_context(reaction_model)
             model_dict[name]['bounds'] = reaction_model._builder._prof_bounds
             model_dict[name]['variances'] = reaction_model.variances
-            model_dict[name]['confidence'] = reaction_model.results.deviations()
-            model_dict[name]['covariance'] = reaction_model.results.parameter_covariance
+
+
+            if reaction_model.models['p_model']:
+                results_obj = reaction_model.results
+            else:
+                results_obj = reaction_model.results_dict['simulator']
+
+            model_dict[name]['confidence'] = results_obj.deviations()
+            model_dict[name]['covariance'] = results_obj.parameter_covariance
             
             
             # Figuring out what was done
@@ -413,17 +425,20 @@ class Report:
             model_dict[name]['age_data'] = age_data
             
             from kipet.model_tools.diagnostics import model_fit
-            diags = model_fit(reaction_model.p_estimator)
-            
-            diagnostics = []
-            if final_estimator == 'parameter estimation':
-                for k, v in diags.items():
-                    stat = {}
-                    stat['name'] = k
-                    stat['value'] = v[0]
-                    stat['description'] = v[1]
-                    diagnostics.append(stat)
-                
+
+            diagnostics = None
+            if hasattr(reaction_model, 'p_estimator'):
+
+                diags = model_fit(reaction_model.p_estimator)
+                diagnostics = []
+                if final_estimator == 'parameter estimation':
+                    for k, v in diags.items():
+                        stat = {}
+                        stat['name'] = k
+                        stat['value'] = v[0]
+                        stat['description'] = v[1]
+                        diagnostics.append(stat)
+                    
             model_dict[name]['diagnostics'] = diagnostics
                 
             res_chart_files = None
