@@ -325,7 +325,14 @@ class ReactionSet:
                 self._calculate_parameters()
                 self._create_multiple_experiments_estimator()
                 from kipet.input_output.kipet_io import Tee
-                with Tee(f'log-{self.file.stem}-{self.timestamp}.txt'):   
+
+                results_dir = pathlib.Path.cwd().joinpath(self.file.parent, 'results', f'{self.file.stem}-{self.timestamp}')
+                if not results_dir.is_dir():
+                    pathlib.Path.mkdir(results_dir)
+
+                filename = pathlib.Path.cwd().joinpath(self.file.parent, 'results', f'{self.file.stem}-{self.timestamp}', 'log.txt') 
+
+                with Tee(filename): 
                     self._run_full_model()
             # elif method == 'nsd':
             #     self._calculate_parameters()
