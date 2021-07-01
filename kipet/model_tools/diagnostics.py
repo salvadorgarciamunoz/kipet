@@ -71,8 +71,11 @@ def diagnostic_terms(exp, pred, num_params):
 def model_fit(parameter_estimator):
     """ Runs basic post-processing lack of fit analysis
 
-    :return dict output: Various model fit values
+    :param ParameterEstimator parameter_estimator: The parameter estimator object after solving
 
+    :return: Various model fit values
+    :rtype: dict
+    
     """
     model = parameter_estimator.model
     num_params = len(parameter_estimator.param_names)
