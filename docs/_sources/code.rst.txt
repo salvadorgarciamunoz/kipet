@@ -14,7 +14,7 @@ The two modules that will actually be used by the user are found here. They are 
 and can be imported directly from "kipet".
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
 
    modules/main_modules
 
@@ -25,17 +25,17 @@ Calculation Tools
 Several, more general, calculation methods are located here.
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
 
    modules/calculation_tools
 
 Estimability Tools
-=================
+==================
 
 Tools for analyzing parameters are found here.
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
 
    modules/estimability_tools
 
@@ -47,7 +47,7 @@ The core methods for variance estimation and parameter fitting (VarianceEstimato
 are found here.
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
 
    modules/estimator_tools
 
@@ -57,7 +57,7 @@ Settings
 General settings for KIPET are stored here.
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
 
    modules/general_settings
 
@@ -67,7 +67,7 @@ Input/Output
 Input and output methods specific to KIPET.
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
 
    modules/input_output
 
@@ -77,7 +77,7 @@ Mixins
 Mixin classes used in other parts of KIPET
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
 
    modules/mixins
 
@@ -87,9 +87,19 @@ Model Components
 Methods and classes used in building the models used in KIPET
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
 
    modules/model_components
+
+Model Tools
+===========
+
+Methods and classes used in performing various tasks on the models used in KIPET
+
+.. toctree::
+   :maxdepth: 2
+
+   modules/model_tools
 
 Variance Methods
 =================
@@ -97,7 +107,7 @@ Variance Methods
 Core methods used to estimate the variances taken from the literature.
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
 
    modules/variance_methods
 
@@ -107,6 +117,6 @@ Visuals
 Plotting tools
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
 
    modules/visuals

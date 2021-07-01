@@ -35,7 +35,7 @@ Additionally, KIPET can be used to obtain a better understanding of a chemical r
 	*	Tools for system analysis (SVD, PCA, lack of fit, etc.)
 	* 	Visualize results
 
-In the sections that follow, this document provides guidelines on how to make use of KIPET. A detailed installation guide is provided, including a list of all packages required to use KIPET. Some background theory into how KIPET works, as well as the structure of KIPET is then explained in Section 3. A guide for using some of the various capabilities is then provided in the form of tutorial examples (Section 4).  In Section 5 a more detailed look into some of the classes and functions that are not explicitly explained in Section 4 is provided. Finally, in Section 6, the documentation provides references and further reading that provides more detail on the theory behind the numerical techniques implemented in KIPET.
+In the sections that follow, this document provides guidelines on how to make use of KIPET. A detailed installation guide, a getting started section, and many examples are provided.
 
 KIPET is made available under the GNU General Public License, GPL-3. For more details on this  license please review the terms on the Github page.
 The KIPET team involves Salvador Garcia-Munoz (Eli Lilly), Santiago Rodriguez (Purdue University), Christina Schenk (Basque Center for Applied Mathematics), Michael Short (University of Surrey), Lorenz T. Biegler, David M. Thierry, Kevin McBride, and Kuan-Han Lin (all Carnegie Mellon University).

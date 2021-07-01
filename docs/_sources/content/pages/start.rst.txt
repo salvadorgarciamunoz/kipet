@@ -377,4 +377,4 @@ To see all options available, simply type r1.settings into the command prompt. T
 
     # and many more...
 	
-If you would like to change the default values permanently, you can do this by changing the settings.yml file in the kipet directory. You need to find out where KIPET has been installed on your system in order to do this.
+If you would like to change the default values permanently, you can do this by changing the settings.yml file in the kipet directory.
