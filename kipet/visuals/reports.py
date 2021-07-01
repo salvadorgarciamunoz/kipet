@@ -297,8 +297,6 @@ class Report:
         
         for reaction_model in self.reactions:
             
-            print(self.reactions)
-            
             name = reaction_model.name
             model_dict[name] = {}
             model_dict[name]['time'] = reaction_model.timestamp
