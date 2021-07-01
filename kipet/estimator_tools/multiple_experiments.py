@@ -56,27 +56,6 @@ class MultipleExperimentsEstimator(PEMixins, object):
         number_of_stds = st.norm.ppf(1 - (1 - confidence)/2)
         margin = 15
         variances_p = self.p_variances
-        
-        # print('\nParameters:')
-        # for exp in self.experiments:
-        #     print(f'\nExperiment - {exp}:')
-        #     for k, p in self.model.experiment[exp].P.items():
-        #         if p.is_fixed():
-        #             continue
-        #         is_global = '(local)'
-        #         if k in self.global_params:
-        #             is_global = '(global)'
-        #         print(f'{k.rjust(margin)} = {p.value:0.4e} {is_global}')
-                
-        #     if hasattr(self.model.experiment[exp], 'Pinit'):
-        #         for k in self.model.experiment[exp].Pinit.keys():
-        #             self.model.experiment[exp].Pinit[k] = self.model.experiment[exp].init_conditions[k].value
-        #             print_name = f'{k} (init)'
-        #             print(f'{print_name.rjust(margin)} = {self.model.experiment[exp].Pinit[k].value:0.4e} (local)')
-                    
-        #     if hasattr(self.model.experiment[exp], 'time_step_change'):
-        #         for k, p in self.time_step_change.items():
-        #             print(f'{k.rjust(margin)} = {p:0.4e} (local)') 
                         
         print(f'\n# Parameter Values (Confidence: {int(confidence*100)}%)')
         for exp in self.experiments:
@@ -198,9 +177,7 @@ class MultipleExperimentsEstimator(PEMixins, object):
             
             rm_cov = self.cov.loc[col, col]
             rm_cov.columns = [c.split('[', 1)[1].split(']')[0] for c in col]
-            
-            print(self.rm_variances)
-            
+          
             c = self.cov
             c = c.loc[col, col]
             new_cols = [c.split('[', 1)[1].split(']')[0] for c in col]
@@ -213,7 +190,6 @@ class MultipleExperimentsEstimator(PEMixins, object):
         #%%
         
         self.p_variances = np.diag(self.cov.values)
-        print(f'VP: {self.p_variances}')
         self._display_covariance()
         
         return None
