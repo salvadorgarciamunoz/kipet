@@ -1,4 +1,4 @@
-__version__ = "1.0.0"
+__version__ = "1.0.3"
 import kipet
 from kipet.general_settings.settings import Settings
 from kipet.main_modules.reaction_set import ReactionSet
